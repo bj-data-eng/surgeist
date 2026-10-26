@@ -1,6 +1,6 @@
-use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::NumericFailure;
-use crate::css::support::value_assertions::{assert_component_rejected, assert_numeric_kind};
+use crate::css::support::value_assertions::assert_component_rejected;
+use crate::css::support::value_assertions::positive_literal;
 use surgeist_css::*;
 
 #[test]
@@ -10,12 +10,16 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         assert_eq!(CssRatio::try_new(value, 1.0), None);
         assert_eq!(CssRatio::try_new(1.0, value), None);
 
-        assert_numeric_kind(
-            CssResolutionLiteral::try_new(&value.to_string(), CssResolutionUnit::Dppx),
-            NumericFailure::Component(ComponentFailure::InvalidDimension),
+        assert!(
+            CssNumericLiteral::<CssResolution>::try_new(
+                &value.to_string(),
+                CssResolutionUnit::Dppx
+            )
+            .unwrap_err()
+            .is_invalid_dimension()
         );
         assert!(
-            CssTimeLiteral::try_new(&value.to_string(), CssTimeUnit::Seconds)
+            CssNumericLiteral::<CssTime>::try_new(&value.to_string(), CssTimeUnit::Seconds)
                 .unwrap_err()
                 .is_invalid_dimension()
         );
@@ -42,12 +46,12 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
     for invalid in ["NaN", "infinity", "-infinity"] {
         let component = CssComponentValue::try_ident(invalid).unwrap();
         assert_component_rejected(
-            CssSpecifiedNonNegativeNumber::try_from_component,
+            CssNumeric::<CssNumber, CssNonNegative>::try_from_component,
             component.clone(),
             NumericFailure::RootDomainMismatch,
         );
         assert_component_rejected(
-            CssRatioOperand::try_from_component,
+            CssNumeric::<CssNumber, CssNonNegative>::try_from_component,
             component,
             NumericFailure::RootDomainMismatch,
         );
@@ -59,7 +63,7 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         ("0", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            CssFontObliqueAngle::try_from_component,
+            CssNumeric::<CssAngle, CssObliqueAngleRange>::try_from_component,
             CssComponentValue::try_token(invalid).unwrap(),
             kind,
         );
@@ -75,7 +79,7 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
     );
     let max_spelling = f32::MAX.to_string();
     let adjust = CssFontSizeAdjust::Number(
-        CssSpecifiedNonNegativeNumber::try_from_component(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number(&max_spelling).unwrap(),
         )
         .unwrap(),
@@ -93,7 +97,7 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         .representation(),
         "1"
     );
-    let factor = CssSpecifiedNonNegativeNumber::try_from_component(
+    let factor = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
         CssComponentValue::try_number("340282346638528859811704183484516925440").unwrap(),
     )
     .unwrap();
@@ -103,7 +107,7 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
     );
     for invalid in ["-1", "-0.00000000000000001"] {
         assert_component_rejected(
-            CssSpecifiedNonNegativeNumber::try_from_component,
+            CssNumeric::<CssNumber, CssNonNegative>::try_from_component,
             CssComponentValue::try_number(invalid).unwrap(),
             NumericFailure::OutOfRange,
         );
@@ -120,29 +124,32 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         Some(100.0)
     );
     assert_eq!(
-        CssFontWeightNumber::try_from_component(CssComponentValue::try_number("1").unwrap())
-            .unwrap()
-            .serialize_specified(Default::default())
-            .unwrap(),
+        CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
+            CssComponentValue::try_number("1").unwrap()
+        )
+        .unwrap()
+        .serialize_specified(Default::default())
+        .unwrap(),
         "1"
     );
     assert_eq!(
-        CssFontWeightNumber::try_from_component(CssComponentValue::try_number("1000").unwrap())
-            .unwrap()
-            .serialize_specified(Default::default())
-            .unwrap(),
+        CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
+            CssComponentValue::try_number("1000").unwrap()
+        )
+        .unwrap()
+        .serialize_specified(Default::default())
+        .unwrap(),
         "1000"
     );
     assert_eq!(
-        CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(1))
+        positive_literal(CssNumericLiteral::<CssInteger>::from_i32(1))
             .unwrap()
-            .integer()
             .numeric()
             .representation(),
         "1"
     );
     assert_eq!(
-        CssTimeLiteral::try_new("0", CssTimeUnit::Seconds)
+        CssNumericLiteral::<CssTime>::try_new("0", CssTimeUnit::Seconds)
             .unwrap()
             .numeric()
             .representation(),
@@ -150,14 +157,14 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
     );
 
     let tolerance = CssFlowTolerance::length_percentage(
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_token("25%").unwrap(),
         )
         .unwrap(),
     );
     assert!(matches!(
         tolerance.as_ref(),
-        CssFlowToleranceRef::LengthPercentage(value) if exact_percentage(value.literal_component(),"25")
+        CssFlowToleranceRef::LengthPercentage(value) if exact_percentage(value.literal().map(|literal| literal.component()),"25")
     ));
 
     let report = parse_style_attribute("flow-tolerance: 25%");
@@ -172,7 +179,7 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
     assert_eq!(value.as_css(), "25%");
     assert!(matches!(
         value.value().as_ref(),
-        CssFlowToleranceRef::LengthPercentage(value) if exact_percentage(value.literal_component(),"25")
+        CssFlowToleranceRef::LengthPercentage(value) if exact_percentage(value.literal().map(|literal| literal.component()),"25")
     ));
     assert_eq!(value.value(), &tolerance);
 }
@@ -291,7 +298,7 @@ fn exact_huge_time_parse_retains_authored_payload_and_siblings() {
     else {
         panic!("exact time duration");
     };
-    let literal = wrapper.durations().values()[0].time().literal().unwrap();
+    let literal = wrapper.durations().values()[0].literal().unwrap();
     assert_eq!(literal.numeric().representation(), "1e999");
     assert_eq!(literal.unit(), CssTimeUnit::Seconds);
     let CssValueOrigin::Parsed(origin) = literal.origin() else {
@@ -330,7 +337,7 @@ fn exact_huge_iteration_parse_retains_sheet_payload_and_siblings() {
         panic!("one shared ordinary count");
     };
     assert!(
-        matches!(number.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(token)) if token.representation() == "1e999")
+        matches!(number.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(token)) if token.representation() == "1e999")
     );
     let CssValueOrigin::Parsed(origin) = number.origin() else {
         panic!("original origin");
@@ -435,7 +442,10 @@ fn flow_tolerance_retains_exact_ordinary_percentages_beyond_float_storage() {
         let CssFlowToleranceRef::LengthPercentage(value) = wrapper.value().as_ref() else {
             panic!("exact ordinary percentage")
         };
-        let component = value.literal_component().expect("literal, not calculation");
+        let component = value
+            .literal()
+            .map(|literal| literal.component())
+            .expect("literal, not calculation");
         let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = component.view()
         else {
             panic!("original percentage kind")

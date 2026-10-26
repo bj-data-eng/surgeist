@@ -272,12 +272,15 @@ fn programmatic_shape_construction_preserves_exact_math_graph_and_origin() {
         Default::default(),
     )
     .unwrap();
-    let calculation =
-        CssLengthPercentageCalculation::try_from_components(components.clone(), Default::default())
-            .unwrap();
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
     let ty = calculation.numeric_type();
     let radius =
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation).unwrap();
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(calculation)
+            .unwrap();
     let shape = CssCircleShape::new(CssCircleRadius::LengthPercentage(radius.clone()), None);
     let before = shape.clone();
     budget("circle(calc(5em))", 4, 4, |limits| {

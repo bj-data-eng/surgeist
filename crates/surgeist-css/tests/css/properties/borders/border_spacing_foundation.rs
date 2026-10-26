@@ -45,11 +45,17 @@ fn border_spacing_metadata_is_inherited_with_zero_on_both_axes() {
     );
     let authored = declaration("border-spacing:0");
     assert!(exact_literal(
-        spacing(&authored).horizontal().literal_component(),
+        spacing(&authored)
+            .horizontal()
+            .literal()
+            .map(|literal| literal.component()),
         "0"
     ));
     assert!(exact_literal(
-        spacing(&authored).vertical().literal_component(),
+        spacing(&authored)
+            .vertical()
+            .literal()
+            .map(|literal| literal.component()),
         "0"
     ));
     let items = expanded(&authored);
@@ -69,11 +75,17 @@ fn one_or_two_lengths_keep_horizontal_then_vertical_effective_values() {
         let source = declaration(&format!("border-spacing:{authored}!important"));
         let value = spacing(&source);
         assert!(exact_literal(
-            value.horizontal().literal_component(),
+            value
+                .horizontal()
+                .literal()
+                .map(|literal| literal.component()),
             horizontal
         ));
         assert!(exact_literal(
-            value.vertical().literal_component(),
+            value
+                .vertical()
+                .literal()
+                .map(|literal| literal.component()),
             vertical
         ));
         let items = expanded(&source);
@@ -96,7 +108,10 @@ fn symbolic_pure_length_math_remains_in_the_authored_pair() {
         assert!(value.horizontal().calculation().is_some());
         if authored.ends_with("3px") {
             assert!(exact_dimension(
-                value.vertical().literal_component(),
+                value
+                    .vertical()
+                    .literal()
+                    .map(|literal| literal.component()),
                 "3",
                 "px"
             ));

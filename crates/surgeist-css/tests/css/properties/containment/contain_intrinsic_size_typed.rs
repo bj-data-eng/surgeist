@@ -1,9 +1,9 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::{assert_component_rejected, assert_numeric_rejected};
 use surgeist_css::{
-    CssComponentValue, CssContainIntrinsicSize, CssContainIntrinsicSizeFallback,
-    CssContainIntrinsicSizeValue, CssLengthCalculation, CssSerializationLimits,
-    CssSpecifiedNonNegativeLength, CssValueOrigin, parse_component_values,
+    CssCalculation, CssComponentValue, CssContainIntrinsicSize, CssContainIntrinsicSizeFallback,
+    CssContainIntrinsicSizeValue, CssLength, CssNonNegative, CssNumeric, CssSerializationLimits,
+    CssValueOrigin, parse_component_values,
 };
 
 fn component(text: &str) -> CssComponentValue {
@@ -14,10 +14,10 @@ fn component(text: &str) -> CssComponentValue {
     component.clone()
 }
 
-fn length(text: &str) -> CssSpecifiedNonNegativeLength {
+fn length(text: &str) -> CssNumeric<CssLength, CssNonNegative> {
     if text.starts_with("calc(") {
-        CssSpecifiedNonNegativeLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLength>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default(),
             )
@@ -25,7 +25,7 @@ fn length(text: &str) -> CssSpecifiedNonNegativeLength {
         )
         .unwrap()
     } else {
-        CssSpecifiedNonNegativeLength::try_from_component(component(text)).unwrap()
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(component(text)).unwrap()
     }
 }
 
@@ -37,22 +37,36 @@ fn length_value(text: &str) -> CssContainIntrinsicSizeValue {
 fn checked_nonnegative_length_preserves_exact_literal_domain() {
     for text in ["0", "-0", "0px", "-0px", "1px", "1e999px", "1e-999px"] {
         let value = length(text);
-        assert!(value.literal_component().is_some());
-        assert_eq!(value.literal_component().unwrap().origin(), value.origin());
+        assert!(value.literal().map(|literal| literal.component()).is_some());
+        assert_eq!(
+            value
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+                .origin(),
+            value.origin()
+        );
         assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
     }
     assert_eq!(
-        CssSpecifiedNonNegativeLength::zero()
-            .serialize_specified(Default::default())
-            .unwrap(),
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+            CssComponentValue::try_number("0").unwrap()
+        )
+        .unwrap()
+        .serialize_specified(Default::default())
+        .unwrap(),
         "0"
     );
     let negative_zero =
-        CssSpecifiedNonNegativeLength::try_from_component(component("-0px")).unwrap();
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(component("-0px")).unwrap();
     let surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension {
         number,
         ..
-    }) = negative_zero.literal_component().unwrap().view()
+    }) = negative_zero
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("retained negative-zero dimension")
     };
@@ -70,7 +84,7 @@ fn checked_nonnegative_length_preserves_exact_literal_domain() {
         ("1fr", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            CssSpecifiedNonNegativeLength::try_from_component,
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component,
             component(text),
             kind,
         );
@@ -79,25 +93,25 @@ fn checked_nonnegative_length_preserves_exact_literal_domain() {
 
 #[test]
 fn bare_calculation_roots_reenter_ordinary_admission_but_negative_math_stays_deferred() {
-    let bare = CssLengthCalculation::try_from_components(
+    let bare = CssCalculation::<CssLength>::try_from_components(
         parse_component_values("2px").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let value = CssSpecifiedNonNegativeLength::try_from_calculation(bare).unwrap();
-    assert!(value.literal_component().is_some());
+    let value = CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(bare).unwrap();
+    assert!(value.literal().map(|literal| literal.component()).is_some());
     assert!(value.calculation().is_none());
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
         "2px"
     );
-    let negative = CssLengthCalculation::try_from_components(
+    let negative = CssCalculation::<CssLength>::try_from_components(
         parse_component_values("-1px").unwrap(),
         Default::default(),
     )
     .unwrap();
     assert_numeric_rejected(
-        CssSpecifiedNonNegativeLength::try_from_calculation(negative),
+        CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(negative),
         NumericFailure::OutOfRange,
     );
 
@@ -138,26 +152,26 @@ fn fallback_and_auto_are_explicit_checked_structure() {
     );
     assert!(matches!(
         auto_length.fallback(),
-        CssContainIntrinsicSizeFallback::Length(value) if value.literal_component().is_some()
+        CssContainIntrinsicSizeFallback::Length(value) if value.literal().map(|literal| literal.component()).is_some()
     ));
 }
 
 #[test]
-fn semantic_equality_ignores_numeric_origins_but_raw_equality_does_not() {
+fn semantic_and_raw_equality_ignore_numeric_origins() {
     let first = length("2px");
-    let later = CssSpecifiedNonNegativeLength::try_from_component(
+    let later = CssNumeric::<CssLength, CssNonNegative>::try_from_component(
         parse_component_values("  2px").unwrap().items()[1].clone(),
     )
     .unwrap();
     assert_ne!(first.origin(), later.origin());
-    assert_ne!(first, later, "raw numeric equality retains provenance");
+    assert_eq!(first, later, "numeric value equality ignores provenance");
     let first =
         CssContainIntrinsicSizeValue::with_auto(CssContainIntrinsicSizeFallback::Length(first));
     let later =
         CssContainIntrinsicSizeValue::with_auto(CssContainIntrinsicSizeFallback::Length(later));
     assert_eq!(first, later);
     assert_ne!(first, length_value("2px"));
-    assert_ne!(
+    assert_eq!(
         first,
         CssContainIntrinsicSizeValue::with_auto(CssContainIntrinsicSizeFallback::Length(length(
             "2PX"
@@ -167,7 +181,8 @@ fn semantic_equality_ignores_numeric_origins_but_raw_equality_does_not() {
         length_value("calc(1px + 2px)"),
         length_value("calc(1px - 2px)")
     );
-    assert_ne!(
+    // Redundant grouping is not a calculation node (Values 4 parse a calculation).
+    assert_eq!(
         length_value("calc(1px + 2px)"),
         length_value("calc((1px + 2px))")
     );

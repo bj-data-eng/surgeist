@@ -34,19 +34,19 @@ fn c13_background_layers_retain_typed_structure() {
     assert!(matches!(
         first_position.horizontal(),
         CssHorizontalPosition::LeftOffset(offset)
-            if exact_dimension(offset.literal_component(), "10", "px")
+            if exact_dimension(offset.literal().map(|literal| literal.component()), "10", "px")
     ));
     assert!(matches!(
         first_position.vertical(),
         CssVerticalPosition::TopOffset(offset)
-            if exact_dimension(offset.literal_component(), "20", "px")
+            if exact_dimension(offset.literal().map(|literal| literal.component()), "20", "px")
     ));
     assert!(matches!(
         first.size(),
         Some(CssBackgroundSize::Explicit {
             width: CssBackgroundSizeComponent::Length(width),
             height: Some(CssBackgroundSizeComponent::Auto),
-        }) if exact_dimension(width.literal_component(), "40", "px")
+        }) if exact_dimension(width.literal().map(|literal| literal.component()), "40", "px")
     ));
     assert_eq!(
         first.repeat(),
@@ -139,7 +139,7 @@ fn background_longhands_preserve_ordered_semantic_lists() {
     ));
     assert!(matches!(positions.positions().positions()[1].horizontal(),
         CssHorizontalPosition::RightOffset(offset)
-            if exact_dimension(offset.literal_component(), "10", "px")));
+            if exact_dimension(offset.literal().map(|literal| literal.component()), "10", "px")));
     assert!(matches!(
         positions.positions().positions()[1].vertical(),
         CssVerticalPosition::Bottom
@@ -154,7 +154,7 @@ fn background_longhands_preserve_ordered_semantic_lists() {
             width: CssBackgroundSizeComponent::Length(length),
             height: Some(CssBackgroundSizeComponent::Auto),
         },
-    ] if exact_dimension(length.literal_component(), "10", "px")));
+    ] if exact_dimension(length.literal().map(|literal| literal.component()), "10", "px")));
 
     let CssKnownPropertyValueRef::BackgroundRepeat(repeats) = values[3] else {
         panic!("expected background-repeat");

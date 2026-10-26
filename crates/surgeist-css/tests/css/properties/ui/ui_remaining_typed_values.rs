@@ -22,9 +22,12 @@ fn interest(text: &str) -> CssInterestDelay {
     value.delay().clone()
 }
 fn time(number: &str, unit: CssTimeUnit) -> CssInterestDelayValue {
-    CssInterestDelayValue::Time(CssTimeValue::from_literal(
-        CssTimeLiteral::try_new(number, unit).unwrap(),
-    ))
+    CssInterestDelayValue::Time(
+        CssNumeric::<CssTime>::try_from_literal(
+            CssNumericLiteral::<CssTime>::try_new(number, unit).unwrap(),
+        )
+        .unwrap(),
+    )
 }
 #[test]
 fn checked_caret_preserves_roles_while_auto_projection_omits_initials() {
@@ -192,9 +195,9 @@ fn interest_omission_uses_exact_signed_time_proof_and_preserves_second_presence(
     assert_eq!(repeated.start(), repeated.end());
     assert_node_limits("-1s", 2, |limits| repeated.serialize_specified(limits));
     assert!(
-        CssDuration::try_new(CssTimeValue::from_literal(
-            CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap()
-        ))
+        CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+            CssNumericLiteral::<CssTime>::try_new("-1", CssTimeUnit::Seconds).unwrap()
+        )
         .is_err()
     );
 }
@@ -338,7 +341,7 @@ fn stripes_checked_construction_preserves_optional_thickness_and_exact_origins()
     let color = parse_component_values("ReD").unwrap().items()[0].clone();
     let origin = color.origin().clone();
     let thickness = CssStripeThickness::Flex(
-        CssSpecifiedFlex::try_from_component(
+        CssNumeric::<CssFlex>::try_from_component(
             CssComponentValue::try_dimension("1.0", "FR").unwrap(),
         )
         .unwrap(),
@@ -402,13 +405,13 @@ fn stripe_thickness_uses_exact_ranges_signed_flex_and_grid_boundary() {
     }
     let negative = CssComponentValue::try_dimension("-1", "fr").unwrap();
     assert_eq!(
-        CssSpecifiedFlex::try_from_component(negative.clone())
+        CssNumeric::<CssFlex>::try_from_component(negative.clone())
             .unwrap()
             .serialize_specified(Default::default())
             .unwrap(),
         "-1fr"
     );
-    assert!(CssSpecifiedNonNegativeFlex::try_from_component(negative).is_err());
+    assert!(CssNumeric::<CssFlex, CssNonNegative>::try_from_component(negative).is_err());
     for (source, expected) in [
         ("stripes(red -1fr)", "stripes(red -1fr)"),
         ("stripes(red calc(2fr - 3fr))", "stripes(red calc(-1fr))"),
@@ -503,19 +506,19 @@ fn typed_stripe_errors_use_original_component_origins_and_aggregate_depth() {
 }
 #[test]
 fn signed_flex_checked_calculation_reuses_numeric_owner_and_rejects_recovered_graph() {
-    let calculation = CssFlexCalculation::try_from_components(
+    let calculation = CssCalculation::<CssFlex>::try_from_components(
         parse_component_values("calc(2fr - 3fr)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let value = CssSpecifiedFlex::try_from_calculation(calculation).unwrap();
+    let value = CssNumeric::<CssFlex>::try_from_calculation(calculation).unwrap();
     assert!(value.calculation().is_some());
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
         "calc(-1fr)"
     );
-    let other = CssSpecifiedFlex::try_from_calculation(
-        CssFlexCalculation::try_from_components(
+    let other = CssNumeric::<CssFlex>::try_from_calculation(
+        CssCalculation::<CssFlex>::try_from_components(
             parse_component_values("/*other origin*/calc(2fr - 3fr)").unwrap(),
             Default::default(),
         )
@@ -542,8 +545,8 @@ fn signed_flex_checked_calculation_reuses_numeric_owner_and_rejects_recovered_gr
     else {
         panic!("flex")
     };
-    let error =
-        CssSpecifiedFlex::try_from_calculation(flex.calculation().unwrap().clone()).unwrap_err();
+    let error = CssNumeric::<CssFlex>::try_from_calculation(flex.calculation().unwrap().clone())
+        .unwrap_err();
     assert!(error.is_recovered_component(), "{error:?}");
     assert!(error.origin().is_some());
 }

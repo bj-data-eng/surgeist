@@ -11,6 +11,7 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::value_assertions::assert_component_rejected;
+use crate::css::support::value_assertions::literal_specified;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
@@ -82,35 +83,47 @@ fn specified(value: &CssDeclaration) -> String {
 #[test]
 fn scalar_outputs_compose_without_losing_exact_authored_components() {
     let number_component = component("+001.2345678");
-    let number = CssSpecifiedNumber::try_from_component(number_component.clone()).unwrap();
+    let number = CssNumeric::<CssNumber>::try_from_component(number_component.clone()).unwrap();
     let percentage_component = component("12.5000%");
     let percentage =
-        CssSpecifiedPercentage::try_from_component(percentage_component.clone()).unwrap();
+        CssNumeric::<CssPercentage>::try_from_component(percentage_component.clone()).unwrap();
     let length_component = component("+02.5000Q");
-    let length = CssSpecifiedLength::try_from_component(length_component.clone()).unwrap();
+    let length = CssNumeric::<CssLength>::try_from_component(length_component.clone()).unwrap();
     let integer_component = component("-0002147483649");
-    let integer_literal = CssIntegerLiteral::try_from_component(integer_component.clone()).unwrap();
-    let integer = CssIntegerValue::Literal(integer_literal.clone());
-    let time = CssTimeLiteral::try_from_component(component("1250MS")).unwrap();
-    let frequency = CssFrequencyLiteral::try_from_component(component("2KHz")).unwrap();
-    let resolution = CssResolutionLiteral::try_from_component(component("150DPI")).unwrap();
+    let integer_literal =
+        CssNumericLiteral::<CssInteger>::try_from_component(integer_component.clone()).unwrap();
+    let integer = CssNumeric::<CssInteger>::try_from_literal(integer_literal.clone()).unwrap();
+    let time = CssNumericLiteral::<CssTime>::try_from_component(component("1250MS")).unwrap();
+    let frequency =
+        CssNumericLiteral::<CssFrequency>::try_from_component(component("2KHz")).unwrap();
+    let resolution =
+        CssNumericLiteral::<CssResolution>::try_from_component(component("150DPI")).unwrap();
     let values = [
         number.serialize_specified(Default::default()).unwrap(),
         integer.serialize_specified(Default::default()).unwrap(),
         percentage.serialize_specified(Default::default()).unwrap(),
         length.serialize_specified(Default::default()).unwrap(),
-        time.serialize_specified(Default::default()).unwrap(),
-        frequency.serialize_specified(Default::default()).unwrap(),
-        resolution.serialize_specified(Default::default()).unwrap(),
+        literal_specified(&time, Default::default()).unwrap(),
+        literal_specified(&frequency, Default::default()).unwrap(),
+        literal_specified(&resolution, Default::default()).unwrap(),
     ];
     let items: Vec<&str> = values.iter().map(String::as_str).collect();
     assert_eq!(
         serialize_css_whitespace_separated_list(&items, Default::default()).unwrap(),
         "1.234568 -2147483649 12.5% 2.5q 1.25s 2khz 1.5625dppx"
     );
-    assert_eq!(number.literal_component(), Some(&number_component));
-    assert_eq!(percentage.literal_component(), Some(&percentage_component));
-    assert_eq!(length.literal_component(), Some(&length_component));
+    assert_eq!(
+        number.literal().map(|literal| literal.component()),
+        Some(&number_component)
+    );
+    assert_eq!(
+        percentage.literal().map(|literal| literal.component()),
+        Some(&percentage_component)
+    );
+    assert_eq!(
+        length.literal().map(|literal| literal.component()),
+        Some(&length_component)
+    );
     assert_eq!(integer_literal.component(), &integer_component);
     assert_eq!(time.numeric().representation(), "1250");
     assert_eq!(frequency.unit(), CssFrequencyUnit::Kilohertz);
@@ -124,21 +137,24 @@ fn scalar_outputs_compose_without_losing_exact_authored_components() {
         assert!(matches!(origin, CssValueOrigin::Parsed(_)));
     }
     let checked_component = CssComponentValue::try_number("+001.2345678").unwrap();
-    let checked = CssSpecifiedNumber::try_from_component(checked_component.clone()).unwrap();
+    let checked = CssNumeric::<CssNumber>::try_from_component(checked_component.clone()).unwrap();
     assert_eq!(checked.origin(), &CssValueOrigin::Programmatic);
-    assert_eq!(checked.literal_component(), Some(&checked_component));
+    assert_eq!(
+        checked.literal().map(|literal| literal.component()),
+        Some(&checked_component)
+    );
     assert_eq!(
         checked.serialize_specified(Default::default()).unwrap(),
         "1.234568"
     );
     // Syntax 3 §4.3.3: an exponent makes a <number-token> of type "number".
     assert!(
-        CssIntegerLiteral::try_from_component(component("1e0"))
+        CssNumericLiteral::<CssInteger>::try_from_component(component("1e0"))
             .unwrap_err()
-            .is_invalid_token()
+            .is_root_domain_mismatch()
     );
     assert_component_rejected(
-        CssSpecifiedLength::try_from_component,
+        CssNumeric::<CssLength>::try_from_component,
         component("2hz"),
         NumericFailure::RootDomainMismatch,
     );
@@ -337,7 +353,11 @@ fn rectangle_edges_share_cumulative_limits_and_keep_their_authored_origins() {
                 panic!("ordinary length edge")
             };
             assert!(matches!(length.origin(), CssValueOrigin::Parsed(_)));
-            length.literal_component().unwrap().clone()
+            length
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+                .clone()
         })
         .collect();
     let expected = "rect(1px, auto, -2em, 0)";
@@ -366,7 +386,10 @@ fn rectangle_edges_share_cumulative_limits_and_keep_their_authored_origins() {
             let CssClipEdge::Length(length) = edge else {
                 panic!("length edge")
             };
-            assert_eq!(length.literal_component(), Some(original));
+            assert_eq!(
+                length.literal().map(|literal| literal.component()),
+                Some(original)
+            );
             assert_eq!(length.origin(), original.origin());
         }
     }

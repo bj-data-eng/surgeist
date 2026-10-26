@@ -154,7 +154,7 @@ enum GenericPositionAtom {
     Block(FlowEdge),
     Inline(FlowEdge),
     Relative(FlowEdge),
-    Offset(CssSpecifiedLengthPercentage),
+    Offset(CssNumeric<CssLengthPercentage>),
 }
 
 /// Parses physical atoms while leaving the next component unconsumed for the
@@ -534,7 +534,7 @@ const fn is_vertical_edge(keyword: CssVerticalPositionKeyword) -> bool {
 
 fn horizontal_edge_offset(
     keyword: CssHorizontalPositionKeyword,
-    offset: CssSpecifiedLengthPercentage,
+    offset: CssNumeric<CssLengthPercentage>,
 ) -> CssHorizontalPosition {
     match keyword {
         CssHorizontalPositionKeyword::Left => CssHorizontalPosition::LeftOffset(offset),
@@ -547,7 +547,7 @@ fn horizontal_edge_offset(
 
 fn vertical_edge_offset(
     keyword: CssVerticalPositionKeyword,
-    offset: CssSpecifiedLengthPercentage,
+    offset: CssNumeric<CssLengthPercentage>,
 ) -> CssVerticalPosition {
     match keyword {
         CssVerticalPositionKeyword::Top => CssVerticalPosition::TopOffset(offset),
@@ -576,7 +576,7 @@ fn build_full_position(atoms: &[GenericPositionAtom]) -> Option<CssPosition> {
             Center => Some(CssRelativeAxisPosition::Center),
             _ => None,
         };
-        let offset = |edge: FlowEdge, value: &CssSpecifiedLengthPercentage| {
+        let offset = |edge: FlowEdge, value: &CssNumeric<CssLengthPercentage>| {
             if matches!(edge, FlowEdge::Start) {
                 CssRelativeAxisPosition::StartOffset(value.clone())
             } else {

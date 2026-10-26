@@ -12,7 +12,7 @@ fn name(value: &str) -> CssContentCounterName {
     CssContentCounterName::try_new(CssIdent::try_new(value).unwrap()).unwrap()
 }
 
-fn entry(value: &str, number: Option<CssIntegerValue>) -> CssCounterChangeValue {
+fn entry(value: &str, number: Option<CssNumeric<CssInteger>>) -> CssCounterChangeValue {
     CssCounterChangeValue::new(name(value), number)
 }
 
@@ -39,11 +39,21 @@ fn checked_entries_keep_omission_order_duplicates_and_none_distinct() {
         entry("Chapter", None),
         entry(
             "Chapter",
-            Some(CssIntegerValue::Literal(CssIntegerLiteral::from_i32(0))),
+            Some(
+                CssNumeric::<CssInteger>::try_from_literal(
+                    CssNumericLiteral::<CssInteger>::from_i32(0),
+                )
+                .unwrap(),
+            ),
         ),
         entry(
             "chapter",
-            Some(CssIntegerValue::Literal(CssIntegerLiteral::from_i32(-2))),
+            Some(
+                CssNumeric::<CssInteger>::try_from_literal(
+                    CssNumericLiteral::<CssInteger>::from_i32(-2),
+                )
+                .unwrap(),
+            ),
         ),
     ])
     .unwrap();
@@ -54,11 +64,11 @@ fn checked_entries_keep_omission_order_duplicates_and_none_distinct() {
     assert!(first.value().is_none());
     assert_eq!(second.name().as_str(), "Chapter");
     assert!(
-        matches!(second.value(), Some(CssIntegerValue::Literal(value)) if value.numeric().representation() == "0")
+        matches!(second.value(), Some(value) if value.literal().is_some_and(|value| value.numeric().representation() == "0"))
     );
     assert_eq!(third.name().as_str(), "chapter");
     assert!(
-        matches!(third.value(), Some(CssIntegerValue::Literal(value)) if value.numeric().representation() == "-2")
+        matches!(third.value(), Some(value) if value.literal().is_some_and(|value| value.numeric().representation() == "-2"))
     );
 }
 
@@ -68,7 +78,12 @@ fn one_checked_value_uses_explicit_property_context_for_missing_operands() {
         entry("chapter", None),
         entry(
             "section",
-            Some(CssIntegerValue::Literal(CssIntegerLiteral::from_i32(-2))),
+            Some(
+                CssNumeric::<CssInteger>::try_from_literal(
+                    CssNumericLiteral::<CssInteger>::from_i32(-2),
+                )
+                .unwrap(),
+            ),
         ),
     ])
     .unwrap();
@@ -102,11 +117,16 @@ fn one_checked_value_uses_explicit_property_context_for_missing_operands() {
 #[test]
 fn decoded_names_are_escaped_and_exact_large_integers_stay_exact() {
     let huge = "1234567890123456789012345678901234567890";
-    let literal =
-        CssIntegerLiteral::try_from_component(CssComponentValue::try_token(huge).unwrap()).unwrap();
+    let literal = CssNumericLiteral::<CssInteger>::try_from_component(
+        CssComponentValue::try_token(huge).unwrap(),
+    )
+    .unwrap();
     assert!(matches!(literal.origin(), CssValueOrigin::Programmatic));
     let value = CssCounterChangesValue::try_changes(vec![
-        entry("1chapter", Some(CssIntegerValue::Literal(literal))),
+        entry(
+            "1chapter",
+            Some(CssNumeric::<CssInteger>::try_from_literal(literal).unwrap()),
+        ),
         entry("chapter name", None),
     ])
     .unwrap();
@@ -126,12 +146,13 @@ fn decoded_names_are_escaped_and_exact_large_integers_stay_exact() {
 
 #[test]
 fn small_counter_tokens_preserve_lexemes_and_escaped_names() {
-    let padded =
-        CssIntegerLiteral::try_from_component(CssComponentValue::try_token("-0002").unwrap())
-            .unwrap();
+    let padded = CssNumericLiteral::<CssInteger>::try_from_component(
+        CssComponentValue::try_token("-0002").unwrap(),
+    )
+    .unwrap();
     let representable = CssCounterChangesValue::try_changes(vec![entry(
         "chapter",
-        Some(CssIntegerValue::Literal(padded)),
+        Some(CssNumeric::<CssInteger>::try_from_literal(padded).unwrap()),
     )])
     .unwrap();
     let old_view = {
@@ -144,7 +165,7 @@ fn small_counter_tokens_preserve_lexemes_and_escaped_names() {
         wrapper.value().clone()
     };
     let old = old_view.changes().unwrap();
-    let Some(CssIntegerValue::Literal(literal)) = old[0].value() else {
+    let Some(literal) = old[0].value().and_then(|value| value.literal()) else {
         panic!("checked integer")
     };
     assert_eq!(literal.numeric().representation(), "-0002");
@@ -190,11 +211,11 @@ fn parsed_values_preserve_full_source_origins() {
         assert!(first.value().is_none());
         assert_eq!(second.name().as_str(), "section");
         assert!(
-            matches!(second.value(), Some(CssIntegerValue::Literal(value)) if value.numeric().representation() == "-2")
+            matches!(second.value(), Some(value) if value.literal().is_some_and(|value| value.numeric().representation() == "-2"))
         );
         assert_eq!(third.name().as_str(), "chapter");
         assert!(
-            matches!(third.value(), Some(CssIntegerValue::Literal(value)) if value.numeric().representation() == "0")
+            matches!(third.value(), Some(value) if value.literal().is_some_and(|value| value.numeric().representation() == "0"))
         );
         assert_eq!(
             current(&ordinary)
@@ -220,7 +241,7 @@ fn parsed_values_preserve_full_source_origins() {
         let [change] = current(&huge).changes().unwrap() else {
             panic!("one huge integer")
         };
-        let Some(CssIntegerValue::Literal(literal)) = change.value() else {
+        let Some(literal) = change.value().and_then(|value| value.literal()) else {
             panic!("exact out-of-i32 integer")
         };
         assert_eq!(literal.numeric().representation(), "2147483648");
@@ -238,7 +259,7 @@ fn parsed_values_preserve_full_source_origins() {
         let [change] = current(&math).changes().unwrap() else {
             panic!("one symbolic calculation")
         };
-        let Some(CssIntegerValue::Calculation(calc)) = change.value() else {
+        let Some(calc) = change.value().and_then(|value| value.calculation()) else {
             panic!("integer-root math")
         };
         let [component] = calc.components().items() else {
@@ -323,13 +344,14 @@ fn omitted_defaults_and_sibling_entries_share_exact_node_and_byte_budgets() {
 #[test]
 fn two_symbolic_integers_share_the_css_byte_budget_without_resolution() {
     let calculation = || {
-        CssIntegerValue::Calculation(
-            CssIntegerCalculation::try_from_components(
+        CssNumeric::<CssInteger>::try_from_calculation(
+            CssCalculation::<CssInteger>::try_from_components(
                 parse_component_values("calc(2.5)").unwrap(),
                 Default::default(),
             )
             .unwrap(),
         )
+        .unwrap()
     };
     let one = CssCounterChangesValue::try_changes(vec![entry("a", Some(calculation()))]).unwrap();
     let two = CssCounterChangesValue::try_changes(vec![

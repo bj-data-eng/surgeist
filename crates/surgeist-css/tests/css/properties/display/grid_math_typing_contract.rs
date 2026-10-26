@@ -146,9 +146,14 @@ fn invalid(property: P, text: &str) {
     }
     assert_eq!(values, before);
 }
-fn flex_math<'a>(source: &'a CssDeclaration, text: &str) -> &'a CssFlexCalculation {
+fn flex_math<'a>(source: &'a CssDeclaration, text: &str) -> &'a CssCalculation<CssFlex> {
     let scalar = first_size(source).breadth().unwrap().flex().unwrap();
-    assert!(scalar.literal_component().is_none());
+    assert!(
+        scalar
+            .literal()
+            .map(|literal| literal.component())
+            .is_none()
+    );
     let calc = scalar.calculation().unwrap();
     assert_eq!(calc.result_type(), CssCalculationType::Flex);
     assert_eq!(calc.numeric_type().exponent(CssNumericDimension::Flex), 1);
@@ -159,7 +164,7 @@ fn flex_math<'a>(source: &'a CssDeclaration, text: &str) -> &'a CssFlexCalculati
         0
     );
     assert_eq!(calc.numeric_type().percent_hint(), None);
-    // Retained component equality preserves original spelling, children and origins.
+    // Component equality compares the original spelling, children and origins.
     assert_eq!(calc.components().items(), source.value_components().items());
     let CssValueOrigin::Parsed(origin) = calc.origin() else {
         panic!("parsed original root")
@@ -331,13 +336,14 @@ fn length_percentage_fallback_preserves_hints_and_real_inflexible_contexts() {
 
 #[test]
 fn mathematical_negative_flex_stays_authored_while_bare_negative_literals_fail() {
-    let negative = CssFlexCalculation::try_from_components(
+    let negative = CssCalculation::<CssFlex>::try_from_components(
         parse_component_values("rem(-5fr, 3fr)").unwrap(),
         Default::default(),
     )
     .unwrap();
     let before = negative.clone();
-    let scalar = CssSpecifiedNonNegativeFlex::try_from_calculation(negative.clone()).unwrap();
+    let scalar =
+        CssNumeric::<CssFlex, CssNonNegative>::try_from_calculation(negative.clone()).unwrap();
     assert_eq!(
         scalar.serialize_specified(Default::default()).unwrap(),
         "rem(-5fr, 3fr)"
@@ -348,20 +354,21 @@ fn mathematical_negative_flex_stays_authored_while_bare_negative_literals_fail()
     assert!(CssGridTrackSize::try_minmax(CssGridTrackBreadth::auto(), breadth).is_some());
     let bare = CssComponentValue::try_dimension("-2", "fr").unwrap();
     assert!(
-        CssSpecifiedNonNegativeFlex::try_from_component(bare)
+        CssNumeric::<CssFlex, CssNonNegative>::try_from_component(bare)
             .unwrap_err()
             .is_out_of_range()
     );
     // This negative scalar is independently known without resolving a Flex basis.
     // The remainder graph above retains its contextual operands and step.
-    let direct_negative = CssFlexCalculation::try_from_components(
+    let direct_negative = CssCalculation::<CssFlex>::try_from_components(
         parse_component_values("calc(-2fr)").unwrap(),
         Default::default(),
     )
     .unwrap();
     let direct_before = direct_negative.clone();
     let direct_scalar =
-        CssSpecifiedNonNegativeFlex::try_from_calculation(direct_negative.clone()).unwrap();
+        CssNumeric::<CssFlex, CssNonNegative>::try_from_calculation(direct_negative.clone())
+            .unwrap();
     assert_eq!(
         direct_scalar
             .serialize_specified(Default::default())
@@ -402,8 +409,9 @@ fn invalid_math_has_typed_numeric_errors_original_origins_and_atomic_property_re
         let values = parse_component_values(text).unwrap();
         let before = values.clone();
         for _ in 0..2 {
-            let error = CssFlexCalculation::try_from_components(values.clone(), Default::default())
-                .unwrap_err();
+            let error =
+                CssCalculation::<CssFlex>::try_from_components(values.clone(), Default::default())
+                    .unwrap_err();
             assert_eq!(numeric_failure(&error), kind, "{text}");
             let Some(CssValueOrigin::Parsed(origin)) = error.origin() else {
                 panic!("original failure origin")
@@ -613,13 +621,13 @@ fn math_graph_and_sibling_serialization_limits_remain_cumulative_atomic_and_reus
     let short = CssComponentValueLimits::try_new(256, 1, 100).unwrap();
     for _ in 0..2 {
         assert!(
-            CssFlexCalculation::try_from_components(values.clone(), short)
+            CssCalculation::<CssFlex>::try_from_components(values.clone(), short)
                 .unwrap_err()
                 .is_resource_limit()
         );
         assert_eq!(values, before);
     }
-    assert!(CssFlexCalculation::try_from_components(values, Default::default()).is_ok());
+    assert!(CssCalculation::<CssFlex>::try_from_components(values, Default::default()).is_ok());
     let source = checked(P::GridAutoRows, "hypot(3fr, 4fr) abs(-2fr)", true);
     let before = source.clone();
     let expected = "hypot(3fr, 4fr) abs(-2fr)";
@@ -745,7 +753,8 @@ fn mixed_parsed_and_programmatic_math_children_keep_distinct_origins_through_gri
     )
     .unwrap();
     let before = values.clone();
-    let calc = CssFlexCalculation::try_from_components(values.clone(), Default::default()).unwrap();
+    let calc =
+        CssCalculation::<CssFlex>::try_from_components(values.clone(), Default::default()).unwrap();
     assert_eq!(calc.origin(), &CssValueOrigin::Programmatic);
     let CssCalculationExpressionRef::Function(root) = calc.expression() else {
         panic!("hypot graph")

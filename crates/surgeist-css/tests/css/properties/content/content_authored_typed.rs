@@ -1,10 +1,12 @@
 //! Functional new API expectations from Content 3 WD 2025-12-04's selected
 //! property tables and the bounded named-string disposition recorded in #680.
 
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::SerializationFailure as K;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_closure_rejected;
 use crate::css::support::sole_declaration;
+use crate::css::support::value_assertions::assert_numeric_rejected;
 use surgeist_css::{CssSerializationLimits as L, *};
 
 fn name(value: &str) -> CssContentName {
@@ -16,14 +18,15 @@ fn string(value: &str) -> CssContentString {
 fn declaration(property: &str, value: &str) -> CssDeclaration {
     sole_declaration(&format!("/*😀*/{property}:{value}"))
 }
-fn calculation(value: &str) -> CssPositiveIntegerValue {
-    CssPositiveIntegerValue::Calculation(
-        CssIntegerCalculation::try_from_components(
-            parse_component_values(value).unwrap(),
-            Default::default(),
-        )
-        .unwrap(),
+fn integer_calculation(value: &str) -> CssCalculation<CssInteger> {
+    CssCalculation::<CssInteger>::try_from_components(
+        parse_component_values(value).unwrap(),
+        Default::default(),
     )
+    .unwrap()
+}
+fn calculation(value: &str) -> CssNumeric<CssInteger, CssPositive> {
+    CssNumeric::<CssInteger, CssPositive>::try_from_calculation(integer_calculation(value)).unwrap()
 }
 
 #[test]
@@ -118,28 +121,30 @@ fn string_set_direct_writer_charges_all_assignments_and_recovers_after_failure()
 }
 
 #[test]
-fn bookmark_level_constructor_rejects_nonpositive_bare_calculation_tokens() {
+fn bookmark_level_counts_reject_nonpositive_bare_calculation_roots_on_admission() {
+    // Values 4 §10.12: a bare root is an ordinary token, so `[1,∞]` applies
+    // when the level is admitted rather than being deferred like math.
     for bare in ["0", "+0", "-0", "-1"] {
-        assert!(
-            CssBookmarkLevel::try_new(calculation(bare)).is_none(),
-            "{bare}"
+        let original = integer_calculation(bare);
+        let origin = original.components().items()[0].origin().clone();
+        assert_numeric_rejected(
+            CssNumeric::<CssInteger, CssPositive>::try_from_calculation(original),
+            NumericFailure::OutOfRange,
+            Some(&origin),
         );
     }
     let positive = CssBookmarkLevel::try_new(calculation("+001")).unwrap();
-    let Some(CssPositiveIntegerValue::Literal(literal)) = positive.level() else {
+    let Some(literal) = positive.level().and_then(|value| value.literal()) else {
         panic!("bare positive calculation normalizes to literal")
     };
-    assert_eq!(literal.integer().numeric().representation(), "+001");
+    assert_eq!(literal.numeric().representation(), "+001");
     assert_eq!(
         positive.serialize_specified(Default::default()).unwrap(),
         "1"
     );
     for deferred in ["calc(-1)", "calc(0)", "min(-1, 0)"] {
         let level = CssBookmarkLevel::try_new(calculation(deferred)).unwrap();
-        assert!(matches!(
-            level.level(),
-            Some(CssPositiveIntegerValue::Calculation(_))
-        ));
+        assert!(matches!(level.level(), Some(value) if value.calculation().is_some()));
     }
     assert!(CssBookmarkLevel::none().level().is_none());
     assert_eq!(
@@ -159,23 +164,22 @@ fn bookmark_level_retains_exact_large_integer_and_parsed_numeric_origin() {
     else {
         panic!("bookmark-level")
     };
-    let Some(CssPositiveIntegerValue::Literal(literal)) = wrapper.value().level() else {
+    let Some(literal) = wrapper.value().level().and_then(|value| value.literal()) else {
         panic!("exact positive literal")
     };
-    assert_eq!(literal.integer().numeric().representation(), digits);
+    assert_eq!(literal.numeric().representation(), digits);
     assert!(matches!(
-        literal.integer().component().origin(),
+        literal.component().origin(),
         CssValueOrigin::Parsed(_)
     ));
-    let copied =
-        CssBookmarkLevel::try_new(CssPositiveIntegerValue::Literal(literal.clone())).unwrap();
-    let Some(CssPositiveIntegerValue::Literal(retained)) = copied.level() else {
+    let copied = CssBookmarkLevel::try_new(
+        CssNumeric::<CssInteger, CssPositive>::try_from_literal(literal.clone()).unwrap(),
+    )
+    .unwrap();
+    let Some(retained) = copied.level().and_then(|value| value.literal()) else {
         panic!("literal")
     };
-    assert_eq!(
-        retained.integer().component().origin(),
-        literal.integer().component().origin()
-    );
+    assert_eq!(retained.component().origin(), literal.component().origin());
     assert_eq!(
         copied
             .serialize_specified(L::new(1, 1, digits.len()))

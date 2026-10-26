@@ -7,10 +7,10 @@ use cssparser::match_ignore_ascii_case;
 use super::values::{parse_length, parse_nonnegative_length_percentage};
 use crate::numeric::NumericInputContext;
 use crate::{
-    CssScrollMarginPair, CssScrollMarginShorthand, CssScrollPaddingPair, CssScrollPaddingShorthand,
-    CssScrollPaddingValue, CssScrollSideKind, CssScrollSnapAlign, CssScrollSnapAlignment,
-    CssScrollSnapAxis, CssScrollSnapStop, CssScrollSnapStrictness, CssScrollSnapType,
-    CssSpecifiedLength,
+    CssLength, CssNumeric, CssScrollMarginPair, CssScrollMarginShorthand, CssScrollPaddingPair,
+    CssScrollPaddingShorthand, CssScrollPaddingValue, CssScrollSideKind, CssScrollSnapAlign,
+    CssScrollSnapAlignment, CssScrollSnapAxis, CssScrollSnapStop, CssScrollSnapStrictness,
+    CssScrollSnapType,
 };
 
 pub(super) fn parse_scroll_snap_type<'i, 't>(
@@ -83,7 +83,7 @@ pub(super) fn parse_scroll_snap_stop<'i, 't>(
 pub(super) fn parse_scroll_margin_length<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssSpecifiedLength, ParseError<'i, Error>> {
+) -> Result<CssNumeric<CssLength>, ParseError<'i, Error>> {
     parse_length(input, numeric)
 }
 

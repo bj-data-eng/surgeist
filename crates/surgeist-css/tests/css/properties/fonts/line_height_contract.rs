@@ -7,12 +7,12 @@ use crate::css::support::named_property::{
     assert_implicit_closure_rejection, assert_invalid_replacement_at, assert_property_grammar_error,
 };
 use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssContributionValueRef, CssContributions, CssExpansion,
-    CssFontValue, CssGlobalKeyword, CssImportance, CssInitialValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssLengthPercentageCalculation, CssLineHeight, CssLonghandValueRef,
-    CssNumberCalculation, CssPropertyKindRef, CssSerializationLimits, CssSerializedOrigin,
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber, CssValueOrigin,
-    expand_declaration, parse_component_values, parse_style_attribute,
+    CssCalculation, CssComponentValue, CssComponentValues, CssContributionValueRef,
+    CssContributions, CssExpansion, CssFontValue, CssGlobalKeyword, CssImportance,
+    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLengthPercentage,
+    CssLineHeight, CssLonghandValueRef, CssNonNegative, CssNumber, CssNumeric, CssPropertyKindRef,
+    CssSerializationLimits, CssSerializedOrigin, CssValueOrigin, expand_declaration,
+    parse_component_values, parse_style_attribute,
 };
 
 fn property(text: &str) -> CssLineHeight {
@@ -40,7 +40,7 @@ fn authored_branches_keep_number_zero_distinct_and_math_symbolic() {
         let CssLineHeight::Number(value) = property(text) else {
             panic!("number {text}")
         };
-        assert!(value.literal_component().is_some());
+        assert!(value.literal().map(|literal| literal.component()).is_some());
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
             canonical
@@ -50,7 +50,7 @@ fn authored_branches_keep_number_zero_distinct_and_math_symbolic() {
         let CssLineHeight::LengthPercentage(value) = property(text) else {
             panic!("length/percentage {text}")
         };
-        assert!(value.literal_component().is_some());
+        assert!(value.literal().map(|literal| literal.component()).is_some());
     }
     assert_ne!(property("0"), property("0px"));
     assert_ne!(property("0"), property("0%"));
@@ -98,13 +98,13 @@ fn parsed_and_programmatic_values_have_distinct_origins_but_semantic_equality() 
     };
     assert_eq!(origin.source().as_str(), "line-height:1.250");
     assert_eq!(origin.span().start().byte_offset().value(), 12);
-    let programmatic_scalar = CssSpecifiedNonNegativeNumber::try_from_component(
+    let programmatic_scalar = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
         CssComponentValue::try_number("1.250").unwrap(),
     )
     .unwrap();
-    assert_ne!(parsed_scalar, &programmatic_scalar);
+    assert_eq!(parsed_scalar, &programmatic_scalar);
     assert_eq!(parsed, CssLineHeight::Number(programmatic_scalar));
-    assert_ne!(parsed, property("1.25"));
+    assert_eq!(parsed, property("1.25"));
     assert_eq!(
         parsed.serialize_specified(Default::default()).unwrap(),
         property("1.25")
@@ -116,11 +116,12 @@ fn parsed_and_programmatic_values_have_distinct_origins_but_semantic_equality() 
     let CssLineHeight::LengthPercentage(parsed_length) = &length else {
         panic!("parsed length")
     };
-    let programmatic_length = CssSpecifiedNonNegativeLengthPercentage::try_from_component(
-        CssComponentValue::try_token("1.250px").unwrap(),
-    )
-    .unwrap();
-    assert_ne!(parsed_length, &programmatic_length);
+    let programmatic_length =
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+            CssComponentValue::try_token("1.250px").unwrap(),
+        )
+        .unwrap();
+    assert_eq!(parsed_length, &programmatic_length);
     assert_eq!(length, CssLineHeight::LengthPercentage(programmatic_length));
     let checked_value =
         normal_grammar_components("line-height", parse_component_values("1.250").unwrap()).unwrap();
@@ -381,7 +382,7 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
             CssLineHeight::Number(admitted) if number => {
                 let calculation = admitted.calculation().expect("number math");
                 assert!(
-                    CssNumberCalculation::try_from_components(
+                    CssCalculation::<CssNumber>::try_from_components(
                         calculation.components().clone(),
                         Default::default()
                     )
@@ -389,9 +390,11 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
                     .is_recovered_component()
                 );
                 assert!(
-                    CssSpecifiedNonNegativeNumber::try_from_calculation(calculation.clone())
-                        .unwrap_err()
-                        .is_recovered_component()
+                    CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+                        calculation.clone()
+                    )
+                    .unwrap_err()
+                    .is_recovered_component()
                 );
                 assert_eq!(
                     admitted.serialize_specified(Default::default()).unwrap(),
@@ -401,7 +404,7 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
             CssLineHeight::LengthPercentage(admitted) if !number => {
                 let calculation = admitted.calculation().expect("length math");
                 assert!(
-                    CssLengthPercentageCalculation::try_from_components(
+                    CssCalculation::<CssLengthPercentage>::try_from_components(
                         calculation.components().clone(),
                         Default::default()
                     )
@@ -409,7 +412,7 @@ fn recovered_math_is_retained_by_raw_parse_but_rejected_by_strict_construction_a
                     .is_recovered_component()
                 );
                 assert!(
-                    CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
+                    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
                         calculation.clone(),
                     )
                     .unwrap_err()
@@ -470,7 +473,7 @@ fn bounded_serialization_fails_atomically_for_both_branches() {
         length.serialize_specified(Default::default()).unwrap(),
         "12.5px"
     );
-    let error = CssSpecifiedNonNegativeNumber::try_from_component(
+    let error = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
         CssComponentValue::try_number("-1e-999").unwrap(),
     )
     .unwrap_err();

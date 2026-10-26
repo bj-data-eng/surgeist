@@ -6,8 +6,7 @@ use cssparser::Token;
 use super::values::{next_is_delim, parse_integer_value};
 use crate::numeric::NumericInputContext;
 use crate::syntax::{
-    CssGridArea, CssGridLine, CssGridLineName, CssGridLineRange, CssIdent, CssIntegerValue,
-    CssPositiveIntegerLiteral, CssPositiveIntegerValue,
+    CssGridArea, CssGridLine, CssGridLineName, CssGridLineRange, CssIdent, CssNumeric, CssPositive,
 };
 
 /// `auto | <custom-ident> | [ <integer> && <custom-ident>? ] |
@@ -57,16 +56,10 @@ pub(super) fn parse_grid_line<'i, 't>(
         },
     )?;
     if span {
-        let positive = match integer {
-            Some(CssIntegerValue::Literal(value)) => Some(CssPositiveIntegerValue::Literal(
-                CssPositiveIntegerLiteral::try_new(value)
-                    .ok_or_else(|| unexpected_at(input.current_source_location()))?,
-            )),
-            Some(CssIntegerValue::Calculation(value)) => {
-                Some(CssPositiveIntegerValue::Calculation(value))
-            }
-            None => None,
-        };
+        let positive = integer
+            .map(CssNumeric::try_narrow::<CssPositive>)
+            .transpose()
+            .map_err(|_| unexpected_at(input.current_source_location()))?;
         CssGridLine::try_span(positive, name)
             .ok_or_else(|| unexpected_at(input.current_source_location()))
     } else if let Some(integer) = integer {

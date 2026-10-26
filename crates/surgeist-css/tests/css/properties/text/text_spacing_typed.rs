@@ -15,10 +15,10 @@ fn component(text: &str) -> CssComponentValue {
     value.clone()
 }
 
-fn numeric(text: &str) -> CssSpecifiedLengthPercentage {
+fn numeric(text: &str) -> CssNumeric<CssLengthPercentage> {
     if text.starts_with("calc(") {
-        CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(
+        CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default(),
             )
@@ -26,7 +26,7 @@ fn numeric(text: &str) -> CssSpecifiedLengthPercentage {
         )
         .unwrap()
     } else {
-        CssSpecifiedLengthPercentage::try_from_component(component(text)).unwrap()
+        CssNumeric::<CssLengthPercentage>::try_from_component(component(text)).unwrap()
     }
 }
 
@@ -76,12 +76,12 @@ fn checked_numeric_domain_is_signed_length_percentage_and_origin_is_retained() {
     }
     for invalid in ["1", "1fr", "auto", "stretch"] {
         assert!(
-            CssSpecifiedLengthPercentage::try_from_component(component(invalid)).is_err(),
+            CssNumeric::<CssLengthPercentage>::try_from_component(component(invalid)).is_err(),
             "{invalid}"
         );
     }
     let programmatic = CssTextSpacingAdjustment::LengthPercentage(
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_token("-12.5%").unwrap(),
         )
         .unwrap(),
@@ -95,8 +95,11 @@ fn checked_numeric_domain_is_signed_length_percentage_and_origin_is_retained() {
     let CssTextSpacingAdjustment::LengthPercentage(number) = &programmatic else {
         panic!("checked percentage adjustment")
     };
-    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(token)) =
-        number.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(token)) = number
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("checked percentage token")
     };
@@ -118,7 +121,7 @@ fn checked_numeric_domain_is_signed_length_percentage_and_origin_is_retained() {
         "0%"
     );
     assert!(
-        matches!(zero_percent.length_percentage().unwrap().literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.representation() == "0")
+        matches!(zero_percent.length_percentage().unwrap().literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.representation() == "0")
     );
 }
 
@@ -137,7 +140,8 @@ fn exact_large_exponents_avoid_float_rounding() {
         let component = value
             .length_percentage()
             .unwrap()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap();
         assert!(
             matches!(

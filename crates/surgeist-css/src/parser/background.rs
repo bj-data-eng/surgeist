@@ -840,7 +840,7 @@ fn parse_gradient_color_stop<'i, 't>(
 fn parse_gradient_line_position<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssSpecifiedLengthPercentage, ParseError<'i, Error>> {
+) -> Result<CssNumeric<CssLengthPercentage>, ParseError<'i, Error>> {
     parse_length_percentage(input, numeric)
 }
 
@@ -1121,11 +1121,15 @@ fn validate_radial_size<'i>(
                             let expression = numeric
                                 .admit(components, CalculationRoot::Length)
                                 .map_err(|_| unexpected_at(radius_location))?;
-                            CssSpecifiedNonNegativeLength::from_parser_calculation(
-                                crate::CssLengthCalculation::from_expression(expression),
+                            CssNumeric::<CssLength, CssNonNegative>::from_parser_calculation(
+                                crate::CssCalculation::<crate::CssLength>::from_expression(
+                                    expression,
+                                ),
                             )
                         } else {
-                            CssSpecifiedNonNegativeLength::try_from_component(radius.into_owned())
+                            CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+                                radius.into_owned(),
+                            )
                         };
                     CssRadialSize::Circle(radius.map_err(|_| unexpected_at(radius_location))?)
                 }
@@ -1134,25 +1138,26 @@ fn validate_radial_size<'i>(
                         Cow<'i, crate::CssComponentValue>,
                         super::property_input::Site<'i>,
                     )| {
-                        let value =
-                            if matches!(component.view(), crate::CssComponentValueRef::Function(_))
-                            {
-                                let components =
-                                    crate::numeric::CalculationComponents::single(component)
-                                        .expect("one radial operand");
-                                let expression = numeric
-                                    .admit(components, CalculationRoot::LengthPercentage)
-                                    .map_err(|_| unexpected_at(component_location))?;
-                                CssSpecifiedNonNegativeLengthPercentage::from_parser_calculation(
-                                    crate::CssLengthPercentageCalculation::from_expression(
+                        let value = if matches!(
+                            component.view(),
+                            crate::CssComponentValueRef::Function(_)
+                        ) {
+                            let components =
+                                crate::numeric::CalculationComponents::single(component)
+                                    .expect("one radial operand");
+                            let expression = numeric
+                                .admit(components, CalculationRoot::LengthPercentage)
+                                .map_err(|_| unexpected_at(component_location))?;
+                            CssNumeric::<CssLengthPercentage, CssNonNegative>::from_parser_calculation(
+                                    crate::CssCalculation::<crate::CssLengthPercentage>::from_expression(
                                         expression,
                                     ),
                                 )
-                            } else {
-                                CssSpecifiedNonNegativeLengthPercentage::try_from_component(
-                                    component.into_owned(),
-                                )
-                            };
+                        } else {
+                            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                                component.into_owned(),
+                            )
+                        };
                         value.map_err(|_| unexpected_at(component_location))
                     };
                     CssRadialSize::Ellipse(CssRadialEllipseSize::new(

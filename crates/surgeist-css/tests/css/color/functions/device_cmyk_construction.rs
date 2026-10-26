@@ -34,11 +34,11 @@ fn calculation(depth: usize, percent: bool) -> CssColorComponent {
     assert_eq!(raw.nesting_depth() as usize, depth);
     if percent {
         CssColorComponent::PercentageCalculation(
-            CssPercentageCalculation::try_from_components(raw, Default::default()).unwrap(),
+            CssCalculation::<CssPercentage>::try_from_components(raw, Default::default()).unwrap(),
         )
     } else {
         CssColorComponent::NumberCalculation(
-            CssNumberCalculation::try_from_components(raw, Default::default()).unwrap(),
+            CssCalculation::<CssNumber>::try_from_components(raw, Default::default()).unwrap(),
         )
     }
 }

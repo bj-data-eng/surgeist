@@ -116,7 +116,7 @@ fn list_layer_and_authored_child_costs_are_exact() {
 
 #[test]
 fn programmatic_numeric_position_keeps_exact_token_and_origin_after_rounding() {
-    let offset = CssSpecifiedLengthPercentage::try_from_component(
+    let offset = CssNumeric::<CssLengthPercentage>::try_from_component(
         CssComponentValue::try_dimension(".12345641", "px").unwrap(),
     )
     .unwrap();
@@ -135,9 +135,11 @@ fn programmatic_numeric_position_keeps_exact_token_and_origin_after_rounding() {
         panic!("offset")
     };
     assert!(matches!(offset.origin(), CssValueOrigin::Programmatic));
-    assert!(matches!(offset.literal_component().unwrap().view(),
+    assert!(
+        matches!(offset.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
-        if number.representation() == ".12345641" && unit == "px"));
+        if number.representation() == ".12345641" && unit == "px")
+    );
 }
 
 #[test]

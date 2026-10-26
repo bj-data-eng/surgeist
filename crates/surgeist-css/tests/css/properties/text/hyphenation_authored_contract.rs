@@ -1043,37 +1043,44 @@ fn color_and_overflow_wrap_controls_exercise_the_same_public_lifecycle() {
 #[test]
 fn exact_integer_and_signed_length_owners_are_controls_for_hyphenation_admission() {
     let huge = format!("1{}", "0".repeat(999));
-    let integer =
-        CssIntegerLiteral::try_from_component(CssComponentValue::try_number(&huge).unwrap())
-            .unwrap();
+    let integer = CssNumericLiteral::<CssInteger>::try_from_component(
+        CssComponentValue::try_number(&huge).unwrap(),
+    )
+    .unwrap();
     assert_eq!(
-        CssIntegerValue::Literal(integer)
+        CssNumeric::<CssInteger>::try_from_literal(integer)
+            .unwrap()
             .serialize_specified(Default::default())
             .unwrap(),
         huge
     );
-    let zero = CssIntegerLiteral::try_from_component(CssComponentValue::try_number("-0").unwrap())
-        .unwrap();
+    let zero = CssNumericLiteral::<CssInteger>::try_from_component(
+        CssComponentValue::try_number("-0").unwrap(),
+    )
+    .unwrap();
     assert!(zero.is_zero());
     assert!(!zero.is_negative());
     for text in ["1.0", "1e0"] {
         assert!(
-            CssIntegerLiteral::try_from_component(CssComponentValue::try_number(text).unwrap())
-                .is_err()
+            CssNumericLiteral::<CssInteger>::try_from_component(
+                CssComponentValue::try_number(text).unwrap()
+            )
+            .is_err()
         );
     }
-    let calculation = CssIntegerCalculation::try_from_components(
+    let calculation = CssCalculation::<CssInteger>::try_from_components(
         parse_component_values("calc(3 / 2)").unwrap(),
         Default::default(),
     )
     .unwrap();
     assert_eq!(
-        CssIntegerValue::Calculation(calculation)
+        CssNumeric::<CssInteger>::try_from_calculation(calculation)
+            .unwrap()
             .serialize_specified(Default::default())
             .unwrap(),
         "calc(1.5)"
     );
-    let length = CssSpecifiedLengthPercentage::try_from_component(
+    let length = CssNumeric::<CssLengthPercentage>::try_from_component(
         CssComponentValue::try_token("-25%").unwrap(),
     )
     .unwrap();

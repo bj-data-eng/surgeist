@@ -9,10 +9,10 @@ use surgeist_css::{
     CssRelativeAxisPosition as R, CssSerializationLimits as L, CssVerticalPosition as V, *,
 };
 
-fn lp(text: &str) -> CssSpecifiedLengthPercentage {
+fn lp(text: &str) -> CssNumeric<CssLengthPercentage> {
     if text.contains('(') {
-        CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(
+        CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default(),
             )
@@ -20,7 +20,7 @@ fn lp(text: &str) -> CssSpecifiedLengthPercentage {
         )
         .unwrap()
     } else {
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_token(text).unwrap(),
         )
         .unwrap()
@@ -306,8 +306,9 @@ fn restriction_lifting_and_restricted_consumers_keep_one_physical_payload() {
     assert_eq!(origin.horizontal(), physical.horizontal());
     assert_eq!(origin.vertical(), physical.vertical());
     assert!(origin.z().is_none());
-    let z = CssSpecifiedLength::try_from_component(CssComponentValue::try_token("-3px").unwrap())
-        .unwrap();
+    let z =
+        CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token("-3px").unwrap())
+            .unwrap();
     let origin = CssTransformOrigin::try_new(physical, Some(z.clone())).unwrap();
     assert_eq!(origin.z(), Some(&z));
     let paired =
@@ -422,12 +423,14 @@ fn parsed_and_programmatic_families_compare_numeric_structure_and_preserve_origi
             origin.source().as_str()[..start].encode_utf16().count()
         );
         assert_eq!(constructed_scalar.origin(), &CssValueOrigin::Programmatic);
-        assert_ne!(parsed_scalar, constructed_scalar);
-        assert!(matches!(parsed_scalar.literal_component().unwrap().view(),
+        assert_eq!(parsed_scalar, constructed_scalar);
+        assert!(
+            matches!(parsed_scalar.literal().map(|literal| literal.component()).unwrap().view(),
             CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
-                if number.representation() == "-1e-999" && unit == "px"));
+                if number.representation() == "-1e-999" && unit == "px")
+        );
     }
-    assert_ne!(
+    assert_eq!(
         parsed("x-start 1.0px y-end 2%"),
         parsed("x-start 1px y-end 2%")
     );

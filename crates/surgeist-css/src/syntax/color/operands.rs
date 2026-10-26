@@ -141,7 +141,7 @@ fn percentage(value: &CssColorPercentageLiteral) -> Scalar<'_> {
         origin: value.origin(),
     }
 }
-fn angle(value: &CssAngleLiteral) -> Scalar<'_> {
+fn angle(value: &CssNumericLiteral<CssAngle>) -> Scalar<'_> {
     Scalar::Literal {
         numeric: value.numeric(),
         unit: Some(CssNumericUnit::Angle(value.unit())),

@@ -451,21 +451,21 @@ fn profile_channel_names_do_not_leak_into_ordinary_or_predefined_numeric_roots()
         rejects(text, responsible);
     }
     assert!(
-        CssNumberCalculation::try_from_components(
+        CssCalculation::<CssNumber>::try_from_components(
             parse_component_values("calc(cyan)").unwrap(),
             Default::default()
         )
         .is_err()
     );
     assert!(
-        CssPercentageCalculation::try_from_components(
+        CssCalculation::<CssPercentage>::try_from_components(
             parse_component_values("calc(cyan)").unwrap(),
             Default::default()
         )
         .is_err()
     );
     assert!(
-        CssNumberCalculation::try_from_components(
+        CssCalculation::<CssNumber>::try_from_components(
             parse_component_values("calc(pi)").unwrap(),
             Default::default()
         )

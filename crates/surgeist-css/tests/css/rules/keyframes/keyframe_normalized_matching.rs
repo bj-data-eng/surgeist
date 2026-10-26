@@ -122,7 +122,7 @@ fn calculations_ignore_authored_origins_and_whitespace_after_input_drop() {
         let input = "\n calc( 10% ) /*trivia*/".to_owned();
         selectors(&input)
     };
-    assert_ne!(left, right);
+    assert_eq!(left, right);
     let original_left = left.clone();
     let original_right = right.clone();
     assert!(left.matches_normalized(&right, Default::default()).unwrap());

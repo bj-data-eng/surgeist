@@ -2,10 +2,7 @@
 
 use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssColumnCount, CssColumnFill, CssColumnSpan, CssColumns, CssPositiveIntegerValue,
-    CssSerializationError,
-};
+use crate::{CssColumnCount, CssColumnFill, CssColumnSpan, CssColumns, CssSerializationError};
 
 type Result<T> = std::result::Result<T, CssSerializationError>;
 
@@ -50,31 +47,6 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssColumnSpan {
 }
 crate::specified_rule_serialization::specified_serialization!(CssColumnSpan);
 
-impl CssPositiveIntegerValue {
-    pub(crate) fn serialize_specified_into(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> Result<()> {
-        match self {
-            Self::Literal(value) => value.integer().append_specified(context, output),
-            Self::Calculation(value) => value.serialize_specified_into(context, output),
-        }
-    }
-}
-impl crate::specified_rule_serialization::SpecifiedProvider for CssPositiveIntegerValue {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.serialize_specified_into(context, output)?;
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(CssPositiveIntegerValue);
-
 impl CssColumnCount {
     fn serialize_specified_into(
         &self,
@@ -86,7 +58,7 @@ impl CssColumnCount {
                 context.charge_nodes(1)?;
                 context.append(output, "auto")
             }
-            Self::Count(value) => value.serialize_specified_into(context, output),
+            Self::Count(value) => value.append_specified(context, output),
         }
     }
 }

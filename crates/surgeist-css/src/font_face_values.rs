@@ -2,8 +2,8 @@
 
 use crate::{
     CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef,
-    CssSerializationError, CssSpecifiedNonNegativePercentage, CssValueOrigin, CssValueTokenRef,
-    specified_rule_serialization::SpecifiedRuleWriter,
+    CssNonNegative, CssNumeric, CssPercentage, CssSerializationError, CssValueOrigin,
+    CssValueTokenRef, specified_rule_serialization::SpecifiedRuleWriter,
 };
 
 type Result<T> = std::result::Result<T, CssSerializationError>;
@@ -124,7 +124,7 @@ crate::specified_rule_serialization::specified_serialization!(CssFontNamedInstan
 #[non_exhaustive]
 pub enum CssFontMetricOverride {
     Normal,
-    Percentage(CssSpecifiedNonNegativePercentage),
+    Percentage(CssNumeric<CssPercentage, CssNonNegative>),
 }
 
 impl CssFontMetricOverride {

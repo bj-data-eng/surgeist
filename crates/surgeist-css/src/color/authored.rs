@@ -615,14 +615,16 @@ impl Builder<'_, '_, '_> {
                 if expression.as_ref().numeric_type().percent_hint().is_some() =>
             {
                 CssColorComponent::HintedNumberCalculation(
-                    CssHintedNumberCalculation::from_expression(expression),
+                    CssCalculation::<CssHintedNumber>::from_expression(expression),
                 )
             }
-            CssCalculationType::Number => CssColorComponent::NumberCalculation(
-                CssNumberCalculation::from_expression(expression),
-            ),
+            CssCalculationType::Number => {
+                CssColorComponent::NumberCalculation(CssCalculation::<CssNumber>::from_expression(
+                    expression,
+                ))
+            }
             CssCalculationType::Percentage => CssColorComponent::PercentageCalculation(
-                CssPercentageCalculation::from_expression(expression),
+                CssCalculation::<CssPercentage>::from_expression(expression),
             ),
             _ => return Err(self.invalid()),
         })
@@ -643,11 +645,13 @@ impl Builder<'_, '_, '_> {
             .domain();
         if domain == super::channels::Domain::Degrees {
             Ok(CssColorHue::AngleCalculation(
-                CssAngleCalculation::from_expression(self.numeric(index, CalculationRoot::Angle)?),
+                CssCalculation::<CssAngle>::from_expression(
+                    self.numeric(index, CalculationRoot::Angle)?,
+                ),
             ))
         } else {
             Ok(CssColorHue::NumberCalculation(
-                CssNumberCalculation::from_expression(
+                CssCalculation::<CssNumber>::from_expression(
                     self.numeric(index, CalculationRoot::Number)?,
                 ),
             ))
@@ -697,7 +701,7 @@ impl Builder<'_, '_, '_> {
                     )
                 })
         } else {
-            CssColorMixWeight::try_calculation(CssPercentageCalculation::from_expression(
+            CssColorMixWeight::try_calculation(CssCalculation::<CssPercentage>::from_expression(
                 self.numeric(index, CalculationRoot::Percentage)?,
             ))
             .map_err(component_failure)

@@ -253,7 +253,10 @@ fn grouped_search_preserves_original_numeric_tokens_and_function_children() {
                     scalar.calculation().unwrap().components().items(),
                     std::slice::from_ref(original)
                 ),
-                _ => assert_eq!(scalar.literal_component().unwrap(), original),
+                _ => assert_eq!(
+                    scalar.literal().map(|literal| literal.component()).unwrap(),
+                    original
+                ),
             }
             let before = value.clone();
             let expected = if text.starts_with('-') {
@@ -273,8 +276,8 @@ fn grouped_search_preserves_original_numeric_tokens_and_function_children() {
 #[test]
 fn constructed_symbolic_tolerance_composes_without_changing_owning_work_costs() {
     let tolerance = CssFlowTolerance::length_percentage(
-        CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(
+        CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
                 parse_component_values("calc(1px + 2em)").unwrap(),
                 Default::default(),
             )

@@ -6,9 +6,8 @@ use cssparser::{Token, match_ignore_ascii_case};
 use super::values::{next_is_delim, parse_positive_integer_value};
 use crate::syntax::*;
 use crate::{
-    CssComponentValueRef, CssFeatureId, CssFlexCalculation, CssGridTemplateAreas,
-    CssLengthPercentageCalculation, CssSpecifiedNonNegativeFlex,
-    CssSpecifiedNonNegativeLengthPercentage, CssValueTokenRef,
+    CssCalculation, CssComponentValueRef, CssFeatureId, CssFlex, CssGridTemplateAreas,
+    CssLengthPercentage, CssNonNegative, CssNumeric, CssValueTokenRef,
 };
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
@@ -223,7 +222,7 @@ fn parse_grid_repeat<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<(ParsedGridTrackComponent, RepeatSite<'i>), ParseError<'i, Error>> {
     enum Count {
-        Integer(CssPositiveIntegerValue),
+        Integer(CssNumeric<CssInteger, CssPositive>),
         Auto(CssGridAutoRepeatKind),
     }
 
@@ -251,7 +250,7 @@ fn parse_grid_repeat<'i, 't>(
 fn parse_integer_grid_repeat<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-    count: CssPositiveIntegerValue,
+    count: CssNumeric<CssInteger, CssPositive>,
 ) -> std::result::Result<(ParsedGridTrackComponent, RepeatSite<'i>), ParseError<'i, Error>> {
     let mut track_components = Vec::new();
     let mut fixed_components = Vec::new();
@@ -401,11 +400,13 @@ fn parse_grid_track_breadth<'i, 't>(
             let component = grid_numeric_component(input, numeric)?;
             if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) if unit.eq_ignore_ascii_case("fr"))
             {
-                let flex = CssSpecifiedNonNegativeFlex::try_from_component(component.into_owned())
-                    .map_err(|error| grid_numeric_error(numeric, &error, location, root_site))?;
+                let flex = CssNumeric::<CssFlex, CssNonNegative>::try_from_component(
+                    component.into_owned(),
+                )
+                .map_err(|error| grid_numeric_error(numeric, &error, location, root_site))?;
                 Ok(CssGridTrackBreadth::from_flex(flex))
             } else {
-                let length = CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+                let length = CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
                     component.into_owned(),
                 )
                 .map_err(|error| grid_numeric_error(numeric, &error, location, root_site))?;
@@ -428,17 +429,20 @@ fn parse_grid_track_breadth<'i, 't>(
                 .map_err(|error| grid_numeric_error(numeric, &error, location, root_site))?
             {
                 crate::numeric::GridTrackMath::Flex(expression) => {
-                    let value = CssSpecifiedNonNegativeFlex::from_parser_calculation(
-                        CssFlexCalculation::from_expression(expression),
+                    let value = CssNumeric::<CssFlex, CssNonNegative>::from_parser_calculation(
+                        CssCalculation::<CssFlex>::from_expression(expression),
                     )
                     .map_err(|error| grid_numeric_error(numeric, &error, location, root_site))?;
                     Ok(CssGridTrackBreadth::from_flex(value))
                 }
                 crate::numeric::GridTrackMath::LengthPercentage(expression) => {
-                    let value = CssSpecifiedNonNegativeLengthPercentage::from_parser_calculation(
-                        CssLengthPercentageCalculation::from_expression(expression),
-                    )
-                    .map_err(|error| grid_numeric_error(numeric, &error, location, root_site))?;
+                    let value =
+                        CssNumeric::<CssLengthPercentage, CssNonNegative>::from_parser_calculation(
+                            CssCalculation::<CssLengthPercentage>::from_expression(expression),
+                        )
+                        .map_err(|error| {
+                            grid_numeric_error(numeric, &error, location, root_site)
+                        })?;
                     Ok(CssGridTrackBreadth::from_length_percentage(value))
                 }
             }
@@ -473,7 +477,7 @@ fn grid_numeric_error<'i>(
 fn parse_grid_length_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssSpecifiedNonNegativeLengthPercentage, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssLengthPercentage, CssNonNegative>, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
     let offset = input.position();
@@ -484,13 +488,15 @@ fn parse_grid_length_percentage<'i, 't>(
         let expression = numeric
             .admit(values, crate::numeric::CalculationRoot::LengthPercentage)
             .map_err(|error| grid_numeric_error(numeric, &error, location, offset))?;
-        CssSpecifiedNonNegativeLengthPercentage::from_parser_calculation(
-            CssLengthPercentageCalculation::from_expression(expression),
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::from_parser_calculation(
+            CssCalculation::<CssLengthPercentage>::from_expression(expression),
         )
         .map_err(|error| grid_numeric_error(numeric, &error, location, offset))
     } else {
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.into_owned())
-            .map_err(|error| grid_numeric_error(numeric, &error, location, offset))
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+            component.into_owned(),
+        )
+        .map_err(|error| grid_numeric_error(numeric, &error, location, offset))
     }
 }
 

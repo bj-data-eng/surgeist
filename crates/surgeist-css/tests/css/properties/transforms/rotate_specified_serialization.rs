@@ -24,12 +24,16 @@ fn parsed(text: &str) -> CssRotate {
     };
     value.value().clone()
 }
-fn number(text: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_component(CssComponentValue::try_number(text).unwrap()).unwrap()
+fn number(text: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_number(text).unwrap())
+        .unwrap()
 }
 fn ordinary(angle: &str, unit: CssAngleUnit, axis: Option<CssRotateAxis>) -> CssRotate {
     CssRotate::Value(CssRotateValues::new(
-        CssAngleValue::from_literal(CssAngleLiteral::try_new(angle, unit).unwrap()),
+        CssNumeric::<CssAngle>::try_from_literal(
+            CssNumericLiteral::<CssAngle>::try_new(angle, unit).unwrap(),
+        )
+        .unwrap(),
         axis,
     ))
 }
@@ -452,16 +456,16 @@ fn zero_axis_children_are_emitted_with_their_ordinary_work_and_bytes() {
 
 #[test]
 fn checked_number_and_angle_math_share_canonical_output_with_parser_admission() {
-    let axis = CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(
+    let axis = CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(
             parse_component_values("calc(-1 - 1)").unwrap(),
             Default::default(),
         )
         .unwrap(),
     )
     .unwrap();
-    let angle = CssAngleValue::try_from_calculation(
-        CssAngleCalculation::try_from_components(
+    let angle = CssNumeric::<CssAngle>::try_from_calculation(
+        CssCalculation::<CssAngle>::try_from_components(
             parse_component_values("calc(15deg + 15deg)").unwrap(),
             Default::default(),
         )

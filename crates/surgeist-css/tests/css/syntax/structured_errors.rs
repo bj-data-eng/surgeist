@@ -1295,7 +1295,7 @@ fn typed_calculation_root_domain_errors_retain_later_siblings() {
 fn typed_integer_zero_divisor_remains_symbolic_and_retains_its_sibling() {
     use surgeist_css::{
         CssCalculationExpressionRef as Expr, CssCalculationProductOperator, CssCalculationType,
-        CssIntegerValue, CssKnownPropertyValueRef,
+        CssKnownPropertyValueRef,
     };
     let report = parse_style_attribute("order: calc(1 / 0); color: red");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -1308,7 +1308,7 @@ fn typed_integer_zero_divisor_remains_symbolic_and_retains_its_sibling() {
     else {
         panic!("order")
     };
-    let CssIntegerValue::Calculation(calculation) = value.value() else {
+    let Some(calculation) = value.value().calculation() else {
         panic!("symbolic integer")
     };
     assert_eq!(calculation.result_type(), CssCalculationType::Number);

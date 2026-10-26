@@ -4,7 +4,7 @@ use crate::{
     CssBackground, CssBackgroundAttachment, CssBackgroundBox, CssBackgroundLayer,
     CssBackgroundLayerBoxes, CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize,
     CssBackgroundSizeComponent, CssComponentValueRef, CssHorizontalPosition, CssImageValue,
-    CssSerializationError, CssSpecifiedLengthPercentage, CssValueTokenRef, CssVerticalPosition,
+    CssLengthPercentage, CssNumeric, CssSerializationError, CssValueTokenRef, CssVerticalPosition,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
@@ -29,7 +29,7 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssBackground {
 crate::specified_rule_serialization::specified_serialization!(CssBackground);
 
 // Prove only ordinary exact zero offsets. Keywords and calculations remain authored.
-fn is_zero(value: &CssSpecifiedLengthPercentage) -> bool {
+fn is_zero(value: &CssNumeric<CssLengthPercentage>) -> bool {
     let Some(component) = value.literal_component() else {
         return false;
     };

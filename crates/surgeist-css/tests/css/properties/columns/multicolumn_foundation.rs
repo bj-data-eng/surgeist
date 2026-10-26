@@ -70,7 +70,7 @@ fn authored_color(value: &str) -> CssColor {
 
 fn programmatic_width(number: &str) -> CssBorderWidth {
     CssBorderWidth::Length(
-        CssSpecifiedNonNegativeLength::try_from_component(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension(number, "px").unwrap(),
         )
         .unwrap(),
@@ -377,7 +377,7 @@ fn normalization_keeps_mixed_order_and_fails_atomically_at_contribution_limit() 
 fn direct_rule_construction_keeps_exact_width_and_modern_color_without_legacy_projection() {
     assert!(CssColumnRule::try_new(None, None, None).is_none());
     assert_component_rejected(
-        CssSpecifiedNonNegativeLength::try_from_component,
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component,
         CssComponentValue::try_dimension("-1e-100", "px").unwrap(),
         NumericFailure::OutOfRange,
     );
@@ -400,7 +400,7 @@ fn direct_rule_construction_keeps_exact_width_and_modern_color_without_legacy_pr
         panic!("exact width")
     };
     assert!(matches!(
-        length.literal_component().map(CssComponentValue::view),
+        length.literal().map(|literal| literal.component()).map(CssComponentValue::view),
         Some(CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }))
             if number.representation() == "1e100" && unit == "px"
     ));
@@ -467,14 +467,14 @@ fn calculated_rule_width_preserves_expression_and_source_origin() {
         .unwrap(),
     )
     .unwrap();
-    let calculation = CssLengthCalculation::try_from_components(
+    let calculation = CssCalculation::<CssLength>::try_from_components(
         CssComponentValues::try_new(vec![programmatic_calc], Default::default()).unwrap(),
         Default::default(),
     )
     .unwrap();
     let constructed = CssColumnRule::try_new(
         Some(CssBorderWidth::Length(
-            CssSpecifiedNonNegativeLength::try_from_calculation(calculation).unwrap(),
+            CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(calculation).unwrap(),
         )),
         Some(CssBorderStyle::Solid),
         None,
@@ -484,7 +484,12 @@ fn calculated_rule_width_preserves_expression_and_source_origin() {
         let Some(CssBorderWidth::Length(length)) = rule.width() else {
             panic!("exact calculated width")
         };
-        assert!(length.literal_component().is_none());
+        assert!(
+            length
+                .literal()
+                .map(|literal| literal.component())
+                .is_none()
+        );
         assert!(length.calculation().is_some());
         assert!(
             matches!(

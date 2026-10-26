@@ -636,7 +636,10 @@ fn mode_methods_admit_quirky_keyframe_lengths_and_preserve_the_original_number()
     let [component] = declaration.value_components().items() else {
         panic!("one original number")
     };
-    assert_eq!(value.literal_component(), Some(component));
+    assert_eq!(
+        value.literal().map(|literal| literal.component()),
+        Some(component)
+    );
     assert!(
         matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation() == "7")
     );

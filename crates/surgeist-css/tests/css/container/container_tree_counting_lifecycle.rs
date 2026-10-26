@@ -39,7 +39,7 @@ fn tree(expression: CssCalculationExpressionRef<'_>) -> CssCalculationTreeCounti
     value
 }
 
-fn ratio_numerator(condition: &CssContainerCondition) -> &CssNumberCalculation {
+fn ratio_numerator(condition: &CssContainerCondition) -> &CssCalculation<CssNumber> {
     let CssContainerConditionKind::Feature(CssContainerFeatureQuery::AspectRatio(range)) =
         condition.kind()
     else {

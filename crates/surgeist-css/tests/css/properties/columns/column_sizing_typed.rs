@@ -1,11 +1,14 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::value_assertions::positive_literal;
 use surgeist_css::*;
 
-fn exact_positive(text: &str) -> CssPositiveIntegerLiteral {
-    CssPositiveIntegerLiteral::try_new(
-        CssIntegerLiteral::try_from_component(CssComponentValue::try_number(text).unwrap())
-            .unwrap(),
+fn exact_positive(text: &str) -> CssNumericLiteral<CssInteger> {
+    positive_literal(
+        CssNumericLiteral::<CssInteger>::try_from_component(
+            CssComponentValue::try_number(text).unwrap(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -13,43 +16,41 @@ fn exact_positive(text: &str) -> CssPositiveIntegerLiteral {
 #[test]
 fn positive_integer_constructor_rejects_zero_and_negative_without_narrowing() {
     for text in ["0", "+0000", "-0", "-1", "-99999999999999999999"] {
-        let integer =
-            CssIntegerLiteral::try_from_component(CssComponentValue::try_number(text).unwrap())
-                .unwrap();
-        assert!(
-            CssPositiveIntegerLiteral::try_new(integer).is_none(),
-            "{text}"
-        );
+        let integer = CssNumericLiteral::<CssInteger>::try_from_component(
+            CssComponentValue::try_number(text).unwrap(),
+        )
+        .unwrap();
+        assert!(positive_literal(integer).is_none(), "{text}");
     }
     for text in ["1", "+0001", "2147483648", "9999999999999999999999"] {
         let exact = exact_positive(text);
-        assert_eq!(exact.integer().numeric().representation(), text);
-        assert!(matches!(
-            exact.integer().origin(),
-            CssValueOrigin::Programmatic
-        ));
+        assert_eq!(exact.numeric().representation(), text);
+        assert!(matches!(exact.origin(), CssValueOrigin::Programmatic));
     }
     assert_eq!(
-        CssPositiveIntegerValue::Literal(exact_positive("+0002147483648"))
+        CssNumeric::<CssInteger, CssPositive>::try_from_literal(exact_positive("+0002147483648"))
+            .unwrap()
             .serialize_specified(Default::default())
             .unwrap(),
         "2147483648"
     );
     assert_eq!(
-        CssPositiveIntegerValue::Literal(exact_positive("9999999999999999999999"))
-            .serialize_specified(Default::default())
-            .unwrap(),
+        CssNumeric::<CssInteger, CssPositive>::try_from_literal(exact_positive(
+            "9999999999999999999999"
+        ))
+        .unwrap()
+        .serialize_specified(Default::default())
+        .unwrap(),
         "9999999999999999999999"
     );
-    assert_eq!(
-        exact_positive("1").integer().numeric().representation(),
-        "1"
-    );
+    assert_eq!(exact_positive("1").numeric().representation(), "1");
 }
 
 #[test]
 fn exact_count_and_columns_emit_all_effective_values_under_one_budget() {
-    let large = CssPositiveIntegerValue::Literal(exact_positive("2147483648"));
+    let large =
+        CssNumeric::<CssInteger, CssPositive>::try_from_literal(exact_positive("2147483648"))
+            .unwrap();
     assert_eq!(
         large.serialize_specified(Default::default()).unwrap(),
         "2147483648"
@@ -112,26 +113,27 @@ fn parsed_and_programmatic_exact_counts_agree_without_origin_equality() {
     else {
         panic!("column-count")
     };
-    let direct = CssColumnCount::Count(CssPositiveIntegerValue::Literal(exact_positive(
-        "2147483648",
-    )));
+    let direct = CssColumnCount::Count(
+        CssNumeric::<CssInteger, CssPositive>::try_from_literal(exact_positive("2147483648"))
+            .unwrap(),
+    );
     assert_eq!(parsed.count(), &direct);
-    let (
-        CssColumnCount::Count(CssPositiveIntegerValue::Literal(from_source)),
-        CssColumnCount::Count(CssPositiveIntegerValue::Literal(programmatic)),
-    ) = (parsed.count(), &direct)
+    let (CssColumnCount::Count(from_source), CssColumnCount::Count(programmatic)) =
+        (parsed.count(), &direct)
     else {
         panic!("exact counts")
     };
-    assert_ne!(
-        from_source.integer().origin(),
-        programmatic.integer().origin()
-    );
+    let (Some(from_source), Some(programmatic)) = (from_source.literal(), programmatic.literal())
+    else {
+        panic!("exact counts")
+    };
+    assert_ne!(from_source.origin(), programmatic.origin());
     assert_ne!(
         direct,
-        CssColumnCount::Count(CssPositiveIntegerValue::Literal(exact_positive(
-            "2147483649"
-        )))
+        CssColumnCount::Count(
+            CssNumeric::<CssInteger, CssPositive>::try_from_literal(exact_positive("2147483649"))
+                .unwrap()
+        )
     );
     assert_ne!(direct, CssColumnCount::Auto);
 }
@@ -139,7 +141,7 @@ fn parsed_and_programmatic_exact_counts_agree_without_origin_equality() {
 #[test]
 fn box_size_and_integer_math_remain_symbolic_at_the_column_boundary() {
     let width = CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("2.5%").unwrap(),
         )
         .unwrap(),
@@ -149,12 +151,12 @@ fn box_size_and_integer_math_remain_symbolic_at_the_column_boundary() {
         columns.serialize_specified(Default::default()).unwrap(),
         "2.5% auto"
     );
-    let expression = CssIntegerCalculation::try_from_components(
+    let expression = CssCalculation::<CssInteger>::try_from_components(
         parse_component_values("calc(1 + 2)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let count = CssPositiveIntegerValue::Calculation(expression);
+    let count = CssNumeric::<CssInteger, CssPositive>::try_from_calculation(expression).unwrap();
     assert_eq!(
         count.serialize_specified(Default::default()).unwrap(),
         "calc(3)"
@@ -180,8 +182,8 @@ fn box_size_and_integer_math_remain_symbolic_at_the_column_boundary() {
 #[test]
 fn two_symbolic_children_share_projection_and_output_limits() {
     let width = CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
                 parse_component_values("calc(1px + 2%)").unwrap(),
                 Default::default(),
             )
@@ -189,13 +191,16 @@ fn two_symbolic_children_share_projection_and_output_limits() {
         )
         .unwrap(),
     ));
-    let count = CssColumnCount::Count(CssPositiveIntegerValue::Calculation(
-        CssIntegerCalculation::try_from_components(
-            parse_component_values("calc(1 + 2)").unwrap(),
-            Default::default(),
+    let count = CssColumnCount::Count(
+        CssNumeric::<CssInteger, CssPositive>::try_from_calculation(
+            CssCalculation::<CssInteger>::try_from_components(
+                parse_component_values("calc(1 + 2)").unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap(),
-    ));
+    );
     let columns = CssColumns::new(width, count);
     let expected = "calc(2% + 1px) calc(3)";
     assert_eq!(

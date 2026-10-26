@@ -42,7 +42,7 @@ fn images_and_gradients_retain_typed_structure() {
             CssColorStopListItem::Hint(hint),
             CssColorStopListItem::Stop(last),
         ] if first.position().is_some()
-            && exact_percentage(hint.literal_component(), "25")
+            && exact_percentage(hint.literal().map(|literal| literal.component()), "25")
             && last.position().is_none()
     ));
 

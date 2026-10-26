@@ -1,6 +1,6 @@
 use surgeist_css::{
-    CssCalcSize, CssCalcSizeBasisRef, CssCalculationExpressionRef, CssComponentValueLimits,
-    CssIntrinsicSizeKeyword, CssLengthPercentageCalculation, CssSerializationLimits,
+    CssCalcSize, CssCalcSizeBasisRef, CssCalculation, CssCalculationExpressionRef,
+    CssComponentValueLimits, CssIntrinsicSizeKeyword, CssLengthPercentage, CssSerializationLimits,
     parse_component_values,
 };
 
@@ -133,7 +133,7 @@ fn ordinary_numeric_admission_does_not_gain_size_or_calc_size() {
         "calc(calc-size(min-content, size) + 1px)",
     ] {
         assert!(
-            CssLengthPercentageCalculation::try_from_components(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default()
             )

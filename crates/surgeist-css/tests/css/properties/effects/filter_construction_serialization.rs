@@ -35,15 +35,18 @@ fn zero_angle() -> CssAngleOrZero {
 }
 
 fn angle(value: f32, unit: CssAngleUnit) -> CssAngleOrZero {
-    CssAngleOrZero::Angle(CssAngleValue::from_literal(
-        CssAngleLiteral::try_new(&value.to_string(), unit).unwrap(),
-    ))
+    CssAngleOrZero::Angle(
+        CssNumeric::<CssAngle>::try_from_literal(
+            CssNumericLiteral::<CssAngle>::try_new(&value.to_string(), unit).unwrap(),
+        )
+        .unwrap(),
+    )
 }
 
 fn angle_math(css: &str) -> CssAngleOrZero {
     CssAngleOrZero::Angle(
-        CssAngleValue::try_from_calculation(
-            CssAngleCalculation::try_from_components(
+        CssNumeric::<CssAngle>::try_from_calculation(
+            CssCalculation::<CssAngle>::try_from_components(
                 parse_component_values(css).unwrap(),
                 Default::default(),
             )
@@ -53,18 +56,20 @@ fn angle_math(css: &str) -> CssAngleOrZero {
     )
 }
 
-fn length(css: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_component(CssComponentValue::try_token(css).unwrap()).unwrap()
+fn length(css: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(css).unwrap()).unwrap()
 }
 
-fn nonnegative_length(css: &str) -> CssSpecifiedNonNegativeLength {
-    CssSpecifiedNonNegativeLength::try_from_component(CssComponentValue::try_token(css).unwrap())
-        .unwrap()
+fn nonnegative_length(css: &str) -> CssNumeric<CssLength, CssNonNegative> {
+    CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+        CssComponentValue::try_token(css).unwrap(),
+    )
+    .unwrap()
 }
 
 fn number(css: &str) -> CssFilterAmount {
     CssFilterAmount::Number(
-        CssSpecifiedNonNegativeNumber::try_from_component(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number(css).unwrap(),
         )
         .unwrap(),
@@ -73,7 +78,7 @@ fn number(css: &str) -> CssFilterAmount {
 
 fn percentage(css: &str) -> CssFilterAmount {
     CssFilterAmount::Percentage(
-        CssSpecifiedNonNegativePercentage::try_from_component(
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap(),
@@ -90,7 +95,7 @@ fn color(css: &str) -> CssColor {
 }
 
 #[test]
-fn hue_construction_keeps_omission_zero_units_and_origin_sensitive_math() {
+fn hue_construction_keeps_omission_zero_units_and_origin_blind_math() {
     let omitted = CssFilterHueRotate::omitted();
     assert!(omitted.authored_angle().is_none());
     assert_eq!(omitted.angle(), &angle(0.0, CssAngleUnit::Degrees));
@@ -117,12 +122,15 @@ fn hue_construction_keeps_omission_zero_units_and_origin_sensitive_math() {
         );
     }
     for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        assert!(CssAngleLiteral::try_new(&invalid.to_string(), CssAngleUnit::Degrees).is_err());
+        assert!(
+            CssNumericLiteral::<CssAngle>::try_new(&invalid.to_string(), CssAngleUnit::Degrees)
+                .is_err()
+        );
     }
     let first = CssFilterHueRotate::new(angle_math("calc(30deg + 60deg)"));
     let second = CssFilterHueRotate::new(angle_math("  calc(30deg + 60deg)"));
     assert_eq!(first, second);
-    assert_ne!(first.angle(), second.angle());
+    assert_eq!(first.angle(), second.angle());
     let CssAngleOrZero::Angle(angle) = first.angle() else {
         panic!("angle")
     };

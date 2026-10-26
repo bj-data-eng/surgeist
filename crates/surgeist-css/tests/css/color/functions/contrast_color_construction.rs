@@ -11,7 +11,7 @@ fn numeric_color(depth: usize, alpha: bool) -> CssColor {
     let raw = parse_component_values(&text).unwrap();
     assert_eq!(raw.nesting_depth() as usize, depth);
     let calculation = CssColorComponent::PercentageCalculation(
-        CssPercentageCalculation::try_from_components(raw, Default::default()).unwrap(),
+        CssCalculation::<CssPercentage>::try_from_components(raw, Default::default()).unwrap(),
     );
     let zero = CssColorComponent::Number(
         CssColorNumberLiteral::try_from_component(

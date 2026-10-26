@@ -292,11 +292,11 @@ fn physical_position_and_orientation_keep_exact_scalar_bytes_utf16_and_semantic_
                     origin(x.origin(), raw, "-1e-2px");
                     origin(y.origin(), raw, "-2.00%");
                     assert!(
-                        matches!(x.literal_component().unwrap().view(), CssComponentValueRef::Token(
+                        matches!(x.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(
                         CssValueTokenRef::Dimension { number, unit }) if number.representation() == "-1e-2" && unit == "px")
                     );
                     assert!(
-                        matches!(y.literal_component().unwrap().view(), CssComponentValueRef::Token(
+                        matches!(y.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(
                         CssValueTokenRef::Percentage(number)) if number.representation() == "-2.00")
                     );
                     assert_eq!(
@@ -773,9 +773,11 @@ fn sibling_image_roles_share_sheet_work_and_final_output_bytes_atomically() {
     assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 
-fn lp(text: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
-        .unwrap()
+fn lp(text: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
+        CssComponentValue::try_token(text).unwrap(),
+    )
+    .unwrap()
 }
 #[test]
 fn typed_keyword_and_orientation_constructors_emit_independent_canonical_values() {
@@ -800,9 +802,12 @@ fn typed_keyword_and_orientation_constructors_emit_independent_canonical_values(
         (CssImageOrientation::None, "none", 1),
         (CssImageOrientation::Flip(None), "flip", 1),
         (
-            CssImageOrientation::Flip(Some(CssAngleValue::from_literal(
-                CssAngleLiteral::try_new("-0.25", CssAngleUnit::Turns).unwrap(),
-            ))),
+            CssImageOrientation::Flip(Some(
+                CssNumeric::<CssAngle>::try_from_literal(
+                    CssNumericLiteral::<CssAngle>::try_new("-0.25", CssAngleUnit::Turns).unwrap(),
+                )
+                .unwrap(),
+            )),
             "-0.25turn flip",
             2,
         ),

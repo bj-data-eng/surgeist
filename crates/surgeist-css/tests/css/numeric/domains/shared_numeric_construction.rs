@@ -10,17 +10,19 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::first_token as parsed_token;
 use surgeist_css::*;
 
-fn number(text: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_component(CssComponentValue::try_number(text).unwrap()).unwrap()
+fn number(text: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_number(text).unwrap())
+        .unwrap()
 }
 
-fn percentage(text: &str) -> CssSpecifiedPercentage {
-    CssSpecifiedPercentage::try_from_component(CssComponentValue::try_token(text).unwrap()).unwrap()
+fn percentage(text: &str) -> CssNumeric<CssPercentage> {
+    CssNumeric::<CssPercentage>::try_from_component(CssComponentValue::try_token(text).unwrap())
+        .unwrap()
 }
 
-fn number_math(text: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(
+fn number_math(text: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
@@ -29,9 +31,9 @@ fn number_math(text: &str) -> CssSpecifiedNumber {
     .unwrap()
 }
 
-fn percentage_math(text: &str) -> CssSpecifiedPercentage {
-    CssSpecifiedPercentage::try_from_calculation(
-        CssPercentageCalculation::try_from_components(
+fn percentage_math(text: &str) -> CssNumeric<CssPercentage> {
+    CssNumeric::<CssPercentage>::try_from_calculation(
+        CssCalculation::<CssPercentage>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
@@ -40,18 +42,24 @@ fn percentage_math(text: &str) -> CssSpecifiedPercentage {
     .unwrap()
 }
 
-fn number_spelling(value: &CssSpecifiedNumber) -> &str {
-    let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) =
-        value.literal_component().unwrap().view()
+fn number_spelling(value: &CssNumeric<CssNumber>) -> &str {
+    let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = value
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("ordinary number")
     };
     number.representation()
 }
 
-fn percentage_spelling(value: &CssSpecifiedPercentage) -> &str {
-    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) =
-        value.literal_component().unwrap().view()
+fn percentage_spelling(value: &CssNumeric<CssPercentage>) -> &str {
+    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = value
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("ordinary percentage")
     };
@@ -83,7 +91,7 @@ fn signed_percentage_checks_its_root_and_preserves_rejected_origin() {
     for text in ["1", "0", "1px", "1deg", "auto"] {
         let component = parsed_token(text);
         let origin = component.origin().clone();
-        let error = CssSpecifiedPercentage::try_from_component(component).unwrap_err();
+        let error = CssNumeric::<CssPercentage>::try_from_component(component).unwrap_err();
         assert!(error.is_root_domain_mismatch(), "{error:?}");
         assert_eq!(error.origin(), Some(&origin));
     }
@@ -95,7 +103,7 @@ fn signed_percentage_checks_its_root_and_preserves_rejected_origin() {
     }
     for text in ["-1e-999%", "-1e999%"] {
         crate::css::support::value_assertions::assert_component_rejected(
-            CssSpecifiedNonNegativePercentage::try_from_component,
+            CssNumeric::<CssPercentage, CssNonNegative>::try_from_component,
             CssComponentValue::try_token(text).unwrap(),
             NumericFailure::OutOfRange,
         );
@@ -103,21 +111,22 @@ fn signed_percentage_checks_its_root_and_preserves_rejected_origin() {
 }
 
 #[test]
-fn parsed_shared_scalars_retain_coordinates_and_direct_origin_sensitive_equality() {
-    let parsed = CssSpecifiedNumber::try_from_component(parsed_token("  -1e999")).unwrap();
+fn parsed_shared_scalars_retain_coordinates_and_compare_by_value() {
+    let parsed = CssNumeric::<CssNumber>::try_from_component(parsed_token("  -1e999")).unwrap();
     let CssValueOrigin::Parsed(origin) = parsed.origin() else {
         panic!("parsed number")
     };
     assert_eq!(origin.source().as_str(), "  -1e999");
     assert_eq!(origin.span().start().byte_offset().value(), 2);
-    assert_ne!(parsed, number("-1e999"));
-    let parsed = CssSpecifiedPercentage::try_from_component(parsed_token("  -1e999%")).unwrap();
+    assert_eq!(parsed, number("-1e999"));
+    let parsed =
+        CssNumeric::<CssPercentage>::try_from_component(parsed_token("  -1e999%")).unwrap();
     let CssValueOrigin::Parsed(origin) = parsed.origin() else {
         panic!("parsed percentage")
     };
     assert_eq!(origin.source().as_str(), "  -1e999%");
     assert_eq!(origin.span().start().byte_offset().value(), 2);
-    assert_ne!(parsed, percentage("-1e999%"));
+    assert_eq!(parsed, percentage("-1e999%"));
 }
 
 #[test]
@@ -133,13 +142,23 @@ fn bare_number_and_percentage_calculations_reenter_literal_admission() {
         assert!(value.calculation().is_none());
     }
     let number = number_math("calc(-1e999)");
-    assert!(number.literal_component().is_none());
+    assert!(
+        number
+            .literal()
+            .map(|literal| literal.component())
+            .is_none()
+    );
     assert_eq!(
         number.calculation().unwrap().result_type(),
         CssCalculationType::Number
     );
     let percentage = percentage_math("calc(-1e999%)");
-    assert!(percentage.literal_component().is_none());
+    assert!(
+        percentage
+            .literal()
+            .map(|literal| literal.component())
+            .is_none()
+    );
     assert_eq!(
         percentage.calculation().unwrap().result_type(),
         CssCalculationType::Percentage
@@ -309,10 +328,10 @@ fn independent_scale_checks_cardinality_and_retains_symbolic_number_factors() {
 }
 
 #[test]
-fn number_aggregates_ignore_only_origins_and_keep_order_omission_and_lexical_structure() {
-    let parsed = CssSpecifiedNumber::try_from_component(parsed_token("  1")).unwrap();
+fn number_aggregates_ignore_origins_and_spelling_and_keep_order_and_omission() {
+    let parsed = CssNumeric::<CssNumber>::try_from_component(parsed_token("  1")).unwrap();
     let built = number("1");
-    assert_ne!(parsed, built);
+    assert_eq!(parsed, built);
     let a = CssTransformMatrix::new([
         parsed.clone(),
         number("2"),
@@ -363,7 +382,7 @@ fn number_aggregates_ignore_only_origins_and_keep_order_omission_and_lexical_str
             Some(CssTransformScaleComponent::Number(number("1")))
         )
     );
-    assert_ne!(
+    assert_eq!(
         CssTransformScale::new(CssTransformScaleComponent::Number(number("1")), None),
         CssTransformScale::new(CssTransformScaleComponent::Number(number("1.0")), None)
     );
@@ -375,10 +394,10 @@ fn number_aggregates_ignore_only_origins_and_keep_order_omission_and_lexical_str
 
 #[test]
 fn percentage_aggregate_equality_ignores_origins_and_keeps_branch_and_math_structure() {
-    let parsed = CssSpecifiedPercentage::try_from_component(parsed_token("  25%")).unwrap();
+    let parsed = CssNumeric::<CssPercentage>::try_from_component(parsed_token("  25%")).unwrap();
     let built = percentage("25%");
     assert!(
-        (parsed) != (built),
+        (parsed) == (built),
         "percentage_aggregate_equality_ignores_origins_and_keeps_branch_and_math_structure: direct equality contract"
     );
     assert!(
@@ -393,7 +412,7 @@ fn percentage_aggregate_equality_ignores_origins_and_keeps_branch_and_math_struc
     );
     assert!(
         (CssTransformScaleComponent::Percentage(percentage("25%")))
-            != (CssTransformScaleComponent::Percentage(percentage("25.0%"))),
+            == (CssTransformScaleComponent::Percentage(percentage("25.0%"))),
         "percentage_aggregate_equality_ignores_origins_and_keeps_branch_and_math_structure: direct equality contract"
     );
     assert!(
@@ -404,11 +423,11 @@ fn percentage_aggregate_equality_ignores_origins_and_keeps_branch_and_math_struc
     let a = percentage_math("calc(25% + 5%)");
     let b = percentage_math("  calc(25% + 5%)");
     assert!(
-        (a) != (b),
+        (a) == (b),
         "percentage_aggregate_equality_ignores_origins_and_keeps_branch_and_math_structure: direct equality contract"
     );
     assert!(
-        (a.calculation().unwrap()) != (b.calculation().unwrap()),
+        (a.calculation().unwrap()) == (b.calculation().unwrap()),
         "percentage_aggregate_equality_ignores_origins_and_keeps_branch_and_math_structure: direct equality contract"
     );
     assert!(
@@ -423,11 +442,11 @@ fn cubic_and_symbolic_number_aggregate_equality_keeps_ast_and_axis_roles() {
     let a = number_math("calc(1 + 2)");
     let b = number_math("  calc(1 + 2)");
     assert!(
-        (a) != (b),
+        (a) == (b),
         "cubic_and_symbolic_number_aggregate_equality_keeps_ast_and_axis_roles: direct equality contract"
     );
     assert!(
-        (a.calculation().unwrap()) != (b.calculation().unwrap()),
+        (a.calculation().unwrap()) == (b.calculation().unwrap()),
         "cubic_and_symbolic_number_aggregate_equality_keeps_ast_and_axis_roles: direct equality contract"
     );
     assert!(
@@ -449,7 +468,7 @@ fn cubic_and_symbolic_number_aggregate_equality_keeps_ast_and_axis_roles() {
         "cubic_and_symbolic_number_aggregate_equality_keeps_ast_and_axis_roles: direct equality contract"
     );
     assert!(
-        (make(number("1"))) != (make(number("1.0"))),
+        (make(number("1"))) == (make(number("1.0"))),
         "cubic_and_symbolic_number_aggregate_equality_keeps_ast_and_axis_roles: direct equality contract"
     );
     assert!(
@@ -462,16 +481,19 @@ fn cubic_and_symbolic_number_aggregate_equality_keeps_ast_and_axis_roles() {
 
 #[test]
 fn three_dimensional_aggregates_compare_shared_structure_and_preserve_other_roles() {
-    let parsed = CssSpecifiedNumber::try_from_component(parsed_token("  1")).unwrap();
+    let parsed = CssNumeric::<CssNumber>::try_from_component(parsed_token("  1")).unwrap();
     let ordinary = number("1");
     assert!(
         (CssTransformMatrix3d::new(std::array::from_fn(|_| parsed.clone())))
             == (CssTransformMatrix3d::new(std::array::from_fn(|_| ordinary.clone()))),
         "three_dimensional_aggregates_compare_shared_structure_and_preserve_other_roles: direct equality contract"
     );
-    let angle = CssAngleOrZero::Angle(CssAngleValue::from_literal(
-        CssAngleLiteral::try_new("45", CssAngleUnit::Degrees).unwrap(),
-    ));
+    let angle = CssAngleOrZero::Angle(
+        CssNumeric::<CssAngle>::try_from_literal(
+            CssNumericLiteral::<CssAngle>::try_new("45", CssAngleUnit::Degrees).unwrap(),
+        )
+        .unwrap(),
+    );
     let rotate = |axis| CssTransformRotate3d::new(axis, number("0"), number("-1"), angle.clone());
     assert!(
         (rotate(parsed.clone())) == (rotate(ordinary.clone())),
@@ -612,7 +634,7 @@ fn shared_signed_number_projection_keeps_cumulative_variation_budgets() {
     );
 }
 
-fn scale_number(value: &CssTransformScaleComponent) -> &CssSpecifiedNumber {
+fn scale_number(value: &CssTransformScaleComponent) -> &CssNumeric<CssNumber> {
     let CssTransformScaleComponent::Number(v) = value else {
         panic!("number factor")
     };

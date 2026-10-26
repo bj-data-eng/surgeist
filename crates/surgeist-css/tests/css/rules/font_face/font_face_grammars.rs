@@ -423,7 +423,7 @@ fn fonts3_descriptor_values_and_selected_fonts4_ranges_are_typed() {
     assert_eq!(features[2].value(), &CssAuthoredFontFeatureValue::Off);
     assert!(matches!(
         features[3].value(),
-        CssAuthoredFontFeatureValue::Index(index) if index.i32_value() == Some(0)
+        CssAuthoredFontFeatureValue::Index(index) if index.literal().and_then(|literal| literal.value()) == Some(0)
     ));
     assert_eq!(
         ordinary_face!(rule.descriptors(), UnicodeRange)

@@ -1,8 +1,8 @@
 //! Authored Page selectors and distinct Page/margin descriptor domains.
 use crate::{
     CssComponentValues, CssDeclaration, CssDeclarationList, CssDescriptorOccurrence,
-    CssGlobalKeyword, CssImportance, CssParsedOrigin, CssSourcePosition, CssSpecifiedLength,
-    CssSpecifiedNonNegativeLength,
+    CssGlobalKeyword, CssImportance, CssLength, CssNonNegative, CssNumeric, CssParsedOrigin,
+    CssSourcePosition,
 };
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -229,8 +229,8 @@ impl CssPageSize {
 pub enum CssPageSizeValue {
     Auto,
     Dimensions(
-        CssSpecifiedNonNegativeLength,
-        Option<CssSpecifiedNonNegativeLength>,
+        CssNumeric<CssLength, CssNonNegative>,
+        Option<CssNumeric<CssLength, CssNonNegative>>,
     ),
     Named(CssPageNamedSize),
 }
@@ -279,7 +279,7 @@ impl CssPageMarks {
 #[non_exhaustive]
 pub enum CssPageBleed {
     Auto,
-    Length(CssSpecifiedLength),
+    Length(CssNumeric<CssLength>),
 }
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum PageValueData {

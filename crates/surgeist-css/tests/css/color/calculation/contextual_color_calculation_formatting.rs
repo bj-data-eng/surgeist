@@ -531,7 +531,8 @@ error_case!(
 #[test]
 fn checked_graph_preserves_parsed_components_and_provenance() {
     let raw = components("calc(.0078125 * 1em / 1px)");
-    let calc = CssNumberCalculation::try_from_components(raw.clone(), Default::default()).unwrap();
+    let calc =
+        CssCalculation::<CssNumber>::try_from_components(raw.clone(), Default::default()).unwrap();
     assert_eq!(calc.components(), &raw);
     assert_eq!(calc.result_type(), CssCalculationType::Number);
     assert_eq!(calc.expression().origin(), raw.items()[0].origin());
@@ -610,7 +611,7 @@ fn substitution_stays_pending_control() {
         expand_declaration(&d).unwrap(),
         CssExpansion::Pending(_)
     ));
-    let e = CssNumberCalculation::try_from_components(
+    let e = CssCalculation::<CssNumber>::try_from_components(
         components("calc(var(--n) + 1em / 1px)"),
         Default::default(),
     )
@@ -633,7 +634,8 @@ text_case!(
 fn checked_percentage_graph_retains_scale_inputs_and_provenance() {
     let raw = components("calc(.0078125% * 1em / 1px)");
     let calc =
-        CssPercentageCalculation::try_from_components(raw.clone(), Default::default()).unwrap();
+        CssCalculation::<CssPercentage>::try_from_components(raw.clone(), Default::default())
+            .unwrap();
     assert_eq!(calc.result_type(), CssCalculationType::Percentage);
     assert_eq!(calc.components(), &raw);
     assert_eq!(calc.expression().origin(), raw.items()[0].origin());
@@ -675,7 +677,8 @@ fn mixed_programmatic_and_parsed_graph_preserves_each_actual_origin() {
     let mixed = CssComponentValues::try_new(items, Default::default()).unwrap();
     let function = CssComponentValue::try_function("calc", mixed.clone()).unwrap();
     let raw = CssComponentValues::try_new(vec![function], Default::default()).unwrap();
-    let calc = CssNumberCalculation::try_from_components(raw.clone(), Default::default()).unwrap();
+    let calc =
+        CssCalculation::<CssNumber>::try_from_components(raw.clone(), Default::default()).unwrap();
     assert_eq!(calc.expression().origin(), &CssValueOrigin::Programmatic);
     assert_eq!(calc.components(), &raw);
     assert_eq!(mixed.items()[0].origin(), &CssValueOrigin::Programmatic);

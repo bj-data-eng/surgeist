@@ -2,8 +2,8 @@
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssBoxCalcSize, CssNumericConstructionError, CssSerializationError,
-    CssSpecifiedNonNegativeLengthPercentage,
+    CssBoxCalcSize, CssLengthPercentage, CssNonNegative, CssNumeric, CssNumericConstructionError,
+    CssSerializationError,
 };
 
 type SerializationResult<T> = Result<T, CssSerializationError>;
@@ -17,40 +17,30 @@ type SerializationResult<T> = Result<T, CssSerializationError>;
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssBoxSize {
-    LengthPercentage(CssSpecifiedNonNegativeLengthPercentage),
+    LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>),
     Stretch,
     Contain,
     MinContent,
     MaxContent,
     FitContent,
-    FitContentFunction(CssSpecifiedNonNegativeLengthPercentage),
+    FitContentFunction(CssNumeric<CssLengthPercentage, CssNonNegative>),
     CalcSize(CssBoxCalcSize),
 }
 
 // A specified sizing value is comparable across separately parsed or checked
-// declarations. The exact authored token/math structure matters; diagnostic
-// source snapshots and offsets do not.
+// declarations: numeric payloads compare by value, without source origins.
 impl PartialEq for CssBoxSize {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::LengthPercentage(left), Self::LengthPercentage(right))
-            | (Self::FitContentFunction(left), Self::FitContentFunction(right)) => {
-                match (left.literal_component(), right.literal_component()) {
-                    (Some(left), Some(right)) => left.structural_eq_ignoring_origin(right),
-                    (None, None) => left
-                        .calculation()
-                        .expect("checked math")
-                        .structural_eq(right.calculation().expect("checked math")),
-                    _ => false,
-                }
-            }
+            | (Self::FitContentFunction(left), Self::FitContentFunction(right)) => left == right,
             (Self::Stretch, Self::Stretch)
             | (Self::Contain, Self::Contain)
             | (Self::MinContent, Self::MinContent)
             | (Self::MaxContent, Self::MaxContent)
             | (Self::FitContent, Self::FitContent) => true,
             (Self::CalcSize(left), Self::CalcSize(right)) => {
-                left.as_calc_size().structural_eq(right.as_calc_size())
+                left.as_calc_size() == right.as_calc_size()
             }
             _ => false,
         }

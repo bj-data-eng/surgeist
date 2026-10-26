@@ -145,7 +145,7 @@ fn checked_gradient_construction_has_independent_specified_text() {
         CssColorStopListItem::Stop(Box::new(CssGradientColorStop::from_color(
             color("transparent"),
             Some(
-                CssSpecifiedLengthPercentage::try_from_component(
+                CssNumeric::<CssLengthPercentage>::try_from_component(
                     CssComponentValue::try_token("50%").unwrap(),
                 )
                 .unwrap(),

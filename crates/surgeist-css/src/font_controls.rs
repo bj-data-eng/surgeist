@@ -3,7 +3,7 @@
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
     CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef,
-    CssSerializationError, CssSpecifiedNonNegativeNumber, CssValueOrigin, CssValueTokenRef,
+    CssNonNegative, CssNumber, CssNumeric, CssSerializationError, CssValueOrigin, CssValueTokenRef,
 };
 
 type SerializationResult<T> = Result<T, CssSerializationError>;
@@ -22,14 +22,14 @@ pub enum CssFontKerning {
 #[non_exhaustive]
 pub enum CssFontSizeAdjust {
     None,
-    Number(CssSpecifiedNonNegativeNumber),
+    Number(CssNumeric<CssNumber, CssNonNegative>),
 }
 
 impl PartialEq for CssFontSizeAdjust {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::None, Self::None) => true,
-            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::Number(left), Self::Number(right)) => left == right,
             _ => false,
         }
     }

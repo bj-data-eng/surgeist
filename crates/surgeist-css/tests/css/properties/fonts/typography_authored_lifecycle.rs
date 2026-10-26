@@ -330,7 +330,7 @@ fn tab_literal_zero_prefers_number_and_explicit_dimensions_retain_length_and_ori
                 CssTabSize::Number(v) if is_number => {
                     assert!(v.calculation().is_none());
                     assert_eq!(
-                        v.literal_component(),
+                        v.literal().map(|literal| literal.component()),
                         Some(&source.value_components().items()[0])
                     );
                     assert_eq!(v.origin(), source.value_components().items()[0].origin());
@@ -338,7 +338,7 @@ fn tab_literal_zero_prefers_number_and_explicit_dimensions_retain_length_and_ori
                 CssTabSize::Length(v) if !is_number => {
                     assert!(v.calculation().is_none());
                     assert_eq!(
-                        v.literal_component(),
+                        v.literal().map(|literal| literal.component()),
                         Some(&source.value_components().items()[0])
                     );
                     assert_eq!(v.origin(), source.value_components().items()[0].origin());
@@ -350,13 +350,13 @@ fn tab_literal_zero_prefers_number_and_explicit_dimensions_retain_length_and_ori
         }
     }
     let number = CssTabSize::Number(
-        CssSpecifiedNonNegativeNumber::try_from_component(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number("0").unwrap(),
         )
         .unwrap(),
     );
     let length = CssTabSize::Length(
-        CssSpecifiedNonNegativeLength::try_from_component(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension("0", "px").unwrap(),
         )
         .unwrap(),
@@ -383,12 +383,12 @@ fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
             };
             let components = match tab {
                 CssTabSize::Number(v) if is_number => {
-                    assert!(v.literal_component().is_none());
+                    assert!(v.literal().map(|literal| literal.component()).is_none());
                     assert_eq!(v.origin(), source.value_components().items()[0].origin());
                     v.calculation().unwrap().components()
                 }
                 CssTabSize::Length(v) if !is_number => {
-                    assert!(v.literal_component().is_none());
+                    assert!(v.literal().map(|literal| literal.component()).is_none());
                     assert_eq!(v.origin(), source.value_components().items()[0].origin());
                     v.calculation().unwrap().components()
                 }
@@ -403,8 +403,8 @@ fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
         }
     }
     let number = CssTabSize::Number(
-        CssSpecifiedNonNegativeNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssNumber>::try_from_components(
                 parse_component_values("calc(-1)").unwrap(),
                 Default::default(),
             )
@@ -413,8 +413,8 @@ fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
         .unwrap(),
     );
     let length = CssTabSize::Length(
-        CssSpecifiedNonNegativeLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLength>::try_from_components(
                 parse_component_values("calc(-1px)").unwrap(),
                 Default::default(),
             )
@@ -431,8 +431,8 @@ fn tab_math_retains_pure_root_graph_origins_and_deferred_negative_ranges() {
         "calc(-1px)"
     );
     let math = CssTabSize::Length(
-        CssSpecifiedNonNegativeLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLength>::try_from_components(
                 parse_component_values("calc(1px + 2em)").unwrap(),
                 Default::default(),
             )

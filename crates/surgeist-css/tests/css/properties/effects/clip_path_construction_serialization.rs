@@ -26,20 +26,22 @@ fn shape(css: &str) -> CssBasicShape {
     value.shape().clone()
 }
 
-fn lp(css: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(css).unwrap())
-        .unwrap()
-}
-
-fn radius(css: &str) -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+fn lp(css: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
         CssComponentValue::try_token(css).unwrap(),
     )
     .unwrap()
 }
 
-fn length(css: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_component(CssComponentValue::try_token(css).unwrap()).unwrap()
+fn radius(css: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+        CssComponentValue::try_token(css).unwrap(),
+    )
+    .unwrap()
+}
+
+fn length(css: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(css).unwrap()).unwrap()
 }
 
 #[test]
@@ -130,12 +132,12 @@ fn ellipse_pairs_preserve_independent_components_order_and_omission() {
     budget("ellipse()", 1, 1, |limits| {
         omitted.serialize_specified(limits)
     });
-    assert_ne!(
+    assert_eq!(
         CssEllipseRadius::LengthPercentage(radius("0")),
         CssEllipseRadius::LengthPercentage(radius("0px"))
     );
-    // Existing scalar structural equality preserves numeric token representation.
-    assert_ne!(
+    // Numeric value equality ignores the numeric token representation.
+    assert_eq!(
         CssEllipseRadius::LengthPercentage(radius("1.0px")),
         CssEllipseRadius::LengthPercentage(radius("1px"))
     );
@@ -204,13 +206,13 @@ fn checked_shapes_retain_signed_rounding_offsets_point_lists_and_radius_arity() 
         ("1", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            CssSpecifiedLength::try_from_component,
+            CssNumeric::<CssLength>::try_from_component,
             CssComponentValue::try_token(invalid).unwrap(),
             kind,
         );
     }
     assert_component_rejected(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component,
         CssComponentValue::try_token("-1e-999px").unwrap(),
         NumericFailure::OutOfRange,
     );
@@ -358,12 +360,18 @@ fn parsed_and_programmatic_literals_retain_units_exact_magnitudes_and_origins() 
                 let CssCircleRadius::LengthPercentage(radius) = circle.radius() else {
                     panic!("numeric circle radius")
                 };
-                radius.literal_component().unwrap()
+                radius.literal().map(|literal| literal.component()).unwrap()
             }
-            CssBasicShape::Polygon(polygon) => {
-                polygon.round().unwrap().literal_component().unwrap()
-            }
-            CssBasicShape::Inset(inset) => inset.offsets().values()[0].literal_component().unwrap(),
+            CssBasicShape::Polygon(polygon) => polygon
+                .round()
+                .unwrap()
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap(),
+            CssBasicShape::Inset(inset) => inset.offsets().values()[0]
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap(),
             _ => panic!("numeric shape"),
         };
         assert!(matches!(

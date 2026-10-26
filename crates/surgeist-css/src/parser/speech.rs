@@ -315,14 +315,17 @@ pub(super) fn parse_voice_pitch_range<'i, 't>(
                 numeric
                     .admit(component, crate::numeric::CalculationRoot::Frequency)
                     .and_then(|expression| {
-                        crate::CssFrequencyValue::try_from_calculation(
-                            crate::CssFrequencyCalculation::from_expression(expression),
+                        crate::CssNumeric::<crate::CssFrequency>::from_parser_calculation(
+                            crate::CssCalculation::<crate::CssFrequency>::from_expression(
+                                expression,
+                            ),
                         )
                     })
             }
-            component => {
-                crate::CssFrequencyValue::from_parser_component(component.into_owned(), numeric)
-            }
+            component => crate::CssNumeric::<crate::CssFrequency>::from_parser_component(
+                component.into_owned(),
+                numeric,
+            ),
         }
         .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))?;
         crate::CssVoicePitchRange::from_parser_absolute(frequency)
@@ -340,11 +343,11 @@ pub(super) fn parse_voice_pitch_range<'i, 't>(
                                 crate::numeric::CalculationRoot::FrequencyPercentage,
                             )
                             .map(|expression| {
-                                crate::CssVoiceOffset::Calculation(
-                                    crate::CssFrequencyPercentageCalculation::from_expression(
-                                        expression,
-                                    ),
-                                )
+                                crate::CssVoiceOffset::Calculation(crate::CssCalculation::<
+                                    crate::CssFrequencyPercentage,
+                                >::from_expression(
+                                    expression
+                                ))
                             })
                     }
                     component => crate::CssVoiceOffset::from_parser_component(
@@ -403,7 +406,7 @@ fn next_is_any_ident(input: &mut Parser<'_, '_>) -> bool {
 fn parse_voice_rate_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<crate::CssSpecifiedNonNegativePercentage, ParseError<'i, Error>> {
+) -> Result<crate::CssNumeric<crate::CssPercentage, crate::CssNonNegative>, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
     let root_site = input.position();
@@ -412,15 +415,15 @@ fn parse_voice_rate_percentage<'i, 't>(
         .map_err(crate::CssNumericConstructionError::component)
         .map_err(|error| speech_numeric_error(numeric, &error, location, root_site))?;
     if matches!(component.view(), crate::CssComponentValueRef::Token(_)) {
-        crate::CssSpecifiedNonNegativePercentage::try_from_component(component.into_owned())
+        crate::CssNumeric::<crate::CssPercentage, crate::CssNonNegative>::try_from_component(component.into_owned())
     } else {
         let values = crate::numeric::CalculationComponents::single(component)
             .map_err(|error| crate::error::property::invalid_component_value(location, error))?;
         numeric
             .admit(values, crate::numeric::CalculationRoot::Percentage)
             .and_then(|expression| {
-                crate::CssSpecifiedNonNegativePercentage::from_parser_calculation(
-                    crate::CssPercentageCalculation::from_expression(expression),
+                crate::CssNumeric::<crate::CssPercentage, crate::CssNonNegative>::from_parser_calculation(
+                    crate::CssCalculation::<crate::CssPercentage>::from_expression(expression),
                 )
             })
     }

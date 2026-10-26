@@ -1,7 +1,7 @@
 //! Exact authored gap values before layout and percentage resolution.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{CssSerializationError, CssSpecifiedNonNegativeLengthPercentage};
+use crate::{CssLengthPercentage, CssNonNegative, CssNumeric, CssSerializationError};
 
 type SerializationResult<T> = Result<T, CssSerializationError>;
 
@@ -14,7 +14,7 @@ type SerializationResult<T> = Result<T, CssSerializationError>;
 #[derive(Clone, Debug)]
 pub enum CssGapValue {
     Normal,
-    LengthPercentage(CssSpecifiedNonNegativeLengthPercentage),
+    LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>),
 }
 
 impl CssGapValue {
@@ -52,9 +52,7 @@ impl PartialEq for CssGapValue {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Normal, Self::Normal) => true,
-            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
-                left.structural_eq(right)
-            }
+            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => left == right,
             _ => false,
         }
     }

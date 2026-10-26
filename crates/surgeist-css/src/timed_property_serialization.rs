@@ -52,16 +52,19 @@ macro_rules! list_provider {
 }
 
 list_provider!(CssTransitionPropertyList, properties, transition_property);
-list_provider!(
-    CssDurationList,
-    values,
-    |writer, value: &crate::CssDuration| { value.append_to_rule_writer(writer) }
-);
-list_provider!(
-    CssDelayList,
-    values,
-    |writer, value: &crate::CssTimeValue| { value.append_to_rule_writer(writer) }
-);
+list_provider!(CssDurationList, values, |writer,
+                                         value: &crate::CssNumeric<
+    crate::CssTime,
+    crate::CssNonNegative,
+>| {
+    value.append_to_rule_writer(writer)
+});
+list_provider!(CssDelayList, values, |writer,
+                                      value: &crate::CssNumeric<
+    crate::CssTime,
+>| {
+    value.append_to_rule_writer(writer)
+});
 list_provider!(
     CssTransitionList,
     values,
@@ -184,7 +187,10 @@ fn default_slot(writer: &mut SpecifiedRuleWriter, started: &mut bool, text: &str
 }
 
 /// Whether a literal time is exactly zero; symbolic math is not evaluated.
-fn zero_time(writer: &mut SpecifiedRuleWriter, value: &crate::CssTimeValue) -> Result<bool> {
+fn zero_time<R: crate::CssRange<crate::CssTime>>(
+    writer: &mut SpecifiedRuleWriter,
+    value: &crate::CssNumeric<crate::CssTime, R>,
+) -> Result<bool> {
     let Some(literal) = value.literal() else {
         return Ok(false);
     };
@@ -225,7 +231,7 @@ fn transition(writer: &mut SpecifiedRuleWriter, value: &CssTransition) -> Result
         None => false,
     };
     let duration_initial = match value.duration() {
-        Some(duration) => zero_time(writer, duration.time())?,
+        Some(duration) => zero_time(writer, duration)?,
         None => false,
     };
     let emit_delay = value.delay().is_some() && !delay_initial;
@@ -417,13 +423,15 @@ mod tests {
     use super::*;
     use crate::CssSerializationLimits as L;
     use crate::{
-        CssAnimationComponents, CssEasing, CssEasingKeyword, CssTimeLiteral, CssTimeUnit,
-        CssTimeValue,
+        CssAnimationComponents, CssEasing, CssEasingKeyword, CssNumeric, CssNumericLiteral,
+        CssTime, CssTimeUnit,
     };
     use CssSpecifiedValueSerializationErrorKind as K;
 
-    fn time() -> CssTimeValue {
-        CssTimeValue::from_literal(CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap())
+    fn time() -> CssNumeric<CssTime> {
+        CssNumeric::<CssTime>::from_literal(
+            CssNumericLiteral::<CssTime>::try_new("-1", CssTimeUnit::Seconds).unwrap(),
+        )
     }
 
     fn shared(
@@ -490,9 +498,9 @@ mod tests {
         let value = CssTransitionPropertyList::try_new(vec![CssTransitionProperty::All]).unwrap();
         shared("all", 2, 2, |writer| value.append_to_rule_writer(writer));
         let value = CssDurationList::try_new(vec![
-            crate::CssDuration::try_new(CssTimeValue::from_literal(
-                CssTimeLiteral::try_new("1", CssTimeUnit::Seconds).unwrap(),
-            ))
+            crate::CssNumeric::<crate::CssTime, crate::CssNonNegative>::try_from_literal(
+                CssNumericLiteral::<CssTime>::try_new("1", CssTimeUnit::Seconds).unwrap(),
+            )
             .unwrap(),
         ])
         .unwrap();
@@ -545,7 +553,7 @@ mod tests {
     fn suppressed_iteration_numbers_still_consume_numeric_children() {
         let value =
             CssAnimationIterationCountList::try_new(vec![CssAnimationIterationCount::Number(
-                crate::CssSpecifiedNonNegativeNumber::try_from_component(
+                crate::CssNumeric::<crate::CssNumber, crate::CssNonNegative>::try_from_component(
                     crate::CssComponentValue::try_number("2.5").unwrap(),
                 )
                 .unwrap(),

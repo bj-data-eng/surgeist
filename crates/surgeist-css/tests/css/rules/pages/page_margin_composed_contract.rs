@@ -115,7 +115,12 @@ fn calculations(name: &str) {
                     panic!("symbolic length-percentage")
                 };
                 assert!(length.calculation().is_some(), "{value}");
-                assert!(length.literal_component().is_none());
+                assert!(
+                    length
+                        .literal()
+                        .map(|literal| literal.component())
+                        .is_none()
+                );
             }
             assert_eq!(
                 declaration
@@ -154,7 +159,12 @@ fn units(name: &str) {
                 let CssMarginValue::LengthPercentage(length) = margin else {
                     panic!("symbolic literal length")
                 };
-                assert!(length.literal_component().is_some());
+                assert!(
+                    length
+                        .literal()
+                        .map(|literal| literal.component())
+                        .is_some()
+                );
             }
         }
     }
@@ -314,7 +324,7 @@ fn container_length(unit: &str) {
                     panic!("container-relative length")
                 };
                 assert!(
-                    matches!(length.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit: actual, .. }) if actual == unit)
+                    matches!(length.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit: actual, .. }) if actual == unit)
                 );
             }
             let calculation = format!("calc(1{unit} + 2%)");

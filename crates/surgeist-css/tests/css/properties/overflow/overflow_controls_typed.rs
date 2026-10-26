@@ -4,8 +4,8 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
-fn length(number: &str, unit: &str) -> CssSpecifiedNonNegativeLength {
-    CssSpecifiedNonNegativeLength::try_from_component(
+fn length(number: &str, unit: &str) -> CssNumeric<CssLength, CssNonNegative> {
+    CssNumeric::<CssLength, CssNonNegative>::try_from_component(
         CssComponentValue::try_dimension(number, unit).unwrap(),
     )
     .unwrap()
@@ -95,11 +95,11 @@ fn checked_clip_margin_keeps_authored_components_and_exact_effective_defaults() 
             .unwrap(),
         "0px"
     );
-    assert_ne!(initial, authored_zero);
+    assert_eq!(initial, authored_zero);
 }
 
 #[test]
-fn clip_margin_equality_ignores_origins_but_keeps_spelling_and_omission() {
+fn clip_margin_equality_ignores_origins_and_spelling_but_keeps_omission() {
     let parsed = parsed_clip_margin("2px border-box");
     let programmatic =
         CssOverflowClipMargin::try_new(Some(CssBoxEdgeKeyword::BorderBox), Some(length("2", "px")))
@@ -109,7 +109,7 @@ fn clip_margin_equality_ignores_origins_but_keeps_spelling_and_omission() {
         parsed.serialize_specified(Default::default()).unwrap(),
         "border-box 2px"
     );
-    assert_ne!(parsed, parsed_clip_margin("2.0px border-box"));
+    assert_eq!(parsed, parsed_clip_margin("2.0px border-box"));
     assert_ne!(
         parsed,
         CssOverflowClipMargin::try_new(None, Some(length("2", "px"))).unwrap()

@@ -2,46 +2,53 @@
 //! Checked assembly rejection is covered by typed_sum_construction.
 use surgeist_css::CssCalculationSumOperator as Op;
 use surgeist_css::*;
-type Calculation = CssLengthPercentageCalculation;
+type Calculation = CssCalculation<CssLengthPercentage>;
 fn operand(source: &str) -> Calculation {
     Calculation::try_from_components(parse_component_values(source).unwrap(), Default::default())
         .unwrap()
 }
-fn pure(value: Calculation) -> Result<CssSpecifiedLength, CssNumericConstructionError> {
-    CssSpecifiedLength::try_from_calculation(CssLengthCalculation::try_from_components(
+fn pure(value: Calculation) -> Result<CssNumeric<CssLength>, CssNumericConstructionError> {
+    CssNumeric::<CssLength>::try_from_calculation(CssCalculation::<CssLength>::try_from_components(
         value.components().clone(),
         Default::default(),
     )?)
 }
 fn nonnegative_pure(
     value: Calculation,
-) -> Result<CssSpecifiedNonNegativeLength, CssNumericConstructionError> {
-    CssSpecifiedNonNegativeLength::try_from_calculation(CssLengthCalculation::try_from_components(
-        value.components().clone(),
-        Default::default(),
-    )?)
+) -> Result<CssNumeric<CssLength, CssNonNegative>, CssNumericConstructionError> {
+    CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(
+            value.components().clone(),
+            Default::default(),
+        )?,
+    )
 }
-fn lp(value: Calculation) -> Result<CssSpecifiedLengthPercentage, CssNumericConstructionError> {
-    CssSpecifiedLengthPercentage::try_from_calculation(value)
+fn lp(value: Calculation) -> Result<CssNumeric<CssLengthPercentage>, CssNumericConstructionError> {
+    CssNumeric::<CssLengthPercentage>::try_from_calculation(value)
 }
 fn nonnegative_lp(
     value: Calculation,
-) -> Result<CssSpecifiedNonNegativeLengthPercentage, CssNumericConstructionError> {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(value)
+) -> Result<CssNumeric<CssLengthPercentage, CssNonNegative>, CssNumericConstructionError> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(value)
 }
-fn zero_length() -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap()
-}
-fn zero_nonnegative_length() -> CssSpecifiedNonNegativeLength {
-    CssSpecifiedNonNegativeLength::try_from_component(CssComponentValue::try_number("0").unwrap())
+fn zero_length() -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_number("0").unwrap())
         .unwrap()
 }
-fn zero_lp() -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_number("0").unwrap())
-        .unwrap()
+fn zero_nonnegative_length() -> CssNumeric<CssLength, CssNonNegative> {
+    CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+        CssComponentValue::try_number("0").unwrap(),
+    )
+    .unwrap()
 }
-fn zero_nonnegative_lp() -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+fn zero_lp() -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
+        CssComponentValue::try_number("0").unwrap(),
+    )
+    .unwrap()
+}
+fn zero_nonnegative_lp() -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_number("0").unwrap(),
     )
     .unwrap()

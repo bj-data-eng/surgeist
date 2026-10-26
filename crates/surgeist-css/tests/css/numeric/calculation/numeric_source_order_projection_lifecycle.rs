@@ -84,8 +84,9 @@ fn programmatic_sum_keeps_exact_authored_tokens_and_origin() {
     let root = CssComponentValue::try_function("CALC", arguments).unwrap();
     let components = CssComponentValues::try_new(vec![root], Default::default()).unwrap();
     let calculation =
-        CssNumberCalculation::try_from_components(components.clone(), Default::default()).unwrap();
-    let value = CssSpecifiedNumber::try_from_calculation(calculation).unwrap();
+        CssCalculation::<CssNumber>::try_from_components(components.clone(), Default::default())
+            .unwrap();
+    let value = CssNumeric::<CssNumber>::try_from_calculation(calculation).unwrap();
     let before = value.clone();
     assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
     let result = value.serialize_specified(Default::default());

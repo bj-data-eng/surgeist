@@ -1,7 +1,7 @@
-//! The adopted Surgeist aggregate contract compares exact numeric syntax while
-//! ignoring numeric provenance only. This is an authored-value product contract,
-//! not a CSSOM semantic-equivalence claim or an evaluation of symbolic math.
-//! Parsing, public aggregate getters, and PartialEq already express the behavior.
+//! Aggregates compare their numbers as CSS Typed OM 1 "equal numeric values":
+//! the same unit and exact value, ignoring spelling and provenance, while
+//! authored structure, order and omission stay distinct. Symbolic math is not
+//! evaluated. Parsing, public aggregate getters, and PartialEq express this.
 
 use surgeist_css::*;
 
@@ -35,105 +35,105 @@ aggregate_parser!(animation, CssAnimationList, Animation, animations);
 aggregate_parser!(transition, CssTransitionList, Transition, transitions);
 
 #[test]
-fn matrix_equality_keeps_exact_ordinary_number_spelling() {
+fn matrix_equality_ignores_ordinary_number_spelling() {
     assert!(
         transform("transform: matrix(1, 0, 0, 1, 10, 20)")
-            != transform("transform: matrix(1.0, 0, 0, 1, 10, 20)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: matrix(1, 0, 0, 1, 10, 20)\") versus transform(\"transform: matrix(1.0, 0, 0, 1, 10, 20)\")"
+            == transform("transform: matrix(1.0, 0, 0, 1, 10, 20)"),
+        "Equal numeric values must compare equal across spellings; inputs: transform(\"transform: matrix(1, 0, 0, 1, 10, 20)\") versus transform(\"transform: matrix(1.0, 0, 0, 1, 10, 20)\")"
     );
 }
 #[test]
-fn matrix3d_equality_keeps_exact_ordinary_number_spelling() {
+fn matrix3d_equality_ignores_ordinary_number_spelling() {
     assert!(
         transform("transform: matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1)")
-            != transform(
+            == transform(
                 "transform: matrix3d(1.0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1)"
             ),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1)\") versus transform(\"transform: matrix3d(1.0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1)\")"
+        "Equal numeric values must compare equal across spellings; inputs: transform(\"transform: matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1)\") versus transform(\"transform: matrix3d(1.0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1)\")"
     );
 }
 #[test]
-fn rotate3d_equality_keeps_exact_axis_number_spelling() {
+fn rotate3d_equality_ignores_axis_number_spelling() {
     assert!(
         transform("transform: rotate3d(1, 0, -1, 45deg)")
-            != transform("transform: rotate3d(1.0, 0, -1, 45deg)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: rotate3d(1, 0, -1, 45deg)\") versus transform(\"transform: rotate3d(1.0, 0, -1, 45deg)\")"
+            == transform("transform: rotate3d(1.0, 0, -1, 45deg)"),
+        "Equal numeric values must compare equal across spellings; inputs: transform(\"transform: rotate3d(1, 0, -1, 45deg)\") versus transform(\"transform: rotate3d(1.0, 0, -1, 45deg)\")"
     );
 }
 #[test]
-fn scale_and_axis_equality_keep_exact_number_spelling() {
+fn scale_and_axis_equality_ignore_number_spelling() {
     for name in ["scale", "scaleX", "scaleY", "scaleZ"] {
         assert!(
             transform(&format!("transform: {name}(1)"))
-                != transform(&format!("transform: {name}(1.0)")),
-            "Numeric identity must retain distinct authored structures or provenance; inputs: transform(&format!(\"transform: {{name}}(1)\")) versus transform(&format!(\"transform: {{name}}(1.0)\")); case: {name}"
+                == transform(&format!("transform: {name}(1.0)")),
+            "Equal numeric values must compare equal across spellings; inputs: transform(&format!(\"transform: {{name}}(1)\")) versus transform(&format!(\"transform: {{name}}(1.0)\")); case: {name}"
         );
     }
 }
 #[test]
-fn scale3d_equality_keeps_exact_number_spelling() {
+fn scale3d_equality_ignores_number_spelling() {
     assert!(
-        transform("transform: scale3d(1, 2, 3)") != transform("transform: scale3d(1.0, 2, 3)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: scale3d(1, 2, 3)\") versus transform(\"transform: scale3d(1.0, 2, 3)\")"
+        transform("transform: scale3d(1, 2, 3)") == transform("transform: scale3d(1.0, 2, 3)"),
+        "Equal numeric values must compare equal across spellings; inputs: transform(\"transform: scale3d(1, 2, 3)\") versus transform(\"transform: scale3d(1.0, 2, 3)\")"
     );
 }
 #[test]
-fn scale3d_and_scale_z_equality_keep_exact_percentage_spelling() {
+fn scale3d_and_scale_z_equality_ignore_percentage_spelling() {
     assert!(
-        transform("transform: scale3d(1, 25%, 3)") != transform("transform: scale3d(1, 25.0%, 3)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: scale3d(1, 25%, 3)\") versus transform(\"transform: scale3d(1, 25.0%, 3)\")"
+        transform("transform: scale3d(1, 25%, 3)") == transform("transform: scale3d(1, 25.0%, 3)"),
+        "Equal numeric values must compare equal across spellings; inputs: transform(\"transform: scale3d(1, 25%, 3)\") versus transform(\"transform: scale3d(1, 25.0%, 3)\")"
     );
     assert!(
-        transform("transform: scaleZ(25%)") != transform("transform: scaleZ(25.0%)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: scaleZ(25%)\") versus transform(\"transform: scaleZ(25.0%)\")"
-    );
-}
-#[test]
-fn independent_scale_equality_keeps_exact_number_spelling() {
-    assert!(
-        scale("scale: 1 2 3") != scale("scale: 1.0 2 3"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: scale(\"scale: 1 2 3\") versus scale(\"scale: 1.0 2 3\")"
+        transform("transform: scaleZ(25%)") == transform("transform: scaleZ(25.0%)"),
+        "Equal numeric values must compare equal across spellings; inputs: transform(\"transform: scaleZ(25%)\") versus transform(\"transform: scaleZ(25.0%)\")"
     );
 }
 #[test]
-fn cubic_bezier_equality_keeps_exact_x_and_y_number_spelling() {
+fn independent_scale_equality_ignores_number_spelling() {
+    assert!(
+        scale("scale: 1 2 3") == scale("scale: 1.0 2 3"),
+        "Equal numeric values must compare equal across spellings; inputs: scale(\"scale: 1 2 3\") versus scale(\"scale: 1.0 2 3\")"
+    );
+}
+#[test]
+fn cubic_bezier_equality_ignores_x_and_y_number_spelling() {
     assert!(
         easing("transition-timing-function: cubic-bezier(0, 2, 1, 3)")
-            != easing("transition-timing-function: cubic-bezier(0.0, 2, 1, 3)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: easing(\"transition-timing-function: cubic-bezier(0, 2, 1, 3)\") versus easing(\"transition-timing-function: cubic-bezier(0.0, 2, 1, 3)\")"
+            == easing("transition-timing-function: cubic-bezier(0.0, 2, 1, 3)"),
+        "Equal numeric values must compare equal across spellings; inputs: easing(\"transition-timing-function: cubic-bezier(0, 2, 1, 3)\") versus easing(\"transition-timing-function: cubic-bezier(0.0, 2, 1, 3)\")"
     );
     assert!(
         easing("transition-timing-function: cubic-bezier(0, 2, 1, 3)")
-            != easing("transition-timing-function: cubic-bezier(0, 2.0, 1, 3)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: easing(\"transition-timing-function: cubic-bezier(0, 2, 1, 3)\") versus easing(\"transition-timing-function: cubic-bezier(0, 2.0, 1, 3)\")"
+            == easing("transition-timing-function: cubic-bezier(0, 2.0, 1, 3)"),
+        "Equal numeric values must compare equal across spellings; inputs: easing(\"transition-timing-function: cubic-bezier(0, 2, 1, 3)\") versus easing(\"transition-timing-function: cubic-bezier(0, 2.0, 1, 3)\")"
     );
 }
 #[test]
-fn transition_and_animation_equality_keep_exact_cubic_bezier_numbers() {
+fn transition_and_animation_equality_ignore_cubic_bezier_number_spelling() {
     assert!(
         transition("transition: opacity 1s cubic-bezier(0, 2, 1, 3)")
-            != transition("transition: opacity 1s cubic-bezier(0, 2.0, 1, 3)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transition(\"transition: opacity 1s cubic-bezier(0, 2, 1, 3)\") versus transition(\"transition: opacity 1s cubic-bezier(0, 2.0, 1, 3)\")"
+            == transition("transition: opacity 1s cubic-bezier(0, 2.0, 1, 3)"),
+        "Equal numeric values must compare equal across spellings; inputs: transition(\"transition: opacity 1s cubic-bezier(0, 2, 1, 3)\") versus transition(\"transition: opacity 1s cubic-bezier(0, 2.0, 1, 3)\")"
     );
     assert!(
         animation("animation: fade 1s cubic-bezier(0, 2, 1, 3)")
-            != animation("animation: fade 1s cubic-bezier(0, 2.0, 1, 3)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: animation(\"animation: fade 1s cubic-bezier(0, 2, 1, 3)\") versus animation(\"animation: fade 1s cubic-bezier(0, 2.0, 1, 3)\")"
+            == animation("animation: fade 1s cubic-bezier(0, 2.0, 1, 3)"),
+        "Equal numeric values must compare equal across spellings; inputs: animation(\"animation: fade 1s cubic-bezier(0, 2, 1, 3)\") versus animation(\"animation: fade 1s cubic-bezier(0, 2.0, 1, 3)\")"
     );
 }
 #[test]
-fn signed_numeric_aggregate_equality_keeps_zero_sign_and_exponent_spelling() {
+fn signed_numeric_aggregate_equality_ignores_zero_sign_and_exponent_spelling() {
     assert!(
-        transform("transform: scale(-0)") != transform("transform: scale(0)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: scale(-0)\") versus transform(\"transform: scale(0)\")"
+        transform("transform: scale(-0)") == transform("transform: scale(0)"),
+        "Equal numeric values must compare equal across spellings; inputs: transform(\"transform: scale(-0)\") versus transform(\"transform: scale(0)\")"
     );
     assert!(
-        transform("transform: scaleZ(-0%)") != transform("transform: scaleZ(0%)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: scaleZ(-0%)\") versus transform(\"transform: scaleZ(0%)\")"
+        transform("transform: scaleZ(-0%)") == transform("transform: scaleZ(0%)"),
+        "Equal numeric values must compare equal across spellings; inputs: transform(\"transform: scaleZ(-0%)\") versus transform(\"transform: scaleZ(0%)\")"
     );
     assert!(
-        scale("scale: 1e0") != scale("scale: 1"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: scale(\"scale: 1e0\") versus scale(\"scale: 1\")"
+        scale("scale: 1e0") == scale("scale: 1"),
+        "Equal numeric values must compare equal across spellings; inputs: scale(\"scale: 1e0\") versus scale(\"scale: 1\")"
     );
 }
 
@@ -203,40 +203,40 @@ fn transform_equality_controls_keep_order_omission_branch_and_symbolic_structure
     );
     assert!(
         transform("transform: scale(1)") != transform("transform: scale(1, 1)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: scale(1)\") versus transform(\"transform: scale(1, 1)\")"
+        "Numeric identity must retain distinct authored structures; inputs: transform(\"transform: scale(1)\") versus transform(\"transform: scale(1, 1)\")"
     );
     assert!(
         transform("transform: scale(1, 2)") != transform("transform: scale(2, 1)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: scale(1, 2)\") versus transform(\"transform: scale(2, 1)\")"
+        "Numeric identity must retain distinct authored structures; inputs: transform(\"transform: scale(1, 2)\") versus transform(\"transform: scale(2, 1)\")"
     );
     assert!(
         transform("transform: scaleX(1)") != transform("transform: scaleY(1)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: scaleX(1)\") versus transform(\"transform: scaleY(1)\")"
+        "Numeric identity must retain distinct authored structures; inputs: transform(\"transform: scaleX(1)\") versus transform(\"transform: scaleY(1)\")"
     );
     assert!(
         transform("transform: scaleZ(1)") != transform("transform: scaleZ(100%)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: scaleZ(1)\") versus transform(\"transform: scaleZ(100%)\")"
+        "Numeric identity must retain distinct authored structures; inputs: transform(\"transform: scaleZ(1)\") versus transform(\"transform: scaleZ(100%)\")"
     );
     assert!(
         transform("transform: scale(calc(1 + 2))") != transform("transform: scale(calc(2 + 1))"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: scale(calc(1 + 2))\") versus transform(\"transform: scale(calc(2 + 1))\")"
+        "Numeric identity must retain distinct authored structures; inputs: transform(\"transform: scale(calc(1 + 2))\") versus transform(\"transform: scale(calc(2 + 1))\")"
     );
     assert!(
         transform("transform: scale(1)") != transform("transform: scale(calc(1))"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: transform(\"transform: scale(1)\") versus transform(\"transform: scale(calc(1))\")"
+        "Numeric identity must retain distinct authored structures; inputs: transform(\"transform: scale(1)\") versus transform(\"transform: scale(calc(1))\")"
     );
     assert!(
         scale("scale: 1") != scale("scale: 1 1"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: scale(\"scale: 1\") versus scale(\"scale: 1 1\")"
+        "Numeric identity must retain distinct authored structures; inputs: scale(\"scale: 1\") versus scale(\"scale: 1 1\")"
     );
     assert!(
         scale("scale: 1 2") != scale("scale: 2 1"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: scale(\"scale: 1 2\") versus scale(\"scale: 2 1\")"
+        "Numeric identity must retain distinct authored structures; inputs: scale(\"scale: 1 2\") versus scale(\"scale: 2 1\")"
     );
     assert!(
         easing("transition-timing-function: cubic-bezier(0, 2, 1, 3)")
             != easing("transition-timing-function: cubic-bezier(0, 3, 1, 2)"),
-        "Numeric identity must retain distinct authored structures or provenance; inputs: easing(\"transition-timing-function: cubic-bezier(0, 2, 1, 3)\") versus easing(\"transition-timing-function: cubic-bezier(0, 3, 1, 2)\")"
+        "Numeric identity must retain distinct authored structures; inputs: easing(\"transition-timing-function: cubic-bezier(0, 2, 1, 3)\") versus easing(\"transition-timing-function: cubic-bezier(0, 3, 1, 2)\")"
     );
     assert!(
         transform("transform: rotate(calc(45deg))")

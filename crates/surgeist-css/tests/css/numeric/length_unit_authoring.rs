@@ -6,7 +6,7 @@ use surgeist_css::*;
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
 
-fn sizing_calculation(value: &CssSizeValue) -> &CssLengthPercentageCalculation {
+fn sizing_calculation(value: &CssSizeValue) -> &CssCalculation<CssLengthPercentage> {
     let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = value else {
         panic!("checked length-percentage")
     };
@@ -201,7 +201,7 @@ fn parses_supported_length_units_as_authored_dimensions() {
         let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = &value else {
             panic!("ordinary dimension")
         };
-        let Some(component) = length.literal_component() else {
+        let Some(component) = length.literal().map(|literal| literal.component()) else {
             panic!("ordinary dimension token")
         };
         let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
@@ -287,7 +287,7 @@ fn unit_matrix_accepts_every_supported_length_unit_in_ordinary_length_contexts()
         let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length)) = value.value() else {
             panic!("ordinary length")
         };
-        let Some(component) = length.literal_component() else {
+        let Some(component) = length.literal().map(|literal| literal.component()) else {
             panic!("ordinary token")
         };
         let CssComponentValueRef::Token(CssValueTokenRef::Dimension {

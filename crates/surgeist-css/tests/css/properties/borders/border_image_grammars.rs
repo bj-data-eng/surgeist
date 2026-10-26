@@ -38,10 +38,10 @@ fn c13_border_images_retain_typed_structure() {
                 CssBorderImageSliceComponent::Number(right),
                 CssBorderImageSliceComponent::Percentage(bottom),
                 CssBorderImageSliceComponent::Number(left),
-            ] if exact_percentage(top.literal_component(), "10")
-                && exact_number(right.literal_component(), "20")
-                && exact_percentage(bottom.literal_component(), "30")
-                && exact_number(left.literal_component(), "40")
+            ] if exact_percentage(top.literal().map(|literal| literal.component()), "10")
+                && exact_number(right.literal().map(|literal| literal.component()), "20")
+                && exact_percentage(bottom.literal().map(|literal| literal.component()), "30")
+                && exact_number(left.literal().map(|literal| literal.component()), "40")
         ),
         "{:?}",
         slice.values()
@@ -53,9 +53,9 @@ fn c13_border_images_retain_typed_structure() {
             CssBorderImageWidthComponent::Auto,
             CssBorderImageWidthComponent::LengthPercentage(percent),
             CssBorderImageWidthComponent::LengthPercentage(px),
-        ] if exact_number(one.literal_component(), "1")
-            && exact_percentage(percent.literal_component(), "25")
-            && exact_dimension(px.literal_component(), "4", "px")
+        ] if exact_number(one.literal().map(|literal| literal.component()), "1")
+            && exact_percentage(percent.literal().map(|literal| literal.component()), "25")
+            && exact_dimension(px.literal().map(|literal| literal.component()), "4", "px")
     ));
     assert!(matches!(
         value.outset().expect("outset").values(),
@@ -64,10 +64,10 @@ fn c13_border_images_retain_typed_structure() {
             CssBorderImageOutsetComponent::Length(two),
             CssBorderImageOutsetComponent::Number(three),
             CssBorderImageOutsetComponent::Length(four),
-        ] if exact_number(zero.literal_component(), "0")
-            && exact_dimension(two.literal_component(), "2", "px")
-            && exact_number(three.literal_component(), "3")
-            && exact_dimension(four.literal_component(), "4", "px")
+        ] if exact_number(zero.literal().map(|literal| literal.component()), "0")
+            && exact_dimension(two.literal().map(|literal| literal.component()), "2", "px")
+            && exact_number(three.literal().map(|literal| literal.component()), "3")
+            && exact_dimension(four.literal().map(|literal| literal.component()), "4", "px")
     ));
     let repeat = value.repeat().expect("repeat");
     assert_eq!(repeat.horizontal(), CssBorderImageRepeatKeyword::Round);
@@ -276,9 +276,12 @@ fn image_orientation_rendering_and_object_fit_retain_typed_keywords() {
         (0, CssImageOrientation::FromImage),
         (
             1,
-            CssImageOrientation::Angle(CssAngleValue::from_literal(
-                CssAngleLiteral::try_new("0", CssAngleUnit::Degrees).unwrap(),
-            )),
+            CssImageOrientation::Angle(
+                CssNumeric::<CssAngle>::try_from_literal(
+                    CssNumericLiteral::<CssAngle>::try_new("0", CssAngleUnit::Degrees).unwrap(),
+                )
+                .unwrap(),
+            ),
         ),
         (3, CssImageOrientation::Flip(None)),
     ] {

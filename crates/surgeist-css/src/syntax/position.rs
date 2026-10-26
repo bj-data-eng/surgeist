@@ -1,5 +1,5 @@
 //! Checked authored coordinate families and consumer-specific position restrictions.
-use super::{CssSpecifiedLength, CssSpecifiedLengthPercentage, optional_numeric_eq};
+use super::{CssLength, CssLengthPercentage, CssNumeric};
 use crate::specified_rule_serialization::SpecifiedProvider as _;
 use std::{error::Error, fmt};
 /// An intrinsic failure to construct a checked authored position.
@@ -60,11 +60,11 @@ pub enum CssHorizontalPosition {
     XStart,
     XEnd,
     /// A free length-percentage from the axis start, without an edge keyword.
-    Offset(CssSpecifiedLengthPercentage),
-    LeftOffset(CssSpecifiedLengthPercentage),
-    RightOffset(CssSpecifiedLengthPercentage),
-    XStartOffset(CssSpecifiedLengthPercentage),
-    XEndOffset(CssSpecifiedLengthPercentage),
+    Offset(CssNumeric<CssLengthPercentage>),
+    LeftOffset(CssNumeric<CssLengthPercentage>),
+    RightOffset(CssNumeric<CssLengthPercentage>),
+    XStartOffset(CssNumeric<CssLengthPercentage>),
+    XEndOffset(CssNumeric<CssLengthPercentage>),
 }
 
 impl PartialEq for CssHorizontalPosition {
@@ -74,7 +74,7 @@ impl PartialEq for CssHorizontalPosition {
             | (Self::LeftOffset(left), Self::LeftOffset(right))
             | (Self::RightOffset(left), Self::RightOffset(right))
             | (Self::XStartOffset(left), Self::XStartOffset(right))
-            | (Self::XEndOffset(left), Self::XEndOffset(right)) => left.structural_eq(right),
+            | (Self::XEndOffset(left), Self::XEndOffset(right)) => left == right,
             (Self::Left, Self::Left)
             | (Self::Center, Self::Center)
             | (Self::Right, Self::Right)
@@ -123,11 +123,11 @@ pub enum CssVerticalPosition {
     YStart,
     YEnd,
     /// A free length-percentage from the axis start, without an edge keyword.
-    Offset(CssSpecifiedLengthPercentage),
-    TopOffset(CssSpecifiedLengthPercentage),
-    BottomOffset(CssSpecifiedLengthPercentage),
-    YStartOffset(CssSpecifiedLengthPercentage),
-    YEndOffset(CssSpecifiedLengthPercentage),
+    Offset(CssNumeric<CssLengthPercentage>),
+    TopOffset(CssNumeric<CssLengthPercentage>),
+    BottomOffset(CssNumeric<CssLengthPercentage>),
+    YStartOffset(CssNumeric<CssLengthPercentage>),
+    YEndOffset(CssNumeric<CssLengthPercentage>),
 }
 
 impl PartialEq for CssVerticalPosition {
@@ -137,7 +137,7 @@ impl PartialEq for CssVerticalPosition {
             | (Self::TopOffset(left), Self::TopOffset(right))
             | (Self::BottomOffset(left), Self::BottomOffset(right))
             | (Self::YStartOffset(left), Self::YStartOffset(right))
-            | (Self::YEndOffset(left), Self::YEndOffset(right)) => left.structural_eq(right),
+            | (Self::YEndOffset(left), Self::YEndOffset(right)) => left == right,
             (Self::Top, Self::Top)
             | (Self::Center, Self::Center)
             | (Self::Bottom, Self::Bottom)
@@ -264,14 +264,14 @@ pub enum CssBlockPosition {
     Center,
     Start,
     End,
-    StartOffset(CssSpecifiedLengthPercentage),
-    EndOffset(CssSpecifiedLengthPercentage),
+    StartOffset(CssNumeric<CssLengthPercentage>),
+    EndOffset(CssNumeric<CssLengthPercentage>),
 }
 impl PartialEq for CssBlockPosition {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::StartOffset(left), Self::StartOffset(right))
-            | (Self::EndOffset(left), Self::EndOffset(right)) => left.structural_eq(right),
+            | (Self::EndOffset(left), Self::EndOffset(right)) => left == right,
             (Self::Center, Self::Center) | (Self::Start, Self::Start) | (Self::End, Self::End) => {
                 true
             }
@@ -292,14 +292,14 @@ pub enum CssInlinePosition {
     Center,
     Start,
     End,
-    StartOffset(CssSpecifiedLengthPercentage),
-    EndOffset(CssSpecifiedLengthPercentage),
+    StartOffset(CssNumeric<CssLengthPercentage>),
+    EndOffset(CssNumeric<CssLengthPercentage>),
 }
 impl PartialEq for CssInlinePosition {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::StartOffset(left), Self::StartOffset(right))
-            | (Self::EndOffset(left), Self::EndOffset(right)) => left.structural_eq(right),
+            | (Self::EndOffset(left), Self::EndOffset(right)) => left == right,
             (Self::Center, Self::Center) | (Self::Start, Self::Start) | (Self::End, Self::End) => {
                 true
             }
@@ -320,14 +320,14 @@ pub enum CssRelativeAxisPosition {
     Center,
     Start,
     End,
-    StartOffset(CssSpecifiedLengthPercentage),
-    EndOffset(CssSpecifiedLengthPercentage),
+    StartOffset(CssNumeric<CssLengthPercentage>),
+    EndOffset(CssNumeric<CssLengthPercentage>),
 }
 impl PartialEq for CssRelativeAxisPosition {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::StartOffset(left), Self::StartOffset(right))
-            | (Self::EndOffset(left), Self::EndOffset(right)) => left.structural_eq(right),
+            | (Self::EndOffset(left), Self::EndOffset(right)) => left == right,
             (Self::Center, Self::Center) | (Self::Start, Self::Start) | (Self::End, Self::End) => {
                 true
             }
@@ -422,7 +422,7 @@ pub struct CssPosition {
 impl CssPosition {
     /// Shared intrinsic numeric depth for enclosing shape/image graph admission.
     pub(crate) fn numeric_nesting_depth(&self) -> u32 {
-        fn depth(value: &CssSpecifiedLengthPercentage) -> u32 {
+        fn depth(value: &CssNumeric<CssLengthPercentage>) -> u32 {
             value
                 .calculation()
                 .map_or(0, |v| v.components().nesting_depth())
@@ -639,12 +639,11 @@ impl CssBackgroundPositionList {
 /// retain their owning specified policy without resolving reference boxes or matrices. Numeric
 /// output retains six-place formatting. General rotate3d axes share the Rotate owner's
 /// approximation and representability policy.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssTransformOrigin {
     position: CssPhysicalPosition,
-    z: Option<CssSpecifiedLength>,
+    z: Option<CssNumeric<CssLength>>,
 }
-numeric_fields_eq!(CssTransformOrigin, [], [z], [position]);
 impl CssTransformOrigin {
     /// Borrows the checked planar owner without exposing another public getter.
     pub(crate) fn append_planar_to_rule_writer(
@@ -656,7 +655,10 @@ impl CssTransformOrigin {
 
     /// Rejects planar edge offsets while retaining the optional checked Z length.
     #[must_use]
-    pub fn try_new(position: CssPhysicalPosition, z: Option<CssSpecifiedLength>) -> Option<Self> {
+    pub fn try_new(
+        position: CssPhysicalPosition,
+        z: Option<CssNumeric<CssLength>>,
+    ) -> Option<Self> {
         if position.horizontal().is_edge_offset() || position.vertical().is_edge_offset() {
             return None;
         }
@@ -674,7 +676,7 @@ impl CssTransformOrigin {
     }
     /// Returns the optional checked authored Z length.
     #[must_use]
-    pub const fn z(&self) -> Option<&CssSpecifiedLength> {
+    pub const fn z(&self) -> Option<&CssNumeric<CssLength>> {
         self.z.as_ref()
     }
 }

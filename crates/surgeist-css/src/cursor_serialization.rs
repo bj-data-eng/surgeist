@@ -128,15 +128,17 @@ mod tests {
     use crate::CssSerializationLimits as Limits;
     use crate::CssSpecifiedValueSerializationErrorKind as Kind;
     use crate::{
-        CssContentString, CssNumberCalculation, CssSpecifiedNumber, CssUrl, parse_component_values,
+        CssCalculation, CssContentString, CssNumber, CssNumeric, CssUrl, parse_component_values,
     };
 
-    fn number(value: &str) -> CssSpecifiedNumber {
-        CssSpecifiedNumber::try_from_component(crate::CssComponentValue::try_token(value).unwrap())
-            .unwrap()
+    fn number(value: &str) -> CssNumeric<CssNumber> {
+        CssNumeric::<CssNumber>::try_from_component(
+            crate::CssComponentValue::try_token(value).unwrap(),
+        )
+        .unwrap()
     }
 
-    fn value(x: CssSpecifiedNumber) -> CssCursor {
+    fn value(x: CssNumeric<CssNumber>) -> CssCursor {
         CssCursor::try_images(
             vec![CssCursorImage::new(
                 CssCursorImageSource::Url(CssUrl::new("cursor.cur")),
@@ -212,9 +214,15 @@ mod tests {
 
     #[test]
     fn suppressed_duplicate_options_and_type_children_spend_exactly_their_documented_cost() {
-        let resolution = crate::CssResolutionValue::from_literal(
-            crate::CssResolutionLiteral::try_new("1", crate::CssResolutionUnit::Dppx).unwrap(),
-        );
+        let resolution =
+            crate::CssNumeric::<crate::CssResolution, crate::CssNonNegative>::try_from_literal(
+                crate::CssNumericLiteral::<crate::CssResolution>::try_new(
+                    "1",
+                    crate::CssResolutionUnit::Dppx,
+                )
+                .unwrap(),
+            )
+            .unwrap();
         let option = CssCursorUrlSetOption::try_new(
             CssCursorUrlSetReference::String(CssContentString::try_new("cursor.png").unwrap()),
             vec![
@@ -257,14 +265,15 @@ mod tests {
 
     #[test]
     fn suppressed_set_visits_all_options_types_and_resolution_math_even_when_mime_is_unusable() {
-        let resolution = crate::CssResolutionValue::try_from_calculation(
-            crate::CssResolutionCalculation::try_from_components(
-                parse_component_values("calc(-1x)").unwrap(),
-                Default::default(),
+        let resolution =
+            crate::CssNumeric::<crate::CssResolution, crate::CssNonNegative>::try_from_calculation(
+                crate::CssCalculation::<crate::CssResolution>::try_from_components(
+                    parse_component_values("calc(-1x)").unwrap(),
+                    Default::default(),
+                )
+                .unwrap(),
             )
-            .unwrap(),
-        )
-        .unwrap();
+            .unwrap();
         let option = CssCursorUrlSetOption::try_new(
             CssCursorUrlSetReference::String(CssContentString::try_new("cursor.png").unwrap()),
             vec![
@@ -329,8 +338,9 @@ mod tests {
     #[test]
     fn suppressed_number_math_enforces_the_child_projection_limit_and_preserves_original_origin() {
         let components = parse_component_values("calc(1 + 2)").unwrap();
-        let number = CssSpecifiedNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(components, Default::default()).unwrap(),
+        let number = CssNumeric::<CssNumber>::try_from_calculation(
+            CssCalculation::<CssNumber>::try_from_components(components, Default::default())
+                .unwrap(),
         )
         .unwrap();
         let value = value(number);

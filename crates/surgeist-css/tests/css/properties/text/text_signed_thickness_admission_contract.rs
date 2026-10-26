@@ -66,7 +66,11 @@ fn literal_thickness(declaration: &CssDeclaration, coefficient: &str, suffix: Op
     let CssTextDecorationThickness::Length(value) = thickness(declaration) else {
         panic!("expected authored numeric thickness")
     };
-    ordinary(value.literal_component().unwrap(), coefficient, suffix);
+    ordinary(
+        value.literal().map(|literal| literal.component()).unwrap(),
+        coefficient,
+        suffix,
+    );
 }
 
 fn programmatic(tokens: &[&str]) -> CssComponentValues {
@@ -151,7 +155,11 @@ fn constructed_literal(token: &str, coefficient: &str, suffix: Option<&str>, gra
     };
     assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(
-        value.literal_component().unwrap().origin(),
+        value
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .origin(),
         &CssValueOrigin::Programmatic
     );
 }
@@ -295,7 +303,14 @@ fn checked_reentry_preserves_supplied_negative_token_origins() {
             unreachable!()
         };
         parsed_origin(value.origin(), source, "-10px");
-        assert_eq!(value.literal_component().unwrap().origin(), value.origin());
+        assert_eq!(
+            value
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+                .origin(),
+            value.origin()
+        );
     }
 }
 
@@ -353,7 +368,7 @@ fn admitted_calculation(text: &str) {
     let CssTextDecorationThickness::Length(value) = thickness(declaration) else {
         panic!("numeric thickness")
     };
-    assert!(value.literal_component().is_none());
+    assert!(value.literal().map(|literal| literal.component()).is_none());
     let calculation = value.calculation().unwrap();
     parsed_origin(calculation.origin(), &source, "calc(");
     assert!(validate_style_attribute(&source).is_ok());
@@ -373,7 +388,7 @@ fn admitted_calculation(text: &str) {
         let CssTextDecorationThickness::Length(value) = thickness(&checked) else {
             panic!("numeric thickness")
         };
-        assert!(value.literal_component().is_none());
+        assert!(value.literal().map(|literal| literal.component()).is_none());
         parsed_origin(value.calculation().unwrap().origin(), text, "calc(");
     }
 }
@@ -434,7 +449,11 @@ fn assert_indent(declaration: &CssDeclaration) {
     assert!(value.hanging());
     assert!(value.each_line());
     ordinary(
-        value.length().literal_component().unwrap(),
+        value
+            .length()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1e-999",
         Some("%"),
     );

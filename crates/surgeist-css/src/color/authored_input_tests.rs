@@ -78,7 +78,7 @@ fn borrowed_calculation_admission_preserves_exact_and_one_short_limits() {
         )
         .unwrap();
     assert_eq!(expression.result_type(), crate::CssCalculationType::Number);
-    let value = crate::CssNumberCalculation::from_expression(expression);
+    let value = crate::CssCalculation::<crate::CssNumber>::from_expression(expression);
     let retained = value.components();
     assert_eq!(retained.items()[0], *root);
     assert!(

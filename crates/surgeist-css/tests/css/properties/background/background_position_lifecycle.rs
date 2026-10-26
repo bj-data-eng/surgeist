@@ -203,25 +203,25 @@ fn authored_signed_and_symbolic_offsets_keep_axis_and_edge_meaning() {
     };
     assert!(
         matches!(edges.horizontal(), CssHorizontalPosition::RightOffset(offset)
-        if matches!(offset.literal_component().unwrap().view(),
+        if matches!(offset.literal().map(|literal| literal.component()).unwrap().view(),
             CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
             if number.representation() == "-10" && unit == "px"))
     );
     assert!(
         matches!(edges.vertical(), CssVerticalPosition::BottomOffset(offset)
-        if matches!(offset.literal_component().unwrap().view(),
+        if matches!(offset.literal().map(|literal| literal.component()).unwrap().view(),
             CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
             if number.representation() == "-20"))
     );
     assert!(
         matches!(free.horizontal(), CssHorizontalPosition::Offset(offset)
-        if matches!(offset.literal_component().unwrap().view(),
+        if matches!(offset.literal().map(|literal| literal.component()).unwrap().view(),
             CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
             if number.representation() == "-5"))
     );
     assert!(
         matches!(free.vertical(), CssVerticalPosition::Offset(offset)
-        if offset.calculation().is_some() && offset.literal_component().is_none())
+        if offset.calculation().is_some() && offset.literal().map(|literal| literal.component()).is_none())
     );
     assert!(matches!(
         source.value_components().items()[0].origin(),

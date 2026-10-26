@@ -415,12 +415,12 @@ fn stable_globals_and_pending_reentry_keep_original_occurrence_and_strict_gramma
     }
 }
 
-fn length(text: &str) -> CssSpecifiedLength {
+fn length(text: &str) -> CssNumeric<CssLength> {
     let components = parse_component_values(text).unwrap();
     let [component] = components.items() else {
         panic!("one length: {text}")
     };
-    CssSpecifiedLength::try_from_component(component.clone()).unwrap()
+    CssNumeric::<CssLength>::try_from_component(component.clone()).unwrap()
 }
 
 fn padding(text: &str) -> CssScrollPaddingValue {
@@ -432,7 +432,10 @@ fn padding(text: &str) -> CssScrollPaddingValue {
             panic!("one padding value: {text}")
         };
         CssScrollPaddingValue::LengthPercentage(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.clone()).unwrap(),
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                component.clone(),
+            )
+            .unwrap(),
         )
     }
 }
@@ -624,9 +627,12 @@ fn pair_and_four_side_models_keep_authored_cardinality_and_role_order() {
 fn canonical_pair_and_quad_compression_compares_values_across_distinct_origins() {
     let parsed = length("1px");
     let programmatic =
-        CssSpecifiedLength::try_from_component(CssComponentValue::try_token("1px").unwrap())
+        CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token("1px").unwrap())
             .unwrap();
-    assert_ne!(parsed, programmatic, "origins are retained in owned values");
+    assert_eq!(
+        parsed, programmatic,
+        "equality ignores the origins owned values retain"
+    );
     let pair = CssScrollMarginPair::new(parsed.clone(), Some(programmatic.clone()));
     assert_eq!(pair.authored_end(), Some(&programmatic));
     assert_eq!(pair.serialize_specified(Default::default()).unwrap(), "1px");
@@ -741,8 +747,8 @@ fn math_pair_captures_both_authored_trees_with_one_input_budget() {
     // Each authored calc() has a function, sum, and two numeric leaves, so
     // each tree costs four input nodes even if it simplifies to one length.
     let math = |text| {
-        CssSpecifiedLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(
+        CssNumeric::<CssLength>::try_from_calculation(
+            CssCalculation::<CssLength>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default(),
             )

@@ -1,11 +1,11 @@
 //! Public authored transform construction and checked operand domains.
 use surgeist_css::*;
 
-fn number(value: &str) -> CssSpecifiedNumber {
+fn number(value: &str) -> CssNumeric<CssNumber> {
     checked_number(value)
 }
-fn percentage(value: &str) -> CssSpecifiedPercentage {
-    CssSpecifiedPercentage::try_from_component(
+fn percentage(value: &str) -> CssNumeric<CssPercentage> {
+    CssNumeric::<CssPercentage>::try_from_component(
         CssComponentValue::try_token(&format!("{value}%")).unwrap(),
     )
     .unwrap()
@@ -17,12 +17,16 @@ fn zero_angle() -> CssAngleOrZero {
 }
 
 fn angle(value: f32) -> CssAngleOrZero {
-    CssAngleOrZero::Angle(CssAngleValue::from_literal(
-        CssAngleLiteral::try_new(&value.to_string(), CssAngleUnit::Degrees).unwrap(),
-    ))
+    CssAngleOrZero::Angle(
+        CssNumeric::<CssAngle>::try_from_literal(
+            CssNumericLiteral::<CssAngle>::try_new(&value.to_string(), CssAngleUnit::Degrees)
+                .unwrap(),
+        )
+        .unwrap(),
+    )
 }
-fn number_calculation(text: &str) -> CssNumberCalculation {
-    CssNumberCalculation::try_from_components(
+fn number_calculation(text: &str) -> CssCalculation<CssNumber> {
+    CssCalculation::<CssNumber>::try_from_components(
         parse_component_values(text).unwrap(),
         Default::default(),
     )
@@ -33,23 +37,29 @@ fn matrix_constructors_preserve_order_and_symbolic_number_operand() {
     let symbolic = number_calculation("calc(2 * 3)");
     let matrix = CssTransformMatrix::new([
         number("1"),
-        CssSpecifiedNumber::try_from_calculation(symbolic.clone()).unwrap(),
+        CssNumeric::<CssNumber>::try_from_calculation(symbolic.clone()).unwrap(),
         number("0"),
         number("1"),
         number("12"),
         number("-8"),
     ]);
     assert!(exact_number(
-        matrix.components()[0].literal_component(),
+        matrix.components()[0]
+            .literal()
+            .map(|literal| literal.component()),
         "1"
     ));
     assert!(matrix.components()[1].calculation() == Some(&symbolic));
     assert!(exact_number(
-        matrix.components()[4].literal_component(),
+        matrix.components()[4]
+            .literal()
+            .map(|literal| literal.component()),
         "12"
     ));
     assert!(exact_number(
-        matrix.components()[5].literal_component(),
+        matrix.components()[5]
+            .literal()
+            .map(|literal| literal.component()),
         "-8"
     ));
 
@@ -58,7 +68,7 @@ fn matrix_constructors_preserve_order_and_symbolic_number_operand() {
     assert_eq!(matrix3d.components().len(), 16);
     for (index, component) in matrix3d.components().iter().enumerate() {
         assert!(exact_number(
-            component.literal_component(),
+            component.literal().map(|literal| literal.component()),
             &index.to_string()
         ));
     }
@@ -67,22 +77,32 @@ fn matrix_constructors_preserve_order_and_symbolic_number_operand() {
 #[test]
 fn rotate3d_scale_and_skew_constructors_preserve_distinct_operands() {
     let rotate = CssTransformRotate3d::new(number("1"), number("0"), number("-1"), angle(45.0));
-    assert!(exact_number((rotate.x()).literal_component(), "1"));
-    assert!(exact_number((rotate.y()).literal_component(), "0"));
-    assert!(exact_number((rotate.z()).literal_component(), "-1"));
+    assert!(exact_number(
+        (rotate.x()).literal().map(|literal| literal.component()),
+        "1"
+    ));
+    assert!(exact_number(
+        (rotate.y()).literal().map(|literal| literal.component()),
+        "0"
+    ));
+    assert!(exact_number(
+        (rotate.z()).literal().map(|literal| literal.component()),
+        "-1"
+    ));
     assert!(
         matches!(rotate.angle(), CssAngleOrZero::Angle(v) if v.literal().is_some_and(|literal| literal.numeric().representation() == "45" && literal.unit() == CssAngleUnit::Degrees))
     );
 
     let one = CssTransformScale::new(CssTransformScaleComponent::Number(number("2")), None);
     assert!(
-        matches!(one.x(), CssTransformScaleComponent::Number(v) if exact_number(v.literal_component(), "2"))
+        matches!(one.x(), CssTransformScaleComponent::Number(v) if exact_number(v.literal().map(|literal| literal.component()), "2"))
     );
     assert!(one.y().is_none());
     let two = CssTransformScale::new(
         CssTransformScaleComponent::Number(number("2")),
         Some(CssTransformScaleComponent::Number(
-            CssSpecifiedNumber::try_from_calculation(number_calculation("calc(3 / 2)")).unwrap(),
+            CssNumeric::<CssNumber>::try_from_calculation(number_calculation("calc(3 / 2)"))
+                .unwrap(),
         )),
     );
     assert!(
@@ -100,13 +120,13 @@ fn rotate3d_scale_and_skew_constructors_preserve_distinct_operands() {
         CssTransformScaleComponent::Number(number("2")),
     );
     assert!(
-        matches!(scale3d.x(), CssTransformScaleComponent::Number(v) if exact_number(v.literal_component(), "1"))
+        matches!(scale3d.x(), CssTransformScaleComponent::Number(v) if exact_number(v.literal().map(|literal| literal.component()), "1"))
     );
     assert!(
-        matches!(scale3d.y(), CssTransformScaleComponent::Percentage(v) if exact_percentage(v.literal_component(), "30"))
+        matches!(scale3d.y(), CssTransformScaleComponent::Percentage(v) if exact_percentage(v.literal().map(|literal| literal.component()), "30"))
     );
     assert!(
-        matches!(scale3d.z(), CssTransformScaleComponent::Number(v) if exact_number(v.literal_component(), "2"))
+        matches!(scale3d.z(), CssTransformScaleComponent::Number(v) if exact_number(v.literal().map(|literal| literal.component()), "2"))
     );
 
     let one = CssTransformSkew::new(zero_angle(), None);
@@ -124,13 +144,20 @@ fn rotate3d_scale_and_skew_constructors_preserve_distinct_operands() {
 #[test]
 fn translate_constructors_keep_xy_percentages_and_pure_length_z() {
     let one = CssTransformTranslate::new(signed_length_percentage("25%"), None);
-    assert!(exact_percentage(one.x().literal_component(), "25"));
+    assert!(exact_percentage(
+        one.x().literal().map(|literal| literal.component()),
+        "25"
+    ));
     assert!(one.y().is_none());
     let two = CssTransformTranslate::new(
         signed_length_percentage("12px"),
         Some(signed_length_percentage("calc(10px + 20%)")),
     );
-    assert!(exact_dimension(two.x().literal_component(), "12", "px"));
+    assert!(exact_dimension(
+        two.x().literal().map(|literal| literal.component()),
+        "12",
+        "px"
+    ));
     assert!(two.y().unwrap().calculation().is_some_and(|v| {
         v.components()
             .serialize_tokens(Default::default())
@@ -144,8 +171,14 @@ fn translate_constructors_keep_xy_percentages_and_pure_length_z() {
         signed_length_percentage("20%"),
         signed_length("calc(2px + 3px)"),
     );
-    assert!(exact_percentage(three.x().literal_component(), "10"));
-    assert!(exact_percentage(three.y().literal_component(), "20"));
+    assert!(exact_percentage(
+        three.x().literal().map(|literal| literal.component()),
+        "10"
+    ));
+    assert!(exact_percentage(
+        three.y().literal().map(|literal| literal.component()),
+        "20"
+    ));
     assert!(three.z().calculation().is_some_and(|v| {
         v.components()
             .serialize_tokens(Default::default())
@@ -160,49 +193,49 @@ fn checked_length_leaves_reject_foreign_domains_but_retain_pure_math() {
     assert!(CssFiniteNumber::try_new(f32::NAN).is_none());
     assert!(CssFiniteNumber::try_new(f32::INFINITY).is_none());
     assert!(
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_ident("auto").unwrap()
         )
         .is_err()
     );
     assert!(
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_token("5%").unwrap()
         )
         .is_ok()
     );
     assert!(
-        CssSpecifiedLength::try_from_component(CssComponentValue::try_token("5%").unwrap())
+        CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token("5%").unwrap())
             .is_err()
     );
     assert!(
-        CssLengthCalculation::try_from_components(
+        CssCalculation::<CssLength>::try_from_components(
             parse_component_values("calc(2px + 5%)").unwrap(),
             Default::default()
         )
         .is_err()
     );
     assert!(
-        CssLengthCalculation::try_from_components(
+        CssCalculation::<CssLength>::try_from_components(
             parse_component_values("calc(10% / 10% * 1px)").unwrap(),
             Default::default()
         )
         .is_ok()
     );
     assert!(
-        CssSpecifiedNonNegativeLength::try_from_component(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension("-1", "px").unwrap()
         )
         .is_err()
     );
     assert!(
-        CssSpecifiedNonNegativeLength::try_from_component(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("1%").unwrap()
         )
         .is_err()
     );
     assert!(
-        CssSpecifiedNonNegativeLength::try_from_component(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension("0", "px").unwrap()
         )
         .is_ok()
@@ -253,7 +286,7 @@ fn perspective_and_function_list_preserve_none_order_and_nonempty_invariant() {
         ]
     );
     assert!(
-        matches!(&list.functions()[1], CssTransformFunction::Perspective(CssTransformPerspective::Length(v)) if exact_dimension(v.literal_component(), "8", "px"))
+        matches!(&list.functions()[1], CssTransformFunction::Perspective(CssTransformPerspective::Length(v)) if exact_dimension(v.literal().map(|literal| literal.component()), "8", "px"))
     );
     assert!(matches!(
         &list.functions()[3],
@@ -277,41 +310,11 @@ fn exact_percentage(
     matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }
 
-fn signed_length(css: &str) -> surgeist_css::CssSpecifiedLength {
+fn signed_length(css: &str) -> surgeist_css::CssNumeric<surgeist_css::CssLength> {
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedLength::try_from_calculation(
-            surgeist_css::CssLengthCalculation::try_from_components(components, Default::default())
-                .unwrap(),
-        )
-        .unwrap()
-    } else {
-        surgeist_css::CssSpecifiedLength::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
-        )
-        .unwrap()
-    }
-}
-fn nonnegative_length(css: &str) -> surgeist_css::CssSpecifiedNonNegativeLength {
-    let components = surgeist_css::parse_component_values(css).unwrap();
-    if css.contains('(') {
-        surgeist_css::CssSpecifiedNonNegativeLength::try_from_calculation(
-            surgeist_css::CssLengthCalculation::try_from_components(components, Default::default())
-                .unwrap(),
-        )
-        .unwrap()
-    } else {
-        surgeist_css::CssSpecifiedNonNegativeLength::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
-        )
-        .unwrap()
-    }
-}
-fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
-    let components = surgeist_css::parse_component_values(css).unwrap();
-    if css.contains('(') {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(
+        surgeist_css::CssNumeric::<surgeist_css::CssLength>::try_from_calculation(
+            surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(
                 components,
                 Default::default(),
             )
@@ -319,7 +322,44 @@ fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercen
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_component(
+        surgeist_css::CssNumeric::<surgeist_css::CssLength>::try_from_component(
+            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
+}
+fn nonnegative_length(
+    css: &str,
+) -> surgeist_css::CssNumeric<surgeist_css::CssLength, surgeist_css::CssNonNegative> {
+    let components = surgeist_css::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        surgeist_css::CssNumeric::<surgeist_css::CssLength, surgeist_css::CssNonNegative>::try_from_calculation(
+            surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(components, Default::default())
+                .unwrap(),
+        )
+        .unwrap()
+    } else {
+        surgeist_css::CssNumeric::<surgeist_css::CssLength, surgeist_css::CssNonNegative>::try_from_component(
+            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
+}
+fn signed_length_percentage(
+    css: &str,
+) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage> {
+    let components = surgeist_css::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_calculation(
+            surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    } else {
+        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_component(
             surgeist_css::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
@@ -329,8 +369,8 @@ fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercen
 fn exact_number(component: Option<&surgeist_css::CssComponentValue>, representation: &str) -> bool {
     matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == representation)
 }
-fn checked_number(representation: &str) -> surgeist_css::CssSpecifiedNumber {
-    surgeist_css::CssSpecifiedNumber::try_from_component(
+fn checked_number(representation: &str) -> surgeist_css::CssNumeric<surgeist_css::CssNumber> {
+    surgeist_css::CssNumeric::<surgeist_css::CssNumber>::try_from_component(
         surgeist_css::CssComponentValue::try_number(representation).unwrap(),
     )
     .unwrap()

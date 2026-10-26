@@ -5,8 +5,8 @@ use cssparser::{Token, match_ignore_ascii_case};
 use super::values::{CalculationRoot, parse_numeric_function};
 use crate::{
     CssAuthoredFontFeature, CssAuthoredFontFeatureList, CssAuthoredFontFeatureSettings,
-    CssAuthoredFontFeatureValue, CssFontFeatureIndex, CssFontVariation, CssFontVariationList,
-    CssFontVariationSettings, CssIntegerCalculation, CssOpenTypeTag,
+    CssAuthoredFontFeatureValue, CssCalculation, CssFontVariation, CssFontVariationList,
+    CssFontVariationSettings, CssInteger, CssNonNegative, CssNumeric, CssOpenTypeTag,
 };
 
 fn tag<'i, 't>(input: &mut Parser<'i, 't>) -> Result<CssOpenTypeTag, ParseError<'i, Error>> {
@@ -60,7 +60,7 @@ fn parse_font_feature<'i, 't>(
 fn parse_feature_index<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssFontFeatureIndex, ParseError<'i, Error>> {
+) -> Result<CssNumeric<CssInteger, CssNonNegative>, ParseError<'i, Error>> {
     input.skip_whitespace();
     let start = input.state();
     let location = input.current_source_location();
@@ -71,13 +71,15 @@ fn parse_feature_index<'i, 't>(
             let component = input
                 .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
-            CssFontFeatureIndex::try_from_component(component)
+            CssNumeric::<CssInteger, CssNonNegative>::try_from_component(component)
         }
         Token::Function(name) if crate::numeric::is_math_function(name) => {
             let expression =
                 parse_numeric_function(input, &start, numeric, CalculationRoot::Integer)?;
-            CssFontFeatureIndex::try_from_calculation(CssIntegerCalculation::from_expression(
-                expression,
+            CssNumeric::<CssInteger, CssNonNegative>::from_parser_calculation(CssCalculation::<
+                CssInteger,
+            >::from_expression(
+                expression
             ))
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),

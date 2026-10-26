@@ -131,8 +131,9 @@ fn pause_rest_shorthands_expand_one_value_twice_and_two_values_before_then_after
                 (left, before, first, parts[0]),
                 (right, after, second, *parts.last().unwrap()),
             ] {
-                // Reuse exact child origins: authored value equality includes
-                // provenance, so independently parsed occurrences are unequal.
+                // Rebuild the terminal from the exact source component. Numeric
+                // value equality ignores provenance, so this checked value equals
+                // the expanded one; origins are not part of the comparison.
                 let component =
                     CssComponentValues::try_new(vec![component.clone()], Default::default())
                         .unwrap();

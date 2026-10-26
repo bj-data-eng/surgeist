@@ -16,6 +16,38 @@ use crate::css::support::failure_classes::numeric_failure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
+/// The specified serialization of one ordinary literal, which the unrestricted
+/// range always admits.
+pub fn literal_specified<T: CssNumericRoot>(
+    literal: &CssNumericLiteral<T>,
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
+    CssNumeric::<T>::try_from_literal(literal.clone())
+        .expect("the unrestricted range admits every literal")
+        .serialize_specified(limits)
+}
+
+/// Checked construction of `value` under range `R`: a literal is range-checked
+/// and retained math must be closed.
+pub fn checked_range<T: CssNumericRoot, R: CssRange<T>>(
+    value: &CssNumeric<T>,
+) -> Result<CssNumeric<T, R>, CssNumericConstructionError> {
+    match (value.literal(), value.calculation()) {
+        (Some(literal), _) => CssNumeric::try_from_literal(literal.clone()),
+        (_, Some(calculation)) => CssNumeric::try_from_calculation(calculation.clone()),
+        (None, None) => unreachable!("a numeric value is a literal or math"),
+    }
+}
+
+/// The literal itself when the `[1,∞]` integer range admits it.
+pub fn positive_literal(
+    literal: CssNumericLiteral<CssInteger>,
+) -> Option<CssNumericLiteral<CssInteger>> {
+    CssNumeric::<CssInteger, CssPositive>::try_from_literal(literal.clone())
+        .is_ok()
+        .then_some(literal)
+}
+
 /// Asserts that checked numeric construction rejected its input with `kind`
 /// at `origin` (the responsible component's origin, or `None` when the
 /// failure has no responsible component).
@@ -265,9 +297,9 @@ pub fn first_token(text: &str) -> CssComponentValue {
 
 /// A specified number built from a checked number calculation.
 #[track_caller]
-pub fn calculated_number(source: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(
+pub fn calculated_number(source: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(
             parse_component_values(source).unwrap(),
             Default::default(),
         )
@@ -278,9 +310,9 @@ pub fn calculated_number(source: &str) -> CssSpecifiedNumber {
 
 /// A specified length built from a checked length calculation.
 #[track_caller]
-pub fn calculated_length(source: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(
+pub fn calculated_length(source: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(
             parse_component_values(source).unwrap(),
             Default::default(),
         )

@@ -117,7 +117,7 @@ fn suppressed_opacity_scalar_has_no_final_byte_cost() {
 fn suppressed_flex_literal_has_no_final_byte_cost() {
     assert_suppressed_work(
         |writer| {
-            CssSpecifiedNonNegativeFlex::try_from_component(
+            CssNumeric::<CssFlex, CssNonNegative>::try_from_component(
                 CssComponentValue::try_dimension("1", "fr").unwrap(),
             )
             .unwrap()

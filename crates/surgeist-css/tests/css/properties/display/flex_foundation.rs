@@ -155,7 +155,10 @@ fn flex_factors_preserve_exact_literals_at_every_magnitude() {
                 CssKnownPropertyValueRef::FlexShrink(value) => value.factor(),
                 _ => panic!("factor wrapper"),
             };
-            let component = factor.literal_component().expect("ordinary factor");
+            let component = factor
+                .literal()
+                .map(|literal| literal.component())
+                .expect("ordinary factor");
             assert!(matches!(component.origin(), CssValueOrigin::Parsed(_)));
             assert!(
                 matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation() == text)

@@ -43,12 +43,12 @@ use crate::text_alignment::{CssTextAlignAllValue, CssTextAlignLastValue, CssText
 use crate::ui::*;
 use crate::{
     CssAbsoluteFontWeight, CssFontSize, CssFontStyle, CssFontStyleKeyword, CssFontWeight,
-    CssFontWidth, CssFontWidthKeyword, CssLineHeight, CssSpecifiedLength,
+    CssFontWidth, CssFontWidthKeyword, CssLength, CssLineHeight, CssNumeric,
 };
 
 // Transforms 1/2 select the same intrinsic 50% 50% planar initial.
 pub(crate) fn initial_transform_position() -> CssPhysicalPosition {
-    let center = CssSpecifiedLengthPercentage::try_from_component(
+    let center = CssNumeric::<CssLengthPercentage>::try_from_component(
         crate::CssComponentValue::try_token("50%").expect("percentage token"),
     )
     .expect("percentage position offset");
@@ -234,8 +234,7 @@ pub(crate) fn grid_auto_flow(value: &CssGrid) -> Option<CssGridAutoFlow> {
 }
 use crate::{
     CssComponentValues, CssContainer, CssContainerNames, CssContainerType, CssKnownProperty,
-    CssPropertyValueError, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLengthPercentage,
-    CssSpecifiedNonNegativeNumber,
+    CssLengthPercentage, CssNonNegative, CssNumber, CssPropertyValueError,
 };
 
 /// Why intrinsic expansion could not produce completed contributions.
@@ -732,10 +731,13 @@ macro_rules! define_expansion_schema {
 
 crate::properties::property_schema!(define_expansion_schema, expansion_input, numeric_input);
 
-pub(crate) fn initial_zero_time() -> crate::CssTimeValue {
-    crate::CssTimeValue::from_literal(
-        crate::CssTimeLiteral::try_new("0", CssTimeUnit::Seconds).expect("ordinary zero seconds"),
+pub(crate) fn initial_zero_time<R: crate::CssRange<crate::CssTime>>()
+-> crate::CssNumeric<crate::CssTime, R> {
+    crate::CssNumeric::try_from_literal(
+        crate::CssNumericLiteral::<crate::CssTime>::try_new("0", CssTimeUnit::Seconds)
+            .expect("ordinary zero seconds"),
     )
+    .expect("every time range admits zero")
 }
 
 // Each authored item contributes one entry to each list, with a scalar schema
@@ -875,7 +877,7 @@ timing_list_projection!(
 );
 
 pub(crate) fn initial_mask_positions() -> CssPhysicalPositionList {
-    let zero = crate::CssSpecifiedLengthPercentage::try_from_component(
+    let zero = crate::CssNumeric::<crate::CssLengthPercentage>::try_from_component(
         crate::CssComponentValue::try_token("0%").expect("percentage token"),
     )
     .expect("percentage length");
@@ -891,7 +893,7 @@ pub(crate) fn initial_mask_positions() -> CssPhysicalPositionList {
 pub(crate) fn initial_mask_border_slice() -> CssBorderImageSlice {
     CssBorderImageSlice::try_new(
         vec![CssBorderImageSliceComponent::Number(
-            crate::CssSpecifiedNonNegativeNumber::try_from_component(
+            crate::CssNumeric::<crate::CssNumber, crate::CssNonNegative>::try_from_component(
                 crate::CssComponentValue::try_number("0").expect("number token"),
             )
             .expect("nonnegative zero"),

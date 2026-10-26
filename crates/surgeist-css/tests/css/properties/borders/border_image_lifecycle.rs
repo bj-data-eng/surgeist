@@ -220,7 +220,7 @@ fn border_image_grammar_controls_preserve_typed_arity_and_reject_invalid_constru
             assert!(image.repeat().is_none());
         }
     }
-    let number = CssSpecifiedNonNegativeNumber::try_from_component(
+    let number = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
         CssComponentValue::try_number("1").unwrap(),
     )
     .unwrap();
@@ -378,7 +378,12 @@ fn border_image_expansion_preserves_checked_symbolic_numeric_roots() {
         let CssBorderImageSliceComponent::Number(number) = edge else {
             panic!("number math");
         };
-        assert!(number.literal_component().is_none());
+        assert!(
+            number
+                .literal()
+                .map(|literal| literal.component())
+                .is_none()
+        );
         assert!(number.calculation().is_some(), "deferred range evaluation");
     }
     let CssLonghandValueRef::BorderImageWidth(width) = value(&values, 2) else {
@@ -388,7 +393,12 @@ fn border_image_expansion_preserves_checked_symbolic_numeric_roots() {
         let CssBorderImageWidthComponent::Number(number) = edge else {
             panic!("number multiplier math");
         };
-        assert!(number.literal_component().is_none());
+        assert!(
+            number
+                .literal()
+                .map(|literal| literal.component())
+                .is_none()
+        );
         assert!(number.calculation().is_some());
     }
     let CssLonghandValueRef::BorderImageOutset(outset) = value(&values, 3) else {
@@ -398,7 +408,12 @@ fn border_image_expansion_preserves_checked_symbolic_numeric_roots() {
         let CssBorderImageOutsetComponent::Length(length) = edge else {
             panic!("length math");
         };
-        assert!(length.literal_component().is_none());
+        assert!(
+            length
+                .literal()
+                .map(|literal| literal.component())
+                .is_none()
+        );
         assert!(length.calculation().is_some());
     }
 }

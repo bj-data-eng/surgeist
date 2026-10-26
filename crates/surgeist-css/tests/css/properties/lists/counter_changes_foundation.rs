@@ -133,11 +133,11 @@ fn small_integer_values_keep_omitted_operands_and_duplicates_distinct() {
     assert_eq!(first.value(), None);
     assert_eq!(second.name().as_str(), "section");
     assert!(
-        matches!(second.value(), Some(CssIntegerValue::Literal(value)) if value.numeric().representation() == "-2")
+        matches!(second.value(), Some(value) if value.literal().is_some_and(|value| value.numeric().representation() == "-2"))
     );
     assert_eq!(third.name().as_str(), "chapter");
     assert!(
-        matches!(third.value(), Some(CssIntegerValue::Literal(value)) if value.numeric().representation() == "0")
+        matches!(third.value(), Some(value) if value.literal().is_some_and(|value| value.numeric().representation() == "0"))
     );
 }
 

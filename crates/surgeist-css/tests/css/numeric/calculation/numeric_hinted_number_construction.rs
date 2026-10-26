@@ -13,8 +13,9 @@ use surgeist_css::*;
 const SOURCE: &str = "calc((1px + 1%) / 1px)";
 const SPECIFIED: &str = "calc((1% + 1px) / 1px)";
 
-fn hinted() -> CssHintedNumberCalculation {
-    CssHintedNumberCalculation::try_from_components(components(SOURCE), Default::default()).unwrap()
+fn hinted() -> CssCalculation<CssHintedNumber> {
+    CssCalculation::<CssHintedNumber>::try_from_components(components(SOURCE), Default::default())
+        .unwrap()
 }
 fn zero() -> CssColorComponent {
     CssColorComponent::Number(
@@ -35,9 +36,11 @@ fn checked_root_retains_every_dimensional_hint_and_authored_identity() {
     ] {
         let source = format!("calc((+01{unit} + 1e0%) / 1{unit})");
         let original = components(&source);
-        let value =
-            CssHintedNumberCalculation::try_from_components(original.clone(), Default::default())
-                .unwrap();
+        let value = CssCalculation::<CssHintedNumber>::try_from_components(
+            original.clone(),
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(value.result_type(), CssCalculationType::Number);
         assert_eq!(value.numeric_type().percent_hint(), Some(dimension));
         for axis in [
@@ -55,7 +58,7 @@ fn checked_root_retains_every_dimensional_hint_and_authored_identity() {
         assert_eq!(value.origin(), original.items()[0].origin());
         assert!(value.position().is_some());
         let text = value.serialize_tokens(Default::default()).unwrap();
-        let rebuilt = CssHintedNumberCalculation::try_from_components(
+        let rebuilt = CssCalculation::<CssHintedNumber>::try_from_components(
             components(text.as_css()),
             Default::default(),
         )
@@ -75,25 +78,34 @@ fn checked_root_retains_every_dimensional_hint_and_authored_identity() {
 #[test]
 fn checked_hinted_root_rejects_other_domains_and_cannot_reenter_pure_number_roots() {
     for source in ["1", "calc(1px / 1px)", "calc(1%)", "calc(1px)"] {
-        let error =
-            CssHintedNumberCalculation::try_from_components(components(source), Default::default())
-                .unwrap_err();
+        let error = CssCalculation::<CssHintedNumber>::try_from_components(
+            components(source),
+            Default::default(),
+        )
+        .unwrap_err();
         assert!(error.is_root_domain_mismatch(), "{error:?}");
         assert!(error.origin().is_some());
     }
     let value = hinted();
-    let error =
-        CssNumberCalculation::try_from_components(value.components().clone(), Default::default())
-            .unwrap_err();
+    let error = CssCalculation::<CssNumber>::try_from_components(
+        value.components().clone(),
+        Default::default(),
+    )
+    .unwrap_err();
     assert!(error.is_root_domain_mismatch(), "{error:?}");
-    let error =
-        CssIntegerCalculation::try_from_components(value.components().clone(), Default::default())
-            .unwrap_err();
+    let error = CssCalculation::<CssInteger>::try_from_components(
+        value.components().clone(),
+        Default::default(),
+    )
+    .unwrap_err();
     assert!(error.is_root_domain_mismatch(), "{error:?}");
     for source in ["calc(1 + 1%)", "calc(1px + 1s)", "calc(1px * 1px)"] {
         assert!(
-            CssHintedNumberCalculation::try_from_components(components(source), Default::default())
-                .is_err()
+            CssCalculation::<CssHintedNumber>::try_from_components(
+                components(source),
+                Default::default()
+            )
+            .is_err()
         );
     }
 }
@@ -106,16 +118,20 @@ fn programmatic_root_preserves_child_origins_and_constructor_limits() {
         Default::default(),
     )
     .unwrap();
-    let value =
-        CssHintedNumberCalculation::try_from_components(original.clone(), Default::default())
-            .unwrap();
+    let value = CssCalculation::<CssHintedNumber>::try_from_components(
+        original.clone(),
+        Default::default(),
+    )
+    .unwrap();
     assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
     assert!(value.position().is_none());
     assert_eq!(value.components(), &original);
     // Function + five body components + five grouped components = eleven.
     // Two enclosing blocks and the canonical authored text remain independent limits.
     let exact = CssComponentValueLimits::try_new(2, 11, SOURCE.len()).unwrap();
-    assert!(CssHintedNumberCalculation::try_from_components(original.clone(), exact).is_ok());
+    assert!(
+        CssCalculation::<CssHintedNumber>::try_from_components(original.clone(), exact).is_ok()
+    );
     for (limits, exceeded) in [
         (
             CssComponentValueLimits::try_new(1, 11, SOURCE.len()).unwrap(),
@@ -131,7 +147,7 @@ fn programmatic_root_preserves_child_origins_and_constructor_limits() {
         ),
     ] {
         crate::css::support::value_assertions::assert_numeric_resource(
-            CssHintedNumberCalculation::try_from_components(original.clone(), limits),
+            CssCalculation::<CssHintedNumber>::try_from_components(original.clone(), limits),
             exceeded,
         );
     }

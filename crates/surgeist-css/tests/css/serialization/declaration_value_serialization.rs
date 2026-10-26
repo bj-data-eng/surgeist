@@ -38,7 +38,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["clip"], "auto", "auto"),
         // CssEmptyCells
         (&["empty-cells"], "hide", "hide"),
-        // CssPageLineMinimum
+        // CssNumeric<CssInteger, CssPositive>
         (&["orphans", "widows"], "2", "2"),
         // CssBreakBetween
         (&["break-after", "break-before"], "page", "page"),
@@ -69,7 +69,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "auto",
             "auto",
         ),
-        // CssSpecifiedLength
+        // CssNumeric<CssLength>
         (
             &[
                 "scroll-margin-top",
@@ -614,9 +614,9 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["box-shadow"], "none", "none"),
         // CssOpacityValue
         (&["opacity"], "0.5", "0.5"),
-        // CssSpecifiedNonNegativeNumber
+        // CssNumeric<CssNumber, CssNonNegative>
         (&["flex-grow", "flex-shrink"], "2", "2"),
-        // CssIntegerValue
+        // CssNumeric<CssInteger>
         (&["order"], "-1", "-1"),
         // CssFlexValue
         (&["flex"], "none", "none"),

@@ -1,135 +1,24 @@
 //! Exact authored CSS Fonts 4 weights before cascade, matching, or range ordering.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssComponentValue, CssComponentValueRef, CssNumberCalculation, CssNumericConstructionError,
-    CssNumericConstructionErrorKind, CssSerializationError, CssValueOrigin, CssValueTokenRef,
-};
+use crate::{CssNumber, CssNumeric, CssNumericLiteral, CssRange, CssSerializationError};
 
-type ConstructionResult<T> = Result<T, CssNumericConstructionError>;
 type SerializationResult<T> = Result<T, CssSerializationError>;
 
-/// An exact authored CSS Fonts 4 `<number [1,1000]>`.
+/// The Fonts 4 font-weight range `[1,1000]` of a [`CssNumber`] root.
 ///
-/// # Specified serialization
-///
-/// Serializes without resolving symbolic number math.
-#[derive(Clone, Debug)]
-pub struct CssFontWeightNumber {
-    value: FontWeightNumberValue,
-}
+/// An ordinary number is compared with both bounds exactly, without binary64
+/// conversion; math defers the range to computed-value handling.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssFontWeightRange {}
 
-#[derive(Clone, Debug)]
-enum FontWeightNumberValue {
-    Literal(Box<CssComponentValue>),
-    Calculation(CssNumberCalculation),
-}
-
-impl PartialEq for CssFontWeightNumber {
-    fn eq(&self, other: &Self) -> bool {
-        match (&self.value, &other.value) {
-            (FontWeightNumberValue::Literal(left), FontWeightNumberValue::Literal(right)) => {
-                left.structural_eq_ignoring_origin(right)
-            }
-            (
-                FontWeightNumberValue::Calculation(left),
-                FontWeightNumberValue::Calculation(right),
-            ) => left.expression.structural_eq(&right.expression),
-            _ => false,
-        }
-    }
-}
-
-impl Eq for CssFontWeightNumber {}
-
-impl CssFontWeightNumber {
-    /// Checks the original number token against inclusive `[1,1000]` exactly.
-    pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
-        let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = component.view() else {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(&component),
-            ));
-        };
-        if !crate::exact_decimal::LexicalDecimal::new(number.representation())
+impl crate::sealed::RangeBounds<CssNumber> for CssFontWeightRange {
+    fn admits(literal: &CssNumericLiteral<CssNumber>) -> bool {
+        crate::exact_decimal::LexicalDecimal::new(literal.numeric().representation())
             .in_font_weight_range()
-        {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::OutOfRange,
-                Some(&component),
-            ));
-        }
-        Ok(Self {
-            value: FontWeightNumberValue::Literal(Box::new(component)),
-        })
-    }
-
-    /// Retains checked number math; a bare number root reenters literal bounds.
-    pub fn try_from_calculation(calculation: CssNumberCalculation) -> ConstructionResult<Self> {
-        // This domain still retains recovered syntax from checked construction.
-        crate::specified_numeric::admit_calculation(
-            calculation,
-            CssNumberCalculation::components,
-            crate::specified_numeric::CalculationAdmission::Recovering,
-            Self::try_from_component,
-            |calculation| Self {
-                value: FontWeightNumberValue::Calculation(calculation),
-            },
-        )
-    }
-
-    /// Borrows the exact authored number token, if this is a literal.
-    pub fn literal_component(&self) -> Option<&CssComponentValue> {
-        match &self.value {
-            FontWeightNumberValue::Literal(component) => Some(component),
-            FontWeightNumberValue::Calculation(_) => None,
-        }
-    }
-
-    /// Borrows checked symbolic number math, when present.
-    pub fn calculation(&self) -> Option<&CssNumberCalculation> {
-        match &self.value {
-            FontWeightNumberValue::Literal(_) => None,
-            FontWeightNumberValue::Calculation(calculation) => Some(calculation),
-        }
-    }
-
-    /// Returns the original parsed or programmatic root origin.
-    pub fn origin(&self) -> &CssValueOrigin {
-        match &self.value {
-            FontWeightNumberValue::Literal(component) => component.origin(),
-            FontWeightNumberValue::Calculation(calculation) => calculation.origin(),
-        }
-    }
-
-    fn capture_specified(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-    ) -> SerializationResult<String> {
-        match &self.value {
-            FontWeightNumberValue::Literal(component) => {
-                crate::specified_numeric::capture_literal(component, context)
-            }
-            FontWeightNumberValue::Calculation(calculation) => {
-                crate::numeric::capture_specified(&calculation.expression, context)
-                    .map(|(text, _)| text)
-            }
-        }
     }
 }
-impl crate::specified_rule_serialization::SpecifiedProvider for CssFontWeightNumber {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        let context = &mut writer.context;
-        let captured = self.capture_specified(context)?;
-        let output = &mut writer.css;
-        context.append(output, &captured)?;
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(CssFontWeightNumber);
+impl CssRange<CssNumber> for CssFontWeightRange {}
 
 /// A common absolute weight accepted by the property and font-face descriptor.
 ///
@@ -141,7 +30,7 @@ crate::specified_rule_serialization::specified_serialization!(CssFontWeightNumbe
 pub enum CssAbsoluteFontWeight {
     Normal,
     Bold,
-    Number(CssFontWeightNumber),
+    Number(CssNumeric<CssNumber, CssFontWeightRange>),
 }
 
 /// An authored `font-weight` property value.

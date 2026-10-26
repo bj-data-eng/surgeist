@@ -4,13 +4,18 @@
 use crate::css::support::serialization_limits::assert_node_limits as budget;
 use surgeist_css::*;
 
-fn scalar(text: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
-        .unwrap()
+fn scalar(text: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
+        CssComponentValue::try_token(text).unwrap(),
+    )
+    .unwrap()
 }
 
-fn angle() -> CssAngleValue {
-    CssAngleValue::from_literal(CssAngleLiteral::try_new(".25", CssAngleUnit::Turns).unwrap())
+fn angle() -> CssNumeric<CssAngle> {
+    CssNumeric::<CssAngle>::try_from_literal(
+        CssNumericLiteral::<CssAngle>::try_new(".25", CssAngleUnit::Turns).unwrap(),
+    )
+    .unwrap()
 }
 
 fn families() -> Vec<(CssPosition, &'static str, usize)> {

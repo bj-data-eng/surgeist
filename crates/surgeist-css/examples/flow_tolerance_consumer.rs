@@ -20,7 +20,7 @@ fn value(declaration: &CssDeclaration) -> &CssFlowTolerance {
     value.value()
 }
 
-fn length(value: &CssFlowTolerance) -> &CssSpecifiedLengthPercentage {
+fn length(value: &CssFlowTolerance) -> &CssNumeric<CssLengthPercentage> {
     match value.as_ref() {
         CssFlowToleranceRef::LengthPercentage(length) => length,
         other => panic!("a symbolic length-percentage: {other:?}"),
@@ -90,7 +90,7 @@ fn constructors_preserve_symbolic_keywords_and_signed_numeric_payloads() {
         "thick",
     ] {
         assert!(
-            CssSpecifiedLengthPercentage::try_from_component(
+            CssNumeric::<CssLengthPercentage>::try_from_component(
                 CssComponentValue::try_ident(keyword).unwrap()
             )
             .is_err(),
@@ -101,26 +101,26 @@ fn constructors_preserve_symbolic_keywords_and_signed_numeric_payloads() {
 }
 
 fn checked_sum_construction_preserves_signed_math() {
-    let signed = CssLengthPercentageCalculation::try_sum(
-        CssLengthPercentageCalculation::try_dimension(-2.0, CssLengthUnit::Px).unwrap(),
+    let signed = CssCalculation::<CssLengthPercentage>::try_sum(
+        CssCalculation::<CssLengthPercentage>::try_dimension(-2.0, CssLengthUnit::Px).unwrap(),
         [(
             CssCalculationSumOperator::Subtract,
-            CssLengthPercentageCalculation::try_percentage(3.0).unwrap(),
+            CssCalculation::<CssLengthPercentage>::try_percentage(3.0).unwrap(),
         )],
         Default::default(),
     )
     .unwrap();
-    let nested = CssLengthPercentageCalculation::try_sum(
+    let nested = CssCalculation::<CssLengthPercentage>::try_sum(
         signed.clone(),
         [(
             CssCalculationSumOperator::Subtract,
-            CssLengthPercentageCalculation::try_dimension(-4.0, CssLengthUnit::Em).unwrap(),
+            CssCalculation::<CssLengthPercentage>::try_dimension(-4.0, CssLengthUnit::Em).unwrap(),
         )],
         Default::default(),
     )
     .unwrap();
     for valid in [signed, nested] {
-        let expected = CssSpecifiedLengthPercentage::try_from_calculation(valid).unwrap();
+        let expected = CssNumeric::<CssLengthPercentage>::try_from_calculation(valid).unwrap();
         let tolerance = CssFlowTolerance::length_percentage(expected.clone());
         assert_eq!(length(&tolerance), &expected);
     }
@@ -134,7 +134,9 @@ fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let constructed = CssFlowTolerance::length_percentage(expected.clone());
         assert!(exact_literal(
-            length(value(&report.syntax()[0])).literal_component(),
+            length(value(&report.syntax()[0]))
+                .literal()
+                .map(|literal| literal.component()),
             source
         ));
         assert_eq!(length(&constructed), &expected);
@@ -216,7 +218,9 @@ fn component_construction_preserves_value_importance_and_origins() {
     .unwrap();
     let declaration = checked(components, CssImportance::Important);
     assert!(exact_literal(
-        length(value(&declaration)).literal_component(),
+        length(value(&declaration))
+            .literal()
+            .map(|literal| literal.component()),
         "-0.5em"
     ));
     assert_eq!(declaration.importance(), CssImportance::Important);
@@ -363,7 +367,9 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
         assert_eq!(item.property(), Property::FlowTolerance);
         match source {
             "-25%" => assert!(exact_literal(
-                length(contribution(item)).literal_component(),
+                length(contribution(item))
+                    .literal()
+                    .map(|literal| literal.component()),
                 "-25%"
             )),
             "normal" => assert_eq!(contribution(item), &CssFlowTolerance::normal()),
@@ -468,7 +474,9 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
         panic!("one contribution after retry");
     };
     assert!(exact_literal(
-        length(contribution(item)).literal_component(),
+        length(contribution(item))
+            .literal()
+            .map(|literal| literal.component()),
         "-2px"
     ));
     assert!(item.source().same_occurrence(authored));
@@ -524,11 +532,13 @@ fn canonical_specified_values_keep_context_dependent_operands_symbolic() {
     println!("canonical symbolic specified serialization: ok");
 }
 
-fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
+fn signed_length_percentage(
+    css: &str,
+) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage> {
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(
+        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_calculation(
+            surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(
                 components,
                 Default::default(),
             )
@@ -536,7 +546,7 @@ fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercen
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_component(
+        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_component(
             surgeist_css::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()

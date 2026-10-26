@@ -3,8 +3,8 @@
 use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssBoxSize, CssCalcSize, CssSerializationError, CssSizeValue,
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
+    CssBoxSize, CssCalcSize, CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric,
+    CssSerializationError, CssSizeValue,
 };
 
 type SerializationResult<T> = Result<T, CssSerializationError>;
@@ -249,15 +249,15 @@ impl From<CssCalcSize> for CssFlexBasisValue {
 /// Authored presence of each flex shorthand component.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFlexComponents {
-    grow: Option<CssSpecifiedNonNegativeNumber>,
-    shrink: Option<CssSpecifiedNonNegativeNumber>,
+    grow: Option<CssNumeric<CssNumber, CssNonNegative>>,
+    shrink: Option<CssNumeric<CssNumber, CssNonNegative>>,
     basis: Option<CssFlexBasisValue>,
 }
 
 impl CssFlexComponents {
     pub fn try_new(
-        grow: Option<CssSpecifiedNonNegativeNumber>,
-        shrink: Option<CssSpecifiedNonNegativeNumber>,
+        grow: Option<CssNumeric<CssNumber, CssNonNegative>>,
+        shrink: Option<CssNumeric<CssNumber, CssNonNegative>>,
         basis: Option<CssFlexBasisValue>,
     ) -> Option<Self> {
         if grow.is_none() && basis.is_none() || grow.is_none() && shrink.is_some() {
@@ -270,11 +270,11 @@ impl CssFlexComponents {
         })
     }
 
-    pub fn grow(&self) -> Option<&CssSpecifiedNonNegativeNumber> {
+    pub fn grow(&self) -> Option<&CssNumeric<CssNumber, CssNonNegative>> {
         self.grow.as_ref()
     }
 
-    pub fn shrink(&self) -> Option<&CssSpecifiedNonNegativeNumber> {
+    pub fn shrink(&self) -> Option<&CssNumeric<CssNumber, CssNonNegative>> {
         self.shrink.as_ref()
     }
 
@@ -373,22 +373,22 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssFlexValue {
 }
 crate::specified_rule_serialization::specified_serialization!(CssFlexValue);
 
-fn factor(value: &str) -> CssSpecifiedNonNegativeNumber {
+fn factor(value: &str) -> CssNumeric<CssNumber, CssNonNegative> {
     let component = crate::CssComponentValue::try_number(value).expect("fixed flex factor token");
-    CssSpecifiedNonNegativeNumber::try_from_component(component)
+    CssNumeric::<CssNumber, CssNonNegative>::try_from_component(component)
         .expect("fixed nonnegative flex factor")
 }
 
-pub(crate) fn initial_grow() -> CssSpecifiedNonNegativeNumber {
+pub(crate) fn initial_grow() -> CssNumeric<CssNumber, CssNonNegative> {
     factor("0")
 }
 
-pub(crate) fn initial_shrink() -> CssSpecifiedNonNegativeNumber {
+pub(crate) fn initial_shrink() -> CssNumeric<CssNumber, CssNonNegative> {
     factor("1")
 }
 
 fn default_basis() -> CssFlexBasisValue {
-    let zero = CssSpecifiedNonNegativeLengthPercentage::zero();
+    let zero = CssNumeric::<CssLengthPercentage, CssNonNegative>::exact_zero();
     CssFlexBasisValue::from(CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(zero)))
 }
 
@@ -416,7 +416,9 @@ fn inverse_default_basis(value: &CssFlexBasisValue) -> bool {
     }
 }
 
-pub(crate) fn effective_grow(value: &CssFlexValue) -> Option<CssSpecifiedNonNegativeNumber> {
+pub(crate) fn effective_grow(
+    value: &CssFlexValue,
+) -> Option<CssNumeric<CssNumber, CssNonNegative>> {
     Some(match value {
         CssFlexValue::None => initial_grow(),
         CssFlexValue::Auto => initial_shrink(),
@@ -424,7 +426,9 @@ pub(crate) fn effective_grow(value: &CssFlexValue) -> Option<CssSpecifiedNonNega
     })
 }
 
-pub(crate) fn effective_shrink(value: &CssFlexValue) -> Option<CssSpecifiedNonNegativeNumber> {
+pub(crate) fn effective_shrink(
+    value: &CssFlexValue,
+) -> Option<CssNumeric<CssNumber, CssNonNegative>> {
     Some(match value {
         CssFlexValue::None => initial_grow(),
         CssFlexValue::Auto => initial_shrink(),
@@ -439,7 +443,10 @@ pub(crate) fn effective_basis(value: &CssFlexValue) -> Option<CssFlexBasisValue>
     })
 }
 
-pub(crate) fn ordinary_factor(value: &CssSpecifiedNonNegativeNumber, expected: &str) -> bool {
+pub(crate) fn ordinary_factor(
+    value: &CssNumeric<CssNumber, CssNonNegative>,
+    expected: &str,
+) -> bool {
     value.literal_component().is_some_and(|value| matches!(value.view(),
         crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Number(number))
         if crate::exact_decimal::LexicalDecimal::new(number.representation()).value_eq(&crate::exact_decimal::LexicalDecimal::new(expected))))

@@ -637,8 +637,11 @@ fn checked_programmatic_tokens_and_parsed_numeric_children_keep_exact_original_p
         panic!("axes")
     };
     let y = values.y().unwrap();
-    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
-        y.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) = y
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("exact retained length")
     };

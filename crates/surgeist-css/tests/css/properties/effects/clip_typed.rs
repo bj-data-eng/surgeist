@@ -11,7 +11,7 @@ use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::sole_declaration as parsed;
 use surgeist_css::*;
 
-fn edge(value: CssSpecifiedLength) -> CssClipEdge {
+fn edge(value: CssNumeric<CssLength>) -> CssClipEdge {
     CssClipEdge::Length(value)
 }
 
@@ -43,7 +43,7 @@ fn checked_edge_construction_accepts_signed_pure_lengths_and_rejects_other_domai
         ("max-content", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            CssSpecifiedLength::try_from_component,
+            CssNumeric::<CssLength>::try_from_component,
             CssComponentValue::try_token(css).unwrap(),
             kind,
         );
@@ -76,13 +76,13 @@ fn constructed_rectangle_preserves_four_edge_order_and_canonical_commas() {
     );
     assert!(matches!(rect.top(), CssClipEdge::Auto));
     assert!(
-        matches!(rect.right(), CssClipEdge::Length(length) if exact_literal(length.literal_component(), "-1px"))
+        matches!(rect.right(), CssClipEdge::Length(length) if exact_literal(length.literal().map(|literal| literal.component()), "-1px"))
     );
     assert!(
-        matches!(rect.bottom(), CssClipEdge::Length(length) if exact_literal(length.literal_component(), "2em"))
+        matches!(rect.bottom(), CssClipEdge::Length(length) if exact_literal(length.literal().map(|literal| literal.component()), "2em"))
     );
     assert!(
-        matches!(rect.left(), CssClipEdge::Length(length) if exact_literal(length.literal_component(), "0"))
+        matches!(rect.left(), CssClipEdge::Length(length) if exact_literal(length.literal().map(|literal| literal.component()), "0"))
     );
     assert_eq!(
         rect.serialize_specified(Default::default()).unwrap(),
@@ -107,13 +107,13 @@ fn constructed_rectangle_preserves_four_edge_order_and_canonical_commas() {
     };
     assert!(matches!(reparsed_rect.top(), CssClipEdge::Auto));
     assert!(
-        matches!(reparsed_rect.right(), CssClipEdge::Length(length) if exact_dimension(length.literal_component(), "-1", "px"))
+        matches!(reparsed_rect.right(), CssClipEdge::Length(length) if exact_dimension(length.literal().map(|literal| literal.component()), "-1", "px"))
     );
     assert!(
-        matches!(reparsed_rect.bottom(), CssClipEdge::Length(length) if exact_dimension(length.literal_component(), "2", "em"))
+        matches!(reparsed_rect.bottom(), CssClipEdge::Length(length) if exact_dimension(length.literal().map(|literal| literal.component()), "2", "em"))
     );
     assert!(
-        matches!(reparsed_rect.left(), CssClipEdge::Length(length) if exact_literal(length.literal_component(), "0"))
+        matches!(reparsed_rect.left(), CssClipEdge::Length(length) if exact_literal(length.literal().map(|literal| literal.component()), "0"))
     );
     for edge in [
         reparsed_rect.right(),
@@ -136,7 +136,12 @@ fn constructed_rectangle_preserves_four_edge_order_and_canonical_commas() {
 #[test]
 fn checked_calculations_remain_wrapped_and_canonical() {
     let literal_math = signed_length("calc(-2px)");
-    assert!(literal_math.literal_component().is_none());
+    assert!(
+        literal_math
+            .literal()
+            .map(|literal| literal.component())
+            .is_none()
+    );
     let calculation = literal_math.calculation().expect("checked math root");
     assert_eq!(calculation.result_type(), CssCalculationType::Length);
     let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {
@@ -161,7 +166,7 @@ fn checked_calculations_remain_wrapped_and_canonical() {
         (&folded, CssCalculationSumOperator::Subtract, "px"),
         (&mixed, CssCalculationSumOperator::Add, "em"),
     ] {
-        assert!(value.literal_component().is_none());
+        assert!(value.literal().map(|literal| literal.component()).is_none());
         let calculation = value.calculation().expect("checked length calculation");
         assert_eq!(calculation.result_type(), CssCalculationType::Length);
         let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {
@@ -362,16 +367,19 @@ fn exact_dimension(
 ) -> bool {
     matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }
-fn signed_length(css: &str) -> surgeist_css::CssSpecifiedLength {
+fn signed_length(css: &str) -> surgeist_css::CssNumeric<surgeist_css::CssLength> {
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedLength::try_from_calculation(
-            surgeist_css::CssLengthCalculation::try_from_components(components, Default::default())
-                .unwrap(),
+        surgeist_css::CssNumeric::<surgeist_css::CssLength>::try_from_calculation(
+            surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedLength::try_from_component(
+        surgeist_css::CssNumeric::<surgeist_css::CssLength>::try_from_component(
             surgeist_css::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()

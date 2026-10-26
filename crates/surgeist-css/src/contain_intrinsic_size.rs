@@ -1,7 +1,7 @@
 //! Checked authored contain-intrinsic sizes before layout and remembered-size resolution.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{CssSerializationError, CssSpecifiedNonNegativeLength};
+use crate::{CssLength, CssNonNegative, CssNumeric, CssSerializationError};
 
 type SerializationResult<T> = Result<T, CssSerializationError>;
 
@@ -12,14 +12,14 @@ pub enum CssContainIntrinsicSizeFallback {
     /// No explicit intrinsic inner size when no remembered size applies.
     None,
     /// An exact nonnegative length, with math deferred to its owning stage.
-    Length(CssSpecifiedNonNegativeLength),
+    Length(CssNumeric<CssLength, CssNonNegative>),
 }
 
 impl PartialEq for CssContainIntrinsicSizeFallback {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::None, Self::None) => true,
-            (Self::Length(left), Self::Length(right)) => left.structural_eq(right),
+            (Self::Length(left), Self::Length(right)) => left == right,
             _ => false,
         }
     }

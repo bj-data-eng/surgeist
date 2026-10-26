@@ -1,7 +1,9 @@
 //! Exact authored positioned offsets before writing-mode and layout resolution.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{CssBoxSideKind, CssSerializationError, CssSpecifiedLengthPercentage, CssValueOrigin};
+use crate::{
+    CssBoxSideKind, CssLengthPercentage, CssNumeric, CssSerializationError, CssValueOrigin,
+};
 
 type SerializationResult<T> = Result<T, CssSerializationError>;
 
@@ -12,12 +14,12 @@ pub enum CssInsetValue {
     /// The unresolved automatic offset.
     Auto,
     /// An exact signed length-percentage, including deferred math.
-    LengthPercentage(CssSpecifiedLengthPercentage),
+    LengthPercentage(CssNumeric<CssLengthPercentage>),
 }
 
 impl CssInsetValue {
     /// Borrows the checked numeric value, if present.
-    pub fn length_percentage(&self) -> Option<&CssSpecifiedLengthPercentage> {
+    pub fn length_percentage(&self) -> Option<&CssNumeric<CssLengthPercentage>> {
         match self {
             Self::Auto => None,
             Self::LengthPercentage(value) => Some(value),
@@ -27,7 +29,7 @@ impl CssInsetValue {
     /// Borrows a retained numeric origin; `auto` has no numeric origin.
     pub fn origin(&self) -> Option<&CssValueOrigin> {
         self.length_percentage()
-            .map(CssSpecifiedLengthPercentage::origin)
+            .map(CssNumeric::<CssLengthPercentage>::origin)
     }
 
     fn serialize_into(
@@ -64,9 +66,7 @@ impl PartialEq for CssInsetValue {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Auto, Self::Auto) => true,
-            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
-                left.structural_eq(right)
-            }
+            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => left == right,
             _ => false,
         }
     }

@@ -12,8 +12,9 @@ use surgeist_css::*;
 const SOURCE: &str = "calc((1px + 1%) / 1px)";
 const CSS: &str = "calc((1% + 1px) / 1px)";
 
-fn hinted(text: &str) -> CssHintedNumberCalculation {
-    CssHintedNumberCalculation::try_from_components(components(text), Default::default()).unwrap()
+fn hinted(text: &str) -> CssCalculation<CssHintedNumber> {
+    CssCalculation::<CssHintedNumber>::try_from_components(components(text), Default::default())
+        .unwrap()
 }
 fn transform(source: &CssDeclaration) -> &CssTransformFunction {
     let CssKnownPropertyValueRef::Transform(value) =
@@ -140,7 +141,7 @@ fn checked_transform_construction_preserves_context_and_ignores_only_origins_in_
         Default::default(),
     )
     .unwrap();
-    let value = CssHintedNumberCalculation::try_from_components(
+    let value = CssCalculation::<CssHintedNumber>::try_from_components(
         programmatic.clone(),
         CssComponentValueLimits::try_new(2, 11, SOURCE.len()).unwrap(),
     )
@@ -149,7 +150,7 @@ fn checked_transform_construction_preserves_context_and_ignores_only_origins_in_
     assert!(value.position().is_none());
     assert_eq!(value.components(), &programmatic);
     crate::css::support::value_assertions::assert_numeric_resource(
-        CssHintedNumberCalculation::try_from_components(
+        CssCalculation::<CssHintedNumber>::try_from_components(
             programmatic,
             CssComponentValueLimits::try_new(1, 11, SOURCE.len()).unwrap(),
         ),

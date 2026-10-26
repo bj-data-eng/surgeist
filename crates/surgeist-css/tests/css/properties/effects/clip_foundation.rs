@@ -59,13 +59,13 @@ fn rect_edges_retain_order_signed_lengths_and_symbolic_math() {
         };
         assert!(matches!(rect.top(), CssClipEdge::Auto));
         assert!(
-            matches!(rect.right(), CssClipEdge::Length(length) if exact_dimension(length.literal_component(), "-1", "px"))
+            matches!(rect.right(), CssClipEdge::Length(length) if exact_dimension(length.literal().map(|literal| literal.component()), "-1", "px"))
         );
         assert!(
             matches!(rect.bottom(), CssClipEdge::Length(length) if length.calculation().is_some())
         );
         assert!(
-            matches!(rect.left(), CssClipEdge::Length(length) if matches!(length.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation()=="0"))
+            matches!(rect.left(), CssClipEdge::Length(length) if matches!(length.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation()=="0"))
         );
         let [item] = expanded(&declaration)
             .try_into()

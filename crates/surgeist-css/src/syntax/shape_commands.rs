@@ -134,23 +134,26 @@ impl CssShapeCommandList {
 /// Two independently checked signed authored offsets.
 #[derive(Clone, Debug)]
 pub struct CssShapeCoordinatePair {
-    x: CssSpecifiedLengthPercentage,
-    y: CssSpecifiedLengthPercentage,
+    x: CssNumeric<CssLengthPercentage>,
+    y: CssNumeric<CssLengthPercentage>,
 }
 impl CssShapeCoordinatePair {
-    pub const fn new(x: CssSpecifiedLengthPercentage, y: CssSpecifiedLengthPercentage) -> Self {
+    pub const fn new(
+        x: CssNumeric<CssLengthPercentage>,
+        y: CssNumeric<CssLengthPercentage>,
+    ) -> Self {
         Self { x, y }
     }
-    pub const fn x(&self) -> &CssSpecifiedLengthPercentage {
+    pub const fn x(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.x
     }
-    pub const fn y(&self) -> &CssSpecifiedLengthPercentage {
+    pub const fn y(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.y
     }
 }
 impl PartialEq for CssShapeCoordinatePair {
     fn eq(&self, other: &Self) -> bool {
-        self.x.structural_eq(&other.x) && self.y.structural_eq(&other.y)
+        self.x == other.x && self.y == other.y
     }
 }
 /// Absolute or relative authored endpoint.
@@ -177,16 +180,14 @@ pub enum CssShapeCommand {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssShapeHorizontalLine {
-    ToOffset(CssSpecifiedLengthPercentage),
+    ToOffset(CssNumeric<CssLengthPercentage>),
     ToKeyword(CssHorizontalPositionKeyword),
-    By(CssSpecifiedLengthPercentage),
+    By(CssNumeric<CssLengthPercentage>),
 }
 impl PartialEq for CssShapeHorizontalLine {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::ToOffset(a), Self::ToOffset(b)) | (Self::By(a), Self::By(b)) => {
-                a.structural_eq(b)
-            }
+            (Self::ToOffset(a), Self::ToOffset(b)) | (Self::By(a), Self::By(b)) => a == b,
             (Self::ToKeyword(a), Self::ToKeyword(b)) => a == b,
             _ => false,
         }
@@ -196,16 +197,14 @@ impl PartialEq for CssShapeHorizontalLine {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssShapeVerticalLine {
-    ToOffset(CssSpecifiedLengthPercentage),
+    ToOffset(CssNumeric<CssLengthPercentage>),
     ToKeyword(CssVerticalPositionKeyword),
-    By(CssSpecifiedLengthPercentage),
+    By(CssNumeric<CssLengthPercentage>),
 }
 impl PartialEq for CssShapeVerticalLine {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::ToOffset(a), Self::ToOffset(b)) | (Self::By(a), Self::By(b)) => {
-                a.structural_eq(b)
-            }
+            (Self::ToOffset(a), Self::ToOffset(b)) | (Self::By(a), Self::By(b)) => a == b,
             (Self::ToKeyword(a), Self::ToKeyword(b)) => a == b,
             _ => false,
         }
@@ -438,16 +437,16 @@ impl CssShapeSmooth {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssShapeArcRadii {
-    One(CssSpecifiedLengthPercentage),
+    One(CssNumeric<CssLengthPercentage>),
     Two {
-        horizontal: CssSpecifiedLengthPercentage,
-        vertical: CssSpecifiedLengthPercentage,
+        horizontal: CssNumeric<CssLengthPercentage>,
+        vertical: CssNumeric<CssLengthPercentage>,
     },
 }
 impl PartialEq for CssShapeArcRadii {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::One(a), Self::One(b)) => a.structural_eq(b),
+            (Self::One(a), Self::One(b)) => a == b,
             (
                 Self::Two {
                     horizontal: a,
@@ -457,7 +456,7 @@ impl PartialEq for CssShapeArcRadii {
                     horizontal: c,
                     vertical: d,
                 },
-            ) => a.structural_eq(c) && b.structural_eq(d),
+            ) => a == c && b == d,
             _ => false,
         }
     }
@@ -469,7 +468,7 @@ pub struct CssShapeArc {
     radii: CssShapeArcRadii,
     sweep: Option<CssShapeArcSweep>,
     size: Option<CssShapeArcSize>,
-    rotation: Option<CssAngleValue>,
+    rotation: Option<CssNumeric<CssAngle>>,
 }
 impl CssShapeArc {
     pub const fn new(
@@ -477,7 +476,7 @@ impl CssShapeArc {
         radii: CssShapeArcRadii,
         sweep: Option<CssShapeArcSweep>,
         size: Option<CssShapeArcSize>,
-        rotation: Option<CssAngleValue>,
+        rotation: Option<CssNumeric<CssAngle>>,
     ) -> Self {
         Self {
             endpoint,
@@ -499,7 +498,7 @@ impl CssShapeArc {
     pub const fn size(&self) -> Option<CssShapeArcSize> {
         self.size
     }
-    pub const fn rotation(&self) -> Option<&CssAngleValue> {
+    pub const fn rotation(&self) -> Option<&CssNumeric<CssAngle>> {
         self.rotation.as_ref()
     }
 }
@@ -510,7 +509,7 @@ impl PartialEq for CssShapeArc {
             && self.sweep == other.sweep
             && self.size == other.size
             && match (&self.rotation, &other.rotation) {
-                (Some(a), Some(b)) => a.structural_eq(b),
+                (Some(a), Some(b)) => a == b,
                 (None, None) => true,
                 _ => false,
             }

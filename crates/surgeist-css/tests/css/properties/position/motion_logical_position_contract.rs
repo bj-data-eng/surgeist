@@ -59,13 +59,8 @@ fn same_path(left: &CssOffsetPath, right: &CssOffsetPath) {
                         b.position().cloned().map(full_position)
                     );
                     if let (Some(a), Some(b)) = (a.angle().literal(), b.angle().literal()) {
-                        assert_eq!(a.unit(), b.unit());
-                        // Literal authored spelling is intentionally retained by Eq;
-                        // the independent decimal values compare reparse meaning.
-                        assert_eq!(
-                            a.numeric().representation().parse::<f64>().unwrap(),
-                            b.numeric().representation().parse::<f64>().unwrap()
-                        );
+                        // Literal equality compares the unit and the exact value.
+                        assert_eq!(a, b);
                     } else {
                         assert_eq!(
                             CssRay::new(a.angle().clone(), None, false, None)

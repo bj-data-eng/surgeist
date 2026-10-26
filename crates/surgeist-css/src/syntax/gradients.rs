@@ -1,8 +1,8 @@
 //! Shared numeric admission for the selected Images 4 angular stop/hint domain.
 use super::CssAngularColorStopPosition;
 use crate::{
-    CssAngleLiteral, CssAnglePercentageCalculation, CssAngleValue, CssComponentValue,
-    CssComponentValueRef, CssComponentValues, CssNumericConstructionError, CssSpecifiedPercentage,
+    CssAngle, CssAnglePercentage, CssCalculation, CssComponentValue, CssComponentValueRef,
+    CssComponentValues, CssNumeric, CssNumericConstructionError, CssNumericLiteral, CssPercentage,
     CssValueOrigin, CssValueTokenRef, CssZeroLiteral,
 };
 
@@ -13,22 +13,22 @@ impl CssAngularColorStopPosition {
     ) -> Result<Self, CssNumericConstructionError> {
         match component.view() {
             CssComponentValueRef::Token(CssValueTokenRef::Percentage(_)) => {
-                CssSpecifiedPercentage::try_from_component(component).map(Self::Percentage)
+                CssNumeric::<CssPercentage>::try_from_component(component).map(Self::Percentage)
             }
             CssComponentValueRef::Token(CssValueTokenRef::Number(_)) => {
                 CssZeroLiteral::try_from_component(component)
                     .map(Self::Zero)
                     .map_err(CssNumericConstructionError::component)
             }
-            _ => CssAngleLiteral::try_from_component(component)
-                .map(CssAngleValue::from_literal)
+            _ => CssNumericLiteral::<CssAngle>::from_component_token(component)
+                .map(CssNumeric::<CssAngle>::from_literal)
                 .map(Self::Angle)
                 .map_err(CssNumericConstructionError::component),
         }
     }
 
     /// Retains checked angular-percentage math without resolving its percentage basis.
-    pub fn from_calculation(value: CssAnglePercentageCalculation) -> Self {
+    pub fn from_calculation(value: CssCalculation<CssAnglePercentage>) -> Self {
         Self::Calculation(value)
     }
 
@@ -53,7 +53,7 @@ impl CssAngularColorStopPosition {
             .map_err(CssNumericConstructionError::component)?;
         context
             .admit(values, crate::numeric::CalculationRoot::AnglePercentage)
-            .map(CssAnglePercentageCalculation::from_expression)
+            .map(CssCalculation::<CssAnglePercentage>::from_expression)
             .map(Self::Calculation)
     }
 

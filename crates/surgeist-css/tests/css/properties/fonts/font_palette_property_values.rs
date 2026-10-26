@@ -313,7 +313,8 @@ fn calculated_weights_keep_their_graph_and_leave_omitted_weights_unknown() {
     }
     let graph = parse_component_values("calc(100% - 20%)").unwrap();
     let root =
-        CssPercentageCalculation::try_from_components(graph.clone(), Default::default()).unwrap();
+        CssCalculation::<CssPercentage>::try_from_components(graph.clone(), Default::default())
+            .unwrap();
     let weight = CssColorMixWeight::try_calculation(root.clone()).unwrap();
     let value = CssFontPaletteMix::try_new(
         None,
@@ -381,7 +382,7 @@ fn checked_palette_and_math_graphs_share_the_complete_256_level_ceiling() {
     let text = format!("{}10%{}", "calc(".repeat(256), ")".repeat(256));
     let graph = parse_component_values(&text).unwrap();
     let calculation =
-        CssPercentageCalculation::try_from_components(graph, Default::default()).unwrap();
+        CssCalculation::<CssPercentage>::try_from_components(graph, Default::default()).unwrap();
     let weight = CssColorMixWeight::try_calculation(calculation).unwrap();
     assert!(
         CssFontPaletteMix::try_new(

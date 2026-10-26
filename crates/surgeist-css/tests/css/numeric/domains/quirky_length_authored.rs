@@ -35,7 +35,10 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             };
             let margin = margin.value().length_percentage().unwrap();
             assert!(margin.is_quirky_length());
-            assert_eq!(margin.literal_component(), Some(original));
+            assert_eq!(
+                margin.literal().map(|literal| literal.component()),
+                Some(original)
+            );
             assert_eq!(margin.origin(), original.origin());
             assert_eq!(margin.calculation(), None);
             assert_eq!(
@@ -43,7 +46,7 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
                 expected
             );
             assert_component_rejected(
-                CssSpecifiedLengthPercentage::try_from_component,
+                CssNumeric::<CssLengthPercentage>::try_from_component,
                 original.clone(),
                 NumericFailure::RootDomainMismatch,
             );
@@ -56,7 +59,10 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
             };
             let padding = padding.value().length_percentage();
             assert!(padding.is_quirky_length());
-            assert_eq!(padding.literal_component(), Some(original));
+            assert_eq!(
+                padding.literal().map(|literal| literal.component()),
+                Some(original)
+            );
             assert_eq!(padding.origin(), original.origin());
             assert_eq!(padding.calculation(), None);
             assert_eq!(
@@ -64,7 +70,7 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
                 expected
             );
             assert_component_rejected(
-                CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+                CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component,
                 original.clone(),
                 NumericFailure::RootDomainMismatch,
             );
@@ -79,7 +85,10 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
                 panic!("length")
             };
             assert!(border.is_quirky_length());
-            assert_eq!(border.literal_component(), Some(original));
+            assert_eq!(
+                border.literal().map(|literal| literal.component()),
+                Some(original)
+            );
             assert_eq!(border.origin(), original.origin());
             assert_eq!(border.calculation(), None);
             assert_eq!(
@@ -87,7 +96,7 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
                 expected
             );
             assert_component_rejected(
-                CssSpecifiedNonNegativeLength::try_from_component,
+                CssNumeric::<CssLength, CssNonNegative>::try_from_component,
                 original.clone(),
                 NumericFailure::RootDomainMismatch,
             );
@@ -127,7 +136,10 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
                 panic!("length")
             };
             assert!(clip.is_quirky_length());
-            assert_eq!(clip.literal_component(), Some(original));
+            assert_eq!(
+                clip.literal().map(|literal| literal.component()),
+                Some(original)
+            );
             assert_eq!(clip.origin(), original.origin());
             assert_eq!(clip.calculation(), None);
             assert_eq!(
@@ -135,7 +147,7 @@ fn contextual_length_owners_keep_original_number_tokens_and_distinguish_pixels()
                 expected
             );
             assert_component_rejected(
-                CssSpecifiedLength::try_from_component,
+                CssNumeric::<CssLength>::try_from_component,
                 original.clone(),
                 NumericFailure::RootDomainMismatch,
             );
@@ -155,7 +167,10 @@ fn exact_zero_and_explicit_dimensions_remain_ordinary_retained_literals() {
         };
         let length = margin.value().length_percentage().unwrap();
         assert!(!length.is_quirky_length());
-        assert_eq!(length.literal_component(), Some(&values.items()[0]));
+        assert_eq!(
+            length.literal().map(|literal| literal.component()),
+            Some(&values.items()[0])
+        );
         assert_eq!(length.origin(), values.items()[0].origin());
     }
 }
@@ -171,7 +186,10 @@ fn negative_nonzero_coefficients_retain_exact_sign_beyond_tokenizer_float_range(
     };
     let length = margin.value().length_percentage().unwrap();
     assert!(length.is_quirky_length());
-    assert_eq!(length.literal_component(), Some(&values.items()[0]));
+    assert_eq!(
+        length.literal().map(|literal| literal.component()),
+        Some(&values.items()[0])
+    );
     assert_eq!(
         length.serialize_specified(Default::default()).unwrap(),
         "0px"
@@ -227,7 +245,7 @@ fn fit_content_function_arguments_do_not_inherit_the_named_property_permission()
     }
 }
 
-fn clip_length(original: &CssComponentValue) -> CssSpecifiedLength {
+fn clip_length(original: &CssComponentValue) -> CssNumeric<CssLength> {
     let rect = CssComponentValue::try_function(
         "rect",
         CssComponentValues::try_new(
@@ -314,12 +332,18 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
                 shadow.spread_radius().unwrap(),
             ] {
                 assert!(value.is_quirky_length());
-                assert_eq!(value.literal_component(), Some(original));
+                assert_eq!(
+                    value.literal().map(|literal| literal.component()),
+                    Some(original)
+                );
                 assert_eq!(value.origin(), original.origin());
             }
             let blur = shadow.blur_radius().unwrap();
             assert!(blur.is_quirky_length());
-            assert_eq!(blur.literal_component(), Some(original));
+            assert_eq!(
+                blur.literal().map(|literal| literal.component()),
+                Some(original)
+            );
             assert_eq!(blur.origin(), original.origin());
             assert_eq!(
                 layer.serialize_specified(Default::default()).unwrap(),
@@ -349,7 +373,10 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
         )
         .unwrap();
         assert!(offset.value().is_quirky_length());
-        assert_eq!(offset.value().literal_component(), Some(original));
+        assert_eq!(
+            offset.value().literal().map(|literal| literal.component()),
+            Some(original)
+        );
         assert_eq!(offset.value().origin(), original.origin());
         assert_eq!(
             offset.serialize_specified(Default::default()).unwrap(),
@@ -364,7 +391,13 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
         };
         let radius = CssCornerRadiusValue::new(padding.value().length_percentage().clone(), None);
         assert!(radius.horizontal().is_quirky_length());
-        assert_eq!(radius.horizontal().literal_component(), Some(original));
+        assert_eq!(
+            radius
+                .horizontal()
+                .literal()
+                .map(|literal| literal.component()),
+            Some(original)
+        );
         assert_eq!(radius.vertical().origin(), original.origin());
         assert_eq!(
             radius.serialize_specified(Default::default()).unwrap(),
@@ -385,22 +418,22 @@ fn checked_pixel_lengths_compose_without_granting_number_syntax_to_composite_pro
             );
         }
         assert_component_rejected(
-            CssSpecifiedLength::try_from_component,
+            CssNumeric::<CssLength>::try_from_component,
             original.clone(),
             NumericFailure::RootDomainMismatch,
         );
         assert_component_rejected(
-            CssSpecifiedNonNegativeLength::try_from_component,
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component,
             original.clone(),
             NumericFailure::RootDomainMismatch,
         );
         assert_component_rejected(
-            CssSpecifiedLengthPercentage::try_from_component,
+            CssNumeric::<CssLengthPercentage>::try_from_component,
             original.clone(),
             NumericFailure::RootDomainMismatch,
         );
         assert_component_rejected(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component,
             original.clone(),
             NumericFailure::RootDomainMismatch,
         );
@@ -422,9 +455,14 @@ fn text_shadow_checked_spread_narrowing_rejects_exact_negative_pixels_and_keeps_
             let before = signed.clone();
             let shadow = CssShadow::try_new(
                 false,
-                CssSpecifiedLength::zero(),
-                CssSpecifiedLength::zero(),
-                Some(CssSpecifiedNonNegativeLength::zero()),
+                CssNumeric::<CssLength>::zero(),
+                CssNumeric::<CssLength>::zero(),
+                Some(
+                    CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+                        CssComponentValue::try_number("0").unwrap(),
+                    )
+                    .unwrap(),
+                ),
                 Some(signed.clone()),
                 None,
             )
@@ -432,7 +470,10 @@ fn text_shadow_checked_spread_narrowing_rejects_exact_negative_pixels_and_keeps_
             assert!(CssTextShadowLayer::try_from_shadow(shadow).is_none());
             assert_eq!(signed, before);
             assert!(signed.is_quirky_length());
-            assert_eq!(signed.literal_component(), Some(&values.items()[0]));
+            assert_eq!(
+                signed.literal().map(|literal| literal.component()),
+                Some(&values.items()[0])
+            );
             assert_eq!(signed.origin(), values.items()[0].origin());
         }
     }

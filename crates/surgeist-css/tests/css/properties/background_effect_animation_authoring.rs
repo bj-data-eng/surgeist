@@ -1,6 +1,7 @@
 //! Backgrounds 3, transforms, filters, masking, transitions and animations keep
 //! authored syntax and reject invalid arguments and cross-family values.
 
+use crate::css::support::value_assertions::checked_range;
 use surgeist_css::*;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
@@ -10,8 +11,8 @@ fn exact_number(component: Option<&surgeist_css::CssComponentValue>, representat
     matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == representation)
 }
 
-fn checked_number(representation: &str) -> surgeist_css::CssSpecifiedNumber {
-    surgeist_css::CssSpecifiedNumber::try_from_component(
+fn checked_number(representation: &str) -> surgeist_css::CssNumeric<surgeist_css::CssNumber> {
+    surgeist_css::CssNumeric::<surgeist_css::CssNumber>::try_from_component(
         surgeist_css::CssComponentValue::try_number(representation).unwrap(),
     )
     .unwrap()
@@ -240,7 +241,7 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
         panic!("blur");
     };
     assert!(exact_dimension(
-        blur.length().literal_component(),
+        blur.length().literal().map(|literal| literal.component()),
         "4",
         "px"
     ));
@@ -274,7 +275,7 @@ fn parses_transform_effect_and_mask_properties_as_authored_syntax() {
     };
     assert!(
         matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
-        if exact_percentage(radius.literal_component(), "50"))
+        if exact_percentage(radius.literal().map(|literal| literal.component()), "50"))
     );
     assert!(circle.position().is_some());
     assert_eq!(
@@ -319,12 +320,16 @@ fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
         panic!("typed translate function");
     };
     assert!(exact_dimension(
-        translation.x().literal_component(),
+        translation.x().literal().map(|literal| literal.component()),
         "10",
         "px"
     ));
     assert!(exact_dimension(
-        translation.y().unwrap().literal_component(),
+        translation
+            .y()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component()),
         "20",
         "px"
     ));
@@ -363,7 +368,7 @@ fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
     };
     assert!(
         matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
-        if exact_percentage(radius.literal_component(), "50"))
+        if exact_percentage(radius.literal().map(|literal| literal.component()), "50"))
     );
     assert!(circle.position().is_some());
 
@@ -379,10 +384,15 @@ fn authored_transform_filter_and_basic_shape_values_preserve_family_context() {
         panic!("expected cubic-bezier easing");
     };
     assert!(exact_number(
-        (bezier.x1().value()).literal_component(),
+        (bezier.x1().value())
+            .literal()
+            .map(|literal| literal.component()),
         "0.1"
     ));
-    assert!(exact_number((bezier.y2()).literal_component(), "1"));
+    assert!(exact_number(
+        (bezier.y2()).literal().map(|literal| literal.component()),
+        "1"
+    ));
 }
 
 #[test]
@@ -418,13 +428,13 @@ fn parses_transition_properties_and_preserves_comma_lists() {
             durations
         ),
         CssDurationList::try_new(vec![
-            CssDuration::try_new(CssTimeValue::from_literal(
-                CssTimeLiteral::try_new("150", CssTimeUnit::Milliseconds).unwrap()
-            ))
+            CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+                CssNumericLiteral::<CssTime>::try_new("150", CssTimeUnit::Milliseconds).unwrap()
+            )
             .unwrap(),
-            CssDuration::try_new(CssTimeValue::from_literal(
-                CssTimeLiteral::try_new("2", CssTimeUnit::Seconds).unwrap()
-            ))
+            CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+                CssNumericLiteral::<CssTime>::try_new("2", CssTimeUnit::Seconds).unwrap()
+            )
             .unwrap(),
         ])
         .unwrap()
@@ -525,9 +535,9 @@ fn parses_animation_properties_and_preserves_comma_lists() {
         )
     };
     let duration = |number: &str, unit| {
-        CssDuration::try_new(CssTimeValue::from_literal(
-            CssTimeLiteral::try_new(number, unit).unwrap(),
-        ))
+        CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+            CssNumericLiteral::<CssTime>::try_new(number, unit).unwrap(),
+        )
         .unwrap()
     };
     assert_eq!(first.name(), Some(&name("fade")));
@@ -536,11 +546,11 @@ fn parses_animation_properties_and_preserves_comma_lists() {
         first.timing_function(),
         Some(CssEasing::Keyword(CssEasingKeyword::EaseIn))
     ));
-    // Compared structurally, without the parsed origin.
+    // Compared by value, without the parsed origin.
     assert_eq!(
         first
             .delay()
-            .map(|delay| CssDuration::try_new(delay.clone()).unwrap()),
+            .map(|delay| checked_range::<CssTime, CssNonNegative>(delay).unwrap()),
         Some(duration("200", CssTimeUnit::Milliseconds))
     );
     assert_eq!(
@@ -647,13 +657,13 @@ fn background_effect_and_animation_constructors_reject_invalid_states() {
         None
     );
     assert!(
-        CssDuration::try_new(CssTimeValue::from_literal(
-            CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap()
-        ))
+        CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+            CssNumericLiteral::<CssTime>::try_new("-1", CssTimeUnit::Seconds).unwrap()
+        )
         .is_err()
     );
     assert!(
-        CssSpecifiedNonNegativeNumber::try_from_component(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number("-1").unwrap()
         )
         .is_err()

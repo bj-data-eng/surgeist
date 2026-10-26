@@ -436,26 +436,6 @@ impl SpecifiedSerializationContext {
     }
 }
 
-impl crate::CssAngleLiteral {
-    pub(crate) fn append_specified(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> Result<()> {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
-        if context.output_suppressed() {
-            return Ok(());
-        }
-        let text = format_coefficient(
-            self.numeric().representation(),
-            0,
-            crate::angle::suffix(self.unit()),
-            context.remaining_bytes(),
-        )?;
-        context.append(output, &text)
-    }
-}
 impl crate::CssZeroLiteral {
     pub(crate) fn append_specified(
         &self,
@@ -465,25 +445,6 @@ impl crate::CssZeroLiteral {
         context.charge_input(1)?;
         context.charge_projection(1)?;
         context.append(output, "0")
-    }
-}
-impl crate::CssAngleValue {
-    pub(crate) fn append_specified(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> Result<()> {
-        if let Some(literal) = self.literal() {
-            return literal.append_specified(context, output);
-        }
-        crate::numeric::project_calculation_specified_into(
-            crate::numeric::SpecifiedCalculationRef::Angle(
-                self.calculation().expect("checked angle branch"),
-            ),
-            context,
-            output,
-        )
-        .map(|_| ())
     }
 }
 impl crate::CssAngleOrZero {
@@ -678,18 +639,20 @@ fn format_lexical(text: &str, percentage: bool, limit: usize) -> Result<String> 
 #[cfg(test)]
 mod composed_value_tests {
     use super::*;
-    use crate::{CssColor, CssIntegerCalculation, CssIntegerValue};
+    use crate::{CssCalculation, CssColor, CssInteger, CssNumeric};
 
     #[test]
     fn ordinary_siblings_use_rounded_bytes_in_one_context_without_partial_child_text() {
-        let first = crate::CssSpecifiedNonNegativeNumber::try_from_component(
-            crate::CssComponentValue::try_number(".12345649").unwrap(),
-        )
-        .unwrap();
-        let second = crate::CssSpecifiedNonNegativeNumber::try_from_component(
-            crate::CssComponentValue::try_number(".9999996").unwrap(),
-        )
-        .unwrap();
+        let first =
+            crate::CssNumeric::<crate::CssNumber, crate::CssNonNegative>::try_from_component(
+                crate::CssComponentValue::try_number(".12345649").unwrap(),
+            )
+            .unwrap();
+        let second =
+            crate::CssNumeric::<crate::CssNumber, crate::CssNonNegative>::try_from_component(
+                crate::CssComponentValue::try_number(".9999996").unwrap(),
+            )
+            .unwrap();
         let expected = "0.123456 1";
         let before = (first.clone(), second.clone());
         for (limits, failure) in [
@@ -724,8 +687,8 @@ mod composed_value_tests {
     fn flow_tolerance_keywords_and_math_share_monotonic_resources() {
         let keyword = crate::CssFlowTolerance::normal();
         let math = crate::CssFlowTolerance::length_percentage(
-            crate::CssSpecifiedLengthPercentage::try_from_calculation(
-                crate::CssLengthPercentageCalculation::try_from_components(
+            crate::CssNumeric::<crate::CssLengthPercentage>::try_from_calculation(
+                crate::CssCalculation::<crate::CssLengthPercentage>::try_from_components(
                     crate::parse_component_values("calc(1px + 2em)").unwrap(),
                     Default::default(),
                 )
@@ -773,7 +736,7 @@ mod composed_value_tests {
     #[test]
     fn color_and_integer_share_input_projection_and_output_limits() {
         let color = CssColor::transparent();
-        let integer = CssIntegerValue::Literal(crate::CssIntegerLiteral::from_i32(7));
+        let integer = CssNumeric::<CssInteger>::from_literal(crate::CssNumericLiteral::from_i32(7));
 
         let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::new(2, 2, 13));
         let mut css = String::new();
@@ -808,7 +771,15 @@ mod composed_value_tests {
     #[test]
     fn sequential_colors_and_integer_calculation_cannot_reset_byte_limit() {
         let color = CssColor::transparent();
-        let calculation = CssIntegerValue::Calculation(CssIntegerCalculation::literal(2));
+        // A math root; a bare root would re-enter literal admission.
+        let calculation = CssNumeric::<CssInteger>::try_from_calculation(
+            CssCalculation::try_from_components(
+                crate::parse_component_values("calc(2)").unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
 
         let mut context =
             SpecifiedSerializationContext::new(CssSerializationLimits::new(100, 100, 21));
@@ -981,156 +952,3 @@ mod tests {
         assert!(!binary64_equals_decimal(f64::from_bits(1), 5, -324));
     }
 }
-
-impl crate::CssTimeLiteral {
-    pub(crate) fn append_specified(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> Result<()> {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
-        if context.output_suppressed() {
-            return Ok(());
-        }
-        let unit = crate::CssNumericUnit::Time(self.unit());
-        let shift =
-            i128::from(crate::numeric::units::decimal_shift(unit).expect("decimal time ratio"));
-        let text = format_coefficient(
-            self.numeric().representation(),
-            shift,
-            crate::numeric::units::canonical_suffix(crate::CssNumericDimension::Time)
-                .expect("canonical time unit"),
-            context.remaining_bytes(),
-        )?;
-        context.append(output, &text)
-    }
-}
-impl crate::CssTimeValue {
-    pub(crate) fn append_specified(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> Result<()> {
-        if let Some(literal) = self.literal() {
-            return literal.append_specified(context, output);
-        }
-        crate::numeric::project_calculation_specified_into(
-            crate::numeric::SpecifiedCalculationRef::Time(
-                self.calculation().expect("checked time branch"),
-            ),
-            context,
-            output,
-        )?;
-        Ok(())
-    }
-}
-impl crate::CssDuration {
-    pub(crate) fn append_specified(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> Result<()> {
-        self.time().append_specified(context, output)
-    }
-}
-impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssTimeLiteral {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(crate::CssTimeLiteral);
-impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssTimeValue {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(crate::CssTimeValue);
-impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssDuration {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(crate::CssDuration);
-
-impl crate::CssFrequencyLiteral {
-    pub(crate) fn append_specified(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> Result<()> {
-        context.charge_input(1)?;
-        context.charge_projection(1)?;
-        if context.output_suppressed() {
-            return Ok(());
-        }
-        let text = format_coefficient(
-            self.numeric().representation(),
-            0,
-            crate::frequency::suffix(self.unit()),
-            context.remaining_bytes(),
-        )?;
-        context.append(output, &text)
-    }
-}
-impl crate::CssFrequencyValue {
-    pub(crate) fn append_specified(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> Result<()> {
-        if let Some(literal) = self.literal() {
-            return literal.append_specified(context, output);
-        }
-        crate::numeric::project_calculation_specified_into(
-            crate::numeric::SpecifiedCalculationRef::Frequency(
-                self.calculation().expect("checked frequency branch"),
-            ),
-            context,
-            output,
-        )?;
-        Ok(())
-    }
-}
-impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssFrequencyLiteral {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(crate::CssFrequencyLiteral);
-impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssFrequencyValue {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(crate::CssFrequencyValue);

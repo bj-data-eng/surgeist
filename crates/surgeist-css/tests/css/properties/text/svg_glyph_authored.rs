@@ -166,8 +166,9 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
         assert_eq!(component.origin(), &CssValueOrigin::Programmatic);
         let values =
             CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
-        let native = CssAngleCalculation::try_from_components(values.clone(), Default::default())
-            .unwrap_err();
+        let native =
+            CssCalculation::<CssAngle>::try_from_components(values.clone(), Default::default())
+                .unwrap_err();
         assert!(native.is_root_domain_mismatch(), "{native:?}");
         assert_eq!(native.origin(), Some(component.origin()));
         assert_eq!(native.path(), Some(&[0][..]));
@@ -203,9 +204,11 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
         let block = CssComponentValue::try_block(block_kind, child_values.clone()).unwrap();
         let block_values =
             CssComponentValues::try_new(vec![block.clone()], Default::default()).unwrap();
-        let native =
-            CssAngleCalculation::try_from_components(block_values.clone(), Default::default())
-                .unwrap_err();
+        let native = CssCalculation::<CssAngle>::try_from_components(
+            block_values.clone(),
+            Default::default(),
+        )
+        .unwrap_err();
         assert!(native.is_root_domain_mismatch(), "{native:?}");
         assert_eq!(native.path(), Some(&[0][..]));
         assert_eq!(native.origin(), Some(&CssValueOrigin::Programmatic));
@@ -228,9 +231,9 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
         original(block_view.values().items()[0].origin(), "90deg");
     }
     let string = CssComponentValue::try_token("\"auto\"").unwrap();
-    let native = CssAngleLiteral::try_from_component(string.clone()).unwrap_err();
-    assert!(native.is_invalid_token(), "{native:?}");
-    assert_eq!(native.origin(), string.origin());
+    let native = CssNumericLiteral::<CssAngle>::try_from_component(string.clone()).unwrap_err();
+    assert!(native.is_root_domain_mismatch(), "{native:?}");
+    assert_eq!(native.origin(), Some(string.origin()));
     let string_values =
         CssComponentValues::try_new(vec![string.clone()], Default::default()).unwrap();
     for context in [SVG, QUIRKS] {
@@ -422,8 +425,9 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
             unreachable!()
         };
         let responsible = responsible_component(&values, path);
-        let native = CssAngleCalculation::try_from_components(values.clone(), Default::default())
-            .unwrap_err();
+        let native =
+            CssCalculation::<CssAngle>::try_from_components(values.clone(), Default::default())
+                .unwrap_err();
         assert_eq!(numeric_failure(&native), native_kind);
         assert_eq!(native.path(), Some(path));
         assert_eq!(native.origin(), Some(responsible.origin()));
@@ -436,7 +440,7 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
             original(mixed_responsible.origin(), text);
         }
         let mixed_native =
-            CssAngleCalculation::try_from_components(mixed.clone(), Default::default())
+            CssCalculation::<CssAngle>::try_from_components(mixed.clone(), Default::default())
                 .unwrap_err();
         assert_eq!(numeric_failure(&mixed_native), native_kind);
         assert_eq!(mixed_native.path(), Some(path));
@@ -518,8 +522,9 @@ fn present_svg_tokens_and_outer_number_roots_keep_exact_rejection_origins() {
     ] {
         let values = parse_component_values(text).unwrap();
         let native_responsible = responsible_component(&values, path);
-        let native = CssAngleCalculation::try_from_components(values.clone(), Default::default())
-            .unwrap_err();
+        let native =
+            CssCalculation::<CssAngle>::try_from_components(values.clone(), Default::default())
+                .unwrap_err();
         assert_eq!(numeric_failure(&native), native_kind);
         assert_eq!(native.path(), Some(path));
         assert_eq!(native.origin(), Some(native_responsible.origin()));
@@ -869,9 +874,10 @@ fn intrinsic_constructors_reject_wrong_roots_raw_overflow_and_recovered_math() {
         assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(component.origin()));
     }
-    let angle = CssAngleValue::from_literal(
-        CssAngleLiteral::try_new("1e1000", CssAngleUnit::Degrees).unwrap(),
-    );
+    let angle = CssNumeric::<CssAngle>::try_from_literal(
+        CssNumericLiteral::<CssAngle>::try_new("1e1000", CssAngleUnit::Degrees).unwrap(),
+    )
+    .unwrap();
     let error = CssSvgGlyphOrientationVerticalValue::try_from_angle(angle.clone()).unwrap_err();
     assert!(error.is_out_of_range(), "{error:?}");
     assert_eq!(error.origin(), Some(angle.origin()));

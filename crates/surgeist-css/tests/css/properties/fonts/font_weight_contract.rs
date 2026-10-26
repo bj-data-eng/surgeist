@@ -4,16 +4,17 @@ use crate::css::support::named_property::assert_checked_value_rejected_at;
 use crate::css::support::named_property::assert_programmatic_rejection;
 use crate::css::support::named_property::normal_grammar_components;
 use surgeist_css::{
-    CssAbsoluteFontWeight as Absolute, CssComponentValue, CssComponentValues, CssContributions,
-    CssExpansion, CssFontStyle, CssFontValue, CssFontWeight, CssFontWeightNumber, CssImportance,
-    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
-    CssNumberCalculation, CssPropertyKindRef, CssSerializationLimits, CssSerializedOrigin,
-    CssValueOrigin, expand_declaration, parse_component_values, parse_style_attribute,
+    CssAbsoluteFontWeight as Absolute, CssCalculation, CssComponentValue, CssComponentValues,
+    CssContributions, CssExpansion, CssFontStyle, CssFontValue, CssFontWeight, CssFontWeightRange,
+    CssImportance, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssNumber, CssNumeric, CssPropertyKindRef, CssSerializationLimits,
+    CssSerializedOrigin, CssValueOrigin, expand_declaration, parse_component_values,
+    parse_style_attribute,
 };
 
-fn number(text: &str) -> CssFontWeightNumber {
+fn number(text: &str) -> CssNumeric<CssNumber, CssFontWeightRange> {
     let component = CssComponentValue::try_number(text).unwrap();
-    CssFontWeightNumber::try_from_component(component).unwrap()
+    CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(component).unwrap()
 }
 
 fn property(text: &str) -> CssFontWeight {
@@ -50,7 +51,10 @@ fn exact_fractional_and_exponent_bounds_ignore_float_rounding() {
         ("10e-1", "1"),
     ] {
         let value = number(text);
-        assert!(value.literal_component().is_some(), "{text}");
+        assert!(
+            value.literal().map(|literal| literal.component()).is_some(),
+            "{text}"
+        );
         assert!(value.calculation().is_none(), "{text}");
         assert_eq!(value.origin(), &CssValueOrigin::Programmatic, "{text}");
         assert_eq!(
@@ -74,7 +78,8 @@ fn exact_fractional_and_exponent_bounds_ignore_float_rounding() {
         "-1e999",
     ] {
         let component = CssComponentValue::try_number(text).unwrap();
-        let error = CssFontWeightNumber::try_from_component(component).unwrap_err();
+        let error =
+            CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(component).unwrap_err();
         assert!(error.is_out_of_range(), "{text}");
         let report = parse_style_attribute(&format!("font-weight:{text}"));
         assert!(!report.is_clean(), "{text}");
@@ -85,28 +90,31 @@ fn exact_fractional_and_exponent_bounds_ignore_float_rounding() {
 #[test]
 fn wrong_domain_and_bare_math_roots_cannot_bypass_literal_bounds() {
     for text in ["10%", "10px"] {
-        let error =
-            CssFontWeightNumber::try_from_component(CssComponentValue::try_token(text).unwrap())
-                .unwrap_err();
+        let error = CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
+            CssComponentValue::try_token(text).unwrap(),
+        )
+        .unwrap_err();
         assert!(error.is_root_domain_mismatch(), "{error:?}");
         assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
     }
     for text in ["0", "1001"] {
-        let calculation = CssNumberCalculation::try_from_components(
+        let calculation = CssCalculation::<CssNumber>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
         .unwrap();
-        let error = CssFontWeightNumber::try_from_calculation(calculation).unwrap_err();
+        let error = CssNumeric::<CssNumber, CssFontWeightRange>::try_from_calculation(calculation)
+            .unwrap_err();
         assert!(error.is_out_of_range(), "{text}");
     }
-    let calculation = CssNumberCalculation::try_from_components(
+    let calculation = CssCalculation::<CssNumber>::try_from_components(
         parse_component_values("calc(0)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let value = CssFontWeightNumber::try_from_calculation(calculation).unwrap();
-    assert!(value.literal_component().is_none());
+    let value =
+        CssNumeric::<CssNumber, CssFontWeightRange>::try_from_calculation(calculation).unwrap();
+    assert!(value.literal().map(|literal| literal.component()).is_none());
     assert!(value.calculation().is_some());
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),

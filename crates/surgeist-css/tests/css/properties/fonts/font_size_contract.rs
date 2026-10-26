@@ -5,14 +5,16 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::assert_programmatic_rejection;
 use crate::css::support::named_property::normal_grammar_components;
 use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssContributionValueRef,
-    CssContributions, CssExpansion, CssFontSize, CssFontValue, CssGlobalKeyword, CssImportance,
-    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLengthPercentageCalculation,
-    CssLonghandValueRef, CssPropertyKindRef, CssRecoveryAction, CssSerializationLimits,
-    CssSerializedOrigin, CssSpecifiedNonNegativeLengthPercentage as SizeLengthPercentage,
+    CssCalculation, CssComponentValue, CssComponentValueRef, CssComponentValues,
+    CssContributionValueRef, CssContributions, CssExpansion, CssFontSize, CssFontValue,
+    CssGlobalKeyword, CssImportance, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLengthPercentage, CssLonghandValueRef, CssNonNegative, CssNumeric,
+    CssPropertyKindRef, CssRecoveryAction, CssSerializationLimits, CssSerializedOrigin,
     CssValueOrigin, CssValueTokenRef, expand_declaration, parse_component_values,
     parse_style_attribute,
 };
+
+type SizeLengthPercentage = CssNumeric<CssLengthPercentage, CssNonNegative>;
 
 fn scalar(text: &str) -> SizeLengthPercentage {
     SizeLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap()).unwrap()
@@ -77,7 +79,10 @@ fn shared_checked_payload_accepts_all_length_categories_and_exact_nonnegative_va
         ("12.5%", "12.5%"),
     ] {
         let value = scalar(authored);
-        assert!(value.literal_component().is_some(), "{authored}");
+        assert!(
+            value.literal().map(|literal| literal.component()).is_some(),
+            "{authored}"
+        );
         assert!(value.calculation().is_none(), "{authored}");
         assert_eq!(value.origin(), &CssValueOrigin::Programmatic, "{authored}");
         assert_eq!(
@@ -111,8 +116,11 @@ fn shared_checked_payload_accepts_all_length_categories_and_exact_nonnegative_va
         "0%"
     );
     let component = scalar("1e-999px");
-    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
-        component.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) = component
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("exact dimension")
     };
@@ -120,7 +128,7 @@ fn shared_checked_payload_accepts_all_length_categories_and_exact_nonnegative_va
     assert_eq!(unit, "px");
     let percentage = scalar("1e-999%");
     assert!(matches!(
-        percentage.literal_component().unwrap().view(),
+        percentage.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
             if number.representation() == "1e-999"
     ));
@@ -167,13 +175,16 @@ fn tiny_negatives_and_wrong_numeric_domains_fail_without_dropping_neighbors() {
 #[test]
 fn bare_calculation_roots_reenter_literal_admission_while_functions_stay_symbolic() {
     for (text, expected) in [("0px", "0px"), ("0", "0")] {
-        let calculation = CssLengthPercentageCalculation::try_from_components(
+        let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
         .unwrap();
         let value = SizeLengthPercentage::try_from_calculation(calculation).unwrap();
-        assert!(value.literal_component().is_some(), "{text}");
+        assert!(
+            value.literal().map(|literal| literal.component()).is_some(),
+            "{text}"
+        );
         assert!(value.calculation().is_none(), "{text}");
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
@@ -181,18 +192,18 @@ fn bare_calculation_roots_reenter_literal_admission_while_functions_stay_symboli
             "{text}"
         );
     }
-    let calculation = CssLengthPercentageCalculation::try_from_components(
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
         parse_component_values("1e999%").unwrap(),
         Default::default(),
     )
     .unwrap();
     let value = SizeLengthPercentage::try_from_calculation(calculation).unwrap();
-    assert!(value.literal_component().is_some());
+    assert!(value.literal().map(|literal| literal.component()).is_some());
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
         format!("1{}%", "0".repeat(999))
     );
-    let calculation = CssLengthPercentageCalculation::try_from_components(
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
         parse_component_values("-1e-999px").unwrap(),
         Default::default(),
     )
@@ -206,13 +217,16 @@ fn bare_calculation_roots_reenter_literal_admission_while_functions_stay_symboli
         ("calc(-1px)", "calc(-1px)"),
         ("calc(2px + 3%)", "calc(3% + 2px)"),
     ] {
-        let calculation = CssLengthPercentageCalculation::try_from_components(
+        let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
         .unwrap();
         let value = SizeLengthPercentage::try_from_calculation(calculation).unwrap();
-        assert!(value.literal_component().is_none(), "{text}");
+        assert!(
+            value.literal().map(|literal| literal.component()).is_none(),
+            "{text}"
+        );
         assert!(value.calculation().is_some(), "{text}");
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
@@ -431,7 +445,7 @@ fn recovered_math_requires_parser_admission_before_typed_transfer() {
         panic!("retained calculation")
     };
     let calculation = admitted.calculation().expect("typed recovered math");
-    let error = CssLengthPercentageCalculation::try_from_components(
+    let error = CssCalculation::<CssLengthPercentage>::try_from_components(
         calculation.components().clone(),
         Default::default(),
     )
@@ -468,7 +482,7 @@ fn shorthand_preserves_size_math_line_height_and_family_boundaries() {
             "font:oblique calc(10deg) calc(350 + 50) calc(16px + 2px)/1.2 serif",
             CssFontSize::LengthPercentage(
                 SizeLengthPercentage::try_from_calculation(
-                    CssLengthPercentageCalculation::try_from_components(
+                    CssCalculation::<CssLengthPercentage>::try_from_components(
                         parse_component_values("calc(16px + 2px)").unwrap(),
                         Default::default(),
                     )

@@ -1,6 +1,9 @@
 //! Checked authored UI 4 cursor images, before resource selection or hotspot clamping.
 
-use crate::{CssContentString, CssCursorKeyword, CssResolutionValue, CssSpecifiedNumber, CssUrl};
+use crate::{
+    CssContentString, CssCursorKeyword, CssNonNegative, CssNumber, CssNumeric, CssResolution,
+    CssUrl,
+};
 
 /// An authored cursor keyword or ordered image alternatives with a required fallback.
 ///
@@ -57,14 +60,14 @@ impl CssCursorImages {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssCursorImage {
     source: CssCursorImageSource,
-    hotspot: Option<[CssSpecifiedNumber; 2]>,
+    hotspot: Option<[CssNumeric<CssNumber>; 2]>,
 }
 
 impl CssCursorImage {
     #[must_use]
     pub const fn new(
         source: CssCursorImageSource,
-        hotspot: Option<[CssSpecifiedNumber; 2]>,
+        hotspot: Option<[CssNumeric<CssNumber>; 2]>,
     ) -> Self {
         Self { source, hotspot }
     }
@@ -75,7 +78,7 @@ impl CssCursorImage {
     }
 
     #[must_use]
-    pub const fn hotspot(&self) -> Option<&[CssSpecifiedNumber; 2]> {
+    pub const fn hotspot(&self) -> Option<&[CssNumeric<CssNumber>; 2]> {
         self.hotspot.as_ref()
     }
 }
@@ -160,7 +163,7 @@ impl CssCursorUrlSetOption {
     }
 
     #[must_use]
-    pub fn resolution(&self) -> Option<&CssResolutionValue> {
+    pub fn resolution(&self) -> Option<&CssNumeric<CssResolution, CssNonNegative>> {
         self.descriptors
             .iter()
             .find_map(|descriptor| match descriptor {
@@ -192,6 +195,6 @@ pub enum CssCursorUrlSetReference {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCursorUrlSetDescriptor {
-    Resolution(CssResolutionValue),
+    Resolution(CssNumeric<CssResolution, CssNonNegative>),
     Type(CssContentString),
 }

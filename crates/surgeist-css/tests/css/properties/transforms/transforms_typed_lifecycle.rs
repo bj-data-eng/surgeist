@@ -8,20 +8,22 @@ use surgeist_css::*;
 
 fn number(text: &str) -> CssTransformScaleComponent {
     CssTransformScaleComponent::Number(
-        CssSpecifiedNumber::try_from_component(CssComponentValue::try_number(text).unwrap())
+        CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_number(text).unwrap())
             .unwrap(),
     )
 }
 fn percentage(text: &str) -> CssTransformScaleComponent {
     CssTransformScaleComponent::Percentage(
-        CssSpecifiedPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
-            .unwrap(),
+        CssNumeric::<CssPercentage>::try_from_component(
+            CssComponentValue::try_token(text).unwrap(),
+        )
+        .unwrap(),
     )
 }
 fn number_math(text: &str) -> CssTransformScaleComponent {
     CssTransformScaleComponent::Number(
-        CssSpecifiedNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(
+        CssNumeric::<CssNumber>::try_from_calculation(
+            CssCalculation::<CssNumber>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default(),
             )
@@ -32,8 +34,8 @@ fn number_math(text: &str) -> CssTransformScaleComponent {
 }
 fn percentage_math(text: &str) -> CssTransformScaleComponent {
     CssTransformScaleComponent::Percentage(
-        CssSpecifiedPercentage::try_from_calculation(
-            CssPercentageCalculation::try_from_components(
+        CssNumeric::<CssPercentage>::try_from_calculation(
+            CssCalculation::<CssPercentage>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default(),
             )
@@ -44,7 +46,7 @@ fn percentage_math(text: &str) -> CssTransformScaleComponent {
 }
 fn hinted(text: &str) -> CssTransformScaleComponent {
     CssTransformScaleComponent::HintedNumberCalculation(
-        CssHintedNumberCalculation::try_from_components(
+        CssCalculation::<CssHintedNumber>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
@@ -83,12 +85,17 @@ fn new_3d_types_have_closed_domains_and_public_cumulative_providers() {
     check!(CssBackfaceVisibility::Hidden, 1, 1, "hidden");
     check!(CssPerspective::None, 1, 1, "none");
     check!(
-        CssPerspective::Length(CssSpecifiedNonNegativeLength::zero()),
+        CssPerspective::Length(
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+                CssComponentValue::try_number("0").unwrap()
+            )
+            .unwrap()
+        ),
         2,
         2,
         "0"
     );
-    let length = CssSpecifiedNonNegativeLength::try_from_component(
+    let length = CssNumeric::<CssLength, CssNonNegative>::try_from_component(
         CssComponentValue::try_token(".25px").unwrap(),
     )
     .unwrap();
@@ -96,20 +103,21 @@ fn new_3d_types_have_closed_domains_and_public_cumulative_providers() {
     check!(CssPerspective::Length(length), 2, 2, "0.25px");
     for invalid in ["-1e-999px", "1%", "1"] {
         assert!(
-            CssSpecifiedNonNegativeLength::try_from_component(
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token(invalid).unwrap()
             )
             .is_err()
         );
     }
-    let math = CssLengthCalculation::try_from_components(
+    let math = CssCalculation::<CssLength>::try_from_components(
         parse_component_values("calc(1px - 2px)").unwrap(),
         Default::default(),
     )
     .unwrap();
     let original = math.components().clone();
-    let perspective =
-        CssPerspective::Length(CssSpecifiedNonNegativeLength::try_from_calculation(math).unwrap());
+    let perspective = CssPerspective::Length(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(math).unwrap(),
+    );
     check!(&perspective, 5, 5, "calc(-1px)");
     let CssPerspective::Length(value) = &perspective else {
         panic!("length");
@@ -140,11 +148,11 @@ fn new_3d_types_have_closed_domains_and_public_cumulative_providers() {
 
 #[test]
 fn perspective_origin_uses_the_physical_position_owner_and_origin_fields() {
-    let h = CssSpecifiedLengthPercentage::try_from_component(
+    let h = CssNumeric::<CssLengthPercentage>::try_from_component(
         CssComponentValue::try_token("2px").unwrap(),
     )
     .unwrap();
-    let v = CssSpecifiedLengthPercentage::try_from_component(
+    let v = CssNumeric::<CssLengthPercentage>::try_from_component(
         CssComponentValue::try_token("3%").unwrap(),
     )
     .unwrap();
@@ -277,8 +285,8 @@ fn scale_defaults_compare_exact_cross_unit_values_before_six_place_formatting() 
 fn structural_symbolic_equality_ignores_origins_but_preserves_distinct_authored_calculations() {
     let parsed = number_math("calc(1 + 2)");
     let programmatic = CssTransformScaleComponent::Number(
-        CssSpecifiedNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(
+        CssNumeric::<CssNumber>::try_from_calculation(
+            CssCalculation::<CssNumber>::try_from_components(
                 CssComponentValues::try_new(
                     vec![
                         CssComponentValue::try_function(

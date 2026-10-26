@@ -66,7 +66,7 @@ fn hue(text: &str) -> CssColorHue {
     if text == "none" {
         CssColorHue::None
     } else if text.ends_with("turn") {
-        CssColorHue::Angle(CssAngleLiteral::try_from_component(token(text)).unwrap())
+        CssColorHue::Angle(CssNumericLiteral::<CssAngle>::try_from_component(token(text)).unwrap())
     } else {
         CssColorHue::Number(CssColorNumberLiteral::try_from_component(token(text)).unwrap())
     }

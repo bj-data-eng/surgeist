@@ -77,13 +77,15 @@ fn drop_value(css: &str) -> CssDropShadow {
     value.clone()
 }
 
-fn length(css: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_component(CssComponentValue::try_token(css).unwrap()).unwrap()
+fn length(css: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(css).unwrap()).unwrap()
 }
 
-fn nonnegative(css: &str) -> CssSpecifiedNonNegativeLength {
-    CssSpecifiedNonNegativeLength::try_from_component(CssComponentValue::try_token(css).unwrap())
-        .unwrap()
+fn nonnegative(css: &str) -> CssNumeric<CssLength, CssNonNegative> {
+    CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+        CssComponentValue::try_token(css).unwrap(),
+    )
+    .unwrap()
 }
 
 fn assert_budget(
@@ -132,7 +134,7 @@ fn construction_preserves_omissions_and_rejects_spread_without_blur_and_empty_li
         ("auto", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            CssSpecifiedNonNegativeLength::try_from_component,
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component,
             CssComponentValue::try_token(invalid).unwrap(),
             kind,
         );
@@ -143,7 +145,7 @@ fn construction_preserves_omissions_and_rejects_spread_without_blur_and_empty_li
         ("1", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            CssSpecifiedLength::try_from_component,
+            CssNumeric::<CssLength>::try_from_component,
             CssComponentValue::try_token(invalid).unwrap(),
             kind,
         );
@@ -175,8 +177,12 @@ fn explicit_zero_currentcolor_and_programmatic_components_remain_explicit() {
         value.blur_radius().unwrap().origin(),
         &CssValueOrigin::Programmatic
     );
-    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, .. }) =
-        value.offset_y().literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, .. }) = value
+        .offset_y()
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("literal")
     };
@@ -422,7 +428,7 @@ fn checked_programmatic_math_and_extreme_decimals_keep_exact_meaning() {
         Default::default(),
     )
     .unwrap();
-    let calc = CssLengthCalculation::try_from_components(
+    let calc = CssCalculation::<CssLength>::try_from_components(
         CssComponentValues::try_new(
             vec![CssComponentValue::try_function("calc", children).unwrap()],
             Default::default(),
@@ -431,8 +437,8 @@ fn checked_programmatic_math_and_extreme_decimals_keep_exact_meaning() {
         Default::default(),
     )
     .unwrap();
-    let offset = CssSpecifiedLength::try_from_calculation(calc.clone()).unwrap();
-    let blur = CssSpecifiedNonNegativeLength::try_from_calculation(calc).unwrap();
+    let offset = CssNumeric::<CssLength>::try_from_calculation(calc.clone()).unwrap();
+    let blur = CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(calc).unwrap();
     let shadow = CssShadow::try_new(
         false,
         offset.clone(),

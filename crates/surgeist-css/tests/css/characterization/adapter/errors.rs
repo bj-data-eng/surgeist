@@ -194,9 +194,13 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
                 )],
             )
         }
-        "font-palette-construction" => failed(CssFontPaletteIndex::try_new(
-            CssIntegerValue::Literal(CssIntegerLiteral::from_i32(-1)),
-        )),
+        // A palette index is `<integer [0,∞]>`; its range is the numeric
+        // model's, so a negative index is a numeric range rejection.
+        "font-palette-construction" => {
+            failed(CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(
+                CssNumericLiteral::from_i32(-1),
+            ))
+        }
         "font-palette-mix-construction" => failed(CssFontPaletteMix::try_new(None, Vec::new())),
         "font-palette-value" => failed(CssFontPaletteDescriptorValue::try_new(
             CssFontPaletteDescriptorKind::BasePalette,
@@ -296,7 +300,7 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
                 )],
             )
         }
-        "numeric-construction" => failed(CssSpecifiedLength::try_from_component(token("red"))),
+        "numeric-construction" => failed(CssNumeric::<CssLength>::try_from_component(token("red"))),
         "page-block" => {
             let report = parse_declaration_block_contents("display: block");
             let error = match CssMarginDeclarationBlock::try_new(
@@ -332,7 +336,8 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
         }
         "position-construction" => failed(CssPhysicalPosition::try_new(
             CssHorizontalPosition::RightOffset(
-                CssSpecifiedLengthPercentage::try_from_component(token("10px")).expect("offset"),
+                CssNumeric::<CssLengthPercentage>::try_from_component(token("10px"))
+                    .expect("offset"),
             ),
             CssVerticalPosition::Top,
         )),

@@ -1,8 +1,8 @@
 //! Authored integer identity is visible through existing parsed aggregate APIs.
-//! Grid and Steps preserve spelling while ignoring numeric provenance in Eq;
-//! counter integer owners preserve both spelling and provenance. Mathematical
-//! equivalence does not erase these authored distinctions. These tests use no
-//! newly added integer type, constructor or accessor.
+//! Grid, Steps and counter integer owners compare integers as CSS Typed OM 1
+//! "equal numeric values": the exact value, ignoring spelling and numeric
+//! provenance. These tests use no newly added integer type, constructor or
+//! accessor.
 
 use crate::css::support::descriptor_phases;
 use crate::css::support::sole_declaration as declaration;
@@ -30,15 +30,15 @@ fn lexical_identity<T: PartialEq + Debug>(
         parse(source),
         "same spelling and coordinates"
     );
-    assert_ne!(
+    assert_eq!(
         parse(source),
         parse(alternate_spelling),
-        "distinct authored spelling"
+        "equal values across authored spellings"
     );
 }
 
 #[test]
-fn parsed_grid_repeat_spelling_is_distinct_while_shifted_origin_is_ignored() {
+fn parsed_grid_repeat_spelling_and_shifted_origin_are_ignored() {
     let parse = |source: &str| {
         let declaration = declaration(source);
         let Some(CssKnownPropertyValueRef::GridTemplateColumns(value)) =
@@ -57,7 +57,7 @@ fn parsed_grid_repeat_spelling_is_distinct_while_shifted_origin_is_ignored() {
 }
 
 #[test]
-fn parsed_steps_spelling_is_distinct_while_shifted_origin_is_ignored() {
+fn parsed_steps_spelling_and_shifted_origin_are_ignored() {
     let parse = |source: &str| {
         let declaration = declaration(source);
         let Some(CssKnownPropertyValueRef::TransitionTimingFunction(value)) =
@@ -76,7 +76,7 @@ fn parsed_steps_spelling_is_distinct_while_shifted_origin_is_ignored() {
 }
 
 #[test]
-fn parsed_fixed_start_preserves_spelling_and_numeric_origin_in_identity() {
+fn parsed_fixed_start_identity_ignores_spelling_and_numeric_origin() {
     let parse = |source: &str| {
         counter(source)
             .descriptors()
@@ -91,14 +91,14 @@ fn parsed_fixed_start_preserves_spelling_and_numeric_origin_in_identity() {
         source,
         "@counter-style eq { system: fixed +0001; symbols: \"x\"; }",
     );
-    assert_ne!(
+    assert_eq!(
         parse(source),
         parse("/* shift */ @counter-style eq { system: fixed 1; symbols: \"x\"; }")
     );
 }
 
 #[test]
-fn parsed_finite_range_preserves_spelling_and_numeric_origins_in_identity() {
+fn parsed_finite_range_identity_ignores_spelling_and_numeric_origins() {
     let parse = |source: &str| {
         counter(source)
             .descriptors()
@@ -113,14 +113,14 @@ fn parsed_finite_range_preserves_spelling_and_numeric_origins_in_identity() {
         source,
         "@counter-style eq { symbols: \"x\"; range: +0007 9; }",
     );
-    assert_ne!(
+    assert_eq!(
         parse(source),
         parse("/* shift */ @counter-style eq { symbols: \"x\"; range: 7 9; }")
     );
 }
 
 #[test]
-fn parsed_pad_minimum_preserves_spelling_and_numeric_origin_in_identity() {
+fn parsed_pad_minimum_identity_ignores_spelling_and_numeric_origin() {
     let parse = |source: &str| {
         counter(source)
             .descriptors()
@@ -135,14 +135,14 @@ fn parsed_pad_minimum_preserves_spelling_and_numeric_origin_in_identity() {
         source,
         "@counter-style eq { symbols: \"x\"; pad: +0007 \"_\"; }",
     );
-    assert_ne!(
+    assert_eq!(
         parse(source),
         parse("/* shift */ @counter-style eq { symbols: \"x\"; pad: 7 \"_\"; }")
     );
 }
 
 #[test]
-fn parsed_additive_weights_preserve_spelling_and_numeric_origins_in_identity() {
+fn parsed_additive_weights_identity_ignores_spelling_and_numeric_origins() {
     let parse = |source: &str| {
         counter(source)
             .descriptors()
@@ -157,7 +157,7 @@ fn parsed_additive_weights_preserve_spelling_and_numeric_origins_in_identity() {
         source,
         "@counter-style eq { system: additive; additive-symbols: +0007 \"x\", 0 \"z\"; }",
     );
-    assert_ne!(
+    assert_eq!(
         parse(source),
         parse(
             "/* shift */ @counter-style eq { system: additive; additive-symbols: 7 \"x\", 0 \"z\"; }"

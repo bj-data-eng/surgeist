@@ -66,9 +66,11 @@ fn exact_layer(declaration: &CssDeclaration, source: &str) {
     let CssHorizontalPosition::Offset(offset) = physical.horizontal() else {
         panic!("offset")
     };
-    assert!(matches!(offset.literal_component().unwrap().view(),
+    assert!(
+        matches!(offset.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
-        if number.representation() == "3.000e1" && unit == "px"));
+        if number.representation() == "3.000e1" && unit == "px")
+    );
     assert!(matches!(physical.vertical(), CssVerticalPosition::Top));
     let CssValueOrigin::Parsed(origin) = offset.origin() else {
         panic!("parsed offset")

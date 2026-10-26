@@ -84,9 +84,11 @@ fn integer_calculation_counts_remain_unrounded_unclamped_and_owned() {
         ("calc(1px / 1em)", "digits calc(1px / 1em)"),
     ] {
         let components = parse_component_values(input).unwrap();
-        let calculation =
-            CssIntegerCalculation::try_from_components(components.clone(), Default::default())
-                .unwrap();
+        let calculation = CssCalculation::<CssInteger>::try_from_components(
+            components.clone(),
+            Default::default(),
+        )
+        .unwrap();
         let count = CssTextCombineDigitCount::from_calculation(calculation.clone());
         assert!(count.literal().is_none());
         assert_eq!(count.calculation().unwrap(), &calculation);
@@ -103,7 +105,8 @@ fn integer_calculation_counts_remain_unrounded_unclamped_and_owned() {
         ));
         output(&value, expected);
     }
-    let count = CssTextCombineDigitCount::from_calculation(CssIntegerCalculation::literal(1));
+    let count =
+        CssTextCombineDigitCount::from_calculation(CssCalculation::<CssInteger>::literal(1));
     assert!(matches!(
         count.calculation().unwrap().origin(),
         CssValueOrigin::Programmatic
@@ -229,7 +232,7 @@ fn metadata_initial_and_reentry_keep_exact_current_payloads() {
 #[test]
 fn calculation_leaf_budgets_include_outer_nodes_and_prefix_bytes() {
     let value = CssTextCombineUpright::Digits(Some(CssTextCombineDigitCount::from_calculation(
-        CssIntegerCalculation::literal(1),
+        CssCalculation::<CssInteger>::literal(1),
     )));
     let before = value.clone();
     let text = "digits calc(1)";

@@ -486,7 +486,8 @@ fn standalone_discarded_capture_control() {
 #[test]
 fn checked_graph_retains_calculation_components_and_parsed_provenance() {
     let raw = components("calc(1 / 128)");
-    let calc = CssNumberCalculation::try_from_components(raw.clone(), Default::default()).unwrap();
+    let calc =
+        CssCalculation::<CssNumber>::try_from_components(raw.clone(), Default::default()).unwrap();
     assert_eq!(calc.components(), &raw);
     assert_eq!(calc.result_type(), CssCalculationType::Number);
     assert_eq!(calc.expression().origin(), raw.items()[0].origin());
@@ -559,9 +560,11 @@ fn origin_substitution_stays_pending_control() {
         expand_declaration(&d).unwrap(),
         CssExpansion::Pending(_)
     ));
-    let error =
-        CssNumberCalculation::try_from_components(components("calc(var(--n))"), Default::default())
-            .unwrap_err();
+    let error = CssCalculation::<CssNumber>::try_from_components(
+        components("calc(var(--n))"),
+        Default::default(),
+    )
+    .unwrap_err();
     assert!(error.is_substitution_required(), "{error:?}");
     assert!(error.origin().is_some());
 }
@@ -654,7 +657,8 @@ text_case!(
 fn checked_percentage_origin_preserves_identity_dimension_and_provenance() {
     let raw = components("calc(1% / 128)");
     let calc =
-        CssPercentageCalculation::try_from_components(raw.clone(), Default::default()).unwrap();
+        CssCalculation::<CssPercentage>::try_from_components(raw.clone(), Default::default())
+            .unwrap();
     assert_eq!(calc.result_type(), CssCalculationType::Percentage);
     assert_eq!(calc.components(), &raw);
     assert_eq!(calc.expression().origin(), raw.items()[0].origin());
@@ -810,7 +814,7 @@ fn programmatic_calculation_preserves_exact_leaf_spelling_and_origins() {
     .unwrap();
     let raw = CssComponentValues::try_new(vec![function], Default::default()).unwrap();
     let calculation =
-        CssNumberCalculation::try_from_components(raw.clone(), Default::default()).unwrap();
+        CssCalculation::<CssNumber>::try_from_components(raw.clone(), Default::default()).unwrap();
     assert_eq!(calculation.components(), &raw);
     assert_eq!(
         calculation.expression().origin(),

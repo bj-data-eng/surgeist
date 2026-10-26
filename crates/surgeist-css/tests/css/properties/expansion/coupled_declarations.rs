@@ -31,7 +31,7 @@ fn coupled_adjacent_properties_expose_distinct_typed_values() {
     else {
         panic!("checked literal width")
     };
-    let Some(component) = length.literal_component() else {
+    let Some(component) = length.literal().map(|literal| literal.component()) else {
         panic!("ordinary literal")
     };
     assert!(

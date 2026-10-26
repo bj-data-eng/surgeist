@@ -14,24 +14,17 @@ use crate::font_variant::CssFontVariant;
 pub(crate) use crate::media::*;
 pub(crate) use crate::media_features::*;
 pub(crate) use crate::numeric::*;
-pub use crate::page_line_minimum::CssPageLineMinimum;
 pub use crate::rotate::{CssRotate, CssRotateAxis, CssRotateValues};
 pub use crate::text_box::*;
 pub use crate::text_controls::*;
 pub use crate::text_decoration::*;
 use crate::{
-    CssAngleLiteral, CssAngleOrZero, CssAngleValue, CssColorNumberLiteral,
-    CssColorPercentageLiteral, CssDuration, CssFontSize, CssFontStyle, CssFontWeight,
-    CssFontWidthKeyword, CssLineHeight, CssTimeValue, CssValueOrigin,
+    CssAngleOrZero, CssColorNumberLiteral, CssColorPercentageLiteral, CssFontSize, CssFontStyle,
+    CssFontWeight, CssFontWidthKeyword, CssLineHeight, CssValueOrigin,
 };
 use crate::{
     CssColorProfileRule, CssContainerScrollQuery, CssContainerStyleQuery, CssFontFeatureValuesRule,
     CssFontPaletteValuesRule,
-};
-pub(crate) use crate::{
-    CssSpecifiedLength, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLength,
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
-    CssSpecifiedNonNegativePercentage, CssSpecifiedNumber, CssSpecifiedPercentage,
 };
 use std::sync::Arc;
 
@@ -41,33 +34,6 @@ use crate::source::CssParsedOrigin;
 pub(crate) use crate::properties::CssKnownDeclaration;
 use crate::properties::CssKnownProperty;
 use crate::source::CssSourcePosition;
-
-// Semantic syntax owners compare exact numeric structure while leaves retain
-// provenance-sensitive equality. This also applies to symbolic AST branches;
-// raw calculations continue to compare their diagnostic origins separately.
-fn optional_numeric_eq<T>(
-    left: Option<&T>,
-    right: Option<&T>,
-    equal: impl FnOnce(&T, &T) -> bool,
-) -> bool {
-    match (left, right) {
-        (Some(left), Some(right)) => equal(left, right),
-        (None, None) => true,
-        _ => false,
-    }
-}
-
-macro_rules! numeric_fields_eq {
-    ($owner:ident, [$($required:ident),*], [$($optional:ident),*], [$($ordinary:ident),*]) => {
-        impl PartialEq for $owner {
-            fn eq(&self, other: &Self) -> bool {
-                true $( && self.$required.structural_eq(&other.$required) )*
-                $( && optional_numeric_eq(self.$optional.as_ref(), other.$optional.as_ref(), |left, right| left.structural_eq(right)) )*
-                $( && self.$ordinary == other.$ordinary )*
-            }
-        }
-    };
-}
 
 /// A parser-produced authored stylesheet.
 ///
@@ -615,7 +581,7 @@ pub struct CssKeyframePercent {
 #[derive(Clone, Debug, PartialEq)]
 enum CssKeyframePercentData {
     Literal(f64),
-    Calculation(CssSpecifiedPercentage),
+    Calculation(CssNumeric<CssPercentage>),
 }
 
 impl CssKeyframePercent {
@@ -637,16 +603,20 @@ impl CssKeyframePercent {
     /// roots use the same binary64 literal boundary as [`Self::try_new`]. Function roots retain
     /// exact authored coefficients and provenance without evaluation or clamping.
     #[must_use]
-    pub fn try_from_calculation(calculation: CssPercentageCalculation) -> Option<Self> {
-        Self::from_specified(CssSpecifiedPercentage::try_from_calculation(calculation).ok()?)
+    pub fn try_from_calculation(calculation: CssCalculation<CssPercentage>) -> Option<Self> {
+        Self::from_specified(CssNumeric::<CssPercentage>::try_from_calculation(calculation).ok()?)
     }
 
     /// Parser admission retains recovered syntax, which parsing reports separately.
-    pub(crate) fn from_parser_calculation(calculation: CssPercentageCalculation) -> Option<Self> {
-        Self::from_specified(CssSpecifiedPercentage::from_parser_calculation(calculation).ok()?)
+    pub(crate) fn from_parser_calculation(
+        calculation: CssCalculation<CssPercentage>,
+    ) -> Option<Self> {
+        Self::from_specified(
+            CssNumeric::<CssPercentage>::from_parser_calculation(calculation).ok()?,
+        )
     }
 
-    fn from_specified(value: CssSpecifiedPercentage) -> Option<Self> {
+    fn from_specified(value: CssNumeric<CssPercentage>) -> Option<Self> {
         if let Some(component) = value.literal_component() {
             let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(number)) =
                 component.view()
@@ -672,14 +642,14 @@ impl CssKeyframePercent {
 
     /// Borrows the symbolic percentage function without computing its offset.
     #[must_use]
-    pub fn calculation(&self) -> Option<&CssPercentageCalculation> {
+    pub fn calculation(&self) -> Option<&CssCalculation<CssPercentage>> {
         match &self.value {
             CssKeyframePercentData::Literal(_) => None,
             CssKeyframePercentData::Calculation(value) => value.calculation(),
         }
     }
 
-    pub(crate) fn specified_calculation(&self) -> Option<&CssSpecifiedPercentage> {
+    pub(crate) fn specified_calculation(&self) -> Option<&CssNumeric<CssPercentage>> {
         match &self.value {
             CssKeyframePercentData::Literal(_) => None,
             CssKeyframePercentData::Calculation(value) => Some(value),
@@ -4202,9 +4172,9 @@ impl CssFiniteNumber {
 #[non_exhaustive]
 pub enum CssOpacityValue {
     Scalar(crate::CssOpacityScalar),
-    NumberCalculation(CssNumberCalculation),
-    HintedNumberCalculation(CssHintedNumberCalculation),
-    PercentageCalculation(CssPercentageCalculation),
+    NumberCalculation(CssCalculation<CssNumber>),
+    HintedNumberCalculation(CssCalculation<CssHintedNumber>),
+    PercentageCalculation(CssCalculation<CssPercentage>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -4279,84 +4249,6 @@ pub enum CssOverflow {
     Auto,
 }
 
-/// A checked positive literal or a calculation whose range remains authored and symbolic.
-///
-/// # Specified serialization
-///
-/// Serializes a positive count without resolving deferred integer math.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub enum CssPositiveIntegerValue {
-    Literal(CssPositiveIntegerLiteral),
-    Calculation(CssIntegerCalculation),
-}
-
-impl CssPositiveIntegerValue {
-    // Typed function math stays symbolic. A bare Integer calculation token
-    // must cross the same positive-literal boundary as ordinary parsed input.
-    pub(crate) fn normalized_positive_root(self) -> Option<Self> {
-        match self {
-            Self::Literal(literal) => Some(Self::Literal(literal)),
-            Self::Calculation(calculation) => {
-                let root =
-                    crate::specified_numeric::significant_root(calculation.components()).ok()?;
-                match root.view() {
-                    crate::CssComponentValueRef::Token(_) => {
-                        let integer =
-                            crate::CssIntegerLiteral::try_from_component(root.clone()).ok()?;
-                        CssPositiveIntegerLiteral::try_new(integer).map(Self::Literal)
-                    }
-                    crate::CssComponentValueRef::Function(_) => {
-                        Some(Self::Calculation(calculation))
-                    }
-                    _ => None,
-                }
-            }
-        }
-    }
-}
-
-/// A positive integer whose ordinary authored magnitude is not machine-bounded.
-#[derive(Clone, Debug)]
-pub struct CssPositiveIntegerLiteral {
-    integer: crate::CssIntegerLiteral,
-}
-
-impl CssPositiveIntegerLiteral {
-    /// Accepts an exact integer token only when its authored sign and digits are positive.
-    #[must_use]
-    pub fn try_new(integer: crate::CssIntegerLiteral) -> Option<Self> {
-        let text = integer.numeric().representation();
-        let digits = text.strip_prefix(['+', '-']).unwrap_or(text);
-        (!text.starts_with('-') && digits.bytes().any(|digit| digit != b'0'))
-            .then_some(Self { integer })
-    }
-
-    /// Borrows the checked exact integer token and its source origin.
-    #[must_use]
-    pub const fn integer(&self) -> &crate::CssIntegerLiteral {
-        &self.integer
-    }
-}
-
-impl PartialEq for CssPositiveIntegerLiteral {
-    fn eq(&self, other: &Self) -> bool {
-        self.integer
-            .component()
-            .structural_eq_ignoring_origin(other.integer.component())
-    }
-}
-
-impl PartialEq for CssPositiveIntegerValue {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Literal(left), Self::Literal(right)) => left == right,
-            (Self::Calculation(left), Self::Calculation(right)) => left.structural_eq(right),
-            _ => false,
-        }
-    }
-}
-
 /// The authored `column-count` value.
 ///
 /// # Specified serialization
@@ -4366,7 +4258,7 @@ impl PartialEq for CssPositiveIntegerValue {
 #[non_exhaustive]
 pub enum CssColumnCount {
     Auto,
-    Count(CssPositiveIntegerValue),
+    Count(CssNumeric<CssInteger, CssPositive>),
 }
 
 /// The authored `column-fill` keyword.
@@ -4553,7 +4445,7 @@ impl PartialEq for CssFlowTolerance {
             (
                 FlowToleranceValue::LengthPercentage(left),
                 FlowToleranceValue::LengthPercentage(right),
-            ) => left.structural_eq(right),
+            ) => left == right,
             _ => false,
         }
     }
@@ -4563,7 +4455,7 @@ impl PartialEq for CssFlowTolerance {
 enum FlowToleranceValue {
     Normal,
     Infinite,
-    LengthPercentage(CssSpecifiedLengthPercentage),
+    LengthPercentage(CssNumeric<CssLengthPercentage>),
 }
 
 /// Borrows the checked authored branch without resolving relative units or `normal`.
@@ -4572,7 +4464,7 @@ enum FlowToleranceValue {
 pub enum CssFlowToleranceRef<'a> {
     Normal,
     Infinite,
-    LengthPercentage(&'a CssSpecifiedLengthPercentage),
+    LengthPercentage(&'a CssNumeric<CssLengthPercentage>),
 }
 
 impl CssFlowTolerance {
@@ -4597,7 +4489,7 @@ impl CssFlowTolerance {
     /// The scalar owner excludes keywords and preserves its original origin.
     /// Signed operands and typed math remain symbolic until contextual resolution.
     #[must_use]
-    pub fn length_percentage(value: CssSpecifiedLengthPercentage) -> Self {
+    pub fn length_percentage(value: CssNumeric<CssLengthPercentage>) -> Self {
         Self {
             value: FlowToleranceValue::LengthPercentage(value),
         }
@@ -4696,20 +4588,6 @@ pub use grid::*;
 mod grid_placement;
 pub use grid_placement::*;
 
-/// # Specified serialization
-///
-/// Produces canonical specified text without computed integer rounding. Ordinary literal magnitudes
-/// are exact. Calculation projection, including an explicitly constructed literal-only calculation
-/// root, uses the shared binary64 math policy while retaining its exact authored expression. Finite
-/// results emit at most six fractional places, nearest with ties away from zero, and preserve all
-/// exact integer digits of the binary64 result.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub enum CssIntegerValue {
-    Literal(crate::CssIntegerLiteral),
-    Calculation(CssIntegerCalculation),
-}
-
 /// An authored `z-index` value before contextual stacking or integer rounding.
 ///
 /// CSS2 §9.9.1 defines `auto` or a signed integer. Integer literals preserve
@@ -4724,7 +4602,7 @@ pub enum CssIntegerValue {
 #[non_exhaustive]
 pub enum CssZIndexValue {
     Auto,
-    Integer(CssIntegerValue),
+    Integer(CssNumeric<CssInteger>),
 }
 
 /// # Specified serialization
@@ -5015,32 +4893,31 @@ pub enum CssBorderCollapse {
 /// Serializes the effective horizontal and vertical lengths, including a repeated axis.
 #[derive(Clone, Debug)]
 pub struct CssBorderSpacing {
-    horizontal: CssSpecifiedNonNegativeLength,
-    vertical: CssSpecifiedNonNegativeLength,
+    horizontal: CssNumeric<CssLength, CssNonNegative>,
+    vertical: CssNumeric<CssLength, CssNonNegative>,
 }
 
 impl PartialEq for CssBorderSpacing {
     fn eq(&self, other: &Self) -> bool {
-        self.horizontal.structural_eq(&other.horizontal)
-            && self.vertical.structural_eq(&other.vertical)
+        self.horizontal == other.horizontal && self.vertical == other.vertical
     }
 }
 
 impl CssBorderSpacing {
     /// Composes checked nonnegative horizontal and vertical lengths.
     pub const fn new(
-        horizontal: CssSpecifiedNonNegativeLength,
-        vertical: CssSpecifiedNonNegativeLength,
+        horizontal: CssNumeric<CssLength, CssNonNegative>,
+        vertical: CssNumeric<CssLength, CssNonNegative>,
     ) -> Self {
         Self {
             horizontal,
             vertical,
         }
     }
-    pub const fn horizontal(&self) -> &CssSpecifiedNonNegativeLength {
+    pub const fn horizontal(&self) -> &CssNumeric<CssLength, CssNonNegative> {
         &self.horizontal
     }
-    pub const fn vertical(&self) -> &CssSpecifiedNonNegativeLength {
+    pub const fn vertical(&self) -> &CssNumeric<CssLength, CssNonNegative> {
         &self.vertical
     }
 }
@@ -5066,14 +4943,14 @@ pub enum CssCaptionSide {
 #[non_exhaustive]
 pub enum CssClipEdge {
     Auto,
-    Length(CssSpecifiedLength),
+    Length(CssNumeric<CssLength>),
 }
 
 impl PartialEq for CssClipEdge {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Auto, Self::Auto) => true,
-            (Self::Length(left), Self::Length(right)) => left.structural_eq(right),
+            (Self::Length(left), Self::Length(right)) => left == right,
             _ => false,
         }
     }
@@ -5300,7 +5177,7 @@ pub enum CssTextCombineUpright {
 #[derive(Clone, Debug, PartialEq)]
 enum CssTextCombineDigitCountValue {
     Literal(i32),
-    Calculation(CssIntegerCalculation),
+    Calculation(CssCalculation<CssInteger>),
 }
 
 /// A literal digit count from two through four, or an authored integer calculation.
@@ -5323,7 +5200,7 @@ impl CssTextCombineDigitCount {
     }
 
     #[must_use]
-    pub const fn from_calculation(value: CssIntegerCalculation) -> Self {
+    pub const fn from_calculation(value: CssCalculation<CssInteger>) -> Self {
         Self {
             value: CssTextCombineDigitCountValue::Calculation(value),
         }
@@ -5338,7 +5215,7 @@ impl CssTextCombineDigitCount {
     }
 
     #[must_use]
-    pub const fn calculation(&self) -> Option<&CssIntegerCalculation> {
+    pub const fn calculation(&self) -> Option<&CssCalculation<CssInteger>> {
         match &self.value {
             CssTextCombineDigitCountValue::Literal(_) => None,
             CssTextCombineDigitCountValue::Calculation(value) => Some(value),
@@ -5396,14 +5273,14 @@ pub enum CssTextAlign {
 /// thickness.
 #[derive(Clone, Debug)]
 pub struct CssTextIndent {
-    length: CssSpecifiedLengthPercentage,
+    length: CssNumeric<CssLengthPercentage>,
     hanging: bool,
     each_line: bool,
 }
 
 impl PartialEq for CssTextIndent {
     fn eq(&self, other: &Self) -> bool {
-        self.length.structural_eq(&other.length)
+        self.length == other.length
             && self.hanging == other.hanging
             && self.each_line == other.each_line
     }
@@ -5411,14 +5288,18 @@ impl PartialEq for CssTextIndent {
 
 impl CssTextIndent {
     /// Retains the checked indent and independently authored keyword flags.
-    pub const fn new(length: CssSpecifiedLengthPercentage, hanging: bool, each_line: bool) -> Self {
+    pub const fn new(
+        length: CssNumeric<CssLengthPercentage>,
+        hanging: bool,
+        each_line: bool,
+    ) -> Self {
         Self {
             length,
             hanging,
             each_line,
         }
     }
-    pub const fn length(&self) -> &CssSpecifiedLengthPercentage {
+    pub const fn length(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.length
     }
     pub const fn hanging(&self) -> bool {
@@ -5445,13 +5326,13 @@ pub enum CssVerticalAlign {
     Middle,
     Top,
     Bottom,
-    Length(CssSpecifiedLengthPercentage),
+    Length(CssNumeric<CssLengthPercentage>),
 }
 
 impl PartialEq for CssVerticalAlign {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Length(left), Self::Length(right)) => left.structural_eq(right),
+            (Self::Length(left), Self::Length(right)) => left == right,
             (Self::Baseline, Self::Baseline)
             | (Self::Sub, Self::Sub)
             | (Self::Super, Self::Super)
@@ -6206,13 +6087,13 @@ pub enum CssTextDecorationThickness {
     Auto,
     FromFont,
     /// A signed authored thickness, before the actual value's device-pixel floor.
-    Length(CssSpecifiedLengthPercentage),
+    Length(CssNumeric<CssLengthPercentage>),
 }
 
 impl PartialEq for CssTextDecorationThickness {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Length(left), Self::Length(right)) => left.structural_eq(right),
+            (Self::Length(left), Self::Length(right)) => left == right,
             (Self::Auto, Self::Auto) | (Self::FromFont, Self::FromFont) => true,
             _ => false,
         }
@@ -6323,15 +6204,15 @@ pub enum CssWordSpaceTransform {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssTabSize {
-    Number(CssSpecifiedNonNegativeNumber),
-    Length(CssSpecifiedNonNegativeLength),
+    Number(CssNumeric<CssNumber, CssNonNegative>),
+    Length(CssNumeric<CssLength, CssNonNegative>),
 }
 
 impl PartialEq for CssTabSize {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
-            (Self::Length(left), Self::Length(right)) => left.structural_eq(right),
+            (Self::Number(left), Self::Number(right)) => left == right,
+            (Self::Length(left), Self::Length(right)) => left == right,
             _ => false,
         }
     }
@@ -6464,25 +6345,25 @@ impl CssBoxShadowList {
 #[derive(Clone, Debug)]
 pub struct CssShadow {
     inset: bool,
-    offset_x: CssSpecifiedLength,
-    offset_y: CssSpecifiedLength,
-    blur_radius: Option<CssSpecifiedNonNegativeLength>,
-    spread_radius: Option<CssSpecifiedLength>,
+    offset_x: CssNumeric<CssLength>,
+    offset_y: CssNumeric<CssLength>,
+    blur_radius: Option<CssNumeric<CssLength, CssNonNegative>>,
+    spread_radius: Option<CssNumeric<CssLength>>,
     color: Option<Box<CssColor>>,
 }
 
 impl PartialEq for CssShadow {
     fn eq(&self, other: &Self) -> bool {
         self.inset == other.inset
-            && self.offset_x.structural_eq(&other.offset_x)
-            && self.offset_y.structural_eq(&other.offset_y)
+            && self.offset_x == other.offset_x
+            && self.offset_y == other.offset_y
             && match (&self.blur_radius, &other.blur_radius) {
-                (Some(left), Some(right)) => left.structural_eq(right),
+                (Some(left), Some(right)) => left == right,
                 (None, None) => true,
                 _ => false,
             }
             && match (&self.spread_radius, &other.spread_radius) {
-                (Some(left), Some(right)) => left.structural_eq(right),
+                (Some(left), Some(right)) => left == right,
                 (None, None) => true,
                 _ => false,
             }
@@ -6494,10 +6375,10 @@ impl CssShadow {
     /// Retains authored omissions and rejects a spread without a blur radius.
     pub fn try_new(
         inset: bool,
-        offset_x: CssSpecifiedLength,
-        offset_y: CssSpecifiedLength,
-        blur_radius: Option<CssSpecifiedNonNegativeLength>,
-        spread_radius: Option<CssSpecifiedLength>,
+        offset_x: CssNumeric<CssLength>,
+        offset_y: CssNumeric<CssLength>,
+        blur_radius: Option<CssNumeric<CssLength, CssNonNegative>>,
+        spread_radius: Option<CssNumeric<CssLength>>,
         color: Option<CssColor>,
     ) -> Option<Self> {
         if blur_radius.is_none() && spread_radius.is_some() {
@@ -6514,10 +6395,10 @@ impl CssShadow {
     }
     pub(crate) fn new(
         inset: bool,
-        offset_x: CssSpecifiedLength,
-        offset_y: CssSpecifiedLength,
-        blur_radius: Option<CssSpecifiedNonNegativeLength>,
-        spread_radius: Option<CssSpecifiedLength>,
+        offset_x: CssNumeric<CssLength>,
+        offset_y: CssNumeric<CssLength>,
+        blur_radius: Option<CssNumeric<CssLength, CssNonNegative>>,
+        spread_radius: Option<CssNumeric<CssLength>>,
         color: Option<CssColor>,
     ) -> Self {
         Self {
@@ -6532,16 +6413,16 @@ impl CssShadow {
     pub const fn inset(&self) -> bool {
         self.inset
     }
-    pub const fn offset_x(&self) -> &CssSpecifiedLength {
+    pub const fn offset_x(&self) -> &CssNumeric<CssLength> {
         &self.offset_x
     }
-    pub const fn offset_y(&self) -> &CssSpecifiedLength {
+    pub const fn offset_y(&self) -> &CssNumeric<CssLength> {
         &self.offset_y
     }
-    pub const fn blur_radius(&self) -> Option<&CssSpecifiedNonNegativeLength> {
+    pub const fn blur_radius(&self) -> Option<&CssNumeric<CssLength, CssNonNegative>> {
         self.blur_radius.as_ref()
     }
-    pub const fn spread_radius(&self) -> Option<&CssSpecifiedLength> {
+    pub const fn spread_radius(&self) -> Option<&CssNumeric<CssLength>> {
         self.spread_radius.as_ref()
     }
     pub fn color(&self) -> Option<&CssColor> {
@@ -6633,18 +6514,18 @@ pub enum CssImageValue {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssBorderImageSliceComponent {
-    Number(CssSpecifiedNonNegativeNumber),
+    Number(CssNumeric<CssNumber, CssNonNegative>),
     /// A Number result retaining a percentage basis; math range handling is deferred.
-    HintedNumberCalculation(CssHintedNumberCalculation),
-    Percentage(CssSpecifiedNonNegativePercentage),
+    HintedNumberCalculation(CssCalculation<CssHintedNumber>),
+    Percentage(CssNumeric<CssPercentage, CssNonNegative>),
 }
 
 impl PartialEq for CssBorderImageSliceComponent {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::Number(left), Self::Number(right)) => left == right,
             (Self::HintedNumberCalculation(left), Self::HintedNumberCalculation(right)) => {
-                left.structural_eq(right)
+                left == right
             }
             (Self::Percentage(left), Self::Percentage(right)) => left == right,
             _ => false,
@@ -6686,22 +6567,20 @@ impl CssBorderImageSlice {
 #[non_exhaustive]
 pub enum CssBorderImageWidthComponent {
     Auto,
-    LengthPercentage(CssSpecifiedNonNegativeLengthPercentage),
-    Number(CssSpecifiedNonNegativeNumber),
+    LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>),
+    Number(CssNumeric<CssNumber, CssNonNegative>),
     /// A contextual Number multiplier, before computed-value range handling.
-    HintedNumberCalculation(CssHintedNumberCalculation),
+    HintedNumberCalculation(CssCalculation<CssHintedNumber>),
 }
 
 impl PartialEq for CssBorderImageWidthComponent {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Auto, Self::Auto) => true,
-            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
-                left.structural_eq(right)
-            }
-            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => left == right,
+            (Self::Number(left), Self::Number(right)) => left == right,
             (Self::HintedNumberCalculation(left), Self::HintedNumberCalculation(right)) => {
-                left.structural_eq(right)
+                left == right
             }
             _ => false,
         }
@@ -6735,15 +6614,15 @@ impl CssBorderImageWidth {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssBorderImageOutsetComponent {
-    Length(CssSpecifiedNonNegativeLength),
-    Number(CssSpecifiedNonNegativeNumber),
+    Length(CssNumeric<CssLength, CssNonNegative>),
+    Number(CssNumeric<CssNumber, CssNonNegative>),
 }
 
 impl PartialEq for CssBorderImageOutsetComponent {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Length(left), Self::Length(right)) => left.structural_eq(right),
-            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::Length(left), Self::Length(right)) => left == right,
+            (Self::Number(left), Self::Number(right)) => left == right,
             _ => false,
         }
     }
@@ -6915,8 +6794,8 @@ impl CssBorderImage {
 pub enum CssImageOrientation {
     FromImage,
     None,
-    Angle(CssAngleValue),
-    Flip(Option<CssAngleValue>),
+    Angle(CssNumeric<CssAngle>),
+    Flip(Option<CssNumeric<CssAngle>>),
 }
 
 impl PartialEq for CssImageOrientation {
@@ -6924,10 +6803,8 @@ impl PartialEq for CssImageOrientation {
         match (self, other) {
             (Self::FromImage, Self::FromImage) => true,
             (Self::None, Self::None) => true,
-            (Self::Angle(left), Self::Angle(right)) => left.structural_eq(right),
-            (Self::Flip(left), Self::Flip(right)) => {
-                optional_numeric_eq(left.as_ref(), right.as_ref(), CssAngleValue::structural_eq)
-            }
+            (Self::Angle(left), Self::Angle(right)) => left == right,
+            (Self::Flip(left), Self::Flip(right)) => left == right,
             _ => false,
         }
     }
@@ -7056,7 +6933,7 @@ pub enum CssLinearGradientDirection {
 impl PartialEq for CssLinearGradientDirection {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Angle(left), Self::Angle(right)) => left.structural_eq(right),
+            (Self::Angle(left), Self::Angle(right)) => left == right,
             (Self::SideOrCorner(left), Self::SideOrCorner(right)) => left == right,
             _ => false,
         }
@@ -7067,7 +6944,7 @@ impl PartialEq for CssLinearGradientDirection {
 #[derive(Clone, Debug)]
 pub struct CssGradientColorStop {
     color: CssColor,
-    positions: Vec<CssSpecifiedLengthPercentage>,
+    positions: Vec<CssNumeric<CssLengthPercentage>>,
 }
 impl PartialEq for CssGradientColorStop {
     fn eq(&self, other: &Self) -> bool {
@@ -7077,7 +6954,7 @@ impl PartialEq for CssGradientColorStop {
                 .positions
                 .iter()
                 .zip(&other.positions)
-                .all(|(a, b)| a.structural_eq(b))
+                .all(|(a, b)| a == b)
     }
 }
 
@@ -7088,12 +6965,12 @@ impl CssGradientColorStop {
     }
 
     #[must_use]
-    pub fn position(&self) -> Option<&CssSpecifiedLengthPercentage> {
+    pub fn position(&self) -> Option<&CssNumeric<CssLengthPercentage>> {
         self.positions.first()
     }
 
     /// Borrows zero, one, or two authored positions without expanding the stop.
-    pub fn positions(&self) -> &[CssSpecifiedLengthPercentage] {
+    pub fn positions(&self) -> &[CssNumeric<CssLengthPercentage>] {
         &self.positions
     }
 }
@@ -7103,14 +6980,14 @@ impl CssGradientColorStop {
 #[non_exhaustive]
 pub enum CssColorStopListItem {
     Stop(Box<CssGradientColorStop>),
-    Hint(CssSpecifiedLengthPercentage),
+    Hint(CssNumeric<CssLengthPercentage>),
 }
 
 impl PartialEq for CssColorStopListItem {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Stop(left), Self::Stop(right)) => left == right,
-            (Self::Hint(left), Self::Hint(right)) => left.structural_eq(right),
+            (Self::Hint(left), Self::Hint(right)) => left == right,
             _ => false,
         }
     }
@@ -7180,28 +7057,27 @@ pub enum CssRadialShape {
 }
 
 /// A checked pair of non-negative radial-gradient ellipse radii.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssRadialEllipseSize {
-    horizontal: CssSpecifiedNonNegativeLengthPercentage,
-    vertical: CssSpecifiedNonNegativeLengthPercentage,
+    horizontal: CssNumeric<CssLengthPercentage, CssNonNegative>,
+    vertical: CssNumeric<CssLengthPercentage, CssNonNegative>,
 }
-numeric_fields_eq!(CssRadialEllipseSize, [horizontal, vertical], [], []);
 
 impl CssRadialEllipseSize {
     /// Composes two independently checked nonnegative radii in horizontal/vertical order.
     pub const fn new(
-        horizontal: CssSpecifiedNonNegativeLengthPercentage,
-        vertical: CssSpecifiedNonNegativeLengthPercentage,
+        horizontal: CssNumeric<CssLengthPercentage, CssNonNegative>,
+        vertical: CssNumeric<CssLengthPercentage, CssNonNegative>,
     ) -> Self {
         Self {
             horizontal,
             vertical,
         }
     }
-    pub const fn horizontal(&self) -> &CssSpecifiedNonNegativeLengthPercentage {
+    pub const fn horizontal(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
         &self.horizontal
     }
-    pub const fn vertical(&self) -> &CssSpecifiedNonNegativeLengthPercentage {
+    pub const fn vertical(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
         &self.vertical
     }
 }
@@ -7210,7 +7086,7 @@ impl CssRadialEllipseSize {
 #[non_exhaustive]
 pub enum CssRadialSize {
     Extent(CssRadialExtent),
-    Circle(CssSpecifiedNonNegativeLength),
+    Circle(CssNumeric<CssLength, CssNonNegative>),
     Ellipse(CssRadialEllipseSize),
 }
 
@@ -7218,7 +7094,7 @@ impl PartialEq for CssRadialSize {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Extent(left), Self::Extent(right)) => left == right,
-            (Self::Circle(left), Self::Circle(right)) => left.structural_eq(right),
+            (Self::Circle(left), Self::Circle(right)) => left == right,
             (Self::Ellipse(left), Self::Ellipse(right)) => left == right,
             _ => false,
         }
@@ -7275,20 +7151,18 @@ impl CssRadialGradient {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssAngularColorStopPosition {
-    Angle(CssAngleValue),
-    Percentage(crate::CssSpecifiedPercentage),
+    Angle(CssNumeric<CssAngle>),
+    Percentage(crate::CssNumeric<crate::CssPercentage>),
     Zero(crate::CssZeroLiteral),
-    Calculation(crate::CssAnglePercentageCalculation),
+    Calculation(crate::CssCalculation<crate::CssAnglePercentage>),
 }
 impl PartialEq for CssAngularColorStopPosition {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Angle(a), Self::Angle(b)) => a.structural_eq(b),
-            (Self::Percentage(a), Self::Percentage(b)) => a.structural_eq(b),
-            (Self::Zero(a), Self::Zero(b)) => a.structural_eq(b),
-            (Self::Calculation(a), Self::Calculation(b)) => {
-                a.expression.structural_eq(&b.expression)
-            }
+            (Self::Angle(a), Self::Angle(b)) => a == b,
+            (Self::Percentage(a), Self::Percentage(b)) => a == b,
+            (Self::Zero(a), Self::Zero(b)) => a == b,
+            (Self::Calculation(a), Self::Calculation(b)) => a == b,
             _ => false,
         }
     }
@@ -7359,19 +7233,13 @@ impl CssAngularColorStopList {
 }
 
 /// Authored conic grammar; context-dependent geometry and color execution are deferred.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssConicGradient {
     from: Option<CssAngleOrZero>,
     position: Option<CssPosition>,
     interpolation: Option<CssColorInterpolation>,
     stops: CssAngularColorStopList,
 }
-numeric_fields_eq!(
-    CssConicGradient,
-    [],
-    [from],
-    [position, interpolation, stops]
-);
 impl CssConicGradient {
     /// Composes checked children, preserving optional authored prelude fields.
     /// `CssImage::try_new` checks the complete retained function-depth envelope.
@@ -7646,14 +7514,14 @@ impl CssBackground {
 #[non_exhaustive]
 pub enum CssBackgroundSizeComponent {
     Auto,
-    Length(CssSpecifiedNonNegativeLengthPercentage),
+    Length(CssNumeric<CssLengthPercentage, CssNonNegative>),
 }
 
 impl PartialEq for CssBackgroundSizeComponent {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Auto, Self::Auto) => true,
-            (Self::Length(left), Self::Length(right)) => left.structural_eq(right),
+            (Self::Length(left), Self::Length(right)) => left == right,
             _ => false,
         }
     }
@@ -7927,13 +7795,13 @@ pub enum CssOutlineWidth {
     Thin,
     Medium,
     Thick,
-    Length(CssSpecifiedNonNegativeLength),
+    Length(CssNumeric<CssLength, CssNonNegative>),
 }
 
 impl PartialEq for CssOutlineWidth {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Length(left), Self::Length(right)) => left.structural_eq(right),
+            (Self::Length(left), Self::Length(right)) => left == right,
             (Self::Thin, Self::Thin)
             | (Self::Medium, Self::Medium)
             | (Self::Thick, Self::Thick) => true,
@@ -8021,25 +7889,25 @@ pub enum CssTransformFunctionKind {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssTransformScaleComponent {
-    Number(CssSpecifiedNumber),
+    Number(CssNumeric<CssNumber>),
     /// A Number result whose dimensional percentage basis remains unresolved.
-    HintedNumberCalculation(CssHintedNumberCalculation),
-    Percentage(CssSpecifiedPercentage),
+    HintedNumberCalculation(CssCalculation<CssHintedNumber>),
+    Percentage(CssNumeric<CssPercentage>),
 }
 
 #[derive(Clone, Debug)]
 pub struct CssTransformMatrix {
-    components: [CssSpecifiedNumber; 6],
+    components: [CssNumeric<CssNumber>; 6],
 }
 
 impl PartialEq for CssTransformScaleComponent {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::Number(left), Self::Number(right)) => left == right,
             (Self::HintedNumberCalculation(left), Self::HintedNumberCalculation(right)) => {
-                left.structural_eq(right)
+                left == right
             }
-            (Self::Percentage(left), Self::Percentage(right)) => left.structural_eq(right),
+            (Self::Percentage(left), Self::Percentage(right)) => left == right,
             _ => false,
         }
     }
@@ -8050,24 +7918,24 @@ impl PartialEq for CssTransformMatrix {
         self.components
             .iter()
             .zip(&other.components)
-            .all(|(left, right)| left.structural_eq(right))
+            .all(|(left, right)| left == right)
     }
 }
 
 impl CssTransformMatrix {
-    pub const fn new(components: [CssSpecifiedNumber; 6]) -> Self {
+    pub const fn new(components: [CssNumeric<CssNumber>; 6]) -> Self {
         Self { components }
     }
 
     #[must_use]
-    pub const fn components(&self) -> &[CssSpecifiedNumber; 6] {
+    pub const fn components(&self) -> &[CssNumeric<CssNumber>; 6] {
         &self.components
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct CssTransformMatrix3d {
-    components: [CssSpecifiedNumber; 16],
+    components: [CssNumeric<CssNumber>; 16],
 }
 
 impl PartialEq for CssTransformMatrix3d {
@@ -8075,17 +7943,17 @@ impl PartialEq for CssTransformMatrix3d {
         self.components
             .iter()
             .zip(&other.components)
-            .all(|(left, right)| left.structural_eq(right))
+            .all(|(left, right)| left == right)
     }
 }
 
 impl CssTransformMatrix3d {
-    pub const fn new(components: [CssSpecifiedNumber; 16]) -> Self {
+    pub const fn new(components: [CssNumeric<CssNumber>; 16]) -> Self {
         Self { components }
     }
 
     #[must_use]
-    pub const fn components(&self) -> &[CssSpecifiedNumber; 16] {
+    pub const fn components(&self) -> &[CssNumeric<CssNumber>; 16] {
         &self.components
     }
 }
@@ -8094,51 +7962,49 @@ impl CssTransformMatrix3d {
 #[non_exhaustive]
 pub enum CssTransformPerspective {
     None,
-    Length(CssSpecifiedNonNegativeLength),
+    Length(CssNumeric<CssLength, CssNonNegative>),
 }
 
 impl PartialEq for CssTransformPerspective {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::None, Self::None) => true,
-            (Self::Length(left), Self::Length(right)) => left.structural_eq(right),
+            (Self::Length(left), Self::Length(right)) => left == right,
             _ => false,
         }
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssTransformRotate3d {
-    x: CssSpecifiedNumber,
-    y: CssSpecifiedNumber,
-    z: CssSpecifiedNumber,
+    x: CssNumeric<CssNumber>,
+    y: CssNumeric<CssNumber>,
+    z: CssNumeric<CssNumber>,
     angle: CssAngleOrZero,
 }
 
-numeric_fields_eq!(CssTransformRotate3d, [x, y, z, angle], [], []);
-
 impl CssTransformRotate3d {
     pub const fn new(
-        x: CssSpecifiedNumber,
-        y: CssSpecifiedNumber,
-        z: CssSpecifiedNumber,
+        x: CssNumeric<CssNumber>,
+        y: CssNumeric<CssNumber>,
+        z: CssNumeric<CssNumber>,
         angle: CssAngleOrZero,
     ) -> Self {
         Self { x, y, z, angle }
     }
 
     #[must_use]
-    pub const fn x(&self) -> &CssSpecifiedNumber {
+    pub const fn x(&self) -> &CssNumeric<CssNumber> {
         &self.x
     }
 
     #[must_use]
-    pub const fn y(&self) -> &CssSpecifiedNumber {
+    pub const fn y(&self) -> &CssNumeric<CssNumber> {
         &self.y
     }
 
     #[must_use]
-    pub const fn z(&self) -> &CssSpecifiedNumber {
+    pub const fn z(&self) -> &CssNumeric<CssNumber> {
         &self.z
     }
 
@@ -8205,13 +8071,11 @@ impl CssTransformScale3d {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssTransformSkew {
     x: CssAngleOrZero,
     y: Option<CssAngleOrZero>,
 }
-
-numeric_fields_eq!(CssTransformSkew, [x], [y], []);
 
 impl CssTransformSkew {
     pub const fn new(x: CssAngleOrZero, y: Option<CssAngleOrZero>) -> Self {
@@ -8229,61 +8093,59 @@ impl CssTransformSkew {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssTransformTranslate {
-    x: CssSpecifiedLengthPercentage,
-    y: Option<CssSpecifiedLengthPercentage>,
+    x: CssNumeric<CssLengthPercentage>,
+    y: Option<CssNumeric<CssLengthPercentage>>,
 }
-numeric_fields_eq!(CssTransformTranslate, [x], [y], []);
 
 impl CssTransformTranslate {
     pub const fn new(
-        x: CssSpecifiedLengthPercentage,
-        y: Option<CssSpecifiedLengthPercentage>,
+        x: CssNumeric<CssLengthPercentage>,
+        y: Option<CssNumeric<CssLengthPercentage>>,
     ) -> Self {
         Self { x, y }
     }
 
     #[must_use]
-    pub const fn x(&self) -> &CssSpecifiedLengthPercentage {
+    pub const fn x(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.x
     }
 
     #[must_use]
-    pub const fn y(&self) -> Option<&CssSpecifiedLengthPercentage> {
+    pub const fn y(&self) -> Option<&CssNumeric<CssLengthPercentage>> {
         self.y.as_ref()
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssTransformTranslate3d {
-    x: CssSpecifiedLengthPercentage,
-    y: CssSpecifiedLengthPercentage,
-    z: CssSpecifiedLength,
+    x: CssNumeric<CssLengthPercentage>,
+    y: CssNumeric<CssLengthPercentage>,
+    z: CssNumeric<CssLength>,
 }
-numeric_fields_eq!(CssTransformTranslate3d, [x, y, z], [], []);
 
 impl CssTransformTranslate3d {
     pub const fn new(
-        x: CssSpecifiedLengthPercentage,
-        y: CssSpecifiedLengthPercentage,
-        z: CssSpecifiedLength,
+        x: CssNumeric<CssLengthPercentage>,
+        y: CssNumeric<CssLengthPercentage>,
+        z: CssNumeric<CssLength>,
     ) -> Self {
         Self { x, y, z }
     }
 
     #[must_use]
-    pub const fn x(&self) -> &CssSpecifiedLengthPercentage {
+    pub const fn x(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.x
     }
 
     #[must_use]
-    pub const fn y(&self) -> &CssSpecifiedLengthPercentage {
+    pub const fn y(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.y
     }
 
     #[must_use]
-    pub const fn z(&self) -> &CssSpecifiedLength {
+    pub const fn z(&self) -> &CssNumeric<CssLength> {
         &self.z
     }
 }
@@ -8310,24 +8172,24 @@ pub enum CssTransformFunction {
     SkewY(CssAngleOrZero),
     Translate(CssTransformTranslate),
     Translate3d(CssTransformTranslate3d),
-    TranslateX(CssSpecifiedLengthPercentage),
-    TranslateY(CssSpecifiedLengthPercentage),
-    TranslateZ(CssSpecifiedLength),
+    TranslateX(CssNumeric<CssLengthPercentage>),
+    TranslateY(CssNumeric<CssLengthPercentage>),
+    TranslateZ(CssNumeric<CssLength>),
 }
 
 impl PartialEq for CssTransformFunction {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::TranslateX(left), Self::TranslateX(right))
-            | (Self::TranslateY(left), Self::TranslateY(right)) => left.structural_eq(right),
-            (Self::TranslateZ(left), Self::TranslateZ(right)) => left.structural_eq(right),
+            | (Self::TranslateY(left), Self::TranslateY(right)) => left == right,
+            (Self::TranslateZ(left), Self::TranslateZ(right)) => left == right,
             (Self::Matrix(left), Self::Matrix(right)) => left == right,
             (Self::Matrix3d(left), Self::Matrix3d(right)) => left == right,
             (Self::Perspective(left), Self::Perspective(right)) => left == right,
             (Self::Rotate(left), Self::Rotate(right))
             | (Self::RotateX(left), Self::RotateX(right))
             | (Self::RotateY(left), Self::RotateY(right))
-            | (Self::RotateZ(left), Self::RotateZ(right)) => left.structural_eq(right),
+            | (Self::RotateZ(left), Self::RotateZ(right)) => left == right,
             (Self::Rotate3d(left), Self::Rotate3d(right)) => left == right,
             (Self::Scale(left), Self::Scale(right)) => left == right,
             (Self::Scale3d(left), Self::Scale3d(right)) => left == right,
@@ -8336,7 +8198,7 @@ impl PartialEq for CssTransformFunction {
             (Self::ScaleZ(left), Self::ScaleZ(right)) => left == right,
             (Self::Skew(left), Self::Skew(right)) => left == right,
             (Self::SkewX(left), Self::SkewX(right)) | (Self::SkewY(left), Self::SkewY(right)) => {
-                left.structural_eq(right)
+                left == right
             }
             (Self::Translate(left), Self::Translate(right)) => left == right,
             (Self::Translate3d(left), Self::Translate3d(right)) => left == right,
@@ -8420,33 +8282,32 @@ pub enum CssTranslate {
     Values(CssTranslateValues),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssTranslateValues {
-    x: CssSpecifiedLengthPercentage,
-    y: Option<CssSpecifiedLengthPercentage>,
-    z: Option<CssSpecifiedLength>,
+    x: CssNumeric<CssLengthPercentage>,
+    y: Option<CssNumeric<CssLengthPercentage>>,
+    z: Option<CssNumeric<CssLength>>,
 }
-numeric_fields_eq!(CssTranslateValues, [x], [y, z], []);
 
 impl CssTranslateValues {
     /// Retains one to three consecutive axes; an authored Z requires an authored Y.
     pub fn try_new(
-        x: CssSpecifiedLengthPercentage,
-        y: Option<CssSpecifiedLengthPercentage>,
-        z: Option<CssSpecifiedLength>,
+        x: CssNumeric<CssLengthPercentage>,
+        y: Option<CssNumeric<CssLengthPercentage>>,
+        z: Option<CssNumeric<CssLength>>,
     ) -> Option<Self> {
         if y.is_none() && z.is_some() {
             return None;
         }
         Some(Self { x, y, z })
     }
-    pub const fn x(&self) -> &CssSpecifiedLengthPercentage {
+    pub const fn x(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.x
     }
-    pub const fn y(&self) -> Option<&CssSpecifiedLengthPercentage> {
+    pub const fn y(&self) -> Option<&CssNumeric<CssLengthPercentage>> {
         self.y.as_ref()
     }
-    pub const fn z(&self) -> Option<&CssSpecifiedLength> {
+    pub const fn z(&self) -> Option<&CssNumeric<CssLength>> {
         self.z.as_ref()
     }
 }
@@ -8498,13 +8359,13 @@ impl CssScaleValues {
 #[non_exhaustive]
 pub enum CssPerspective {
     None,
-    Length(CssSpecifiedNonNegativeLength),
+    Length(CssNumeric<CssLength, CssNonNegative>),
 }
 impl PartialEq for CssPerspective {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::None, Self::None) => true,
-            (Self::Length(a), Self::Length(b)) => a.structural_eq(b),
+            (Self::Length(a), Self::Length(b)) => a == b,
             _ => false,
         }
     }
@@ -8543,19 +8404,19 @@ pub enum CssColorInterpolationFilters {
 #[non_exhaustive]
 pub enum CssFilterAmount {
     Default,
-    Number(CssSpecifiedNonNegativeNumber),
+    Number(CssNumeric<CssNumber, CssNonNegative>),
     /// A Number with an unresolved percentage basis; no filter range is applied here.
-    HintedNumberCalculation(CssHintedNumberCalculation),
-    Percentage(CssSpecifiedNonNegativePercentage),
+    HintedNumberCalculation(CssCalculation<CssHintedNumber>),
+    Percentage(CssNumeric<CssPercentage, CssNonNegative>),
 }
 
 impl PartialEq for CssFilterAmount {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Default, Self::Default) => true,
-            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::Number(left), Self::Number(right)) => left == right,
             (Self::HintedNumberCalculation(left), Self::HintedNumberCalculation(right)) => {
-                left.structural_eq(right)
+                left == right
             }
             (Self::Percentage(left), Self::Percentage(right)) => left == right,
             _ => false,
@@ -8567,16 +8428,15 @@ impl PartialEq for CssFilterAmount {
 ///
 /// [`Self::authored_length`] preserves whether the radius was omitted;
 /// [`Self::length`] borrows its effective specified value.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssFilterBlur {
-    length: CssSpecifiedNonNegativeLength,
+    length: CssNumeric<CssLength, CssNonNegative>,
     omitted: bool,
 }
-numeric_fields_eq!(CssFilterBlur, [length], [], [omitted]);
 
 impl CssFilterBlur {
     /// Retains an explicitly authored checked radius.
-    pub const fn new(length: CssSpecifiedNonNegativeLength) -> Self {
+    pub const fn new(length: CssNumeric<CssLength, CssNonNegative>) -> Self {
         Self {
             length,
             omitted: false,
@@ -8585,7 +8445,7 @@ impl CssFilterBlur {
     /// The omitted radius has an effective specified value of 0px.
     pub fn omitted() -> Self {
         Self {
-            length: CssSpecifiedNonNegativeLength::try_from_component(
+            length: CssNumeric::<CssLength, CssNonNegative>::try_from_component(
                 crate::CssComponentValue::try_token("0px").expect("zero pixels token"),
             )
             .expect("zero pixels length"),
@@ -8593,11 +8453,11 @@ impl CssFilterBlur {
         }
     }
     /// Borrows the effective nonnegative radius, including an omitted radius's 0px.
-    pub const fn length(&self) -> &CssSpecifiedNonNegativeLength {
+    pub const fn length(&self) -> &CssNumeric<CssLength, CssNonNegative> {
         &self.length
     }
     /// Borrows only an explicitly authored radius.
-    pub const fn authored_length(&self) -> Option<&CssSpecifiedNonNegativeLength> {
+    pub const fn authored_length(&self) -> Option<&CssNumeric<CssLength, CssNonNegative>> {
         if self.omitted {
             None
         } else {
@@ -8611,13 +8471,11 @@ impl CssFilterBlur {
 /// [`Self::angle`] borrows the effective specified angle; [`Self::authored_angle`]
 /// borrows only an explicitly authored angle. Literal units, unitless zero, and
 /// calculation provenance keep the shared [`CssAngleOrZero`] contract.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssFilterHueRotate {
     angle: CssAngleOrZero,
     omitted: bool,
 }
-
-numeric_fields_eq!(CssFilterHueRotate, [angle], [], [omitted]);
 
 impl CssFilterHueRotate {
     /// Retains an explicitly authored checked angle without normalizing it.
@@ -8631,8 +8489,9 @@ impl CssFilterHueRotate {
     /// An omitted angle has the effective specified value 0deg.
     pub fn omitted() -> Self {
         Self {
-            angle: CssAngleOrZero::Angle(CssAngleValue::from_literal(
-                CssAngleLiteral::try_new("0", CssAngleUnit::Degrees).expect("checked zero degrees"),
+            angle: CssAngleOrZero::Angle(CssNumeric::<CssAngle>::from_literal(
+                CssNumericLiteral::<CssAngle>::try_new("0", CssAngleUnit::Degrees)
+                    .expect("checked zero degrees"),
             )),
             omitted: true,
         }
@@ -8659,26 +8518,20 @@ impl CssFilterHueRotate {
 /// # Specified serialization
 ///
 /// Serializes the authored shadow, retaining omitted components and symbolic values.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssDropShadow {
-    offset_x: CssSpecifiedLength,
-    offset_y: CssSpecifiedLength,
-    standard_deviation: Option<CssSpecifiedNonNegativeLength>,
+    offset_x: CssNumeric<CssLength>,
+    offset_y: CssNumeric<CssLength>,
+    standard_deviation: Option<CssNumeric<CssLength, CssNonNegative>>,
     color: Option<Box<CssColor>>,
 }
-numeric_fields_eq!(
-    CssDropShadow,
-    [offset_x, offset_y],
-    [standard_deviation],
-    [color]
-);
 
 impl CssDropShadow {
     /// Retains two signed offsets, an optional checked standard deviation, and optional color.
     pub fn new(
-        offset_x: CssSpecifiedLength,
-        offset_y: CssSpecifiedLength,
-        standard_deviation: Option<CssSpecifiedNonNegativeLength>,
+        offset_x: CssNumeric<CssLength>,
+        offset_y: CssNumeric<CssLength>,
+        standard_deviation: Option<CssNumeric<CssLength, CssNonNegative>>,
         color: Option<CssColor>,
     ) -> Self {
         Self {
@@ -8688,14 +8541,14 @@ impl CssDropShadow {
             color: color.map(Box::new),
         }
     }
-    pub const fn offset_x(&self) -> &CssSpecifiedLength {
+    pub const fn offset_x(&self) -> &CssNumeric<CssLength> {
         &self.offset_x
     }
-    pub const fn offset_y(&self) -> &CssSpecifiedLength {
+    pub const fn offset_y(&self) -> &CssNumeric<CssLength> {
         &self.offset_y
     }
     /// The authored Gaussian standard deviation; omission remains distinct from zero.
-    pub const fn standard_deviation(&self) -> Option<&CssSpecifiedNonNegativeLength> {
+    pub const fn standard_deviation(&self) -> Option<&CssNumeric<CssLength, CssNonNegative>> {
         self.standard_deviation.as_ref()
     }
     pub fn color(&self) -> Option<&CssColor> {
@@ -8905,17 +8758,17 @@ pub enum CssTimeUnit {
 /// contextual list expansion. Numeric children retain their shared domain serialization policy.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssDurationList {
-    values: Vec<CssDuration>,
+    values: Vec<CssNumeric<CssTime, CssNonNegative>>,
 }
 
 impl CssDurationList {
     /// Rejects an empty list or retained recovery in any time child.
     #[must_use]
-    pub fn try_new(values: Vec<CssDuration>) -> Option<Self> {
+    pub fn try_new(values: Vec<CssNumeric<CssTime, CssNonNegative>>) -> Option<Self> {
         if values.is_empty()
             || values
                 .iter()
-                .any(|value| value.time().first_implicit_origin().is_some())
+                .any(|value| value.first_implicit_origin().is_some())
         {
             None
         } else {
@@ -8923,12 +8776,12 @@ impl CssDurationList {
         }
     }
 
-    pub(crate) fn from_parser(values: Vec<CssDuration>) -> Self {
+    pub(crate) fn from_parser(values: Vec<CssNumeric<CssTime, CssNonNegative>>) -> Self {
         Self { values }
     }
 
     #[must_use]
-    pub fn values(&self) -> &[CssDuration] {
+    pub fn values(&self) -> &[CssNumeric<CssTime, CssNonNegative>] {
         &self.values
     }
 }
@@ -8941,13 +8794,13 @@ impl CssDurationList {
 /// contextual list expansion. Numeric children retain their shared domain serialization policy.
 #[derive(Clone, Debug)]
 pub struct CssDelayList {
-    values: Vec<CssTimeValue>,
+    values: Vec<CssNumeric<CssTime>>,
 }
 
 impl CssDelayList {
     /// Rejects an empty list or retained recovery in any time child.
     #[must_use]
-    pub fn try_new(values: Vec<CssTimeValue>) -> Option<Self> {
+    pub fn try_new(values: Vec<CssNumeric<CssTime>>) -> Option<Self> {
         if values.is_empty()
             || values
                 .iter()
@@ -8959,12 +8812,12 @@ impl CssDelayList {
         }
     }
 
-    pub(crate) fn from_parser(values: Vec<CssTimeValue>) -> Self {
+    pub(crate) fn from_parser(values: Vec<CssNumeric<CssTime>>) -> Self {
         Self { values }
     }
 
     #[must_use]
-    pub fn values(&self) -> &[CssTimeValue] {
+    pub fn values(&self) -> &[CssNumeric<CssTime>] {
         &self.values
     }
 }
@@ -8983,16 +8836,14 @@ pub enum CssEasingKeyword {
 }
 
 /// A checked cubic-bezier x coordinate.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssCubicBezierX {
-    value: CssSpecifiedNumber,
+    value: CssNumeric<CssNumber>,
 }
-
-numeric_fields_eq!(CssCubicBezierX, [value], [], []);
 
 impl CssCubicBezierX {
     #[must_use]
-    pub fn try_new(value: CssSpecifiedNumber) -> Option<Self> {
+    pub fn try_new(value: CssNumeric<CssNumber>) -> Option<Self> {
         if let Some(component) = value.literal_component() {
             let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Number(number)) =
                 component.view()
@@ -9008,7 +8859,7 @@ impl CssCubicBezierX {
     }
 
     #[must_use]
-    pub const fn value(&self) -> &CssSpecifiedNumber {
+    pub const fn value(&self) -> &CssNumeric<CssNumber> {
         &self.value
     }
 }
@@ -9020,23 +8871,21 @@ impl CssCubicBezierX {
 /// Serializes the authored easing value using canonical specified syntax. Calculations retain
 /// specified-value semantics without timing evaluation or clamping. Aggregates and their numeric
 /// children share one serialization context.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssCubicBezier {
     x1: CssCubicBezierX,
-    y1: CssSpecifiedNumber,
+    y1: CssNumeric<CssNumber>,
     x2: CssCubicBezierX,
-    y2: CssSpecifiedNumber,
+    y2: CssNumeric<CssNumber>,
 }
-
-numeric_fields_eq!(CssCubicBezier, [y1, y2], [], [x1, x2]);
 
 impl CssCubicBezier {
     #[must_use]
     pub fn try_new(
-        x1: CssSpecifiedNumber,
-        y1: CssSpecifiedNumber,
-        x2: CssSpecifiedNumber,
-        y2: CssSpecifiedNumber,
+        x1: CssNumeric<CssNumber>,
+        y1: CssNumeric<CssNumber>,
+        x2: CssNumeric<CssNumber>,
+        y2: CssNumeric<CssNumber>,
     ) -> Option<Self> {
         Some(Self {
             x1: CssCubicBezierX::try_new(x1)?,
@@ -9052,7 +8901,7 @@ impl CssCubicBezier {
     }
 
     #[must_use]
-    pub const fn y1(&self) -> &CssSpecifiedNumber {
+    pub const fn y1(&self) -> &CssNumeric<CssNumber> {
         &self.y1
     }
 
@@ -9062,7 +8911,7 @@ impl CssCubicBezier {
     }
 
     #[must_use]
-    pub const fn y2(&self) -> &CssSpecifiedNumber {
+    pub const fn y2(&self) -> &CssNumeric<CssNumber> {
         &self.y2
     }
 }
@@ -9075,34 +8924,10 @@ impl CssCubicBezier {
 /// Serializes the authored easing value using canonical specified syntax. Calculations retain
 /// specified-value semantics without timing evaluation or clamping. Aggregates and their numeric
 /// children share one serialization context.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssLinearStop {
-    output: CssSpecifiedNumber,
-    inputs: Vec<CssSpecifiedPercentage>,
-}
-
-impl PartialEq for CssLinearStop {
-    fn eq(&self, other: &Self) -> bool {
-        let output_equal = match (
-            self.output.literal_component(),
-            other.output.literal_component(),
-        ) {
-            (Some(left), Some(right)) => {
-                crate::specified_numeric::ordinary_literal_equal(left, right)
-            }
-            _ => self.output.structural_eq(&other.output),
-        };
-        output_equal
-            && self.inputs.len() == other.inputs.len()
-            && self.inputs.iter().zip(&other.inputs).all(|(left, right)| {
-                match (left.literal_component(), right.literal_component()) {
-                    (Some(left), Some(right)) => {
-                        crate::specified_numeric::ordinary_literal_equal(left, right)
-                    }
-                    _ => left.structural_eq(right),
-                }
-            })
-    }
+    output: CssNumeric<CssNumber>,
+    inputs: Vec<CssNumeric<CssPercentage>>,
 }
 
 impl CssLinearStop {
@@ -9110,16 +8935,16 @@ impl CssLinearStop {
     /// Rejects more than two inputs and numeric graphs retaining implicit closure.
     #[must_use]
     pub fn try_new(
-        output: CssSpecifiedNumber,
-        inputs: Vec<CssSpecifiedPercentage>,
+        output: CssNumeric<CssNumber>,
+        inputs: Vec<CssNumeric<CssPercentage>>,
     ) -> Option<Self> {
         let stop = Self::from_parser(output, inputs)?;
         stop.has_explicit_numeric_closure().then_some(stop)
     }
 
     pub(crate) fn from_parser(
-        output: CssSpecifiedNumber,
-        inputs: Vec<CssSpecifiedPercentage>,
+        output: CssNumeric<CssNumber>,
+        inputs: Vec<CssNumeric<CssPercentage>>,
     ) -> Option<Self> {
         (inputs.len() <= 2).then_some(Self { output, inputs })
     }
@@ -9136,12 +8961,12 @@ impl CssLinearStop {
     }
 
     #[must_use]
-    pub const fn output(&self) -> &CssSpecifiedNumber {
+    pub const fn output(&self) -> &CssNumeric<CssNumber> {
         &self.output
     }
 
     #[must_use]
-    pub fn inputs(&self) -> &[CssSpecifiedPercentage] {
+    pub fn inputs(&self) -> &[CssNumeric<CssPercentage>] {
         &self.inputs
     }
 }
@@ -9204,22 +9029,20 @@ pub enum CssStepPosition {
 /// children share one serialization context.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSteps {
-    count: CssPositiveIntegerValue,
+    count: CssNumeric<CssInteger, CssPositive>,
     position: Option<CssStepPosition>,
 }
 
 impl CssSteps {
     #[must_use]
     pub fn try_new(
-        count: CssPositiveIntegerValue,
+        count: CssNumeric<CssInteger, CssPositive>,
         position: Option<CssStepPosition>,
     ) -> Option<Self> {
-        let count = count.normalized_positive_root()?;
         if matches!(position, Some(CssStepPosition::JumpNone))
-            && let CssPositiveIntegerValue::Literal(literal) = &count
+            && let Some(literal) = count.literal()
             && literal
-                .integer()
-                .compare_value(&crate::CssIntegerLiteral::from_i32(1))
+                .compare_value(&crate::CssNumericLiteral::<crate::CssInteger>::from_i32(1))
                 .is_eq()
         {
             None
@@ -9229,7 +9052,7 @@ impl CssSteps {
     }
 
     #[must_use]
-    pub const fn count(&self) -> &CssPositiveIntegerValue {
+    pub const fn count(&self) -> &CssNumeric<CssInteger, CssPositive> {
         &self.count
     }
 
@@ -9361,14 +9184,14 @@ impl CssAnimationNameList {
 #[non_exhaustive]
 pub enum CssAnimationIterationCount {
     Infinite,
-    Number(CssSpecifiedNonNegativeNumber),
+    Number(CssNumeric<CssNumber, CssNonNegative>),
 }
 
 impl PartialEq for CssAnimationIterationCount {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Infinite, Self::Infinite) => true,
-            (Self::Number(left), Self::Number(right)) => left.structural_eq(right),
+            (Self::Number(left), Self::Number(right)) => left == right,
             _ => false,
         }
     }
@@ -9520,8 +9343,8 @@ impl CssAnimationPlayStateList {
 #[derive(Clone, Debug)]
 pub struct CssTransition {
     property: Option<CssTransitionProperty>,
-    duration: Option<CssDuration>,
-    delay: Option<CssTimeValue>,
+    duration: Option<CssNumeric<CssTime, CssNonNegative>>,
+    delay: Option<CssNumeric<CssTime>>,
     timing_function: Option<CssEasing>,
 }
 
@@ -9530,13 +9353,13 @@ impl CssTransition {
     #[must_use]
     pub fn try_new(
         property: Option<CssTransitionProperty>,
-        duration: Option<CssDuration>,
-        delay: Option<CssTimeValue>,
+        duration: Option<CssNumeric<CssTime, CssNonNegative>>,
+        delay: Option<CssNumeric<CssTime>>,
         timing_function: Option<CssEasing>,
     ) -> Option<Self> {
         if duration
             .as_ref()
-            .is_some_and(|v| v.time().first_implicit_origin().is_some())
+            .is_some_and(|v| v.first_implicit_origin().is_some())
             || delay
                 .as_ref()
                 .is_some_and(|v| v.first_implicit_origin().is_some())
@@ -9547,8 +9370,8 @@ impl CssTransition {
     }
     pub(crate) fn from_parser(
         property: Option<CssTransitionProperty>,
-        duration: Option<CssDuration>,
-        delay: Option<CssTimeValue>,
+        duration: Option<CssNumeric<CssTime, CssNonNegative>>,
+        delay: Option<CssNumeric<CssTime>>,
         timing_function: Option<CssEasing>,
     ) -> Option<Self> {
         if property.is_none() && duration.is_none() && delay.is_none() && timing_function.is_none()
@@ -9570,12 +9393,12 @@ impl CssTransition {
     }
 
     #[must_use]
-    pub const fn duration(&self) -> Option<&CssDuration> {
+    pub const fn duration(&self) -> Option<&CssNumeric<CssTime, CssNonNegative>> {
         self.duration.as_ref()
     }
 
     #[must_use]
-    pub const fn delay(&self) -> Option<&CssTimeValue> {
+    pub const fn delay(&self) -> Option<&CssNumeric<CssTime>> {
         self.delay.as_ref()
     }
 
@@ -9602,7 +9425,7 @@ impl CssTransitionList {
     pub fn try_new(values: Vec<CssTransition>) -> Option<Self> {
         if values.iter().any(|v| {
             v.duration()
-                .is_some_and(|d| d.time().first_implicit_origin().is_some())
+                .is_some_and(|d| d.first_implicit_origin().is_some())
                 || v.delay()
                     .is_some_and(|d| d.first_implicit_origin().is_some())
         }) {
@@ -9627,8 +9450,8 @@ impl CssTransitionList {
 #[derive(Clone, Debug)]
 pub struct CssAnimation {
     name: Option<CssAnimationName>,
-    duration: Option<CssDuration>,
-    delay: Option<CssTimeValue>,
+    duration: Option<CssNumeric<CssTime, CssNonNegative>>,
+    delay: Option<CssNumeric<CssTime>>,
     timing_function: Option<CssEasing>,
     iteration_count: Option<CssAnimationIterationCount>,
     direction: Option<CssAnimationDirection>,
@@ -9640,8 +9463,8 @@ pub struct CssAnimation {
 #[derive(Clone, Debug, Default)]
 pub struct CssAnimationComponents {
     pub name: Option<CssAnimationName>,
-    pub duration: Option<CssDuration>,
-    pub delay: Option<CssTimeValue>,
+    pub duration: Option<CssNumeric<CssTime, CssNonNegative>>,
+    pub delay: Option<CssNumeric<CssTime>>,
     pub timing_function: Option<CssEasing>,
     pub iteration_count: Option<CssAnimationIterationCount>,
     pub direction: Option<CssAnimationDirection>,
@@ -9656,7 +9479,7 @@ impl CssAnimation {
         if components
             .duration
             .as_ref()
-            .is_some_and(|v| v.time().first_implicit_origin().is_some())
+            .is_some_and(|v| v.first_implicit_origin().is_some())
             || components
                 .delay
                 .as_ref()
@@ -9697,12 +9520,12 @@ impl CssAnimation {
     }
 
     #[must_use]
-    pub const fn duration(&self) -> Option<&CssDuration> {
+    pub const fn duration(&self) -> Option<&CssNumeric<CssTime, CssNonNegative>> {
         self.duration.as_ref()
     }
 
     #[must_use]
-    pub const fn delay(&self) -> Option<&CssTimeValue> {
+    pub const fn delay(&self) -> Option<&CssNumeric<CssTime>> {
         self.delay.as_ref()
     }
 
@@ -9750,7 +9573,7 @@ impl CssAnimationList {
         if values.is_empty()
             || values.iter().any(|v| {
                 v.duration()
-                    .is_some_and(|d| d.time().first_implicit_origin().is_some())
+                    .is_some_and(|d| d.first_implicit_origin().is_some())
                     || v.delay()
                         .is_some_and(|d| d.first_implicit_origin().is_some())
             })
@@ -9800,22 +9623,14 @@ pub enum CssFrequencyUnit {
 impl PartialEq for CssDelayList {
     fn eq(&self, other: &Self) -> bool {
         self.values.len() == other.values.len()
-            && self
-                .values
-                .iter()
-                .zip(&other.values)
-                .all(|(a, b)| a.structural_eq(b))
+            && self.values.iter().zip(&other.values).all(|(a, b)| a == b)
     }
 }
 impl PartialEq for CssTransition {
     fn eq(&self, other: &Self) -> bool {
         self.property == other.property
             && self.duration == other.duration
-            && optional_numeric_eq(
-                self.delay.as_ref(),
-                other.delay.as_ref(),
-                CssTimeValue::structural_eq,
-            )
+            && self.delay == other.delay
             && self.timing_function == other.timing_function
     }
 }
@@ -9828,11 +9643,7 @@ impl PartialEq for CssAnimation {
             && self.direction == other.direction
             && self.fill_mode == other.fill_mode
             && self.play_state == other.play_state
-            && optional_numeric_eq(
-                self.delay.as_ref(),
-                other.delay.as_ref(),
-                CssTimeValue::structural_eq,
-            )
+            && self.delay == other.delay
     }
 }
 impl PartialEq for CssAnimationComponents {
@@ -9844,11 +9655,7 @@ impl PartialEq for CssAnimationComponents {
             && self.direction == other.direction
             && self.fill_mode == other.fill_mode
             && self.play_state == other.play_state
-            && optional_numeric_eq(
-                self.delay.as_ref(),
-                other.delay.as_ref(),
-                CssTimeValue::structural_eq,
-            )
+            && self.delay == other.delay
     }
 }
 

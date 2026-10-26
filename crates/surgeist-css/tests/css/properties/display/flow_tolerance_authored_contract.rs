@@ -48,8 +48,8 @@ fn constructed(text: &str) -> CssFlowTolerance {
         _ => {
             let components = parse_component_values(text).unwrap();
             let scalar = if text.contains('(') {
-                CssSpecifiedLengthPercentage::try_from_calculation(
-                    CssLengthPercentageCalculation::try_from_components(
+                CssNumeric::<CssLengthPercentage>::try_from_calculation(
+                    CssCalculation::<CssLengthPercentage>::try_from_components(
                         components,
                         Default::default(),
                     )
@@ -57,7 +57,7 @@ fn constructed(text: &str) -> CssFlowTolerance {
                 )
                 .unwrap()
             } else {
-                CssSpecifiedLengthPercentage::try_from_component(components.items()[0].clone())
+                CssNumeric::<CssLengthPercentage>::try_from_component(components.items()[0].clone())
                     .unwrap()
             };
             CssFlowTolerance::length_percentage(scalar)
@@ -233,7 +233,10 @@ fn exact_literal_payloads_and_programmatic_origins_survive_projection() {
     let CssFlowToleranceRef::LengthPercentage(scalar) = value(&source).as_ref() else {
         panic!("signed payload")
     };
-    assert_eq!(scalar.literal_component(), Some(&component));
+    assert_eq!(
+        scalar.literal().map(|literal| literal.component()),
+        Some(&component)
+    );
     assert_eq!(component.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(source.value_components(), &components);
     assert!(source.position().is_none());
@@ -249,7 +252,12 @@ fn exact_literal_payloads_and_programmatic_origins_survive_projection() {
             let CssFlowToleranceRef::LengthPercentage(scalar) = value(&source).as_ref() else {
                 panic!("exact literal")
             };
-            match scalar.literal_component().unwrap().view() {
+            match scalar
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+                .view()
+            {
                 CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
                     assert_eq!(number.representation(), "-1e999");
                     assert_eq!(unit, "px");

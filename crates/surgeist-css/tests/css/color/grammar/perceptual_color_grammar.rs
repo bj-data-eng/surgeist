@@ -25,18 +25,20 @@ fn hue(text: &str) -> CssColorHue {
             .any(|unit| text.contains(unit))
         {
             CssColorHue::AngleCalculation(
-                CssAngleCalculation::try_from_components(values, Default::default()).unwrap(),
+                CssCalculation::<CssAngle>::try_from_components(values, Default::default())
+                    .unwrap(),
             )
         } else {
             CssColorHue::NumberCalculation(
-                CssNumberCalculation::try_from_components(values, Default::default()).unwrap(),
+                CssCalculation::<CssNumber>::try_from_components(values, Default::default())
+                    .unwrap(),
             )
         }
     } else if ["deg", "grad", "rad", "turn"]
         .iter()
         .any(|unit| text.ends_with(unit))
     {
-        CssColorHue::Angle(CssAngleLiteral::try_from_component(token(text)).unwrap())
+        CssColorHue::Angle(CssNumericLiteral::<CssAngle>::try_from_component(token(text)).unwrap())
     } else {
         CssColorHue::Number(CssColorNumberLiteral::try_from_component(token(text)).unwrap())
     }
@@ -414,14 +416,14 @@ fn checked_scalar_front_doors_reject_dimensions_that_cannot_enter_the_models() {
     );
     for text in ["1", "1%", "1px", "1s"] {
         assert!(
-            CssAngleLiteral::try_from_component(token(text))
+            CssNumericLiteral::<CssAngle>::try_from_component(token(text))
                 .unwrap_err()
-                .is_invalid_token()
+                .is_root_domain_mismatch()
         );
     }
     for text in ["calc(1px)", "calc(1deg)", "calc(1s)"] {
         assert!(
-            CssNumberCalculation::try_from_components(
+            CssCalculation::<CssNumber>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default()
             )
@@ -430,7 +432,7 @@ fn checked_scalar_front_doors_reject_dimensions_that_cannot_enter_the_models() {
             "{text}"
         );
         assert!(
-            CssPercentageCalculation::try_from_components(
+            CssCalculation::<CssPercentage>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default()
             )
@@ -441,7 +443,7 @@ fn checked_scalar_front_doors_reject_dimensions_that_cannot_enter_the_models() {
     }
     for text in ["calc(1px)", "calc(1%)", "calc(1s)"] {
         assert!(
-            CssAngleCalculation::try_from_components(
+            CssCalculation::<CssAngle>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default()
             )

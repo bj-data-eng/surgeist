@@ -28,11 +28,13 @@ fn calculated_hue(text: &str, angle: bool) -> CssColorHue {
     let components = parse_component_values(text).unwrap();
     if angle {
         CssColorHue::AngleCalculation(
-            CssAngleCalculation::try_from_components(components, Default::default()).unwrap(),
+            CssCalculation::<CssAngle>::try_from_components(components, Default::default())
+                .unwrap(),
         )
     } else {
         CssColorHue::NumberCalculation(
-            CssNumberCalculation::try_from_components(components, Default::default()).unwrap(),
+            CssCalculation::<CssNumber>::try_from_components(components, Default::default())
+                .unwrap(),
         )
     }
 }

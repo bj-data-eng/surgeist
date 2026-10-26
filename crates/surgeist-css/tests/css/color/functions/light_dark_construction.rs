@@ -3,7 +3,7 @@
 use crate::css::support::color_and_selector_fixtures::named_color as named;
 use surgeist_css::*;
 
-fn stops(color: CssColor, position: Option<CssSpecifiedLengthPercentage>) -> CssColorStopList {
+fn stops(color: CssColor, position: Option<CssNumeric<CssLengthPercentage>>) -> CssColorStopList {
     CssColorStopList::try_new(vec![
         CssColorStopListItem::Stop(Box::new(CssGradientColorStop::from_color(color, position))),
         CssColorStopListItem::Stop(Box::new(CssGradientColorStop::from_color(
@@ -24,18 +24,24 @@ fn math(depth: usize, leaf: &str) -> CssComponentValues {
     value
 }
 
-fn length_percentage(depth: usize) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(math(depth, "1px"), Default::default())
-            .unwrap(),
+fn length_percentage(depth: usize) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_calculation(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
+            math(depth, "1px"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
 
-fn nonnegative_length_percentage(depth: usize) -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(math(depth, "1px"), Default::default())
-            .unwrap(),
+fn nonnegative_length_percentage(depth: usize) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
+            math(depth, "1px"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -157,9 +163,12 @@ fn checked_image_depth_includes_deep_gradient_color_subtrees_and_oversized_child
 fn checked_image_depth_includes_all_gradient_numeric_component_roles() {
     for depth in [254, 255] {
         let direction = CssLinearGradientDirection::Angle(CssAngleOrZero::Angle(
-            CssAngleValue::try_from_calculation(
-                CssAngleCalculation::try_from_components(math(depth, "1deg"), Default::default())
-                    .unwrap(),
+            CssNumeric::<CssAngle>::try_from_calculation(
+                CssCalculation::<CssAngle>::try_from_components(
+                    math(depth, "1deg"),
+                    Default::default(),
+                )
+                .unwrap(),
             )
             .unwrap(),
         ));
@@ -187,18 +196,27 @@ fn checked_image_depth_includes_all_gradient_numeric_component_roles() {
             None, hint_stops,
         )));
         let circle = CssRadialSize::Circle(
-            CssSpecifiedNonNegativeLength::try_from_calculation(
-                CssLengthCalculation::try_from_components(math(depth, "1px"), Default::default())
-                    .unwrap(),
+            CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+                CssCalculation::<CssLength>::try_from_components(
+                    math(depth, "1px"),
+                    Default::default(),
+                )
+                .unwrap(),
             )
             .unwrap(),
         );
         let ellipse = CssRadialSize::Ellipse(CssRadialEllipseSize::new(
             nonnegative_length_percentage(depth),
-            CssSpecifiedNonNegativeLengthPercentage::zero(),
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                CssComponentValue::try_number("0").unwrap(),
+            )
+            .unwrap(),
         ));
         let reverse_ellipse = CssRadialSize::Ellipse(CssRadialEllipseSize::new(
-            CssSpecifiedNonNegativeLengthPercentage::zero(),
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                CssComponentValue::try_number("0").unwrap(),
+            )
+            .unwrap(),
             nonnegative_length_percentage(depth),
         ));
         let mut values = vec![direction_image, stop_image, hint_image];

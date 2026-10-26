@@ -52,7 +52,7 @@ macro_rules! define_ordinary_dispatch {
         $(, expansion = $all_expansion:ident { $($all_metadata:tt)* })?;
         $(
             $variant:ident, $name:literal, [$($alias:literal),*], $id:literal,
-            crate::$value:ident, $wrapper:ident, $accessor:ident, $parser:ident, $dispatch:block
+            crate::$value:ident $(<$($argument:ident),+>)?, $wrapper:ident, $accessor:ident, $parser:ident, $dispatch:block
             $(, expansion = $expansion:ident { $($metadata:tt)* })?;
         )*
     ) => {

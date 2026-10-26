@@ -1,15 +1,16 @@
 //! Ordinary authored scalar transport preserves checked tokens at every magnitude.
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::value_assertions::positive_literal;
 use surgeist_css::*;
 
-fn integer(declaration: &CssDeclaration) -> &CssIntegerLiteral {
+fn integer(declaration: &CssDeclaration) -> &CssNumericLiteral<CssInteger> {
     let CssKnownPropertyValueRef::Order(value) =
         declaration.known().unwrap().property_value().unwrap()
     else {
         panic!("ordinary order")
     };
-    let CssIntegerValue::Literal(literal) = value.value() else {
+    let Some(literal) = value.value().literal() else {
         panic!("ordinary integer")
     };
     literal
@@ -153,33 +154,41 @@ fn checked_opacity_tokens_keep_number_or_percentage_identity_without_rounding_or
 #[test]
 fn signed_zero_has_nonnegative_semantics_and_positive_counts_reject_every_zero_spelling() {
     for text in ["0", "+000", "-000"] {
-        let literal =
-            CssIntegerLiteral::try_from_component(CssComponentValue::try_number(text).unwrap())
-                .unwrap();
+        let literal = CssNumericLiteral::<CssInteger>::try_from_component(
+            CssComponentValue::try_number(text).unwrap(),
+        )
+        .unwrap();
         assert!(literal.is_zero());
         assert!(!literal.is_negative());
-        assert!(CssFontPaletteIndex::try_new(CssIntegerValue::Literal(literal.clone())).is_ok());
         assert!(
-            CssGridLine::try_indexed(CssIntegerValue::Literal(literal.clone()), None).is_none()
+            CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(literal.clone()).is_ok()
         );
-        assert!(CssPositiveIntegerLiteral::try_new(literal).is_none());
+        assert!(
+            CssGridLine::try_indexed(
+                CssNumeric::<CssInteger>::try_from_literal(literal.clone()).unwrap(),
+                None
+            )
+            .is_none()
+        );
+        assert!(positive_literal(literal).is_none());
     }
-    let negative = CssIntegerLiteral::from_i32(-1);
+    let negative = CssNumericLiteral::<CssInteger>::from_i32(-1);
     assert!(negative.is_negative());
     assert!(!negative.is_zero());
     // Fonts 4 @font-palette-values: a palette index is a nonnegative <integer>.
     assert!(
-        CssFontPaletteIndex::try_new(CssIntegerValue::Literal(negative))
+        CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(negative)
             .as_ref()
-            .is_err_and(|error| error.is_negative_index())
+            .is_err_and(|error| error.is_out_of_range())
     );
     for text in ["+0002", "2147483648", "9999999999999999999999999"] {
-        let literal =
-            CssIntegerLiteral::try_from_component(CssComponentValue::try_number(text).unwrap())
-                .unwrap();
-        let positive = CssPositiveIntegerLiteral::try_new(literal).unwrap();
-        assert_eq!(positive.integer().numeric().representation(), text);
-        assert_eq!(positive.integer().origin(), &CssValueOrigin::Programmatic);
+        let literal = CssNumericLiteral::<CssInteger>::try_from_component(
+            CssComponentValue::try_number(text).unwrap(),
+        )
+        .unwrap();
+        let positive = positive_literal(literal).unwrap();
+        assert_eq!(positive.numeric().representation(), text);
+        assert_eq!(positive.origin(), &CssValueOrigin::Programmatic);
     }
 }
 
@@ -212,17 +221,19 @@ fn positive_column_counts_keep_exact_token_origins_at_small_and_large_magnitudes
         else {
             panic!("column count")
         };
-        let CssColumnCount::Count(CssPositiveIntegerValue::Literal(positive)) = count.count()
-        else {
+        let Some(positive) = (match count.count() {
+            CssColumnCount::Count(value) => value.literal(),
+            _ => None,
+        }) else {
             panic!("positive literal")
         };
-        assert_eq!(positive.integer().numeric().representation(), text);
+        assert_eq!(positive.numeric().representation(), text);
         assert_eq!(
-            positive.integer().component(),
+            positive.component(),
             &declaration.value_components().items()[0]
         );
         assert_eq!(
-            positive.integer().origin(),
+            positive.origin(),
             declaration.value_components().items()[0].origin()
         );
     }

@@ -843,7 +843,7 @@ fn normalization_preserves_occurrence_order_contexts_and_exact_terminal_budgets(
 #[test]
 fn scalar_and_composed_controls_execute_without_whitespace_property_lookup() {
     for (input, expected) in [("0", "0"), ("-0", "0"), ("8", "8"), ("1e-999", "0")] {
-        let number = CssSpecifiedNonNegativeNumber::try_from_component(
+        let number = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number(input).unwrap(),
         )
         .unwrap();
@@ -854,13 +854,13 @@ fn scalar_and_composed_controls_execute_without_whitespace_property_lookup() {
     }
     for input in ["-1", "-1e-999"] {
         assert!(
-            CssSpecifiedNonNegativeNumber::try_from_component(
+            CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
                 CssComponentValue::try_number(input).unwrap()
             )
             .is_err()
         );
     }
-    let length = CssSpecifiedNonNegativeLength::try_from_component(
+    let length = CssNumeric::<CssLength, CssNonNegative>::try_from_component(
         CssComponentValue::try_dimension("0", "px").unwrap(),
     )
     .unwrap();

@@ -1,14 +1,8 @@
 //! Authored OpenType feature and variation settings, before font selection.
 
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
-use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssComponentValue, CssComponentValueRef, CssIntegerCalculation, CssIntegerLiteral,
-    CssNumericConstructionError, CssNumericConstructionErrorKind, CssNumericTokenKind,
-    CssSerializationError, CssSpecifiedNumber, CssValueOrigin, CssValueTokenRef,
-};
+use crate::{CssInteger, CssNonNegative, CssNumber, CssNumeric, CssSerializationError};
 
-type ConstructionResult<T> = Result<T, CssNumericConstructionError>;
 type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// A case-sensitive, four-character printable ASCII OpenType tag.
@@ -31,143 +25,6 @@ impl CssOpenTypeTag {
     }
 }
 
-/// Exact nonnegative authored OpenType feature index or deferred integer math.
-#[derive(Clone, Debug)]
-pub struct CssFontFeatureIndex {
-    value: FeatureIndexValue,
-}
-
-#[derive(Clone, Debug)]
-enum FeatureIndexValue {
-    Literal(CssIntegerLiteral),
-    Calculation(CssIntegerCalculation),
-}
-
-impl PartialEq for CssFontFeatureIndex {
-    fn eq(&self, other: &Self) -> bool {
-        match (&self.value, &other.value) {
-            (FeatureIndexValue::Literal(left), FeatureIndexValue::Literal(right)) => left
-                .component()
-                .structural_eq_ignoring_origin(right.component()),
-            (FeatureIndexValue::Calculation(left), FeatureIndexValue::Calculation(right)) => {
-                left.structural_eq(right)
-            }
-            _ => false,
-        }
-    }
-}
-impl Eq for CssFontFeatureIndex {}
-
-impl CssFontFeatureIndex {
-    #[must_use]
-    pub fn try_new(value: i32) -> Option<Self> {
-        (value >= 0).then(|| {
-            Self::try_from_component(
-                CssComponentValue::try_number(&value.to_string()).expect("valid i32 number"),
-            )
-            .expect("nonnegative i32 integer")
-        })
-    }
-
-    pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
-        let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = component.view() else {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(&component),
-            ));
-        };
-        if number.kind() != CssNumericTokenKind::Integer {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(&component),
-            ));
-        }
-        if crate::exact_decimal::LexicalDecimal::new(number.representation()).negative {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::OutOfRange,
-                Some(&component),
-            ));
-        }
-        let literal = CssIntegerLiteral::try_from_component(component).expect("checked integer");
-        Ok(Self {
-            value: FeatureIndexValue::Literal(literal),
-        })
-    }
-
-    pub fn try_from_calculation(calculation: CssIntegerCalculation) -> ConstructionResult<Self> {
-        // This domain still retains recovered syntax from checked construction.
-        crate::specified_numeric::admit_calculation(
-            calculation,
-            CssIntegerCalculation::components,
-            crate::specified_numeric::CalculationAdmission::Recovering,
-            Self::try_from_component,
-            |calculation| Self {
-                value: FeatureIndexValue::Calculation(calculation),
-            },
-        )
-    }
-
-    #[must_use]
-    pub fn literal_component(&self) -> Option<&CssComponentValue> {
-        match &self.value {
-            FeatureIndexValue::Literal(value) => Some(value.component()),
-            FeatureIndexValue::Calculation(_) => None,
-        }
-    }
-
-    #[must_use]
-    pub fn calculation(&self) -> Option<&CssIntegerCalculation> {
-        match &self.value {
-            FeatureIndexValue::Literal(_) => None,
-            FeatureIndexValue::Calculation(value) => Some(value),
-        }
-    }
-
-    #[must_use]
-    pub fn origin(&self) -> &CssValueOrigin {
-        match &self.value {
-            FeatureIndexValue::Literal(value) => value.origin(),
-            FeatureIndexValue::Calculation(value) => value.origin(),
-        }
-    }
-
-    #[must_use]
-    pub fn i32_value(&self) -> Option<i32> {
-        self.literal_component().and_then(|component| {
-            let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = component.view()
-            else {
-                return None;
-            };
-            crate::integer_value::exact_i32(number.representation())
-        })
-    }
-
-    pub(crate) fn append_specified(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> SerializationResult<()> {
-        match &self.value {
-            FeatureIndexValue::Literal(value) => value.append_specified(context, output),
-            FeatureIndexValue::Calculation(value) => {
-                value.serialize_specified_into(context, output)
-            }
-        }
-    }
-}
-impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFeatureIndex {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(CssFontFeatureIndex);
-
 /// The authored value following an OpenType feature tag.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -175,7 +32,7 @@ pub enum CssAuthoredFontFeatureValue {
     Omitted,
     On,
     Off,
-    Index(CssFontFeatureIndex),
+    Index(CssNumeric<CssInteger, CssNonNegative>),
 }
 
 /// One checked authored OpenType feature setting.
@@ -229,12 +86,12 @@ pub enum CssAuthoredFontFeatureSettings {
 #[derive(Clone, Debug)]
 pub struct CssFontVariation {
     tag: CssOpenTypeTag,
-    value: CssSpecifiedNumber,
+    value: CssNumeric<CssNumber>,
 }
 
 impl CssFontVariation {
     #[must_use]
-    pub const fn new(tag: CssOpenTypeTag, value: CssSpecifiedNumber) -> Self {
+    pub const fn new(tag: CssOpenTypeTag, value: CssNumeric<CssNumber>) -> Self {
         Self { tag, value }
     }
     #[must_use]
@@ -242,14 +99,14 @@ impl CssFontVariation {
         &self.tag
     }
     #[must_use]
-    pub const fn value(&self) -> &CssSpecifiedNumber {
+    pub const fn value(&self) -> &CssNumeric<CssNumber> {
         &self.value
     }
 }
 
 impl PartialEq for CssFontVariation {
     fn eq(&self, other: &Self) -> bool {
-        self.tag == other.tag && self.value.structural_eq(&other.value)
+        self.tag == other.tag && self.value == other.value
     }
 }
 impl Eq for CssFontVariation {}

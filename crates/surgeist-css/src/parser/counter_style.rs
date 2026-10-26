@@ -501,7 +501,7 @@ fn parse_speak_as<'i, 't>(
 fn parse_nonnegative_integer<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssIntegerValue, ParseError<'i, CssError>> {
+) -> Result<CssNumeric<CssInteger>, ParseError<'i, CssError>> {
     let location = input.current_source_location();
     let value = adapt_native(
         input,
@@ -509,7 +509,7 @@ fn parse_nonnegative_integer<'i, 't>(
         NativeValueRange::Component,
         parse_integer_value,
     )?;
-    if matches!(&value, CssIntegerValue::Literal(literal) if literal.is_negative()) {
+    if value.literal().is_some_and(CssNumericLiteral::is_negative) {
         Err(unexpected_at(location))
     } else {
         Ok(value)

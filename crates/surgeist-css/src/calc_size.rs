@@ -89,9 +89,24 @@ struct CssCalcSizeData {
     origin: CssValueOrigin,
 }
 
+// The basis and calculation compare as numeric values do: by structure and
+// operand value, without diagnostic origins or root-relative error paths.
 impl PartialEq for CssCalcSize {
     fn eq(&self, other: &Self) -> bool {
-        self.structural_eq(other)
+        let mut pending = vec![(self, other)];
+        while let Some((left, right)) = pending.pop() {
+            if !left.data.calculation.value_eq(&right.data.calculation) {
+                return false;
+            }
+            match (&left.data.basis, &right.data.basis) {
+                (Basis::Keyword(a), Basis::Keyword(b)) if a == b => {}
+                (Basis::Any, Basis::Any) => {}
+                (Basis::Nested(a), Basis::Nested(b)) => pending.push((a, b)),
+                (Basis::Sum(a), Basis::Sum(b)) if a.value_eq(b) => {}
+                _ => return false,
+            }
+        }
+        true
     }
 }
 impl Eq for CssCalcSize {}
@@ -147,25 +162,6 @@ fn parts(
 }
 
 impl CssCalcSize {
-    /// Compares checked basis and calculation structure without diagnostic
-    /// origins or root-relative error paths.
-    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
-        let mut pending = vec![(self, other)];
-        while let Some((left, right)) = pending.pop() {
-            if !left.data.calculation.structural_eq(&right.data.calculation) {
-                return false;
-            }
-            match (&left.data.basis, &right.data.basis) {
-                (Basis::Keyword(a), Basis::Keyword(b)) if a == b => {}
-                (Basis::Any, Basis::Any) => {}
-                (Basis::Nested(a), Basis::Nested(b)) => pending.push((a, b)),
-                (Basis::Sum(a), Basis::Sum(b)) if a.structural_eq(b) => {}
-                _ => return false,
-            }
-        }
-        true
-    }
-
     /// The CSSOM inverse uses this owner's same calculation-before-basis order,
     /// admitting every actual calc-size pending slot before fallible reserve.
     pub(crate) fn specified_inverse_eq(

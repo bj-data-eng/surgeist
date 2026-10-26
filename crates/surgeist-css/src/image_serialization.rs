@@ -5,9 +5,9 @@ use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
     CssAngleOrZero, CssColorStopList, CssColorStopListItem, CssFilterImage, CssFilterImageInput,
     CssFilterImageInputRef, CssFilterImageString, CssGradient, CssHorizontalGradientSide,
-    CssHorizontalPosition, CssImage, CssImageValue, CssImageValueList, CssLinearGradient,
-    CssLinearGradientDirection, CssPosition, CssPositionRef, CssRadialExtent, CssRadialGradient,
-    CssRadialShape, CssRadialSize, CssSerializationError, CssSpecifiedLengthPercentage,
+    CssHorizontalPosition, CssImage, CssImageValue, CssImageValueList, CssLengthPercentage,
+    CssLinearGradient, CssLinearGradientDirection, CssNumeric, CssPosition, CssPositionRef,
+    CssRadialExtent, CssRadialGradient, CssRadialShape, CssRadialSize, CssSerializationError,
     CssVerticalGradientSide, CssVerticalPosition,
 };
 
@@ -595,7 +595,7 @@ impl crate::specified_rule_serialization::SpecifiedProvider for crate::CssAngula
 }
 crate::specified_rule_serialization::specified_serialization!(crate::CssAngularColorStopPosition);
 
-fn is_direct_zero(value: &CssSpecifiedLengthPercentage) -> bool {
+fn is_direct_zero(value: &CssNumeric<CssLengthPercentage>) -> bool {
     value
         .literal_component()
         .is_some_and(|component| match component.view() {
@@ -609,7 +609,7 @@ fn is_direct_zero(value: &CssSpecifiedLengthPercentage) -> bool {
 }
 
 fn literal_percentage_is(
-    value: &CssSpecifiedLengthPercentage,
+    value: &CssNumeric<CssLengthPercentage>,
     digits: &str,
     exponent: i128,
 ) -> bool {
@@ -623,11 +623,11 @@ fn literal_percentage_is(
             .is_positive(digits, exponent)
     })
 }
-fn is_direct_hundred_percent(value: &CssSpecifiedLengthPercentage) -> bool {
+fn is_direct_hundred_percent(value: &CssNumeric<CssLengthPercentage>) -> bool {
     literal_percentage_is(value, "1", 2)
 }
 fn append_line_position(
-    value: &CssSpecifiedLengthPercentage,
+    value: &CssNumeric<CssLengthPercentage>,
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<()> {
     value.append_specified(&mut writer.context, &mut writer.css)

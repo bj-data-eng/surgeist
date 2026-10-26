@@ -167,11 +167,11 @@ fn counter_style_descriptor_models_preserve_authored_duplicates_and_effective_la
     );
     assert!(matches!(
         ranges.ranges()[0].upper(),
-        CssCounterStyleRangeBound::Integer(value) if value.literal().numeric().representation() == "-1"
+        CssCounterStyleRangeBound::Integer(value) if value.expect_literal().numeric().representation() == "-1"
     ));
     assert!(matches!(
         ranges.ranges()[1].lower(),
-        CssCounterStyleRangeBound::Integer(value) if value.literal().numeric().representation() == "1"
+        CssCounterStyleRangeBound::Integer(value) if value.expect_literal().numeric().representation() == "1"
     ));
     assert_eq!(
         ranges.ranges()[1].upper(),
@@ -182,7 +182,7 @@ fn counter_style_descriptor_models_preserve_authored_duplicates_and_effective_la
     assert_eq!(
         pad.ordinary_pad()
             .minimum_length()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "3"
@@ -208,7 +208,7 @@ fn counter_style_descriptor_models_preserve_authored_duplicates_and_effective_la
     assert_eq!(
         tuples
             .iter()
-            .map(|tuple| tuple.weight().literal().numeric().representation())
+            .map(|tuple| tuple.weight().expect_literal().numeric().representation())
             .collect::<Vec<_>>(),
         vec!["100", "10", "1", "0"]
     );
@@ -254,7 +254,7 @@ fn invalid_counter_style_descriptor_values_drop_only_the_descriptor_and_keep_eff
             .unwrap()
             .ordinary_pad()
             .minimum_length()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "2"
@@ -350,7 +350,7 @@ fn counter_style_system_model_retains_fixed_and_extends_forms() {
     };
     assert!(matches!(
         fixed.descriptors().system().map(|value| value.ordinary_system()),
-        Some(CssCounterStyleSystem::Fixed(value)) if value.first_symbol_value().is_some_and(|integer| integer.literal().numeric().representation() == "-2")
+        Some(CssCounterStyleSystem::Fixed(value)) if value.first_symbol_value().is_some_and(|integer| integer.expect_literal().numeric().representation() == "-2")
     ));
     assert!(matches!(
         extended.descriptors().system().map(|value| value.ordinary_system()),

@@ -13,7 +13,7 @@ use surgeist_css::*;
 
 const NAMES: [&str; 2] = ["orphans", "widows"];
 
-fn minimum(source: &CssDeclaration) -> &CssPageLineMinimum {
+fn minimum(source: &CssDeclaration) -> &CssNumeric<CssInteger, CssPositive> {
     match source.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::Orphans(value) => value.minimum(),
         CssKnownPropertyValueRef::Widows(value) => value.minimum(),
@@ -52,12 +52,16 @@ fn positive_integer_literals_preserve_exact_authored_magnitude() {
             }
         }
         assert_eq!(
-            minimum(&declaration(name, "2147483647")).literal(),
+            minimum(&declaration(name, "2147483647"))
+                .literal()
+                .and_then(|literal| literal.value()),
             Some(i32::MAX)
         );
         for value in ["2147483648", "2147483649", "9999999999999999999999"] {
             assert_eq!(
-                minimum(&declaration(name, value)).literal(),
+                minimum(&declaration(name, value))
+                    .literal()
+                    .and_then(|literal| literal.value()),
                 None,
                 "{name}:{value} must not saturate to i32::MAX"
             );
@@ -188,17 +192,13 @@ fn pending_substitution_reenters_original_grammar_and_occurrence() {
 #[test]
 fn checked_construction_preserves_exact_tokens_and_origins() {
     for text in ["1", "+0002", "2147483648", "9999999999999999999999"] {
-        let programmatic =
-            CssPageLineMinimum::try_from_component(CssComponentValue::try_number(text).unwrap())
-                .unwrap();
+        let programmatic = CssNumeric::<CssInteger, CssPositive>::try_from_component(
+            CssComponentValue::try_number(text).unwrap(),
+        )
+        .unwrap();
         assert_eq!(programmatic.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(
-            programmatic
-                .exact_literal()
-                .unwrap()
-                .integer()
-                .numeric()
-                .representation(),
+            programmatic.literal().unwrap().numeric().representation(),
             text
         );
         let parsed = declaration("orphans", text);
@@ -208,18 +208,18 @@ fn checked_construction_preserves_exact_tokens_and_origins() {
         ));
         assert_eq!(
             minimum(&parsed)
-                .exact_literal()
+                .literal()
                 .unwrap()
-                .integer()
                 .numeric()
                 .representation(),
             text
         );
     }
     for text in ["0", "-1", "1.0", "1e0"] {
-        let error =
-            CssPageLineMinimum::try_from_component(CssComponentValue::try_number(text).unwrap())
-                .unwrap_err();
+        let error = CssNumeric::<CssInteger, CssPositive>::try_from_component(
+            CssComponentValue::try_number(text).unwrap(),
+        )
+        .unwrap_err();
         assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
         let expected = if text == "0" || text == "-1" {
             NumericFailure::OutOfRange
@@ -233,34 +233,39 @@ fn checked_construction_preserves_exact_tokens_and_origins() {
 #[test]
 fn calculation_constructor_checks_bare_roots_and_retains_math() {
     for text in ["0", "-1"] {
-        let calculation = CssIntegerCalculation::try_from_components(
+        let calculation = CssCalculation::<CssInteger>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
         .unwrap();
-        let error = CssPageLineMinimum::try_from_calculation(calculation).unwrap_err();
+        let error =
+            CssNumeric::<CssInteger, CssPositive>::try_from_calculation(calculation).unwrap_err();
         assert!(error.is_out_of_range(), "{error:?}");
         assert!(matches!(error.origin(), Some(CssValueOrigin::Parsed(_))));
     }
-    let error =
-        CssPageLineMinimum::try_from_calculation(CssIntegerCalculation::literal(-1)).unwrap_err();
+    let error = CssNumeric::<CssInteger, CssPositive>::try_from_calculation(CssCalculation::<
+        CssInteger,
+    >::literal(-1))
+    .unwrap_err();
     assert!(error.is_out_of_range(), "{error:?}");
     assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
-    let bare = CssIntegerCalculation::try_from_components(
+    let bare = CssCalculation::<CssInteger>::try_from_components(
         parse_component_values("2147483648").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let admitted = CssPageLineMinimum::try_from_calculation(bare).unwrap();
-    assert!(admitted.exact_literal().is_some());
-    assert_eq!(admitted.literal(), None);
+    let admitted = CssNumeric::<CssInteger, CssPositive>::try_from_calculation(bare).unwrap();
+    // A bare root re-enters literal admission; its magnitude exceeds `i32`.
+    assert!(admitted.literal().is_some());
+    assert_eq!(admitted.literal().and_then(|literal| literal.value()), None);
     for (text, expected) in [("calc(-1)", "calc(-1)"), ("calc(2 + 1)", "calc(3)")] {
-        let calculation = CssIntegerCalculation::try_from_components(
+        let calculation = CssCalculation::<CssInteger>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
         .unwrap();
-        let value = CssPageLineMinimum::try_from_calculation(calculation).unwrap();
+        let value =
+            CssNumeric::<CssInteger, CssPositive>::try_from_calculation(calculation).unwrap();
         assert!(value.calculation().is_some());
         assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
         assert_eq!(
@@ -268,6 +273,49 @@ fn calculation_constructor_checks_bare_roots_and_retains_math() {
             expected
         );
     }
+}
+
+/// CSS Typed OM 1 "equal numeric values": the minimum and the longhand value
+/// built from it are equal for the same integer value, whatever the spelling
+/// or origin, and differ for another value or another property.
+#[test]
+fn line_minimum_owners_inherit_numeric_value_equality() {
+    for name in NAMES {
+        let two = declaration(name, "2");
+        let programmatic = CssNumeric::<CssInteger, CssPositive>::try_from_component(
+            CssComponentValue::try_number("2").unwrap(),
+        )
+        .unwrap();
+        for spelling in ["+2", "+0002", "02"] {
+            let other = declaration(name, spelling);
+            assert_eq!(
+                minimum(&two),
+                minimum(&other),
+                "{name}: 2 versus {spelling}"
+            );
+            assert_eq!(
+                one_value(&two),
+                one_value(&other),
+                "{name}: longhand 2 versus {spelling}"
+            );
+        }
+        assert_eq!(
+            minimum(&two),
+            &programmatic,
+            "{name}: parsed versus programmatic"
+        );
+        assert_ne!(minimum(&two), minimum(&declaration(name, "3")), "{name}");
+        assert_ne!(
+            one_value(&two),
+            one_value(&declaration(name, "3")),
+            "{name}"
+        );
+    }
+    assert_ne!(
+        one_value(&declaration("orphans", "2")),
+        one_value(&declaration("widows", "2")),
+        "equal values of different longhands stay distinct"
+    );
 }
 
 #[test]

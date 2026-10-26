@@ -142,9 +142,9 @@ impl SpecifiedRuleWriter {
             CssFontPaletteDescriptorValueRef::BasePalette(base) => match base {
                 CssFontPaletteBase::Light => self.keyword("light"),
                 CssFontPaletteBase::Dark => self.keyword("dark"),
-                CssFontPaletteBase::Index(index) => index
-                    .value()
-                    .append_specified(&mut self.context, &mut self.css),
+                CssFontPaletteBase::Index(index) => {
+                    index.append_specified(&mut self.context, &mut self.css)
+                }
             },
             CssFontPaletteDescriptorValueRef::OverrideColors(overrides) => {
                 for (index, pair) in overrides.iter().enumerate() {
@@ -153,7 +153,6 @@ impl SpecifiedRuleWriter {
                     }
                     self.node()?;
                     pair.index()
-                        .value()
                         .append_specified(&mut self.context, &mut self.css)?;
                     self.append(" ")?;
                     pair.color()

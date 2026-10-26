@@ -25,7 +25,7 @@ fn omitted_blur_radius_retains_authored_input_and_specified_zero() {
             panic!("one blur function");
         };
         assert!(exact_dimension(
-            blur.length().literal_component(),
+            blur.length().literal().map(|literal| literal.component()),
             "0",
             "px"
         ));
@@ -69,7 +69,10 @@ fn explicit_blur_radii_keep_their_values_and_authored_spelling() {
         let [CssFilterFunction::Blur(blur)] = functions.functions() else {
             panic!("blur")
         };
-        assert!(exact_literal(blur.length().literal_component(), expected));
+        assert!(exact_literal(
+            blur.length().literal().map(|literal| literal.component()),
+            expected
+        ));
         assert!(blur.authored_length().is_some());
         assert_eq!(value.as_css(), format!("blur({argument})"));
     }

@@ -424,12 +424,16 @@ fn checked_calculation_construction_and_deep_projection_share_specified_semantic
         let components = parse_component_values(source).unwrap();
         let typed = if source.contains('%') {
             CssOpacityValue::PercentageCalculation(
-                CssPercentageCalculation::try_from_components(components, Default::default())
-                    .unwrap(),
+                CssCalculation::<CssPercentage>::try_from_components(
+                    components,
+                    Default::default(),
+                )
+                .unwrap(),
             )
         } else {
             CssOpacityValue::NumberCalculation(
-                CssNumberCalculation::try_from_components(components, Default::default()).unwrap(),
+                CssCalculation::<CssNumber>::try_from_components(components, Default::default())
+                    .unwrap(),
             )
         };
         assert_eq!(
@@ -441,7 +445,7 @@ fn checked_calculation_construction_and_deep_projection_share_specified_semantic
     }
     // Existing public numeric construction supports 256 nested functions.
     let source = format!("{}1{}", "calc(1 + 0 * ".repeat(256), ")".repeat(256));
-    let calculation = CssNumberCalculation::try_from_components(
+    let calculation = CssCalculation::<CssNumber>::try_from_components(
         parse_component_values(&source).unwrap(),
         Default::default(),
     )

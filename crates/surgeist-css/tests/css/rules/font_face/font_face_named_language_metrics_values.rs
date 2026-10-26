@@ -150,7 +150,10 @@ fn three_metric_branches_share_exact_percentage_payloads_without_losing_identity
             let CssFontMetricOverride::Percentage(percentage) = metric(&value) else {
                 panic!("exact percentage payload")
             };
-            let component = percentage.literal_component().unwrap();
+            let component = percentage
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap();
             let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) =
                 component.view()
             else {
@@ -175,7 +178,7 @@ fn three_metric_branches_share_exact_percentage_payloads_without_losing_identity
             assert_eq!(value, before);
         }
     }
-    let percentage = CssSpecifiedNonNegativePercentage::try_from_component(
+    let percentage = CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token("125%").unwrap(),
     )
     .unwrap();
@@ -198,7 +201,7 @@ fn three_metric_branches_share_exact_percentage_payloads_without_losing_identity
     ] {
         assert_eq!(
             numeric_failure(
-                &CssSpecifiedNonNegativePercentage::try_from_component(
+                &CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
                     CssComponentValue::try_token(token).unwrap(),
                 )
                 .unwrap_err()
@@ -224,7 +227,12 @@ fn metric_calculations_preserve_authored_range_type_and_origins_on_atomic_failur
             let CssFontMetricOverride::Percentage(percentage) = metric(&value) else {
                 panic!("typed percentage calculation")
             };
-            assert!(percentage.literal_component().is_none());
+            assert!(
+                percentage
+                    .literal()
+                    .map(|literal| literal.component())
+                    .is_none()
+            );
             let calculation = percentage.calculation().unwrap();
             assert_eq!(calculation.result_type(), CssCalculationType::Percentage);
             assert_eq!(
@@ -270,13 +278,13 @@ fn metric_calculations_preserve_authored_range_type_and_origins_on_atomic_failur
             );
         }
     }
-    let calculation = CssPercentageCalculation::try_from_components(
+    let calculation = CssCalculation::<CssPercentage>::try_from_components(
         parse_component_values("calc(-10%)").unwrap(),
         Default::default(),
     )
     .unwrap();
     let constructed = CssFontMetricOverride::Percentage(
-        CssSpecifiedNonNegativePercentage::try_from_calculation(calculation).unwrap(),
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(calculation).unwrap(),
     );
     assert_eq!(
         constructed.serialize_specified(Default::default()).unwrap(),

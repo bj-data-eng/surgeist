@@ -8,8 +8,11 @@ use crate::css::support::failure_classes::serialization_failure;
 use CssSerializationLimits as Limits;
 use surgeist_css::*;
 
-fn angle(coefficient: &str, unit: CssAngleUnit) -> CssAngleValue {
-    CssAngleValue::from_literal(CssAngleLiteral::try_new(coefficient, unit).unwrap())
+fn angle(coefficient: &str, unit: CssAngleUnit) -> CssNumeric<CssAngle> {
+    CssNumeric::<CssAngle>::try_from_literal(
+        CssNumericLiteral::<CssAngle>::try_new(coefficient, unit).unwrap(),
+    )
+    .unwrap()
 }
 
 fn parsed(value: &str) -> (CssDeclaration, CssImageOrientation) {
@@ -30,7 +33,7 @@ fn parsed(value: &str) -> (CssDeclaration, CssImageOrientation) {
     (declaration.clone(), value.orientation().clone())
 }
 
-fn child(value: &CssImageOrientation) -> &CssAngleValue {
+fn child(value: &CssImageOrientation) -> &CssNumeric<CssAngle> {
     match value {
         CssImageOrientation::Angle(angle) | CssImageOrientation::Flip(Some(angle)) => angle,
         _ => panic!("orientation with retained angle"),

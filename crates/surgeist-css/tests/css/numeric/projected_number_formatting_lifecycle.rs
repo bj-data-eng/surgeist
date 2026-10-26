@@ -24,25 +24,30 @@ fn component(source: &str) -> CssComponentValue {
     assert_eq!(values.items().len(), 1, "{source}");
     values.items()[0].clone()
 }
-fn number(source: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(components(source), Default::default()).unwrap(),
+fn number(source: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(components(source), Default::default())
+            .unwrap(),
     )
     .unwrap()
 }
-fn length(source: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(components(source), Default::default()).unwrap(),
+fn length(source: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(components(source), Default::default())
+            .unwrap(),
     )
     .unwrap()
 }
 fn padding(source: &str) -> CssScrollPaddingValue {
     CssScrollPaddingValue::LengthPercentage(nonnegative_lp(source))
 }
-fn nonnegative_lp(source: &str) -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(components(source), Default::default())
-            .unwrap(),
+fn nonnegative_lp(source: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
+            components(source),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -52,8 +57,8 @@ fn slice(sources: &[&str]) -> CssBorderImageSlice {
             .iter()
             .map(|source| {
                 CssBorderImageSliceComponent::Number(
-                    CssSpecifiedNonNegativeNumber::try_from_calculation(
-                        CssNumberCalculation::try_from_components(
+                    CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+                        CssCalculation::<CssNumber>::try_from_components(
                             components(source),
                             Default::default(),
                         )
@@ -231,21 +236,25 @@ fn generic_byte_limits_keep_tree_visits_failure_order_and_input_identity() {
 #[test]
 fn ordinary_roots_retain_exact_decimal_admission_and_authored_identity() {
     let raw = component("5e-7");
-    let ordinary = CssSpecifiedNumber::try_from_component(raw.clone()).unwrap();
+    let ordinary = CssNumeric::<CssNumber>::try_from_component(raw.clone()).unwrap();
     assert_eq!(
         ordinary.serialize_specified(Default::default()).unwrap(),
         "0.000001"
     );
     let normalized = number("5e-7");
     assert!(normalized.calculation().is_none());
-    assert_eq!(normalized.literal_component(), Some(&raw));
+    assert_eq!(
+        normalized.literal().map(|literal| literal.component()),
+        Some(&raw)
+    );
     assert_eq!(
         normalized.serialize_specified(Default::default()).unwrap(),
         "0.000001"
     );
     for source in ["-1e-999px", "-0.0000004px"] {
         let raw = component(source);
-        let error = CssSpecifiedNonNegativeLength::try_from_component(raw.clone()).unwrap_err();
+        let error =
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component(raw.clone()).unwrap_err();
         assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(raw.origin()));
     }
@@ -260,8 +269,9 @@ fn original_recovery_and_substitution_errors_precede_projection() {
     ] {
         let original = components(source);
         let before = original.clone();
-        let error = CssNumberCalculation::try_from_components(original.clone(), Default::default())
-            .unwrap_err();
+        let error =
+            CssCalculation::<CssNumber>::try_from_components(original.clone(), Default::default())
+                .unwrap_err();
         assert_eq!(numeric_failure(&error), kind);
         assert!(error.origin().is_some());
         assert_eq!(original, before);
@@ -277,10 +287,12 @@ fn integer_calculation_text_rounding_is_distinct_from_integer_arithmetic() {
         ("round(-2.5)", "calc(-2)"),
         ("sign(1em - 1px)", "sign(1em - 1px)"),
     ] {
-        let calculation =
-            CssIntegerCalculation::try_from_components(components(source), Default::default())
-                .unwrap();
-        let value = CssIntegerValue::Calculation(calculation.clone());
+        let calculation = CssCalculation::<CssInteger>::try_from_components(
+            components(source),
+            Default::default(),
+        )
+        .unwrap();
+        let value = CssNumeric::<CssInteger>::try_from_calculation(calculation.clone()).unwrap();
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
             expected,
@@ -294,9 +306,11 @@ fn integer_calculation_text_rounding_is_distinct_from_integer_arithmetic() {
             source
         );
     }
-    let literal = CssIntegerValue::Literal(
-        CssIntegerLiteral::try_from_component(component("1000000000000000100")).unwrap(),
-    );
+    let literal = CssNumeric::<CssInteger>::try_from_literal(
+        CssNumericLiteral::<CssInteger>::try_from_component(component("1000000000000000100"))
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         literal.serialize_specified(Default::default()).unwrap(),
         "1000000000000000100"
@@ -356,8 +370,8 @@ fn symbolic_terms_keep_order_sign_and_units_while_finite_children_round() {
 
 #[test]
 fn dimensional_calculation_providers_convert_units_before_rounding_text() {
-    let angle = CssAngleValue::try_from_calculation(
-        CssAngleCalculation::try_from_components(
+    let angle = CssNumeric::<CssAngle>::try_from_calculation(
+        CssCalculation::<CssAngle>::try_from_components(
             components("calc(0.0078125turn)"),
             Default::default(),
         )
@@ -382,8 +396,8 @@ fn dimensional_calculation_providers_convert_units_before_rounding_text() {
             .as_css(),
         "calc(0.0078125turn)"
     );
-    let time = CssTimeValue::try_from_calculation(
-        CssTimeCalculation::try_from_components(
+    let time = CssNumeric::<CssTime>::try_from_calculation(
+        CssCalculation::<CssTime>::try_from_components(
             components("calc(123.45641ms)"),
             Default::default(),
         )
@@ -394,8 +408,8 @@ fn dimensional_calculation_providers_convert_units_before_rounding_text() {
         time.serialize_specified(Default::default()).unwrap(),
         "calc(0.123456s)"
     );
-    let frequency = CssFrequencyValue::try_from_calculation(
-        CssFrequencyCalculation::try_from_components(
+    let frequency = CssNumeric::<CssFrequency>::try_from_calculation(
+        CssCalculation::<CssFrequency>::try_from_components(
             components("calc(0.00012345641khz)"),
             Default::default(),
         )
@@ -406,8 +420,8 @@ fn dimensional_calculation_providers_convert_units_before_rounding_text() {
         frequency.serialize_specified(Default::default()).unwrap(),
         "calc(0.123456hz)"
     );
-    let percentage = CssSpecifiedPercentage::try_from_calculation(
-        CssPercentageCalculation::try_from_components(
+    let percentage = CssNumeric::<CssPercentage>::try_from_calculation(
+        CssCalculation::<CssPercentage>::try_from_components(
             components("calc(1% / 128)"),
             Default::default(),
         )
@@ -524,8 +538,8 @@ fn border_width_outset_and_full_shorthand_preserve_colliding_edges() {
             .iter()
             .map(|s| {
                 CssBorderImageWidthComponent::Number(
-                    CssSpecifiedNonNegativeNumber::try_from_calculation(
-                        CssNumberCalculation::try_from_components(
+                    CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+                        CssCalculation::<CssNumber>::try_from_components(
                             components(s),
                             Default::default(),
                         )
@@ -546,8 +560,8 @@ fn border_width_outset_and_full_shorthand_preserve_colliding_edges() {
             .iter()
             .map(|s| {
                 CssBorderImageOutsetComponent::Number(
-                    CssSpecifiedNonNegativeNumber::try_from_calculation(
-                        CssNumberCalculation::try_from_components(
+                    CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+                        CssCalculation::<CssNumber>::try_from_components(
                             components(s),
                             Default::default(),
                         )

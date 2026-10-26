@@ -1,7 +1,7 @@
 //! Exact authored Fonts 4 widths before font matching or computed range ordering.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{CssComponentValue, CssSerializationError, CssSpecifiedNonNegativePercentage};
+use crate::{CssComponentValue, CssNonNegative, CssNumeric, CssPercentage, CssSerializationError};
 
 type SerializationResult<T> = Result<T, CssSerializationError>;
 
@@ -29,7 +29,7 @@ pub enum CssFontWidthKeyword {
 #[non_exhaustive]
 pub enum CssFontWidth {
     Keyword(CssFontWidthKeyword),
-    Percentage(CssSpecifiedNonNegativePercentage),
+    Percentage(CssNumeric<CssPercentage, CssNonNegative>),
 }
 
 /// An authored `@font-face` width descriptor, before computed endpoint ordering.
@@ -96,7 +96,7 @@ impl CssFontWidthKeyword {
 
     /// Returns the exact specified percentage equivalent of a width keyword.
     #[must_use]
-    pub fn percentage(self) -> CssSpecifiedNonNegativePercentage {
+    pub fn percentage(self) -> CssNumeric<CssPercentage, CssNonNegative> {
         let spelling = match self {
             Self::UltraCondensed => "50%",
             Self::ExtraCondensed => "62.5%",
@@ -108,7 +108,7 @@ impl CssFontWidthKeyword {
             Self::ExtraExpanded => "150%",
             Self::UltraExpanded => "200%",
         };
-        CssSpecifiedNonNegativePercentage::try_from_component(
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token(spelling).expect("fixed percentage token"),
         )
         .expect("fixed nonnegative percentage")

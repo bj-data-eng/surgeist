@@ -114,7 +114,7 @@ macro_rules! gradient_case {
             let rule = clean_rule(concat!("symbols: a; pad: 3 ", $gradient, ";"));
             assert_output(&rule, Descriptor::Pad, concat!("3 ", $gradient),
                 concat!("pad: 3 ", $gradient, "; symbols: a;"));
-            assert_eq!(rule.descriptors().pad().unwrap().ordinary_pad().minimum_length().literal().numeric().representation(), "3");
+            assert_eq!(rule.descriptors().pad().unwrap().ordinary_pad().minimum_length().expect_literal().numeric().representation(), "3");
         }
     };
     ($name:ident, additive, $gradient:literal) => {
@@ -123,7 +123,7 @@ macro_rules! gradient_case {
             let rule = clean_rule(concat!("system: additive; additive-symbols: ", $gradient, " 10, N 0;"));
             assert_output(&rule, Descriptor::AdditiveSymbols, concat!("10 ", $gradient, ", 0 N"),
                 concat!("system: additive; additive-symbols: 10 ", $gradient, ", 0 N;"));
-            assert_eq!(rule.descriptors().additive_symbols().unwrap().ordinary_additive_symbols().tuples()[0].weight().literal().numeric().representation(), "10");
+            assert_eq!(rule.descriptors().additive_symbols().unwrap().ordinary_additive_symbols().tuples()[0].weight().expect_literal().numeric().representation(), "10");
         }
     };
 }
@@ -279,7 +279,7 @@ fn gradient_pad_accepts_both_component_orders_without_changing_the_integer() {
                 .unwrap()
                 .ordinary_pad()
                 .minimum_length()
-                .literal()
+                .expect_literal()
                 .numeric()
                 .representation(),
             "+0003"
@@ -307,7 +307,7 @@ fn additive_gradient_tuples_accept_both_orders_without_reordering_weights() {
                 .ordinary_additive_symbols()
                 .tuples()[0]
                 .weight()
-                .literal()
+                .expect_literal()
                 .numeric()
                 .representation(),
             "+0010"

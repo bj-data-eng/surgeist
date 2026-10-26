@@ -85,7 +85,12 @@ fn list_counter_and_content_models_preserve_authored_shapes() {
     assert!(matches!(list_style.image(), Some(CssImageValue::Url(_))));
     let counter_change = CssCounterChangeValue::new(
         counter_name.clone(),
-        Some(CssIntegerValue::Literal(CssIntegerLiteral::from_i32(4))),
+        Some(
+            CssNumeric::<CssInteger>::try_from_literal(CssNumericLiteral::<CssInteger>::from_i32(
+                4,
+            ))
+            .unwrap(),
+        ),
     );
     assert_eq!(counter_change.name(), &counter_name);
     assert_integer_literal(counter_change.value().unwrap(), "4");

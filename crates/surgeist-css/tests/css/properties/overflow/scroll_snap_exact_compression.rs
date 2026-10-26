@@ -27,16 +27,18 @@ fn component(text: &str, parsed: bool) -> CssComponentValue {
         CssComponentValue::try_token(text).unwrap()
     }
 }
-fn length(text: &str, parsed: bool) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_component(component(text, parsed)).unwrap()
+fn length(text: &str, parsed: bool) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_component(component(text, parsed)).unwrap()
 }
 fn padding(text: &str, parsed: bool) -> CssScrollPaddingValue {
     if text == "auto" {
         CssScrollPaddingValue::Auto
     } else {
         CssScrollPaddingValue::LengthPercentage(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(component(text, parsed))
-                .unwrap(),
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component(
+                text, parsed,
+            ))
+            .unwrap(),
         )
     }
 }
@@ -63,7 +65,7 @@ fn padding_literal(value: &CssScrollPaddingValue) -> &CssComponentValue {
     let CssScrollPaddingValue::LengthPercentage(value) = value else {
         panic!("length or percentage padding")
     };
-    value.literal_component().unwrap()
+    value.literal().map(|literal| literal.component()).unwrap()
 }
 fn pair_padding(texts: [&str; 2], expected: &str) {
     let start = padding(texts[0], true);
@@ -89,8 +91,24 @@ fn pair_margin(texts: [&str; 2], expected: &str) {
     assert_eq!(value.start(), &start);
     assert_eq!(value.authored_end(), Some(&end));
     assert_eq!(value.end(), &end);
-    assert_literal(value.start().literal_component().unwrap(), texts[0], true);
-    assert_literal(value.end().literal_component().unwrap(), texts[1], false);
+    assert_literal(
+        value
+            .start()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
+        texts[0],
+        true,
+    );
+    assert_literal(
+        value
+            .end()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
+        texts[1],
+        false,
+    );
     assert_eq!(result.unwrap(), expected);
 }
 
@@ -155,7 +173,10 @@ fn quad_margin(kind: CssScrollSideKind, texts: &[&str], expected: &str) {
     assert_eq!(value.authored_values(), authored);
     for (i, text) in texts.iter().enumerate() {
         assert_literal(
-            value.authored_values()[i].literal_component().unwrap(),
+            value.authored_values()[i]
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap(),
             text,
             i % 2 == 0,
         );
@@ -374,8 +395,10 @@ fn negative_padding_is_rejected_before_any_lossy_rounding() {
         "-1e-170141183460469231731687303715884105728px",
     ] {
         assert!(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(component(text, false))
-                .is_err()
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component(
+                text, false
+            ))
+            .is_err()
         );
         let grammar = CssPropertyGrammar::from_name("scroll-padding-block").unwrap();
         assert!(
@@ -522,8 +545,8 @@ fn compressed_authored_counts_scratch_limits_and_failure_order_stay_exact() {
 #[test]
 fn canonical_math_pair_and_quad_compression_keeps_actual_calculation_policy() {
     let calc = |text| {
-        CssSpecifiedLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(
+        CssNumeric::<CssLength>::try_from_calculation(
+            CssCalculation::<CssLength>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default(),
             )

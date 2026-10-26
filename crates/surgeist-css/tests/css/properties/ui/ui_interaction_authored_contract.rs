@@ -619,8 +619,11 @@ fn signed_extreme_number_hotspots_retain_exact_literals_without_clamping_or_unde
             let pair = images.images()[0].hotspot().unwrap();
             for (number, expected) in pair.iter().zip(spelling) {
                 assert!(number.calculation().is_none());
-                let CssComponentValueRef::Token(CssValueTokenRef::Number(actual)) =
-                    number.literal_component().unwrap().view()
+                let CssComponentValueRef::Token(CssValueTokenRef::Number(actual)) = number
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap()
+                    .view()
                 else {
                     panic!("exact Number root")
                 };

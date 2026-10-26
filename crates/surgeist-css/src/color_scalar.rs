@@ -1,8 +1,8 @@
 //! Exact ordinary color token domains.
 use crate::{
-    CssAngleLiteral, CssColorComponent, CssColorHue, CssComponentValue, CssComponentValueError,
-    CssComponentValueErrorKind, CssComponentValueRef, CssNumericTokenRef, CssValueOrigin,
-    CssValueTokenRef,
+    CssAngle, CssColorComponent, CssColorHue, CssComponentValue, CssComponentValueError,
+    CssComponentValueErrorKind, CssComponentValueRef, CssNumericLiteral, CssNumericTokenRef,
+    CssValueOrigin, CssValueTokenRef,
 };
 
 macro_rules! literal {
@@ -86,9 +86,9 @@ pub(crate) fn hue(value: CssComponentValue) -> Result<CssColorHue, CssComponentV
             CssColorNumberLiteral::try_from_component(value)?,
         ));
     }
-    Ok(CssColorHue::Angle(CssAngleLiteral::try_from_component(
-        value,
-    )?))
+    Ok(CssColorHue::Angle(
+        CssNumericLiteral::<CssAngle>::from_component_token(value)?,
+    ))
 }
 
 #[cfg(test)]

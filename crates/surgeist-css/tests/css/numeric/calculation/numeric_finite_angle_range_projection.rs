@@ -104,8 +104,9 @@ fn programmatic_finite_angle_projection_preserves_exact_lexeme_and_origin() {
     let arguments = CssComponentValues::try_new(vec![leaf], Default::default()).unwrap();
     let component = CssComponentValue::try_function("COS", arguments).unwrap();
     let components = CssComponentValues::try_new(vec![component], Default::default()).unwrap();
-    let value = CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(components.clone(), Default::default()).unwrap(),
+    let value = CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(components.clone(), Default::default())
+            .unwrap(),
     )
     .unwrap();
     let before = value.clone();

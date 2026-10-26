@@ -1,25 +1,25 @@
+use crate::css::support::value_assertions::positive_literal;
 use surgeist_css::{
-    CssCalculationExpressionRef, CssCalculationType, CssCalculationValueRef, CssComponentValue,
-    CssComponentValueRef, CssFlexCalculation, CssGridAutoRepeat, CssGridAutoRepeatKind,
+    CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssCalculationValueRef,
+    CssComponentValue, CssComponentValueRef, CssFlex, CssGridAutoRepeat, CssGridAutoRepeatKind,
     CssGridAutoTrackComponent, CssGridAutoTrackList, CssGridFixedRepeatComponent,
     CssGridFixedRepeatContent, CssGridFixedSize, CssGridGeneralTrackComponent,
     CssGridGeneralTrackList, CssGridIntegerTrackRepeat, CssGridLineNames, CssGridTrackBreadth,
     CssGridTrackList, CssGridTrackRepeatComponent, CssGridTrackRepeatContent, CssGridTrackSize,
-    CssGridTrackSizeList, CssKnownPropertyValueRef, CssLengthPercentageCalculation,
-    CssNumericDimension, CssPositiveIntegerLiteral, CssSerializationLimits,
-    CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLengthPercentage, CssValueOrigin,
-    CssValueTokenRef, parse_component_values, parse_style_attribute,
+    CssGridTrackSizeList, CssKnownPropertyValueRef, CssLengthPercentage, CssNonNegative,
+    CssNumeric, CssNumericDimension, CssSerializationLimits, CssValueOrigin, CssValueTokenRef,
+    parse_component_values, parse_style_attribute,
 };
 
-fn flex(text: &str) -> CssSpecifiedNonNegativeFlex {
-    CssSpecifiedNonNegativeFlex::try_from_component(
+fn flex(text: &str) -> CssNumeric<CssFlex, CssNonNegative> {
+    CssNumeric::<CssFlex, CssNonNegative>::try_from_component(
         CssComponentValue::try_dimension(text, "fr").unwrap(),
     )
     .unwrap()
 }
 
-fn length(text: &str) -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+fn length(text: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_dimension(text, "px").unwrap(),
     )
     .unwrap()
@@ -35,7 +35,7 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
         let scalar = flex(text);
         assert!(matches!(scalar.origin(), CssValueOrigin::Programmatic));
         assert!(matches!(
-            scalar.literal_component().unwrap().view(),
+            scalar.literal().map(|literal| literal.component()).unwrap().view(),
             CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
                 if number.representation() == text && unit == "fr"
         ));
@@ -55,25 +55,25 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
         );
         assert!(breadth.flex().is_some());
     }
-    let error = CssSpecifiedNonNegativeFlex::try_from_component(
+    let error = CssNumeric::<CssFlex, CssNonNegative>::try_from_component(
         CssComponentValue::try_dimension("-1e-50", "fr").unwrap(),
     )
     .unwrap_err();
     assert!(error.is_out_of_range(), "{error:?}");
     assert!(matches!(error.origin(), Some(CssValueOrigin::Programmatic)));
 
-    let bare_negative = CssFlexCalculation::try_from_components(
+    let bare_negative = CssCalculation::<CssFlex>::try_from_components(
         parse_component_values("-1fr").unwrap(),
         Default::default(),
     )
     .unwrap();
     assert!(
-        CssSpecifiedNonNegativeFlex::try_from_calculation(bare_negative)
+        CssNumeric::<CssFlex, CssNonNegative>::try_from_calculation(bare_negative)
             .unwrap_err()
             .is_out_of_range()
     );
-    let deferred_negative = CssSpecifiedNonNegativeFlex::try_from_calculation(
-        CssFlexCalculation::try_from_components(
+    let deferred_negative = CssNumeric::<CssFlex, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssFlex>::try_from_components(
             parse_component_values("calc(-1fr)").unwrap(),
             Default::default(),
         )
@@ -108,7 +108,7 @@ fn exact_flex_scalar_has_checked_programmatic_origin() {
 
 #[test]
 fn flex_calculation_keeps_its_unhinted_type_and_function_tree() {
-    let calculation = CssFlexCalculation::try_from_components(
+    let calculation = CssCalculation::<CssFlex>::try_from_components(
         parse_component_values("calc(1fr * (1% / 1%))").unwrap(),
         Default::default(),
     )
@@ -122,13 +122,18 @@ fn flex_calculation_keeps_its_unhinted_type_and_function_tree() {
     );
     assert_eq!(calculation.numeric_type().percent_hint(), None);
     assert!(matches!(calculation.origin(), CssValueOrigin::Parsed(_)));
-    let scalar = CssSpecifiedNonNegativeFlex::try_from_calculation(calculation).unwrap();
-    assert!(scalar.literal_component().is_none());
+    let scalar = CssNumeric::<CssFlex, CssNonNegative>::try_from_calculation(calculation).unwrap();
+    assert!(
+        scalar
+            .literal()
+            .map(|literal| literal.component())
+            .is_none()
+    );
     assert!(scalar.calculation().is_some());
     let breadth = CssGridTrackBreadth::from_flex(scalar);
     let canonical = breadth.serialize_specified(Default::default()).unwrap();
     assert_eq!(canonical, "calc(1fr)");
-    let reparsed = CssFlexCalculation::try_from_components(
+    let reparsed = CssCalculation::<CssFlex>::try_from_components(
         parse_component_values(&canonical).unwrap(),
         Default::default(),
     )
@@ -139,7 +144,7 @@ fn flex_calculation_keeps_its_unhinted_type_and_function_tree() {
 
 #[test]
 fn length_percentage_math_retains_its_percentage_child_and_hint() {
-    let calculation = CssLengthPercentageCalculation::try_from_components(
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
         parse_component_values("calc(10px + 5%)").unwrap(),
         Default::default(),
     )
@@ -180,7 +185,7 @@ fn checked_track_sizes_reject_flexible_minima_and_preserve_exact_lengths() {
     let flex = CssGridTrackBreadth::from_flex(flex("1"));
     let short_length = CssGridTrackBreadth::from_length_percentage(length("1e-50"));
     assert!(matches!(
-        short_length.length_percentage().unwrap().literal_component().unwrap().view(),
+        short_length.length_percentage().unwrap().literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
             if number.representation() == "1e-50" && unit == "px"
     ));
@@ -227,10 +232,10 @@ fn checked_lists_reject_empty_tracks_and_repeat_cross_products() {
     )])
     .unwrap();
     let repeat = CssGridIntegerTrackRepeat::try_new(
-        surgeist_css::CssPositiveIntegerValue::Literal(
-            CssPositiveIntegerLiteral::try_new(surgeist_css::CssIntegerLiteral::from_i32(2))
+        surgeist_css::CssNumeric::<surgeist_css::CssInteger, surgeist_css::CssPositive>::try_from_literal(
+            positive_literal(surgeist_css::CssNumericLiteral::<surgeist_css::CssInteger>::from_i32(2))
                 .unwrap(),
-        ),
+        ).unwrap(),
         content.clone(),
     )
     .unwrap();
@@ -320,7 +325,7 @@ fn parsed_track_graph_serializes_with_one_cumulative_budget() {
     };
     let list = wrapper.value();
     assert!(matches!(
-        list.sizes()[1].fit_content().unwrap().literal_component().unwrap().view(),
+        list.sizes()[1].fit_content().unwrap().literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
             if number.representation() == "1e-50" && unit == "px"
     ));

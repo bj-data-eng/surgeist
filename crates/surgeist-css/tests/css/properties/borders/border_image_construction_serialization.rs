@@ -7,10 +7,10 @@ use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
 
-fn number(text: &str) -> CssSpecifiedNonNegativeNumber {
+fn number(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
     if text.starts_with("calc(") {
-        CssSpecifiedNonNegativeNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssNumber>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default(),
             )
@@ -18,7 +18,7 @@ fn number(text: &str) -> CssSpecifiedNonNegativeNumber {
         )
         .unwrap()
     } else {
-        CssSpecifiedNonNegativeNumber::try_from_component(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number(text).unwrap(),
         )
         .unwrap()
@@ -32,7 +32,7 @@ fn slice(texts: &[&str], fill: bool) -> CssBorderImageSlice {
             .map(|text| {
                 if text.ends_with('%') {
                     CssBorderImageSliceComponent::Percentage(
-                        CssSpecifiedNonNegativePercentage::try_from_component(
+                        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
                             CssComponentValue::try_token(text).unwrap(),
                         )
                         .unwrap(),
@@ -155,11 +155,19 @@ fn checked_construction_preserves_fields_origins_and_expanded_edges() {
         let token = match edge {
             CssBorderImageSliceComponent::Number(number) if !percentage => {
                 assert_eq!(number.origin(), &CssValueOrigin::Programmatic);
-                number.literal_component().unwrap().view()
+                number
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap()
+                    .view()
             }
             CssBorderImageSliceComponent::Percentage(number) if percentage => {
                 assert_eq!(number.origin(), &CssValueOrigin::Programmatic);
-                number.literal_component().unwrap().view()
+                number
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap()
+                    .view()
             }
             _ => panic!("independent expected slice branch"),
         };
@@ -184,8 +192,11 @@ fn checked_construction_preserves_fields_origins_and_expanded_edges() {
         let CssBorderImageWidthComponent::Number(number) = edge else {
             panic!("number width edge");
         };
-        let CssComponentValueRef::Token(CssValueTokenRef::Number(token)) =
-            number.literal_component().unwrap().view()
+        let CssComponentValueRef::Token(CssValueTokenRef::Number(token)) = number
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .view()
         else {
             panic!("literal number width edge");
         };
@@ -196,8 +207,11 @@ fn checked_construction_preserves_fields_origins_and_expanded_edges() {
         let CssBorderImageOutsetComponent::Number(number) = edge else {
             panic!("number outset edge");
         };
-        let CssComponentValueRef::Token(CssValueTokenRef::Number(token)) =
-            number.literal_component().unwrap().view()
+        let CssComponentValueRef::Token(CssValueTokenRef::Number(token)) = number
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .view()
         else {
             panic!("literal number outset edge");
         };
@@ -383,8 +397,8 @@ fn canonical_math_compression_preserves_symbolic_roots_and_all_projection_costs(
     .iter()
     .map(|text| {
         CssBorderImageWidthComponent::LengthPercentage(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-                CssLengthPercentageCalculation::try_from_components(
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+                CssCalculation::<CssLengthPercentage>::try_from_components(
                     parse_component_values(text).unwrap(),
                     Default::default(),
                 )
@@ -412,11 +426,14 @@ fn slot_serialization_keeps_number_percentage_and_length_zero_branches() {
     let width = CssBorderImageWidth::try_new(vec![
         CssBorderImageWidthComponent::Number(number("0")),
         CssBorderImageWidthComponent::LengthPercentage(
-            CssSpecifiedNonNegativeLengthPercentage::zero(),
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                CssComponentValue::try_number("0").unwrap(),
+            )
+            .unwrap(),
         ),
         CssBorderImageWidthComponent::Number(number("0")),
         CssBorderImageWidthComponent::LengthPercentage(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token("0%").unwrap(),
             )
             .unwrap(),
@@ -427,7 +444,10 @@ fn slot_serialization_keeps_number_percentage_and_length_zero_branches() {
         width.serialize_specified(limits)
     });
     let outset = CssBorderImageOutset::try_new(vec![CssBorderImageOutsetComponent::Length(
-        CssSpecifiedNonNegativeLength::zero(),
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+            CssComponentValue::try_number("0").unwrap(),
+        )
+        .unwrap(),
     )])
     .unwrap();
     exact_limits("0px", 9, 9, |limits| outset.serialize_specified(limits));

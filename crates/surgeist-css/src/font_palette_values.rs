@@ -5,8 +5,8 @@ use std::fmt;
 use crate::{
     CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor, CssComponentValue,
     CssComponentValueError, CssComponentValueLimits, CssComponentValues, CssError,
-    CssFontFaceFamily, CssIntegerValue, CssSerializedOrigin, CssSerializedValue, CssSourcePosition,
-    CssSubstitutionDependentValue, CssValueOrigin,
+    CssFontFaceFamily, CssInteger, CssNonNegative, CssNumeric, CssSerializedOrigin,
+    CssSerializedValue, CssSourcePosition, CssSubstitutionDependentValue, CssValueOrigin,
 };
 
 /// A rejected semantic palette component or rule, or a checked component-native palette
@@ -24,7 +24,6 @@ pub struct CssFontPaletteValuesError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum FontPaletteValuesKind {
     InvalidName,
-    NegativeIndex,
     ContextualColor(CssAbsoluteColorExclusion),
     MissingFontFamily,
     Value(crate::descriptor_values::DescriptorValueFailure),
@@ -61,8 +60,6 @@ impl CssFontPaletteValuesError {
     crate::error::kind_predicates! { kind;
         /// Returns whether a palette name is not a decoded `<dashed-ident>`.
         is_invalid_name => FontPaletteValuesKind::InvalidName,
-        /// Returns whether a palette index is negative.
-        is_negative_index => FontPaletteValuesKind::NegativeIndex,
         /// Returns whether a palette rule has no `font-family` descriptor.
         is_missing_font_family => FontPaletteValuesKind::MissingFontFamily,
     }
@@ -127,9 +124,6 @@ impl fmt::Display for CssFontPaletteValuesError {
             FontPaletteValuesKind::InvalidName => {
                 "invalid font-palette-values construction: the name is not a dashed identifier"
             }
-            FontPaletteValuesKind::NegativeIndex => {
-                "invalid font-palette-values construction: a palette index is negative"
-            }
             FontPaletteValuesKind::ContextualColor(_) => {
                 "invalid font-palette-values construction: an override color is not absolute"
             }
@@ -193,51 +187,25 @@ impl CssFontPaletteDescriptorKind {
     }
 }
 
-/// An exact nonnegative ordinary integer or an unresolved Integer-root calculation.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssFontPaletteIndex {
-    value: CssIntegerValue,
-}
-
-impl CssFontPaletteIndex {
-    pub fn try_new(value: CssIntegerValue) -> Result<Self, CssFontPaletteValuesError> {
-        let negative = match &value {
-            CssIntegerValue::Literal(value) => value.is_negative(),
-            CssIntegerValue::Calculation(_) => false,
-        };
-        if negative {
-            return Err(CssFontPaletteValuesError::new(
-                FontPaletteValuesKind::NegativeIndex,
-            ));
-        }
-        Ok(Self { value })
-    }
-
-    #[must_use]
-    pub const fn value(&self) -> &CssIntegerValue {
-        &self.value
-    }
-}
-
 /// The authored base palette selection; absence remains distinct on the rule.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontPaletteBase {
     Light,
     Dark,
-    Index(CssFontPaletteIndex),
+    Index(CssNumeric<CssInteger, CssNonNegative>),
 }
 
 /// An authored override pair. Duplicated indices are retained by its owning list.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontPaletteOverride {
-    index: CssFontPaletteIndex,
+    index: CssNumeric<CssInteger, CssNonNegative>,
     color: CssColor,
 }
 
 impl CssFontPaletteOverride {
     pub fn try_new(
-        index: CssFontPaletteIndex,
+        index: CssNumeric<CssInteger, CssNonNegative>,
         color: CssColor,
     ) -> Result<Self, CssFontPaletteValuesError> {
         if let CssAbsoluteColorEligibility::Contextual(reason) = color.absolute_eligibility() {
@@ -249,7 +217,7 @@ impl CssFontPaletteOverride {
     }
 
     #[must_use]
-    pub const fn index(&self) -> &CssFontPaletteIndex {
+    pub const fn index(&self) -> &CssNumeric<CssInteger, CssNonNegative> {
         &self.index
     }
 

@@ -7,20 +7,27 @@ use crate::css::support::serialization_limits::assert_limits_with_zero as budget
 use crate::css::support::sole_declaration as declaration;
 use surgeist_css::{CssSerializationLimits as L, *};
 
-fn number(text: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_component(CssComponentValue::try_number(text).unwrap()).unwrap()
-}
-fn lp(text: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
+fn number(text: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_number(text).unwrap())
         .unwrap()
 }
-fn length(text: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_component(CssComponentValue::try_token(text).unwrap()).unwrap()
+fn lp(text: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
+        CssComponentValue::try_token(text).unwrap(),
+    )
+    .unwrap()
+}
+fn length(text: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(text).unwrap())
+        .unwrap()
 }
 fn angle(text: &str, unit: CssAngleUnit) -> CssAngleOrZero {
-    CssAngleOrZero::Angle(CssAngleValue::from_literal(
-        CssAngleLiteral::try_new(text, unit).unwrap(),
-    ))
+    CssAngleOrZero::Angle(
+        CssNumeric::<CssAngle>::try_from_literal(
+            CssNumericLiteral::<CssAngle>::try_new(text, unit).unwrap(),
+        )
+        .unwrap(),
+    )
 }
 macro_rules! parsed {
     ($source:expr, TransformOrigin) => {
@@ -512,8 +519,11 @@ fn rounded_output_and_atomic_byte_failure_preserve_exact_operands_and_origins() 
     let CssTransformScaleComponent::Number(operand) = &values.values()[1] else {
         panic!("number factor")
     };
-    let CssComponentValueRef::Token(CssValueTokenRef::Number(token)) =
-        operand.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Number(token)) = operand
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("number token")
     };
@@ -541,8 +551,11 @@ fn rounded_output_and_atomic_byte_failure_preserve_exact_operands_and_origins() 
         panic!("translate x")
     };
     assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
-    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
-        value.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) = value
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("dimension")
     };

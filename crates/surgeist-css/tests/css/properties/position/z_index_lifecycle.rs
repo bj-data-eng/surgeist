@@ -116,7 +116,7 @@ fn parsed_and_checked_z_index_keep_the_selected_grammar_and_exact_origins() {
             integer.serialize_specified(Default::default()).unwrap(),
             expected
         );
-        let CssIntegerValue::Literal(literal) = integer else {
+        let Some(literal) = integer.literal() else {
             panic!("literal")
         };
         assert_eq!(literal.component(), &source.value_components().items()[0]);

@@ -88,9 +88,10 @@ fn order_reentry_is_atomic_and_preserves_exact_replacement_origin() {
             assert!(item.source().same_occurrence(&source));
             assert_eq!(item.source().importance(), CssImportance::Important);
             assert_eq!(item.replacement_components(), Some(&replacement));
-            let CssLonghandValueRef::Order(CssIntegerValue::Literal(literal)) =
-                item.ordinary_value().unwrap().view()
-            else {
+            let Some(literal) = (match item.ordinary_value().unwrap().view() {
+                CssLonghandValueRef::Order(value) => value.literal(),
+                _ => None,
+            }) else {
                 panic!("exact order")
             };
             assert_eq!(literal.component(), &replacement.items()[0]);

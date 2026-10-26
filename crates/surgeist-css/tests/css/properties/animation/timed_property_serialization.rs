@@ -6,14 +6,18 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_numeric_rejected;
 use crate::css::support::serialization_limits::assert_limits as budget;
 use crate::css::support::sole_declaration as declaration;
+use crate::css::support::value_assertions::checked_range;
 use surgeist_css::{CssSerializationLimits as L, *};
 
-fn time(text: &str) -> CssTimeValue {
-    CssTimeValue::from_literal(CssTimeLiteral::try_new(text, CssTimeUnit::Seconds).unwrap())
+fn time(text: &str) -> CssNumeric<CssTime> {
+    CssNumeric::<CssTime>::try_from_literal(
+        CssNumericLiteral::<CssTime>::try_new(text, CssTimeUnit::Seconds).unwrap(),
+    )
+    .unwrap()
 }
 
-fn duration(text: &str) -> CssDuration {
-    CssDuration::try_new(time(text)).unwrap()
+fn duration(text: &str) -> CssNumeric<CssTime, CssNonNegative> {
+    checked_range::<CssTime, CssNonNegative>(&time(text)).unwrap()
 }
 
 fn name(text: &str) -> CssAnimationName {
@@ -30,7 +34,7 @@ fn property(text: &str) -> CssTransitionProperty {
 
 fn count(text: &str) -> CssAnimationIterationCount {
     CssAnimationIterationCount::Number(
-        CssSpecifiedNonNegativeNumber::try_from_component(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number(text).unwrap(),
         )
         .unwrap(),
@@ -376,9 +380,10 @@ fn explicit_non_name_slots_disambiguate_keyword_names_without_extra_defaults() {
 
 #[test]
 fn delay_only_items_insert_duration_without_mutating_omissions_or_exact_input() {
-    let delay = CssTimeValue::from_literal(
-        CssTimeLiteral::try_new("-250", CssTimeUnit::Milliseconds).unwrap(),
-    );
+    let delay = CssNumeric::<CssTime>::try_from_literal(
+        CssNumericLiteral::<CssTime>::try_new("-250", CssTimeUnit::Milliseconds).unwrap(),
+    )
+    .unwrap();
     let transition = CssTransitionList::try_new(vec![
         CssTransition::try_new(None, None, Some(delay.clone()), None).unwrap(),
     ])
@@ -610,7 +615,7 @@ fn late_byte_failure_returns_no_partial_css_and_leaves_large_lists_unchanged() {
 fn exact_duration_admission_and_signed_delay_projection_keep_distinct_domains() {
     let tiny_negative = time("-1e-999");
     assert_numeric_rejected(
-        CssDuration::try_new(tiny_negative.clone()),
+        checked_range::<CssTime, CssNonNegative>(&tiny_negative.clone()),
         NumericFailure::OutOfRange,
     );
     let delays = CssDelayList::try_new(vec![tiny_negative]).unwrap();

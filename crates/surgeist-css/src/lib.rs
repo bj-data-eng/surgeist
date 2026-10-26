@@ -213,11 +213,11 @@
 //!
 //! ```
 //! use surgeist_css::{
-//!     CssAngleCalculation, CssAngleUnit, CssCalculationExpressionRef,
-//!     CssCalculationType, CssCalculationValueRef,
+//!     CssAngle, CssAngleUnit, CssCalculation, CssCalculationExpressionRef, CssCalculationType,
+//!     CssCalculationValueRef,
 //! };
 //!
-//! let angle = CssAngleCalculation::try_literal("-0.5", CssAngleUnit::Turns)
+//! let angle = CssCalculation::<CssAngle>::try_literal("-0.5", CssAngleUnit::Turns)
 //!     .expect("checked authored angle");
 //! assert_eq!(angle.result_type(), CssCalculationType::Angle);
 //! assert!(matches!(
@@ -234,18 +234,18 @@
 //! # Property-specific authored positions
 //!
 //! Generic CSS positions retain both axes and distinguish free offsets from offsets authored
-//! against a named edge. [`CssSpecifiedLengthPercentage`] accepts only the symbolic
+//! against a named edge. [`CssNumeric<CssLengthPercentage>`] accepts only the symbolic
 //! length-percentage domain;
 //! it does not resolve percentages, calculations, writing modes, or positioning boxes.
 //!
 //! ```
-//! use surgeist_css::{CssComponentValue, CssSpecifiedLengthPercentage};
+//! use surgeist_css::{CssComponentValue, CssLengthPercentage, CssNumeric};
 //!
-//! let offset = CssSpecifiedLengthPercentage::try_from_component(
+//! let offset = CssNumeric::<CssLengthPercentage>::try_from_component(
 //!     CssComponentValue::try_token("25%").expect("exact authored percentage"),
 //! ).expect("position-valid offset");
-//! assert!(matches!(offset.literal_component().unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number)) if number.representation() == "25"));
-//! assert!(CssSpecifiedLengthPercentage::try_from_component(
+//! assert_eq!(offset.literal().unwrap().numeric().representation(), "25");
+//! assert!(CssNumeric::<CssLengthPercentage>::try_from_component(
 //!     CssComponentValue::try_ident("auto").unwrap(),
 //! ).is_err());
 //! ```
@@ -271,7 +271,7 @@
 //! effective layer emits `none`. Keywords, calculations, and contextual colors
 //! retain their symbolic meaning.
 //! `transform-origin` exposes the directed 2D split plus an optional checked
-//! [`CssSpecifiedLength`] length.
+//! [`CssNumeric<CssLength>`] length.
 //!
 //! ```
 //! use surgeist_css::{
@@ -294,7 +294,7 @@
 //! assert!(matches!(
 //!     background.positions().positions()[0].horizontal(),
 //!     CssHorizontalPosition::LeftOffset(offset)
-//!         if matches!(offset.literal_component().unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
+//!         if matches!(offset.literal().unwrap().component().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
 //! ));
 //!
 //! assert_eq!(
@@ -321,7 +321,7 @@
 //!     .known().expect("known transform origin")
 //!     .property_value().expect("ordinary transform origin")
 //! else { panic!("expected transform-origin") };
-//! assert!(matches!(transform.origin().z().unwrap().literal_component().unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "50" && unit == "px"));
+//! assert!(matches!(transform.origin().z().unwrap().literal().unwrap().component().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "50" && unit == "px"));
 //! ```
 //!
 //! A vertical-only planar keyword followed by a length (`top 50px` or
@@ -351,7 +351,7 @@
 //! Authored Shapes 1 adds three independent noninherited longhands:
 //! `shape-outside` borrows [`CssShapeOutside`], `shape-image-threshold` borrows
 //! [`CssOpacityValue`], and `shape-margin` borrows
-//! [`CssSpecifiedNonNegativeLengthPercentage`]. [`CssShapeOutsideShape`] retains
+//! [`CssNumeric<CssLengthPercentage, CssNonNegative>`]. [`CssShapeOutsideShape`] retains
 //! an optional [`CssShapeBox`] with only the four visual/margin boxes. Omitted
 //! boxes stay distinct from explicit margin-box, and canonical pairs emit the
 //! shape first. Threshold values remain unclamped; ordinary margin literals
@@ -459,14 +459,14 @@
 //! The typed transform family covers the selected two-dimensional Transforms 1
 //! functions and the selected three-dimensional subset with exact arity,
 //! separators, and dimensions. Matrices, rotation axes, scale numbers, and easing
-//! coordinates share `CssSpecifiedNumber`, which retains exact literals and symbolic
-//! math. All scale percentage branches use `CssSpecifiedPercentage`.
+//! coordinates share `CssNumeric<CssNumber>`, which retains exact literals and symbolic
+//! math. All scale percentage branches use `CssNumeric<CssPercentage>`.
 //! Ordinary cubic-bezier X coordinates are checked exactly against inclusive [0, 1];
 //! genuine calculations remain unresolved. The independent `scale` property retains
 //! one to three typed number/percentage factors, including symbolic calculations. Transform,
 //! filter, gradient, and
-//! image-orientation angles share exact `CssAngleLiteral` values and symbolic
-//! Angle-root calculations through the strict `CssAngleValue`. Transforms, filters,
+//! image-orientation angles share exact `CssNumericLiteral<CssAngle>` values and symbolic
+//! Angle-root calculations through the strict `CssNumeric<CssAngle>`. Transforms, filters,
 //! and gradient directions admit bare zero through `CssAngleOrZero`; image orientation
 //! and shape rotation require an angle dimension or calculation. Raw scalars retain provenance
 //! while
@@ -575,7 +575,7 @@
 //! track lists, lists containing exactly one [`CssGridAutoRepeat`], and subgrid
 //! line-name lists. [`CssGridSubgridComponent`] retains ordered groups and
 //! [`CssGridNameRepeat`] values, allowing at most one auto-fill name repeat.
-//! Counted repeats use checked [`CssPositiveIntegerValue`] children: bare roots
+//! Counted repeats use checked [`CssNumeric<CssInteger, CssPositive>`] children: bare roots
 //! must be positive, while function math retains its graph and deferred range.
 //! Integer
 //! and automatic repetition are non-recursive. Under the
@@ -623,7 +623,7 @@
 //! domain without evaluating it. Keyframe mode drops the eight prohibited Animation
 //! declarations and retains animation-timing-function even at the final endpoint.
 //! Computed range clamping, endpoint easing use and name lookup remain downstream.
-//! Authored equality preserves quoted versus identifier form and calculation origins.
+//! Authored equality preserves quoted versus identifier form; numeric offsets compare by value.
 //! This crate does not perform Grid
 //! layout, cascade declarations, evaluate or interpolate keyframes, run
 //! timelines, or lower either syntax family into sibling Surgeist crates.
@@ -963,8 +963,8 @@
 //!
 //! # Authored timing domains
 //!
-//! Time literals retain exact coefficients and authored units; duration literals are non-negative
-//! and delays are signed. Well-typed calculations remain authored for later range processing.
+//! Time literals retain exact coefficients and authored units; durations are non-negative and
+//! delays are signed. Well-typed calculations remain authored for later range processing.
 //! Ordinary specified emission converts exactly to seconds before rounding text to at most six
 //! fractional places, nearest with ties away from zero under the selected frozen WebKit policy.
 //! Authored coefficients, units and origins remain exact. Finite calculation text rounds the
@@ -973,22 +973,23 @@
 //!
 //! ```
 //! use surgeist_css::{
-//!     CssDuration, CssTimeLiteral, CssTimeValue, CssKnownPropertyValueRef,
+//!     CssKnownPropertyValueRef, CssNonNegative, CssNumeric, CssNumericLiteral, CssTime,
 //!     CssTimeUnit, parse_style_attribute,
 //! };
-//! let negative = CssTimeValue::from_literal(CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap());
-//! assert!(CssDuration::try_new(negative).is_err());
+//! let negative = CssNumericLiteral::<CssTime>::try_new("-1", CssTimeUnit::Seconds).unwrap();
+//! assert!(CssNumeric::<CssTime, CssNonNegative>::try_from_literal(negative).is_err());
 //! let report = parse_style_attribute("transition-duration: calc(-1s + 2s); transition-delay: -250ms");
 //! assert!(report.is_clean());
 //! let CssKnownPropertyValueRef::TransitionDuration(duration) = report.syntax()[0]
 //!     .known().unwrap().property_value().unwrap() else { panic!("duration"); };
-//! assert!(duration.durations().values()[0].time().calculation().is_some());
+//! assert!(duration.durations().values()[0].calculation().is_some());
 //! let CssKnownPropertyValueRef::TransitionDelay(delay) = report.syntax()[1]
 //!     .known().unwrap().property_value().unwrap() else { panic!("delay"); };
-//! let literal = delay.delays().values()[0].literal().unwrap();
+//! let delay = &delay.delays().values()[0];
+//! let literal = delay.literal().unwrap();
 //! assert_eq!(literal.numeric().representation(), "-250");
 //! assert_eq!(literal.unit(), CssTimeUnit::Milliseconds);
-//! assert_eq!(literal.serialize_specified(Default::default()).unwrap(), "-0.25s");
+//! assert_eq!(delay.serialize_specified(Default::default()).unwrap(), "-0.25s");
 //! ```
 //!
 //! This crate owns authored timing syntax only; timeline evaluation and
@@ -1402,7 +1403,7 @@
 //! conic gradients, explicit shared [`CssColorInterpolation`], singleton lists,
 //! and two authored positions per stop. [`CssGradientColorStop::positions`]
 //! retains linear positions; [`CssAngularColorStopPosition`] retains conic angle,
-//! percentage, exact zero, and [`CssAnglePercentageCalculation`] branches.
+//! percentage, exact zero, and [`CssCalculation<CssAnglePercentage>`] branches.
 //! Radial and conic `at` fields use the full symbolic [`CssPosition`] owner.
 //! They do not resolve URLs, load or
 //! decode images, compute geometry, or paint.
@@ -1800,7 +1801,6 @@ mod break_controls;
 mod calc_size;
 mod clip;
 mod color;
-mod dimension;
 mod utf16_value;
 pub use color::{
     CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssAuthoredColorResult,
@@ -1829,7 +1829,6 @@ mod column_sizing;
 mod contain_intrinsic_size;
 mod display;
 mod exact_decimal;
-mod frequency;
 mod gap;
 mod grid_template_areas;
 mod inset;
@@ -1838,10 +1837,8 @@ mod item_flow;
 mod numeric;
 mod numeric_formatting;
 mod opacity_scalar;
-mod page_line_minimum;
 mod pending_serialization;
 mod position_serialization;
-mod resolution;
 mod rotate;
 mod scroll_snap;
 mod serialization_escaping;
@@ -1862,7 +1859,6 @@ mod text_box;
 mod text_controls;
 mod text_decoration;
 mod text_spacing;
-mod time;
 mod ui;
 mod ui_serialization;
 pub use alignment::{
@@ -1871,8 +1867,8 @@ pub use alignment::{
     CssJustifySelfValue, CssLegacyAlignment, CssOverflowPosition, CssPlaceContentValue,
     CssPlaceItemsValue, CssPlaceSelfValue,
 };
-pub use angle::{CssAngleLiteral, CssAngleOrZero, CssAngleValue, CssZeroLiteral};
-pub use aspect_ratio::{CssRatioOperand, CssSpecifiedRatio};
+pub use angle::{CssAngleOrZero, CssZeroLiteral};
+pub use aspect_ratio::CssSpecifiedRatio;
 pub use border_color::{CssBorderColorPair, CssBorderColorShorthand, CssBorderColors};
 pub use border_radius::{CssBorderRadiusShorthand, CssCornerRadiusValue};
 pub use border_style::{CssBorderStylePair, CssBorderStyleShorthand};
@@ -1891,15 +1887,12 @@ pub use display::{
     CssDisplayBox, CssDisplayInside, CssDisplayInternal, CssDisplayLegacy,
     CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,
 };
-pub use frequency::{CssFrequencyLiteral, CssFrequencyValue};
 pub use gap::{CssGapShorthand, CssGapValue};
 pub use grid_template_areas::{
     CssGridTemplateAreaCell, CssGridTemplateAreaError, CssGridTemplateAreaName,
     CssGridTemplateAreaRow, CssGridTemplateAreaRows, CssGridTemplateAreas,
 };
 pub use image_1d::*;
-pub use resolution::{CssResolutionLiteral, CssResolutionValue};
-pub use time::{CssDuration, CssTimeLiteral, CssTimeValue};
 pub use ui::*;
 mod font_width;
 pub use font_width::{CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword};
@@ -1911,8 +1904,8 @@ pub use font_controls::{
 mod font_settings;
 pub use font_settings::{
     CssAuthoredFontFeature, CssAuthoredFontFeatureList, CssAuthoredFontFeatureSettings,
-    CssAuthoredFontFeatureValue, CssFontFeatureIndex, CssFontVariation, CssFontVariationList,
-    CssFontVariationSettings, CssOpenTypeTag,
+    CssAuthoredFontFeatureValue, CssFontVariation, CssFontVariationList, CssFontVariationSettings,
+    CssOpenTypeTag,
 };
 mod font_size;
 pub use font_size::CssFontSize;
@@ -1926,15 +1919,14 @@ mod line_height;
 pub use line_height::CssLineHeight;
 mod font_style;
 pub use font_style::{
-    CssFontFaceObliqueRange, CssFontFaceStyle, CssFontObliqueAngle, CssFontStyle,
-    CssFontStyleKeyword,
+    CssFontFaceObliqueRange, CssFontFaceStyle, CssFontStyle, CssFontStyleKeyword,
+    CssObliqueAngleRange,
 };
 mod font_weight;
 pub use font_weight::{
-    CssAbsoluteFontWeight, CssFontFaceWeight, CssFontWeight, CssFontWeightNumber,
+    CssAbsoluteFontWeight, CssFontFaceWeight, CssFontWeight, CssFontWeightRange,
 };
 pub use inset::{CssInsetPair, CssInsetShorthand, CssInsetValue};
-pub use integer_value::CssIntegerLiteral;
 pub use item_flow::{
     CssItemDirection, CssItemFlow, CssItemPack, CssItemWrap, CssItemWrapMode, CssItemWrapOrder,
 };
@@ -1971,12 +1963,6 @@ mod specified_numeric;
 mod specified_serialization;
 mod writing_modes;
 pub use opacity_scalar::{CssOpacityScalar, CssOpacityScalarKind};
-pub use specified_numeric::{
-    CssSpecifiedFlex, CssSpecifiedLength, CssSpecifiedLengthPercentage,
-    CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLength,
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
-    CssSpecifiedNonNegativePercentage, CssSpecifiedNumber, CssSpecifiedPercentage,
-};
 pub(crate) use specified_serialization::CssSpecifiedValueSerializationErrorKind;
 pub use specified_serialization::{CssSerializationError, CssSerializationLimits};
 mod parser;
@@ -2002,18 +1988,19 @@ pub use utf16_declaration_block::CssDeclarationBlockParseReport;
 mod syntax;
 mod tokenization;
 pub use numeric::{
-    CssAngleCalculation, CssAnglePercentageCalculation, CssCalculationConstantRef,
+    CssAngle, CssAnglePercentage, CssAnyRange, CssCalculation, CssCalculationConstantRef,
     CssCalculationExpressionRef, CssCalculationFunctionRef, CssCalculationProductFactorRef,
     CssCalculationProductOperator, CssCalculationProductRef, CssCalculationProfileChannelRef,
     CssCalculationSizeRef, CssCalculationSumOperator, CssCalculationSumRef,
     CssCalculationSumTermRef, CssCalculationTreeCountingRef, CssCalculationType,
-    CssCalculationUnaryRef, CssCalculationValueRef, CssCalculationVariableRef, CssFlexCalculation,
-    CssFrequencyCalculation, CssFrequencyPercentageCalculation, CssHintedNumberCalculation,
-    CssIntegerCalculation, CssLengthCalculation, CssLengthPercentageCalculation, CssMathFunction,
-    CssNumberCalculation, CssNumericConstant, CssNumericConstructionError, CssNumericDimension,
-    CssNumericLiteralRef, CssNumericType, CssNumericUnit, CssPercentageCalculation,
-    CssProfileColorCalculation, CssProfileColorExpression, CssProfileColorExpressionRef,
-    CssResolutionCalculation, CssRoundingStrategy, CssTimeCalculation, CssTreeCountingFunction,
+    CssCalculationUnaryRef, CssCalculationValueRef, CssCalculationVariableRef, CssDimensionRoot,
+    CssFlex, CssFrequency, CssFrequencyPercentage, CssHintedNumber, CssInteger, CssLength,
+    CssLengthPercentage, CssMathFunction, CssNonNegative, CssNumber, CssNumeric,
+    CssNumericConstant, CssNumericConstructionError, CssNumericDimension, CssNumericLiteral,
+    CssNumericLiteralRef, CssNumericRoot, CssNumericType, CssNumericUnit, CssPercentage,
+    CssPositive, CssProfileColorCalculation, CssProfileColorExpression,
+    CssProfileColorExpressionRef, CssRange, CssResolution, CssRoundingStrategy, CssTime,
+    CssTreeCountingFunction,
 };
 #[cfg(test)]
 mod test_support;
@@ -2105,6 +2092,38 @@ pub use specified_declaration_block::{
 };
 pub use stylesheet_input::*;
 pub use syntax::*;
+
+/// Crate-issued seals for the public numeric traits.
+///
+/// The traits are nominally public, so markers defined in any module can
+/// implement them, and this module is crate-private, so no other crate can
+/// name or implement them.
+pub(crate) mod sealed {
+    /// The crate-issued identity of one numeric root marker.
+    #[derive(Clone, Copy)]
+    pub struct Root(pub(crate) crate::numeric::RootKind);
+
+    /// Seals `CssNumericRoot`; only CSS implements it.
+    pub trait NumericRoot {
+        /// The root this marker names.
+        const ROOT: Root;
+    }
+
+    /// The range check behind `CssRange<T>`; only CSS implements it.
+    pub trait RangeBounds<T: crate::CssNumericRoot> {
+        /// Whether an exact literal of root `T` lies in this range, compared
+        /// exactly, without binary64 conversion.
+        fn admits(literal: &crate::CssNumericLiteral<T>) -> bool;
+    }
+
+    /// The unit vocabulary of one dimension root; only CSS implements it.
+    pub trait DimensionUnit: Copy {
+        /// Selects this vocabulary's unit from a decoded registry unit.
+        fn from_numeric(unit: crate::CssNumericUnit) -> Option<Self>;
+        /// Returns this unit's registry identity.
+        fn into_numeric(self) -> crate::CssNumericUnit;
+    }
+}
 
 /// Shared ceiling for authored rules and owned component-value trees.
 const STRUCTURAL_NESTING_LIMIT: u32 = 256;

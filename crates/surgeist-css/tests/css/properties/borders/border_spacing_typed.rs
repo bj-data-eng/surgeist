@@ -53,12 +53,13 @@ fn checked_pair_construction_accepts_zero_absolute_relative_and_symbolic_math() 
             expected
         );
     }
-    let calculation = CssLengthCalculation::try_from_components(
+    let calculation = CssCalculation::<CssLength>::try_from_components(
         parse_component_values("calc(1px + 2em)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let symbolic = CssSpecifiedNonNegativeLength::try_from_calculation(calculation).unwrap();
+    let symbolic =
+        CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(calculation).unwrap();
     let pair = CssBorderSpacing::new(symbolic.clone(), nonnegative_length("3px"));
     assert_eq!(pair.horizontal(), &symbolic);
     assert!(pair.horizontal().calculation().is_some());
@@ -89,7 +90,7 @@ fn checked_single_length_rejects_bare_negative_percent_and_keyword_values() {
         ("auto", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            CssSpecifiedNonNegativeLength::try_from_component,
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component,
             CssComponentValue::try_token(css).unwrap(),
             kind,
         );
@@ -298,16 +299,18 @@ fn two_typed_calculation_axes_share_one_streaming_serialization_budget() {
     );
 }
 
-fn nonnegative_length(css: &str) -> surgeist_css::CssSpecifiedNonNegativeLength {
+fn nonnegative_length(
+    css: &str,
+) -> surgeist_css::CssNumeric<surgeist_css::CssLength, surgeist_css::CssNonNegative> {
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedNonNegativeLength::try_from_calculation(
-            surgeist_css::CssLengthCalculation::try_from_components(components, Default::default())
+        surgeist_css::CssNumeric::<surgeist_css::CssLength, surgeist_css::CssNonNegative>::try_from_calculation(
+            surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(components, Default::default())
                 .unwrap(),
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedNonNegativeLength::try_from_component(
+        surgeist_css::CssNumeric::<surgeist_css::CssLength, surgeist_css::CssNonNegative>::try_from_component(
             surgeist_css::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()

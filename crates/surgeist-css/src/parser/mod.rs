@@ -2505,7 +2505,7 @@ fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
                         component.clone().into_owned(),
                     )
                 } else {
-                    crate::CssAngleValue::from_parser_component(
+                    crate::CssNumeric::<crate::CssAngle>::from_parser_component(
                         component.clone().into_owned(),
                         numeric,
                     )

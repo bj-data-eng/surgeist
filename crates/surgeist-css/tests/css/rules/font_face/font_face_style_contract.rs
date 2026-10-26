@@ -5,15 +5,18 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::invalid_descriptor;
 use crate::css::support::rules::ordinary_font_face_descriptor;
 use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValue, CssComponentValues,
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Ordinary,
-    CssFontFaceObliqueRange, CssFontFaceStyle, CssFontObliqueAngle, CssFontStyleKeyword,
-    CssRecoveryAction, CssRule, CssSerializationLimits, CssSerializedOrigin, CssValueOrigin,
-    parse_component_values, parse_font_face_descriptor_value, parse_sheet,
+    CssAngle, CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValue,
+    CssComponentValues, CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Ordinary,
+    CssFontFaceObliqueRange, CssFontFaceStyle, CssFontStyleKeyword, CssNumeric,
+    CssObliqueAngleRange, CssRecoveryAction, CssRule, CssSerializationLimits, CssSerializedOrigin,
+    CssValueOrigin, parse_component_values, parse_font_face_descriptor_value, parse_sheet,
 };
 
-fn angle(text: &str) -> CssFontObliqueAngle {
-    CssFontObliqueAngle::try_from_component(CssComponentValue::try_token(text).unwrap()).unwrap()
+fn angle(text: &str) -> CssNumeric<CssAngle, CssObliqueAngleRange> {
+    CssNumeric::<CssAngle, CssObliqueAngleRange>::try_from_component(
+        CssComponentValue::try_token(text).unwrap(),
+    )
+    .unwrap()
 }
 
 fn ordinary(text: &str) -> CssFontFaceStyle {

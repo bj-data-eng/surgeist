@@ -7,8 +7,8 @@
 use crate::css::support::failure_classes::SerializationFailure as ErrorKind;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
-    CssComponentValueRef, CssFlowTolerance, CssFlowToleranceRef, CssKnownPropertyValueRef,
-    CssLengthPercentageCalculation, CssSerializationLimits as Limits, CssSpecifiedLengthPercentage,
+    CssCalculation, CssComponentValueRef, CssFlowTolerance, CssFlowToleranceRef,
+    CssKnownPropertyValueRef, CssLengthPercentage, CssNumeric, CssSerializationLimits as Limits,
     CssValueTokenRef, parse_component_values, parse_style_attribute,
 };
 
@@ -19,8 +19,8 @@ fn constructed(text: &str) -> CssFlowTolerance {
         _ => {
             let components = parse_component_values(text).unwrap();
             let scalar = if text.contains('(') {
-                CssSpecifiedLengthPercentage::try_from_calculation(
-                    CssLengthPercentageCalculation::try_from_components(
+                CssNumeric::<CssLengthPercentage>::try_from_calculation(
+                    CssCalculation::<CssLengthPercentage>::try_from_components(
                         components,
                         Default::default(),
                     )
@@ -28,7 +28,7 @@ fn constructed(text: &str) -> CssFlowTolerance {
                 )
                 .unwrap()
             } else {
-                CssSpecifiedLengthPercentage::try_from_component(components.items()[0].clone())
+                CssNumeric::<CssLengthPercentage>::try_from_component(components.items()[0].clone())
                     .unwrap()
             };
             CssFlowTolerance::length_percentage(scalar)
@@ -118,11 +118,11 @@ fn extreme_signed_literals_preserve_exact_magnitudes_and_output_limits() {
             let expected_coefficient = input.trim_end_matches("px").trim_end_matches('%');
             assert!(
                 matches!(
-                    scalar.literal_component().unwrap().view(),
+                    scalar.literal().map(|literal| literal.component()).unwrap().view(),
                     CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
                         if number.representation() == expected_coefficient && unit == "px"
                 ) || matches!(
-                    scalar.literal_component().unwrap().view(),
+                    scalar.literal().map(|literal| literal.component()).unwrap().view(),
                     CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
                         if number.representation() == expected_coefficient
                 )

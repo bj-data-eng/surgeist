@@ -17,9 +17,9 @@ use surgeist_css::*;
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;
 
-fn length_percentage(source: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(
+fn length_percentage(source: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_calculation(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
             parse_component_values(source).unwrap(),
             Default::default(),
         )
@@ -104,8 +104,8 @@ fn flex_fraction_basis_keeps_magnitude_functions_symbolic() {
         ("abs(-2fr)", "abs(-2fr)"),
         ("hypot(3fr,4fr)", "hypot(3fr, 4fr)"),
     ] {
-        let value = CssSpecifiedNonNegativeFlex::try_from_calculation(
-            CssFlexCalculation::try_from_components(
+        let value = CssNumeric::<CssFlex, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssFlex>::try_from_components(
                 parse_component_values(source).unwrap(),
                 Default::default(),
             )

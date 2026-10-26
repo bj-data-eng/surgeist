@@ -23,8 +23,9 @@ fn volume(source: &CssDeclaration) -> &CssVoiceVolume {
     };
     value.value()
 }
-fn number(text: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_component(CssComponentValue::try_number(text).unwrap()).unwrap()
+fn number(text: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_number(text).unwrap())
+        .unwrap()
 }
 fn level(level: CssVoiceVolumeLevel, offset: Option<&str>) -> CssVoiceVolume {
     CssVoiceVolume::Level {
@@ -67,7 +68,12 @@ fn balance_numbers_preserve_exact_unrestricted_coefficients_and_original_compone
         let source = declaration("voice-balance", text);
         let value = balance(&source);
         assert!(value.keyword().is_none());
-        let literal = value.number().unwrap().literal_component().unwrap();
+        let literal = value
+            .number()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap();
         assert!(source.value_components().items().contains(literal));
         let CssComponentValueRef::Token(CssValueTokenRef::Number(numeric)) = literal.view() else {
             panic!("pure number token")
@@ -114,7 +120,12 @@ fn balance_math_uses_only_pure_number_typing_and_keeps_its_authored_tree() {
         let source = declaration("voice-balance", text);
         let value = balance(&source);
         let numeric = value.number().unwrap();
-        assert!(numeric.literal_component().is_none());
+        assert!(
+            numeric
+                .literal()
+                .map(|literal| literal.component())
+                .is_none()
+        );
         let calculation = numeric.calculation().unwrap();
         assert_eq!(
             calculation
@@ -133,7 +144,7 @@ fn balance_math_uses_only_pure_number_typing_and_keeps_its_authored_tree() {
     }
     for text in ["calc(1%)", "calc(1 + 1%)", "calc(1px)", "calc(1db)"] {
         assert!(
-            CssNumberCalculation::try_from_components(
+            CssCalculation::<CssNumber>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default()
             )

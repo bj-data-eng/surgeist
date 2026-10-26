@@ -12,9 +12,9 @@ use crate::css::support::property_admission::{
 use crate::css::support::serialization_limits::LimitLadder;
 use surgeist_css::*;
 
-fn number(source: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(
+fn number(source: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(
             parse_component_values(source).unwrap(),
             Default::default(),
         )
@@ -23,9 +23,9 @@ fn number(source: &str) -> CssSpecifiedNumber {
     .unwrap()
 }
 
-fn percentage(source: &str) -> CssSpecifiedPercentage {
-    CssSpecifiedPercentage::try_from_calculation(
-        CssPercentageCalculation::try_from_components(
+fn percentage(source: &str) -> CssNumeric<CssPercentage> {
+    CssNumeric::<CssPercentage>::try_from_calculation(
+        CssCalculation::<CssPercentage>::try_from_components(
             parse_component_values(source).unwrap(),
             Default::default(),
         )
@@ -89,7 +89,7 @@ fn checked_numeric_domains_and_original_recovered_math_are_rejected_before_compo
         ("calc(1", RecoveredComponent),
     ] {
         assert_numeric_rejected(
-            CssNumberCalculation::try_from_components(
+            CssCalculation::<CssNumber>::try_from_components(
                 parse_component_values(source).unwrap(),
                 Default::default(),
             ),
@@ -103,7 +103,7 @@ fn checked_numeric_domains_and_original_recovered_math_are_rejected_before_compo
         ("calc(1%", RecoveredComponent),
     ] {
         assert_numeric_rejected(
-            CssPercentageCalculation::try_from_components(
+            CssCalculation::<CssPercentage>::try_from_components(
                 parse_component_values(source).unwrap(),
                 Default::default(),
             ),
@@ -111,12 +111,12 @@ fn checked_numeric_domains_and_original_recovered_math_are_rejected_before_compo
         );
     }
     assert_component_rejected(
-        CssSpecifiedNumber::try_from_component,
+        CssNumeric::<CssNumber>::try_from_component,
         CssComponentValue::try_token("1%").unwrap(),
         RootDomainMismatch,
     );
     assert_component_rejected(
-        CssSpecifiedPercentage::try_from_component,
+        CssNumeric::<CssPercentage>::try_from_component,
         CssComponentValue::try_number("1").unwrap(),
         RootDomainMismatch,
     );
@@ -166,8 +166,8 @@ fn checked_composition_keeps_exact_original_tokens_math_and_origins() {
     assert_eq!(stop.output(), &output);
     assert_eq!(stop.output().origin(), output.origin());
     assert_eq!(
-        stop.output().literal_component(),
-        output.literal_component()
+        stop.output().literal().map(|literal| literal.component()),
+        output.literal().map(|literal| literal.component())
     );
     assert_eq!(stop.inputs(), &[first.clone(), second.clone()]);
     assert_eq!(stop.inputs()[0].origin(), first.origin());

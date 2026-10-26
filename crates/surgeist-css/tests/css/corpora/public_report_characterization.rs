@@ -1509,7 +1509,12 @@ fn assert_captured_border(border: &surgeist_css::CssBorder, expected: &str) {
                 actual.origin(),
                 surgeist_css::CssValueOrigin::Parsed(_)
             ));
-            assert!(actual.literal_component().is_some());
+            assert!(
+                actual
+                    .literal()
+                    .map(|literal| literal.component())
+                    .is_some()
+            );
         }
         (None, None) => {}
         _ => panic!("captured border width differs: {expected}"),
@@ -1537,7 +1542,10 @@ fn assert_captured_grid_columns(list: &surgeist_css::CssGridTrackList) {
         panic!("one captured integer repeat")
     };
     assert!(
-        matches!(repeat.count(), surgeist_css::CssPositiveIntegerValue::Literal(count) if count.integer().numeric().representation() == "2")
+        repeat
+            .count()
+            .literal()
+            .is_some_and(|count| count.numeric().representation() == "2")
     );
     let [RepeatMember::TrackSize(size)] = repeat.content().components() else {
         panic!("one repeated minmax")
@@ -1593,7 +1601,7 @@ fn assert_captured_font_metadata(
 // exact leaves, operators, types and source spans.
 // https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-func
 fn assert_captured_sum_calculation(
-    calculation: &surgeist_css::CssLengthPercentageCalculation,
+    calculation: &surgeist_css::CssCalculation<surgeist_css::CssLengthPercentage>,
     expected_css: &str,
     first: (&str, bool),
     second: (&str, bool),
@@ -1709,7 +1717,10 @@ fn assert_box_size(value: &surgeist_css::CssBoxSize, expected: &str) {
         | ("max-content", CssBoxSize::MaxContent)
         | ("fit-content", CssBoxSize::FitContent) => {}
         (_, CssBoxSize::LengthPercentage(length)) => assert_spacing_literal(
-            length.literal_component().expect("exact authored literal"),
+            length
+                .literal()
+                .map(|literal| literal.component())
+                .expect("exact authored literal"),
             expected,
         ),
         _ => panic!("authored size `{expected}` changed its branch"),
@@ -1747,16 +1758,21 @@ fn assert_spacing_literal(component: &surgeist_css::CssComponentValue, expected:
 fn assert_margin(value: &surgeist_css::CssMarginValue, expected: &str) {
     match (expected, value) {
         ("auto", surgeist_css::CssMarginValue::Auto) => {}
-        (_, surgeist_css::CssMarginValue::LengthPercentage(value)) => {
-            assert_spacing_literal(value.literal_component().unwrap(), expected)
-        }
+        (_, surgeist_css::CssMarginValue::LengthPercentage(value)) => assert_spacing_literal(
+            value.literal().map(|literal| literal.component()).unwrap(),
+            expected,
+        ),
         _ => panic!("authored margin `{expected}` changed its branch"),
     }
 }
 
 fn assert_padding(value: &surgeist_css::CssPaddingValue, expected: &str) {
     assert_spacing_literal(
-        value.length_percentage().literal_component().unwrap(),
+        value
+            .length_percentage()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         expected,
     );
 }
@@ -1804,7 +1820,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::Order(value),
         ) => {
             assert_eq!(authored.value, "-2");
-            let surgeist_css::CssIntegerValue::Literal(literal) = value.value() else {
+            let Some(literal) = value.value().literal() else {
                 panic!("captured order integer")
             };
             assert_eq!(literal.numeric().representation(), "-2");
@@ -1822,10 +1838,10 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::ZIndex(value),
         ) => {
             assert_eq!(authored.value, "-2");
-            let surgeist_css::CssZIndexValue::Integer(surgeist_css::CssIntegerValue::Literal(
-                literal,
-            )) = value.value()
-            else {
+            let Some(literal) = (match value.value() {
+                surgeist_css::CssZIndexValue::Integer(value) => value.literal(),
+                _ => None,
+            }) else {
                 panic!("captured stacking integer")
             };
             assert_eq!(literal.numeric().representation(), "-2");
@@ -1852,7 +1868,7 @@ fn assert_known_property_value(
                     width: Part::Length(length),
                     height: Some(Part::Auto),
                 },
-            ] if exact_dimension(length.literal_component(), "10", "px")));
+            ] if exact_dimension(length.literal().map(|literal| literal.component()), "10", "px")));
             Some(value.as_css())
         }
         (
@@ -1951,12 +1967,16 @@ fn assert_known_property_value(
                 panic!("captured translate, rotate, scale order");
             };
             assert!(exact_dimension(
-                translation.x().literal_component(),
+                translation.x().literal().map(|literal| literal.component()),
                 "10",
                 "px"
             ));
             assert!(exact_dimension(
-                translation.y().unwrap().literal_component(),
+                translation
+                    .y()
+                    .unwrap()
+                    .literal()
+                    .map(|literal| literal.component()),
                 "20",
                 "px"
             ));
@@ -1964,7 +1984,9 @@ fn assert_known_property_value(
                 matches!(angle, CssAngleOrZero::Angle(value) if value.literal().is_some_and(|literal| literal.numeric().representation() == "45" && literal.unit() == CssAngleUnit::Degrees))
             );
             assert!(exact_number(
-                scale_number(scale.x()).literal_component(),
+                scale_number(scale.x())
+                    .literal()
+                    .map(|literal| literal.component()),
                 "1.5"
             ));
             assert!(scale.y().is_none());
@@ -2126,7 +2148,7 @@ fn assert_known_property_value(
             let Some(CssTextDecorationThickness::Length(thickness)) = decoration.thickness() else {
                 panic!("captured decoration length");
             };
-            assert_captured_px(thickness.literal_component(), "3");
+            assert_captured_px(thickness.literal().map(|literal| literal.component()), "3");
             Some(value.as_css())
         }
         (
@@ -2140,11 +2162,34 @@ fn assert_known_property_value(
                 panic!("captured one box shadow");
             };
             assert!(shadow.inset());
-            assert_captured_px(shadow.offset_x().literal_component(), "1");
-            assert_captured_px(shadow.offset_y().literal_component(), "2");
-            assert_captured_px(shadow.blur_radius().expect("blur").literal_component(), "3");
             assert_captured_px(
-                shadow.spread_radius().expect("spread").literal_component(),
+                shadow
+                    .offset_x()
+                    .literal()
+                    .map(|literal| literal.component()),
+                "1",
+            );
+            assert_captured_px(
+                shadow
+                    .offset_y()
+                    .literal()
+                    .map(|literal| literal.component()),
+                "2",
+            );
+            assert_captured_px(
+                shadow
+                    .blur_radius()
+                    .expect("blur")
+                    .literal()
+                    .map(|literal| literal.component()),
+                "3",
+            );
+            assert_captured_px(
+                shadow
+                    .spread_radius()
+                    .expect("spread")
+                    .literal()
+                    .map(|literal| literal.component()),
                 "4",
             );
             assert_captured_color(shadow.color().expect("shadow color"), "black");
@@ -2164,11 +2209,14 @@ fn assert_known_property_value(
             else {
                 panic!("captured ordered blur and opacity");
             };
-            assert_captured_px(blur.length().literal_component(), "4");
+            assert_captured_px(
+                blur.length().literal().map(|literal| literal.component()),
+                "4",
+            );
             assert!(matches!(
                 amount,
                 CssFilterAmount::Percentage(number)
-                    if exact_percentage(number.literal_component(), "50")
+                    if exact_percentage(number.literal().map(|literal| literal.component()), "50")
             ));
             Some(value.as_css())
         }
@@ -2251,7 +2299,10 @@ fn assert_known_property_value(
                 panic!("captured gap is an exact numeric value")
             };
             assert_spacing_literal(
-                length.literal_component().expect("captured gap literal"),
+                length
+                    .literal()
+                    .map(|literal| literal.component())
+                    .expect("captured gap literal"),
                 "12px",
             );
             assert_captured_numeric_metadata(property.stable_id(), value.as_css(), authored);
@@ -2274,7 +2325,8 @@ fn assert_known_property_value(
             };
             assert_spacing_literal(
                 length
-                    .literal_component()
+                    .literal()
+                    .map(|literal| literal.component())
                     .expect("captured column-gap literal"),
                 "5%",
             );
@@ -2445,9 +2497,28 @@ fn assert_known_property_value(
             let current = value.value();
             assert_eq!(current.authored_values().len(), 4);
             let [top, right, bottom, left] = current.assigned_values();
-            assert_spacing_literal(top.length_percentage().literal_component().unwrap(), "1px");
-            assert_spacing_literal(right.length_percentage().literal_component().unwrap(), "2%");
-            assert_spacing_literal(left.length_percentage().literal_component().unwrap(), "0");
+            assert_spacing_literal(
+                top.length_percentage()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap(),
+                "1px",
+            );
+            assert_spacing_literal(
+                right
+                    .length_percentage()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap(),
+                "2%",
+            );
+            assert_spacing_literal(
+                left.length_percentage()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap(),
+                "0",
+            );
             assert_captured_sum_calculation(
                 bottom.length_percentage().calculation().unwrap(),
                 "calc(3px + 4%)",
@@ -2555,8 +2626,11 @@ fn assert_known_property_value(
             let CssTextSpacingAdjustment::LengthPercentage(length) = value.value() else {
                 panic!("exact current letter spacing")
             };
-            let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
-                length.literal_component().unwrap().view()
+            let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) = length
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+                .view()
             else {
                 panic!("exact authored dimension")
             };
@@ -2579,7 +2653,10 @@ fn assert_known_property_value(
             assert_eq!(
                 value.size(),
                 &surgeist_css::CssFontSize::LengthPercentage(
-                    surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+                    surgeist_css::CssNumeric::<
+                        surgeist_css::CssLengthPercentage,
+                        surgeist_css::CssNonNegative,
+                    >::try_from_component(
                         surgeist_css::CssComponentValue::try_token("16px").unwrap()
                     )
                     .unwrap()
@@ -2658,7 +2735,10 @@ fn assert_known_property_value(
                 font.weight(),
                 Some(&surgeist_css::CssFontWeight::Absolute(
                     surgeist_css::CssAbsoluteFontWeight::Number(
-                        surgeist_css::CssFontWeightNumber::try_from_component(
+                        surgeist_css::CssNumeric::<
+                            surgeist_css::CssNumber,
+                            surgeist_css::CssFontWeightRange,
+                        >::try_from_component(
                             surgeist_css::CssComponentValue::try_number("700").unwrap()
                         )
                         .unwrap()
@@ -2672,7 +2752,10 @@ fn assert_known_property_value(
             assert_eq!(
                 font.size(),
                 &surgeist_css::CssFontSize::LengthPercentage(
-                    surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+                    surgeist_css::CssNumeric::<
+                        surgeist_css::CssLengthPercentage,
+                        surgeist_css::CssNonNegative,
+                    >::try_from_component(
                         surgeist_css::CssComponentValue::try_token("16px").unwrap()
                     )
                     .unwrap()
@@ -2742,7 +2825,7 @@ fn assert_known_property_value(
             ));
             assert_eq!(liga.tag().as_str(), "liga");
             assert!(
-                matches!(liga.value(), surgeist_css::CssAuthoredFontFeatureValue::Index(index) if index.i32_value() == Some(0))
+                matches!(liga.value(), surgeist_css::CssAuthoredFontFeatureValue::Index(index) if index.literal().and_then(|literal| literal.value()) == Some(0))
             );
             assert_captured_numeric_metadata(property.stable_id(), value.as_css(), authored);
             return;
@@ -2777,7 +2860,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::TransitionDuration(value),
         ) => {
             assert!(
-                matches!({ let values = value.durations().values(); if values.len() == 2 { (values[0].time().literal(),values[1].time().literal()) } else { (None,None) } }, (Some(a), Some(b))
+                matches!({ let values = value.durations().values(); if values.len() == 2 { (values[0].literal(),values[1].literal()) } else { (None,None) } }, (Some(a), Some(b))
                 if a.numeric().representation() == "150" && a.unit() == Unit::Milliseconds
                     && b.numeric().representation() == "2" && b.unit() == Unit::Seconds)
             );
@@ -2804,10 +2887,30 @@ fn assert_known_property_value(
             else {
                 panic!("captured transition easings");
             };
-            assert!(exact_number(bezier.x1().value().literal_component(), "0.1"));
-            assert!(exact_number(bezier.y1().literal_component(), "0.2"));
-            assert!(exact_number(bezier.x2().value().literal_component(), "0.3"));
-            assert!(exact_number(bezier.y2().literal_component(), "1"));
+            assert!(exact_number(
+                bezier
+                    .x1()
+                    .value()
+                    .literal()
+                    .map(|literal| literal.component()),
+                "0.1"
+            ));
+            assert!(exact_number(
+                bezier.y1().literal().map(|literal| literal.component()),
+                "0.2"
+            ));
+            assert!(exact_number(
+                bezier
+                    .x2()
+                    .value()
+                    .literal()
+                    .map(|literal| literal.component()),
+                "0.3"
+            ));
+            assert!(exact_number(
+                bezier.y2().literal().map(|literal| literal.component()),
+                "1"
+            ));
             Some(value.as_css())
         }
         (
@@ -2821,7 +2924,7 @@ fn assert_known_property_value(
                 matches!(first.property(), Some(TransitionPropertyValue::Custom(name)) if name.as_str() == "opacity")
             );
             assert!(
-                matches!(first.duration().and_then(|value| value.time().literal()), Some(t) if t.numeric().representation() == "150" && t.unit() == Unit::Milliseconds)
+                matches!(first.duration().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "150" && t.unit() == Unit::Milliseconds)
             );
             assert!(
                 matches!(first.delay().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "20" && t.unit() == Unit::Milliseconds)
@@ -2834,7 +2937,7 @@ fn assert_known_property_value(
                 matches!(second.property(), Some(TransitionPropertyValue::Custom(name)) if name.as_str() == "transform")
             );
             assert!(
-                matches!(second.duration().and_then(|value| value.time().literal()), Some(t) if t.numeric().representation() == "2" && t.unit() == Unit::Seconds)
+                matches!(second.duration().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "2" && t.unit() == Unit::Seconds)
             );
             assert!(second.delay().is_none());
             assert!(matches!(
@@ -2857,7 +2960,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::AnimationDuration(value),
         ) => {
             assert!(
-                matches!({ let values = value.durations().values(); if values.len() == 1 { values[0].time().literal() } else { None } }, Some(t) if t.numeric().representation() == "1" && t.unit() == Unit::Seconds)
+                matches!({ let values = value.durations().values(); if values.len() == 1 { values[0].literal() } else { None } }, Some(t) if t.numeric().representation() == "1" && t.unit() == Unit::Seconds)
             );
             Some(value.as_css())
         }
@@ -2885,7 +2988,7 @@ fn assert_known_property_value(
             surgeist_css::CssKnownPropertyValueRef::AnimationIterationCount(value),
         ) => {
             assert!(
-                matches!(value.iteration_counts().values(), [Iteration::Number(n), Iteration::Infinite] if exact_number(n.literal_component(), "2"))
+                matches!(value.iteration_counts().values(), [Iteration::Number(n), Iteration::Infinite] if exact_number(n.literal().map(|literal| literal.component()), "2"))
             );
             Some(value.as_css())
         }
@@ -2919,7 +3022,7 @@ fn assert_known_property_value(
             };
             assert!(matches!(item.name(), Some(Name::Custom(name)) if name.as_str() == "fade"));
             assert!(
-                matches!(item.duration().and_then(|value| value.time().literal()), Some(t) if t.numeric().representation() == "1" && t.unit() == Unit::Seconds)
+                matches!(item.duration().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "1" && t.unit() == Unit::Seconds)
             );
             assert!(
                 matches!(item.delay().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "200" && t.unit() == Unit::Milliseconds)
@@ -2929,7 +3032,7 @@ fn assert_known_property_value(
                 Some(CssEasing::Keyword(Keyword::EaseIn))
             ));
             assert!(
-                matches!(item.iteration_count(), Some(Iteration::Number(n)) if exact_number(n.literal_component(), "3"))
+                matches!(item.iteration_count(), Some(Iteration::Number(n)) if exact_number(n.literal().map(|literal| literal.component()), "3"))
             );
             assert_eq!(item.direction(), Some(Direction::Alternate));
             assert_eq!(item.fill_mode(), Some(Fill::Both));
@@ -3259,7 +3362,10 @@ fn assert_known_property_value(
             let surgeist_css::CssCircleRadius::LengthPercentage(radius) = circle.radius() else {
                 panic!("captured percentage radius");
             };
-            assert!(exact_percentage(radius.literal_component(), "50"));
+            assert!(exact_percentage(
+                radius.literal().map(|literal| literal.component()),
+                "50"
+            ));
             let surgeist_css::CssPositionRef::Cartesian(position) =
                 circle.position().expect("captured center position").view()
             else {
@@ -3295,10 +3401,10 @@ fn assert_known_property_value(
                 panic!("captured one background-position layer")
             };
             assert!(
-                matches!(position.horizontal(), Horizontal::LeftOffset(offset) if exact_dimension(offset.literal_component(), "10", "px"))
+                matches!(position.horizontal(), Horizontal::LeftOffset(offset) if exact_dimension(offset.literal().map(|literal| literal.component()), "10", "px"))
             );
             assert!(
-                matches!(position.vertical(), Vertical::TopOffset(offset) if exact_percentage(offset.literal_component(), "20"))
+                matches!(position.vertical(), Vertical::TopOffset(offset) if exact_percentage(offset.literal().map(|literal| literal.component()), "20"))
             );
             Some(value.as_css())
         }
@@ -3830,7 +3936,7 @@ fn assert_known_property_value(
                 panic!("one captured counter");
             };
             assert_eq!(change.name().as_str(), "section");
-            let Some(CssIntegerValue::Literal(integer)) = change.value() else {
+            let Some(integer) = change.value().and_then(|value| value.literal()) else {
                 panic!("captured explicit integer");
             };
             assert_eq!(integer.numeric().representation(), "2");
@@ -3847,7 +3953,7 @@ fn assert_known_property_value(
                 panic!("one captured counter");
             };
             assert_eq!(change.name().as_str(), "section");
-            let Some(CssIntegerValue::Literal(integer)) = change.value() else {
+            let Some(integer) = change.value().and_then(|value| value.literal()) else {
                 panic!("captured explicit integer");
             };
             assert_eq!(integer.numeric().representation(), "1");
@@ -3864,7 +3970,7 @@ fn assert_known_property_value(
                 panic!("one captured counter");
             };
             assert_eq!(change.name().as_str(), "section");
-            let Some(CssIntegerValue::Literal(integer)) = change.value() else {
+            let Some(integer) = change.value().and_then(|value| value.literal()) else {
                 panic!("captured explicit integer");
             };
             assert_eq!(integer.numeric().representation(), "3");
@@ -3930,7 +4036,7 @@ fn assert_known_property_value(
             assert!(typed.hanging());
             assert!(typed.each_line());
             assert!(exact_dimension(
-                typed.length().literal_component(),
+                typed.length().literal().map(|literal| literal.component()),
                 "1",
                 "rem"
             ));
@@ -4070,7 +4176,7 @@ fn assert_known_property_value(
             let CssTextDecorationThickness::Length(length) = typed else {
                 panic!("captured thickness");
             };
-            assert_captured_px(length.literal_component(), "2");
+            assert_captured_px(length.literal().map(|literal| literal.component()), "2");
         }
         (CssKnownProperty::TextTransform, CssKnownPropertyValueRef::TextTransform(value)) => {
             assert_archive_wrapper(property, value.as_css(), authored);
@@ -4314,7 +4420,10 @@ fn assert_known_property_value(
             assert_eq!(typed.authored_vertical_values().unwrap().len(), 2);
             for (component, expected) in typed.horizontal_values().iter().zip(["1", "2", "3"]) {
                 assert_archive_literal(
-                    component.literal_component().unwrap(),
+                    component
+                        .literal()
+                        .map(|literal| literal.component())
+                        .unwrap(),
                     expected,
                     Some("px"),
                 );
@@ -4326,7 +4435,10 @@ fn assert_known_property_value(
                 .zip(["4", "5"])
             {
                 assert_archive_literal(
-                    component.literal_component().unwrap(),
+                    component
+                        .literal()
+                        .map(|literal| literal.component())
+                        .unwrap(),
                     expected,
                     Some("px"),
                 );
@@ -4341,12 +4453,20 @@ fn assert_known_property_value(
             .zip([("1", "4"), ("2", "5"), ("3", "4"), ("2", "5")])
             {
                 assert_archive_literal(
-                    corner.horizontal().literal_component().unwrap(),
+                    corner
+                        .horizontal()
+                        .literal()
+                        .map(|literal| literal.component())
+                        .unwrap(),
                     h,
                     Some("px"),
                 );
                 assert_archive_literal(
-                    corner.vertical().literal_component().unwrap(),
+                    corner
+                        .vertical()
+                        .literal()
+                        .map(|literal| literal.component())
+                        .unwrap(),
                     v,
                     Some("px"),
                 );
@@ -4364,7 +4484,11 @@ fn assert_known_property_value(
             );
             let typed = value.value();
             assert_archive_literal(
-                typed.horizontal().literal_component().unwrap(),
+                typed
+                    .horizontal()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap(),
                 "4",
                 Some("px"),
             );
@@ -4372,7 +4496,8 @@ fn assert_known_property_value(
                 typed
                     .authored_vertical()
                     .unwrap()
-                    .literal_component()
+                    .literal()
+                    .map(|literal| literal.component())
                     .unwrap(),
                 "10",
                 Some("%"),
@@ -4390,7 +4515,11 @@ fn assert_known_property_value(
             );
             let typed = value.value();
             assert_archive_literal(
-                typed.horizontal().literal_component().unwrap(),
+                typed
+                    .horizontal()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap(),
                 "1",
                 Some("px"),
             );
@@ -4409,7 +4538,11 @@ fn assert_known_property_value(
             );
             let typed = value.value();
             assert_archive_literal(
-                typed.horizontal().literal_component().unwrap(),
+                typed
+                    .horizontal()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap(),
                 "10",
                 Some("%"),
             );
@@ -4424,7 +4557,11 @@ fn assert_known_property_value(
                 authored.value
             );
             let typed = value.factor();
-            assert_archive_literal(typed.literal_component().unwrap(), "2", None);
+            assert_archive_literal(
+                typed.literal().map(|literal| literal.component()).unwrap(),
+                "2",
+                None,
+            );
         }
         (CssKnownProperty::FlexShrink, CssKnownPropertyValueRef::FlexShrink(value)) => {
             assert_archive_wrapper(property, value.as_css(), authored);
@@ -4434,7 +4571,11 @@ fn assert_known_property_value(
                 authored.value
             );
             let typed = value.factor();
-            assert_archive_literal(typed.literal_component().unwrap(), "0", None);
+            assert_archive_literal(
+                typed.literal().map(|literal| literal.component()).unwrap(),
+                "0",
+                None,
+            );
         }
         (CssKnownProperty::Flex, CssKnownPropertyValueRef::Flex(value)) => {
             assert_archive_wrapper(property, value.as_css(), authored);
@@ -4448,12 +4589,22 @@ fn assert_known_property_value(
                 panic!("captured flex components");
             };
             assert_archive_literal(
-                components.grow().unwrap().literal_component().unwrap(),
+                components
+                    .grow()
+                    .unwrap()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap(),
                 "2",
                 None,
             );
             assert_archive_literal(
-                components.shrink().unwrap().literal_component().unwrap(),
+                components
+                    .shrink()
+                    .unwrap()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap(),
                 "0",
                 None,
             );
@@ -4471,7 +4622,15 @@ fn assert_known_property_value(
                 panic!("captured ratio");
             };
             assert!(ratio.denominator().is_none());
-            assert_archive_literal(ratio.numerator().literal_component().unwrap(), "1.5", None);
+            assert_archive_literal(
+                ratio
+                    .numerator()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap(),
+                "1.5",
+                None,
+            );
         }
         (CssKnownProperty::ScrollbarWidth, CssKnownPropertyValueRef::ScrollbarWidth(value)) => {
             assert_archive_wrapper(property, value.as_css(), authored);
@@ -4536,7 +4695,7 @@ fn assert_known_property_value(
             let CssOutlineWidth::Length(length) = typed else {
                 panic!("captured outline width");
             };
-            assert_captured_px(length.literal_component(), "2");
+            assert_captured_px(length.literal().map(|literal| literal.component()), "2");
         }
         (CssKnownProperty::Translate, CssKnownPropertyValueRef::Translate(value)) => {
             assert_archive_wrapper(property, value.as_css(), authored);
@@ -4549,12 +4708,16 @@ fn assert_known_property_value(
             let CssTranslate::Values(values) = typed else {
                 panic!("captured translate");
             };
-            assert_captured_px(values.x().literal_component(), "10");
+            assert_captured_px(
+                values.x().literal().map(|literal| literal.component()),
+                "10",
+            );
             assert_captured_px(
                 values
                     .y()
                     .expect("second captured translate coordinate")
-                    .literal_component(),
+                    .literal()
+                    .map(|literal| literal.component()),
                 "20",
             );
             assert!(values.z().is_none());
@@ -4588,11 +4751,15 @@ fn assert_known_property_value(
             };
             assert_eq!(values.values().len(), 2);
             assert!(exact_number(
-                scale_number(&values.values()[0]).literal_component(),
+                scale_number(&values.values()[0])
+                    .literal()
+                    .map(|literal| literal.component()),
                 "1.5"
             ));
             assert!(exact_number(
-                scale_number(&values.values()[1]).literal_component(),
+                scale_number(&values.values()[1])
+                    .literal()
+                    .map(|literal| literal.component()),
                 "2"
             ));
         }
@@ -4945,13 +5112,21 @@ fn assert_archive_width(width: &surgeist_css::CssBorderWidth, expected: &str) {
     let surgeist_css::CssBorderWidth::Length(length) = width else {
         panic!("captured exact border width");
     };
-    assert_archive_literal(length.literal_component().unwrap(), expected, Some("px"));
+    assert_archive_literal(
+        length.literal().map(|literal| literal.component()).unwrap(),
+        expected,
+        Some("px"),
+    );
 }
 fn assert_archive_inset(inset: &surgeist_css::CssInsetValue, expected: &str, unit: Option<&str>) {
     let surgeist_css::CssInsetValue::LengthPercentage(length) = inset else {
         panic!("captured inset literal");
     };
-    assert_archive_literal(length.literal_component().unwrap(), expected, unit);
+    assert_archive_literal(
+        length.literal().map(|literal| literal.component()).unwrap(),
+        expected,
+        unit,
+    );
 }
 fn assert_archive_basis(basis: &surgeist_css::CssFlexBasisValue) {
     use surgeist_css::{CssBoxSize, CssFlexBasisRef, CssSizeValue};
@@ -4960,7 +5135,11 @@ fn assert_archive_basis(basis: &surgeist_css::CssFlexBasisValue) {
     else {
         panic!("captured flex basis");
     };
-    assert_archive_literal(length.literal_component().unwrap(), "10", Some("rem"));
+    assert_archive_literal(
+        length.literal().map(|literal| literal.component()).unwrap(),
+        "10",
+        Some("rem"),
+    );
 }
 
 fn exact_dimension(
@@ -4983,7 +5162,7 @@ fn exact_number(component: Option<&surgeist_css::CssComponentValue>, representat
 
 fn scale_number(
     value: &surgeist_css::CssTransformScaleComponent,
-) -> &surgeist_css::CssSpecifiedNumber {
+) -> &surgeist_css::CssNumeric<surgeist_css::CssNumber> {
     let surgeist_css::CssTransformScaleComponent::Number(value) = value else {
         panic!("number factor")
     };

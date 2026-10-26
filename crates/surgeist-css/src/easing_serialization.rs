@@ -125,7 +125,7 @@ impl CssSteps {
     ) -> Result<()> {
         context.charge_nodes(1)?;
         context.append(output, "steps(")?;
-        self.count().serialize_specified_into(context, output)?;
+        self.count().append_specified(context, output)?;
         if let Some(position) = self.position() {
             context.charge_input(1)?;
             let keyword = match position {

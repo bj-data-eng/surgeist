@@ -3,10 +3,12 @@
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_css::{
-    CssCalculationExpressionRef, CssCalculationSumOperator as Op, CssComponentValueError,
-    CssComponentValueLimits, CssComponentValueRef, CssLengthPercentageCalculation as Calculation,
+    CssCalculation, CssCalculationExpressionRef, CssCalculationSumOperator as Op,
+    CssComponentValueError, CssComponentValueLimits, CssComponentValueRef, CssLengthPercentage,
     CssNumericConstructionError, CssSerializedOrigin, CssValueOrigin, parse_component_values,
 };
+
+type Calculation = CssCalculation<CssLengthPercentage>;
 
 fn operand(source: &str) -> Calculation {
     Calculation::try_from_components(parse_component_values(source).unwrap(), Default::default())

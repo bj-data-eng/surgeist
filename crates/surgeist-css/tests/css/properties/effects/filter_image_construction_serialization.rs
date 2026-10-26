@@ -50,15 +50,17 @@ fn math(depth: usize, leaf: &str) -> CssComponentValues {
     assert_eq!(values.nesting_depth() as usize, depth);
     values
 }
-fn length(depth: usize) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(math(depth, "1px"), Default::default()).unwrap(),
+fn length(depth: usize) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(math(depth, "1px"), Default::default())
+            .unwrap(),
     )
     .unwrap()
 }
-fn nonnegative_length(depth: usize) -> CssSpecifiedNonNegativeLength {
-    CssSpecifiedNonNegativeLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(math(depth, "1px"), Default::default()).unwrap(),
+fn nonnegative_length(depth: usize) -> CssNumeric<CssLength, CssNonNegative> {
+    CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(math(depth, "1px"), Default::default())
+            .unwrap(),
     )
     .unwrap()
 }
@@ -397,16 +399,19 @@ fn bookmark_label_keeps_filter_image_identity_and_one_cumulative_list_budget() {
 
 fn functions_at(depth: usize) -> Vec<CssFilterFunction> {
     let number = CssFilterAmount::Number(
-        CssSpecifiedNonNegativeNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(math(depth, "1"), Default::default())
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssNumber>::try_from_components(math(depth, "1"), Default::default())
                 .unwrap(),
         )
         .unwrap(),
     );
     let percentage = CssFilterAmount::Percentage(
-        CssSpecifiedNonNegativePercentage::try_from_calculation(
-            CssPercentageCalculation::try_from_components(math(depth, "1%"), Default::default())
-                .unwrap(),
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssPercentage>::try_from_components(
+                math(depth, "1%"),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap(),
     );
@@ -418,18 +423,24 @@ fn functions_at(depth: usize) -> Vec<CssFilterFunction> {
     let hinted_components = parse_component_values(&hinted_source).unwrap();
     assert_eq!(hinted_components.nesting_depth() as usize, depth);
     let hinted = CssFilterAmount::HintedNumberCalculation(
-        CssHintedNumberCalculation::try_from_components(hinted_components, Default::default())
-            .unwrap(),
+        CssCalculation::<CssHintedNumber>::try_from_components(
+            hinted_components,
+            Default::default(),
+        )
+        .unwrap(),
     );
     let angle = CssAngleOrZero::Angle(
-        CssAngleValue::try_from_calculation(
-            CssAngleCalculation::try_from_components(math(depth, "1deg"), Default::default())
-                .unwrap(),
+        CssNumeric::<CssAngle>::try_from_calculation(
+            CssCalculation::<CssAngle>::try_from_components(
+                math(depth, "1deg"),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap(),
     );
     let plain = || {
-        CssSpecifiedLength::try_from_component(CssComponentValue::try_token("0px").unwrap())
+        CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token("0px").unwrap())
             .unwrap()
     };
     vec![
@@ -705,8 +716,9 @@ fn failed_filter_composition_preserves_mixed_provider_components_and_original_le
     }
     assert_eq!(components.nesting_depth(), 255);
     let before = components.clone();
-    let length = CssSpecifiedNonNegativeLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(components.clone(), Default::default()).unwrap(),
+    let length = CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(components.clone(), Default::default())
+            .unwrap(),
     )
     .unwrap();
     let filters = CssFilterFunctionList::try_new(vec![CssFilterFunction::Blur(

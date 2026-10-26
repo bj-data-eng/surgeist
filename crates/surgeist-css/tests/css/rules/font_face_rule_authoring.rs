@@ -6,9 +6,11 @@ use surgeist_css::*;
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
 
-fn oblique_angle(spelling: &str) -> CssFontObliqueAngle {
-    CssFontObliqueAngle::try_from_component(CssComponentValue::try_token(spelling).unwrap())
-        .expect("valid exact oblique angle")
+fn oblique_angle(spelling: &str) -> CssNumeric<CssAngle, CssObliqueAngleRange> {
+    CssNumeric::<CssAngle, CssObliqueAngleRange>::try_from_component(
+        CssComponentValue::try_token(spelling).unwrap(),
+    )
+    .expect("valid exact oblique angle")
 }
 
 fn font_face_rule(rule: &CssRule) -> &CssFontFaceRule {
@@ -88,13 +90,13 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
         CssFontFaceDescriptor::new(
             CssFontFaceDescriptorValue::FontWidth(CssFontFaceWidth::Range {
                 start: CssFontWidth::Percentage(
-                    CssSpecifiedNonNegativePercentage::try_from_component(
+                    CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
                         CssComponentValue::try_token("75%").unwrap(),
                     )
                     .unwrap(),
                 ),
                 end: Some(CssFontWidth::Percentage(
-                    CssSpecifiedNonNegativePercentage::try_from_component(
+                    CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
                         CssComponentValue::try_token("125%").unwrap(),
                     )
                     .unwrap(),
@@ -215,7 +217,7 @@ fn font_face_numeric_descriptors_enforce_invariants() {
     }
     for invalid in ["0", "1001", "0.999", "1000.001"] {
         assert!(
-            CssFontWeightNumber::try_from_component(
+            CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
                 CssComponentValue::try_number(invalid).unwrap()
             )
             .is_err()
@@ -232,13 +234,13 @@ fn font_face_numeric_descriptors_enforce_invariants() {
     );
 
     assert!(
-        CssSpecifiedNonNegativePercentage::try_from_component(
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("0%").unwrap()
         )
         .is_ok()
     );
     assert!(
-        CssSpecifiedNonNegativePercentage::try_from_component(
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("-0.1%").unwrap()
         )
         .is_err()
@@ -273,8 +275,10 @@ fn font_face_numeric_descriptors_enforce_invariants() {
     );
     for invalid in ["-90.1deg", "90.1deg"] {
         assert!(
-            CssFontObliqueAngle::try_from_component(CssComponentValue::try_token(invalid).unwrap())
-                .is_err()
+            CssNumeric::<CssAngle, CssObliqueAngleRange>::try_from_component(
+                CssComponentValue::try_token(invalid).unwrap()
+            )
+            .is_err()
         );
     }
 

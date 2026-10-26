@@ -10,9 +10,12 @@ use crate::css::support::important_declaration as parsed;
 use surgeist_css::*;
 
 fn time(number: &str, unit: CssTimeUnit) -> CssSpeechBreak {
-    CssSpeechBreak::try_time(CssTimeValue::from_literal(
-        CssTimeLiteral::try_new(number, unit).unwrap(),
-    ))
+    CssSpeechBreak::try_time(
+        CssNumeric::<CssTime>::try_from_literal(
+            CssNumericLiteral::<CssTime>::try_new(number, unit).unwrap(),
+        )
+        .unwrap(),
+    )
     .unwrap()
 }
 
@@ -152,9 +155,10 @@ fn speech_pairs_omit_none_and_exact_zero_equivalents_without_losing_authored_chi
 #[test]
 fn checked_speech_time_composition_uses_the_owned_exact_duration_invariant() {
     for number in ["-1", "-1e-400"] {
-        let value = CssTimeValue::from_literal(
-            CssTimeLiteral::try_new(number, CssTimeUnit::Seconds).unwrap(),
-        );
+        let value = CssNumeric::<CssTime>::try_from_literal(
+            CssNumericLiteral::<CssTime>::try_new(number, CssTimeUnit::Seconds).unwrap(),
+        )
+        .unwrap();
         assert!(
             CssSpeechBreak::try_time(value)
                 .unwrap_err()
@@ -179,7 +183,7 @@ fn checked_speech_time_composition_uses_the_owned_exact_duration_invariant() {
         let CssSpeechBreak::Time(duration) = &value else {
             panic!("time")
         };
-        let literal = duration.time().literal().unwrap();
+        let literal = duration.literal().unwrap();
         assert_eq!(literal.numeric().representation(), number);
         assert_eq!(literal.unit(), unit);
         assert!(matches!(literal.origin(), CssValueOrigin::Programmatic));
@@ -200,7 +204,7 @@ fn checked_speech_pairs_reject_original_recovered_time_in_either_authored_positi
         panic!("retained recovered calculation")
     };
     assert!(
-        CssSpeechBreak::try_time(duration.time().clone())
+        CssSpeechBreak::try_time(duration.clone().into_any_range())
             .unwrap_err()
             .is_recovered_component()
     );
@@ -414,8 +418,8 @@ fn speech_time_calculations_keep_math_phase_and_use_the_shared_time_projection_b
         let CssSpeechBreak::Time(duration) = model.before() else {
             panic!("calculated time")
         };
-        assert!(duration.time().literal().is_none());
-        assert!(duration.time().calculation().is_some());
+        assert!(duration.literal().is_none());
+        assert!(duration.calculation().is_some());
         assert_eq!(
             model.serialize_specified(Default::default()).unwrap(),
             "calc(-1s)"

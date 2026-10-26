@@ -678,12 +678,12 @@ fn excluded_properties_references_and_function_interiors_keep_ordinary_grammar()
 #[test]
 fn ordinary_zero_dimensions_percentages_numbers_and_css_wide_values_are_controls() {
     assert_component_rejected(
-        CssSpecifiedLength::try_from_component,
+        CssNumeric::<CssLength>::try_from_component,
         CssComponentValue::try_number("7").unwrap(),
         NumericFailure::RootDomainMismatch,
     );
     assert_component_rejected(
-        CssSpecifiedLengthPercentage::try_from_component,
+        CssNumeric::<CssLengthPercentage>::try_from_component,
         CssComponentValue::try_number("7").unwrap(),
         NumericFailure::RootDomainMismatch,
     );

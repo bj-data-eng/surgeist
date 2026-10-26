@@ -6,7 +6,7 @@ use crate::error::property::{Error, ParseError, unexpected_at};
 use super::values::parse_nonnegative_length_percentage;
 use crate::numeric::NumericInputContext;
 use crate::{
-    CssBorderRadiusShorthand, CssCornerRadiusValue, CssSpecifiedNonNegativeLengthPercentage,
+    CssBorderRadiusShorthand, CssCornerRadiusValue, CssLengthPercentage, CssNonNegative, CssNumeric,
 };
 
 pub(super) fn parse_exact_corner_radius<'i, 't>(
@@ -25,7 +25,7 @@ pub(super) fn parse_exact_corner_radius<'i, 't>(
 fn parse_radius_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<Vec<CssSpecifiedNonNegativeLengthPercentage>, ParseError<'i, Error>> {
+) -> Result<Vec<CssNumeric<CssLengthPercentage, CssNonNegative>>, ParseError<'i, Error>> {
     let mut values = Vec::new();
     while !input.is_exhausted() {
         let state = input.state();

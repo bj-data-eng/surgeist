@@ -18,8 +18,8 @@ fn size(css: &str) -> CssBackgroundSizeList {
     value.sizes().clone()
 }
 
-fn length(css: &str) -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+fn length(css: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token(css).unwrap(),
     )
     .unwrap()
@@ -251,7 +251,7 @@ fn strict_reentry_retains_programmatic_components_and_expected_typed_values() {
     };
     assert!(matches!(width.origin(), CssValueOrigin::Programmatic));
     assert!(
-        matches!(width.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
+        matches!(width.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
         if number.representation() == "25")
     );
 }
@@ -295,7 +295,7 @@ fn specified_sizes_preserve_effective_auto_height_and_symbolic_values() {
         panic!("symbolic omitted-height size")
     };
     assert!(width.calculation().is_some());
-    assert!(width.literal_component().is_none());
+    assert!(width.literal().map(|literal| literal.component()).is_none());
 }
 
 #[test]

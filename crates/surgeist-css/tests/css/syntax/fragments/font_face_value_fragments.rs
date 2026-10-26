@@ -5,9 +5,9 @@ use surgeist_css::{
     CssAbsoluteFontWeight, CssAuthoredFontFeatureSettings, CssComponentValue, CssErrorCode,
     CssFontDisplay, CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value,
     CssFontFaceFamily, CssFontFaceSource, CssFontFaceSourceList, CssFontFaceStyle,
-    CssFontFaceWeight, CssFontFaceWidth, CssFontLocalName, CssFontWeightNumber, CssFontWidth,
-    CssRecoveryAction, CssRule, CssSpecifiedNonNegativePercentage, CssUnicodeRange,
-    CssUnicodeRangeList, parse_font_face_descriptor_value, parse_sheet,
+    CssFontFaceWeight, CssFontFaceWidth, CssFontLocalName, CssFontWeightRange, CssFontWidth,
+    CssNonNegative, CssNumber, CssNumeric, CssPercentage, CssRecoveryAction, CssRule,
+    CssUnicodeRange, CssUnicodeRangeList, parse_font_face_descriptor_value, parse_sheet,
 };
 
 fn local_x() -> CssFontFaceSourceList {
@@ -60,13 +60,13 @@ fn every_descriptor_kind_returns_its_source_neutral_typed_value() {
             "400 700",
             Value::FontWeight(CssFontFaceWeight::Range {
                 start: CssAbsoluteFontWeight::Number(
-                    CssFontWeightNumber::try_from_component(
+                    CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
                         CssComponentValue::try_number("400").unwrap(),
                     )
                     .unwrap(),
                 ),
                 end: Some(CssAbsoluteFontWeight::Number(
-                    CssFontWeightNumber::try_from_component(
+                    CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
                         CssComponentValue::try_number("700").unwrap(),
                     )
                     .unwrap(),
@@ -85,13 +85,13 @@ fn every_descriptor_kind_returns_its_source_neutral_typed_value() {
             "75% 125%",
             Value::FontWidth(CssFontFaceWidth::Range {
                 start: CssFontWidth::Percentage(
-                    CssSpecifiedNonNegativePercentage::try_from_component(
+                    CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
                         CssComponentValue::try_token("75%").unwrap(),
                     )
                     .unwrap(),
                 ),
                 end: Some(CssFontWidth::Percentage(
-                    CssSpecifiedNonNegativePercentage::try_from_component(
+                    CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
                         CssComponentValue::try_token("125%").unwrap(),
                     )
                     .unwrap(),

@@ -8,6 +8,7 @@
 //! New typed models/borrowed variants require functional implementation tests.
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::value_assertions::checked_range;
 use crate::css::support::{
     check_named_components as checked_components, detached_checked_declaration as checked,
     known_property as property,
@@ -1169,10 +1170,12 @@ fn signed_time_provider_controls_are_independent_of_interest_registration() {
     ] {
         canonical("animation-delay", input, expected);
     }
-    let time =
-        CssTimeValue::from_literal(CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap());
+    let time = CssNumeric::<CssTime>::try_from_literal(
+        CssNumericLiteral::<CssTime>::try_new("-1", CssTimeUnit::Seconds).unwrap(),
+    )
+    .unwrap();
     assert_eq!(time.literal().unwrap().numeric().representation(), "-1");
-    assert!(CssDuration::try_new(time).is_err());
+    assert!(checked_range::<CssTime, CssNonNegative>(&time).is_err());
 }
 #[test]
 fn scalar_keyword_declarations_share_three_node_accounting() {

@@ -7,9 +7,9 @@ use crate::css::support::rules::ordinary_font_face_descriptor;
 use surgeist_css::{
     CssAbsoluteFontWeight as Absolute, CssAuthoredFontFaceDescriptorValue as Authored,
     CssComponentValue, CssComponentValues, CssFontFaceDescriptorKind as Kind,
-    CssFontFaceDescriptorValue as Ordinary, CssFontFaceWeight, CssFontWeightNumber,
-    CssRecoveryAction, CssRule, CssSerializationLimits, CssSerializedOrigin, CssValueOrigin,
-    parse_component_values, parse_font_face_descriptor_value, parse_sheet,
+    CssFontFaceDescriptorValue as Ordinary, CssFontFaceWeight, CssFontWeightRange, CssNumber,
+    CssNumeric, CssRecoveryAction, CssRule, CssSerializationLimits, CssSerializedOrigin,
+    CssValueOrigin, parse_component_values, parse_font_face_descriptor_value, parse_sheet,
 };
 
 fn ordinary(text: &str) -> CssFontFaceWeight {
@@ -21,8 +21,10 @@ fn ordinary(text: &str) -> CssFontFaceWeight {
 
 fn numeric(text: &str) -> Absolute {
     Absolute::Number(
-        CssFontWeightNumber::try_from_component(CssComponentValue::try_number(text).unwrap())
-            .unwrap(),
+        CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
+            CssComponentValue::try_number(text).unwrap(),
+        )
+        .unwrap(),
     )
 }
 
@@ -119,7 +121,7 @@ fn fractional_math_and_invalid_descriptor_values_keep_neighbors() {
         start.serialize_specified(Default::default()).unwrap(),
         "calc(0)"
     );
-    assert!(end.literal_component().is_some());
+    assert!(end.literal().map(|literal| literal.component()).is_some());
     assert_eq!(end.serialize_specified(Default::default()).unwrap(), "1000");
     for invalid in [
         "bolder",

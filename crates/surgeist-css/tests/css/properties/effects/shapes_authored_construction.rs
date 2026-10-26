@@ -34,7 +34,7 @@ fn threshold(source: &CssDeclaration) -> &CssOpacityValue {
     value.value()
 }
 
-fn margin(source: &CssDeclaration) -> &CssSpecifiedNonNegativeLengthPercentage {
+fn margin(source: &CssDeclaration) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
     let CssKnownPropertyValueRef::ShapeMargin(value) =
         source.known().unwrap().property_value().unwrap()
     else {
@@ -203,7 +203,7 @@ fn three_terminal_initials_have_independent_typed_payloads_and_programmatic_orig
                 assert!(value.calculation().is_none());
                 assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
                 assert!(
-                    matches!(value.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(token)) if token.representation() == "0")
+                    matches!(value.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(token)) if token.representation() == "0")
                 );
             }
             other => panic!("initial for {property:?}: {other:?}"),
@@ -277,7 +277,10 @@ fn margin_wrappers_keep_exact_checked_literals_and_deferred_negative_math() {
         let components = parse_component_values(text).unwrap();
         let source = checked(CssKnownProperty::ShapeMargin, components.clone());
         let value = margin(&source);
-        assert_eq!(value.literal_component(), Some(&components.items()[0]));
+        assert_eq!(
+            value.literal().map(|literal| literal.component()),
+            Some(&components.items()[0])
+        );
         assert_eq!(value.origin(), components.items()[0].origin());
         assert!(value.calculation().is_none());
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
@@ -294,7 +297,12 @@ fn margin_wrappers_keep_exact_checked_literals_and_deferred_negative_math() {
     }
     let input = parse_component_values("calc(1px - 2px)").unwrap();
     let source = checked(CssKnownProperty::ShapeMargin, input.clone());
-    assert!(margin(&source).literal_component().is_none());
+    assert!(
+        margin(&source)
+            .literal()
+            .map(|literal| literal.component())
+            .is_none()
+    );
     assert_eq!(margin(&source).calculation().unwrap().components(), &input);
     assert_eq!(margin(&source).origin(), input.items()[0].origin());
     assert_eq!(
@@ -305,7 +313,7 @@ fn margin_wrappers_keep_exact_checked_literals_and_deferred_negative_math() {
     );
     for text in ["-1e-999px", "-1e-999%"] {
         let components = parse_component_values(text).unwrap();
-        let numeric_error = CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        let numeric_error = CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             components.items()[0].clone(),
         )
         .unwrap_err();
@@ -348,17 +356,23 @@ fn checked_numeric_construction_retains_programmatic_zero_and_rechecks_bare_nega
                 "1.5"
             );
         } else {
-            assert_eq!(margin(&source).literal_component(), Some(&component));
+            assert_eq!(
+                margin(&source).literal().map(|literal| literal.component()),
+                Some(&component)
+            );
             assert_eq!(margin(&source).origin(), &CssValueOrigin::Programmatic);
         }
     }
     for text in ["-1e-999px", "-1e-999%"] {
         let input = parse_component_values(text).unwrap();
-        let calculation =
-            CssLengthPercentageCalculation::try_from_components(input.clone(), Default::default())
-                .unwrap();
+        let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
+            input.clone(),
+            Default::default(),
+        )
+        .unwrap();
         let error =
-            CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation).unwrap_err();
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(calculation)
+                .unwrap_err();
         assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(input.items()[0].origin()));
     }

@@ -63,7 +63,11 @@ fn calculated_shape_position_keeps_typed_shape() {
     let surgeist_css::CssCircleRadius::LengthPercentage(radius) = circle.radius() else {
         panic!("length-percentage radius");
     };
-    assert!(exact_dimension(radius.literal_component(), "1", "px"));
+    assert!(exact_dimension(
+        radius.literal().map(|literal| literal.component()),
+        "1",
+        "px"
+    ));
     let CssPositionRef::Cartesian(position) = circle.position().expect("position").view() else {
         panic!("Cartesian position");
     };
@@ -87,7 +91,11 @@ fn calculated_ellipse_keeps_typed_shape() {
     let CssEllipseRadius::LengthPercentage(vertical) = radii.vertical() else {
         panic!("vertical length-percentage radius");
     };
-    assert!(exact_dimension(vertical.literal_component(), "4", "px"));
+    assert!(exact_dimension(
+        vertical.literal().map(|literal| literal.component()),
+        "4",
+        "px"
+    ));
     assert!(ellipse.position().is_none());
 }
 
@@ -113,9 +121,21 @@ fn calculated_polygon_keeps_typed_shape() {
         panic!("two authored polygon points");
     };
     assert_eq!(calculation_text!(first.x()), "calc(1px + 2px)");
-    assert!(exact_dimension(first.y().literal_component(), "0", "px"));
-    assert!(exact_dimension(second.x().literal_component(), "1", "px"));
-    assert!(exact_dimension(second.y().literal_component(), "1", "px"));
+    assert!(exact_dimension(
+        first.y().literal().map(|literal| literal.component()),
+        "0",
+        "px"
+    ));
+    assert!(exact_dimension(
+        second.x().literal().map(|literal| literal.component()),
+        "1",
+        "px"
+    ));
+    assert!(exact_dimension(
+        second.y().literal().map(|literal| literal.component()),
+        "1",
+        "px"
+    ));
 }
 
 #[test]
@@ -180,6 +200,6 @@ fn literal_blur_keeps_typed_filter_length() {
     };
     assert!(
         matches!(functions.functions(), [surgeist_css::CssFilterFunction::Blur(blur)]
-        if exact_dimension(blur.length().literal_component(), "3", "px"))
+        if exact_dimension(blur.length().literal().map(|literal| literal.component()), "3", "px"))
     );
 }

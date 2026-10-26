@@ -186,9 +186,11 @@ fn output_and_atomic_error_preserve_authored_numeric_origins() {
         start + "1e-50px".len()
     );
     assert_eq!(origin.source().as_str(), source);
-    assert!(matches!(operand.literal_component().unwrap().view(),
+    assert!(
+        matches!(operand.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
-        if number.representation() == "1e-50" && unit == "px"));
+        if number.representation() == "1e-50" && unit == "px")
+    );
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
         "10px / auto-flow dense 0px"
@@ -200,8 +202,10 @@ fn output_and_atomic_error_preserve_authored_numeric_origins() {
             .is_byte_limit()
     );
     assert_eq!(*value, before);
-    assert!(matches!(operand.literal_component().unwrap().view(),
+    assert!(
+        matches!(operand.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
-        if number.representation() == "1e-50" && unit == "px"));
+        if number.representation() == "1e-50" && unit == "px")
+    );
     assert_eq!(wrapper.as_css(), "10px / dense auto-flow 1e-50px");
 }

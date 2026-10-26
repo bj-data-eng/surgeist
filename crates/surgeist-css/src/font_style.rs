@@ -3,16 +3,12 @@
 //! away from zero); finite calculated text rounds the projected binary64 value with the
 //! same policy. Retained coefficients/ranges and calculation arithmetic stay unchanged.
 
+use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssAngleCalculation, CssAngleUnit, CssComponentValue, CssComponentValueRef,
-    CssNumericConstructionError, CssNumericConstructionErrorKind, CssSerializationError,
-    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, CssValueTokenRef,
-};
-use crate::{
-    numeric_formatting::format_css_number, specified_serialization::SpecifiedSerializationContext,
+    CssAngle, CssAngleUnit, CssComponentValue, CssNumeric, CssNumericLiteral, CssRange,
+    CssSerializationError,
 };
 
-type ConstructionResult<T> = Result<T, CssNumericConstructionError>;
 type SerializationResult<T> = Result<T, CssSerializationError>;
 
 /// The first 1000 significant digits of π/2 = 1.5707963267948966192…, the
@@ -52,179 +48,31 @@ impl CssFontStyleKeyword {
     }
 }
 
-/// An authored oblique angle with exact literal spelling or symbolic angle math.
+/// The Fonts 4 oblique angle range `[-90deg,90deg]` of a [`CssAngle`] root.
 ///
-/// # Specified serialization
-///
-/// Serializes the specified angle without computing font matching.
-#[derive(Clone, Debug)]
-pub struct CssFontObliqueAngle {
-    value: ObliqueAngleValue,
-}
+/// Every unit compares its exact authored decimal with the quarter-turn bound:
+/// 90deg, 100grad, 0.25turn, or π/2 radians. The irrational radian bound is its
+/// first 1000 significant digits, so the decision is exact for every
+/// coefficient of at most that many significant digits; a longer coefficient
+/// that matches the whole prefix is rejected. Math defers the range to
+/// computed-value handling.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssObliqueAngleRange {}
 
-#[derive(Clone, Debug)]
-enum ObliqueAngleValue {
-    Literal(Box<CssComponentValue>),
-    Calculation(CssAngleCalculation),
-}
-
-impl PartialEq for CssFontObliqueAngle {
-    fn eq(&self, other: &Self) -> bool {
-        match (&self.value, &other.value) {
-            (ObliqueAngleValue::Literal(a), ObliqueAngleValue::Literal(b)) => {
-                a.structural_eq_ignoring_origin(b)
-            }
-            (ObliqueAngleValue::Calculation(a), ObliqueAngleValue::Calculation(b)) => {
-                a.expression.structural_eq(&b.expression)
-            }
-            _ => false,
-        }
-    }
-}
-impl Eq for CssFontObliqueAngle {}
-
-impl CssFontObliqueAngle {
-    /// Checks one literal angle against the inclusive Fonts 4 oblique range.
-    /// Every unit compares its exact authored decimal with the quarter-turn
-    /// bound: 90deg, 100grad, 0.25turn, or π/2 radians. The irrational radian
-    /// bound is its first 1000 significant digits, so the
-    /// decision is exact for every coefficient of at most that many
-    /// significant digits; a longer coefficient that matches the whole prefix
-    /// is rejected. The accepted component keeps its original spelling and
-    /// source origin.
-    pub fn try_from_component(component: CssComponentValue) -> ConstructionResult<Self> {
-        let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
-            component.view()
-        else {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(&component),
-            ));
-        };
-        let spelling = number.representation();
-        let Some(crate::CssNumericUnit::Angle(unit)) = crate::numeric::units::parse(unit) else {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(&component),
-            ));
-        };
-        let in_range = match unit {
-            CssAngleUnit::Degrees => {
-                crate::exact_decimal::LexicalDecimal::new(spelling).absolute_at_most("9", 1)
-            }
-            CssAngleUnit::Gradians => {
-                crate::exact_decimal::LexicalDecimal::new(spelling).absolute_at_most("1", 2)
-            }
-            CssAngleUnit::Turns => {
-                crate::exact_decimal::LexicalDecimal::new(spelling).absolute_at_most("25", -2)
-            }
-            CssAngleUnit::Radians => crate::exact_decimal::LexicalDecimal::new(spelling)
-                .absolute_at_most(HALF_PI_DIGITS, -(HALF_PI_DIGITS.len() as i128 - 1)),
-        };
-        if !in_range {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::OutOfRange,
-                Some(&component),
-            ));
-        }
-        Ok(Self {
-            value: ObliqueAngleValue::Literal(Box::new(component)),
-        })
-    }
-
-    /// Retains already-admitted symbolic angle math and its recovery provenance;
-    /// a bare dimension root reenters literal bounds.
-    pub fn try_from_calculation(calculation: CssAngleCalculation) -> ConstructionResult<Self> {
-        // This domain still retains recovered syntax from checked construction.
-        crate::specified_numeric::admit_calculation(
-            calculation,
-            CssAngleCalculation::components,
-            crate::specified_numeric::CalculationAdmission::Recovering,
-            Self::try_from_component,
-            |calculation| Self {
-                value: ObliqueAngleValue::Calculation(calculation),
-            },
-        )
-    }
-
-    /// Borrows the original literal, including its unit and source origin.
-    pub fn literal_component(&self) -> Option<&CssComponentValue> {
-        match &self.value {
-            ObliqueAngleValue::Literal(component) => Some(component),
-            ObliqueAngleValue::Calculation(_) => None,
-        }
-    }
-
-    /// Borrows symbolic angle math, if authored.
-    pub fn calculation(&self) -> Option<&CssAngleCalculation> {
-        match &self.value {
-            ObliqueAngleValue::Literal(_) => None,
-            ObliqueAngleValue::Calculation(calculation) => Some(calculation),
-        }
-    }
-
-    /// Returns the parsed or programmatic root origin.
-    pub fn origin(&self) -> &CssValueOrigin {
-        match &self.value {
-            ObliqueAngleValue::Literal(component) => component.origin(),
-            ObliqueAngleValue::Calculation(calculation) => calculation.origin(),
-        }
-    }
-
-    pub(crate) fn append_specified(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> SerializationResult<()> {
-        match &self.value {
-            ObliqueAngleValue::Literal(component) => {
-                context.charge_nodes(1)?;
-                if context.output_suppressed() {
-                    return Ok(());
-                }
-                let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
-                    component.view()
-                else {
-                    unreachable!("checked literal angle")
-                };
-                let suffix = match crate::numeric::units::parse(unit) {
-                    Some(unit @ crate::CssNumericUnit::Angle(_)) => {
-                        crate::numeric::units::suffix(unit)
-                    }
-                    _ => unreachable!("checked angle unit"),
-                };
-                let coefficient_limit = context
-                    .remaining_bytes()
-                    .checked_sub(suffix.len())
-                    .ok_or_else(|| {
-                        CssSerializationError::new(
-                            CssSpecifiedValueSerializationErrorKind::ByteLimit,
-                        )
-                    })?;
-                let coefficient = format_css_number(number.representation(), 0, coefficient_limit)?;
-                context.append(output, &coefficient)?;
-                context.append(output, suffix)
-            }
-            ObliqueAngleValue::Calculation(calculation) => {
-                let (captured, _) =
-                    crate::numeric::capture_specified(&calculation.expression, context)?;
-                context.append(output, &captured)
+impl crate::sealed::RangeBounds<CssAngle> for CssObliqueAngleRange {
+    fn admits(literal: &CssNumericLiteral<CssAngle>) -> bool {
+        let decimal = crate::exact_decimal::LexicalDecimal::new(literal.numeric().representation());
+        match literal.unit() {
+            CssAngleUnit::Degrees => decimal.absolute_at_most("9", 1),
+            CssAngleUnit::Gradians => decimal.absolute_at_most("1", 2),
+            CssAngleUnit::Turns => decimal.absolute_at_most("25", -2),
+            CssAngleUnit::Radians => {
+                decimal.absolute_at_most(HALF_PI_DIGITS, -(HALF_PI_DIGITS.len() as i128 - 1))
             }
         }
     }
 }
-impl crate::specified_rule_serialization::SpecifiedProvider for CssFontObliqueAngle {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(CssFontObliqueAngle);
+impl CssRange<CssAngle> for CssObliqueAngleRange {}
 
 /// An authored `font-style` property value.
 ///
@@ -235,7 +83,9 @@ crate::specified_rule_serialization::specified_serialization!(CssFontObliqueAngl
 #[non_exhaustive]
 pub enum CssFontStyle {
     Keyword(CssFontStyleKeyword),
-    Oblique { angle: Option<CssFontObliqueAngle> },
+    Oblique {
+        angle: Option<CssNumeric<CssAngle, CssObliqueAngleRange>>,
+    },
 }
 
 /// One or two authored oblique descriptor endpoints, in source order.
@@ -245,26 +95,29 @@ pub enum CssFontStyle {
 /// Serializes the exact authored one- or two-endpoint range.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFontFaceObliqueRange {
-    start: CssFontObliqueAngle,
-    end: Option<CssFontObliqueAngle>,
+    start: CssNumeric<CssAngle, CssObliqueAngleRange>,
+    end: Option<CssNumeric<CssAngle, CssObliqueAngleRange>>,
 }
 
 impl CssFontFaceObliqueRange {
     /// Retains already-checked endpoints, including descending pairs.
     #[must_use]
-    pub const fn new(start: CssFontObliqueAngle, end: Option<CssFontObliqueAngle>) -> Self {
+    pub const fn new(
+        start: CssNumeric<CssAngle, CssObliqueAngleRange>,
+        end: Option<CssNumeric<CssAngle, CssObliqueAngleRange>>,
+    ) -> Self {
         Self { start, end }
     }
 
     #[must_use]
     /// Borrows the required first authored endpoint.
-    pub const fn start(&self) -> &CssFontObliqueAngle {
+    pub const fn start(&self) -> &CssNumeric<CssAngle, CssObliqueAngleRange> {
         &self.start
     }
 
     #[must_use]
     /// Borrows an explicitly authored second endpoint, if present.
-    pub const fn end(&self) -> Option<&CssFontObliqueAngle> {
+    pub const fn end(&self) -> Option<&CssNumeric<CssAngle, CssObliqueAngleRange>> {
         self.end.as_ref()
     }
 
@@ -394,7 +247,7 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssFontFaceStyle
 }
 crate::specified_rule_serialization::specified_serialization!(CssFontFaceStyle);
 
-impl CssFontObliqueAngle {
+impl CssNumeric<CssAngle, CssObliqueAngleRange> {
     /// Whether this literal is exactly the 14deg that an omitted angle represents.
     /// Symbolic math stays explicit: its specified form is not evaluated here.
     fn is_default_oblique(

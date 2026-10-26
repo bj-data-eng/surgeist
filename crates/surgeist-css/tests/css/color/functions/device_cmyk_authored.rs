@@ -208,9 +208,10 @@ fn device_identity_and_contextual_exclusion_survive_ancestors() {
 
 #[test]
 fn admitted_device_colors_are_rejected_by_absolute_only_palette_boundaries() {
-    let index =
-        CssFontPaletteIndex::try_new(CssIntegerValue::Literal(CssIntegerLiteral::from_i32(0)))
-            .unwrap();
+    let index = CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(CssNumericLiteral::<
+        CssInteger,
+    >::from_i32(0))
+    .unwrap();
     for source in [
         "device-cmyk(0 0 0 1)",
         "alpha(from device-cmyk(0 0 0 1))",

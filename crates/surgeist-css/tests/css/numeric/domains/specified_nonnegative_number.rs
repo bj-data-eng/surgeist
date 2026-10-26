@@ -4,13 +4,15 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssNumberCalculation, CssSerializationLimits,
-    CssSpecifiedNonNegativeNumber, CssValueOrigin, CssValueTokenRef, parse_component_values,
+    CssCalculation, CssComponentValue, CssComponentValueRef, CssNonNegative, CssNumber, CssNumeric,
+    CssSerializationLimits, CssValueOrigin, CssValueTokenRef, parse_component_values,
 };
 
-fn literal(text: &str) -> CssSpecifiedNonNegativeNumber {
-    CssSpecifiedNonNegativeNumber::try_from_component(CssComponentValue::try_token(text).unwrap())
-        .unwrap()
+fn literal(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
+    CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
+        CssComponentValue::try_token(text).unwrap(),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -24,8 +26,11 @@ fn exact_ordinary_numbers_survive_admission_without_float_narrowing() {
         ("1e-999", "0"),
     ] {
         let value = literal(authored);
-        let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) =
-            value.literal_component().unwrap().view()
+        let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = value
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .view()
         else {
             panic!("number token")
         };
@@ -46,7 +51,7 @@ fn exact_ordinary_numbers_survive_admission_without_float_narrowing() {
 #[test]
 fn exact_negative_and_wrong_domain_errors_retain_component_origin() {
     for text in ["-1e-999", "-0.000000000000000000001", "-1"] {
-        let error = CssSpecifiedNonNegativeNumber::try_from_component(
+        let error = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_token(text).unwrap(),
         )
         .unwrap_err();
@@ -54,14 +59,14 @@ fn exact_negative_and_wrong_domain_errors_retain_component_origin() {
         assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
     }
     for text in ["1px", "1%", "1deg", "auto"] {
-        let error = CssSpecifiedNonNegativeNumber::try_from_component(
+        let error = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_token(text).unwrap(),
         )
         .unwrap_err();
         assert!(error.is_root_domain_mismatch(), "{error:?}");
     }
     let parsed = parse_component_values("  -1e-999").unwrap();
-    let error = CssSpecifiedNonNegativeNumber::try_from_component(
+    let error = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
         parsed
             .items()
             .iter()
@@ -85,36 +90,36 @@ fn exact_negative_and_wrong_domain_errors_retain_component_origin() {
 #[test]
 fn bare_calculation_roots_reenter_literals_and_actual_math_stays_symbolic() {
     for text in ["0", "1e999", "-1e-999"] {
-        let calculation = CssNumberCalculation::try_from_components(
+        let calculation = CssCalculation::<CssNumber>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
         .unwrap();
-        let result = CssSpecifiedNonNegativeNumber::try_from_calculation(calculation);
+        let result = CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(calculation);
         if text.starts_with('-') {
             assert!(result.unwrap_err().is_out_of_range());
         } else {
             let value = result.unwrap();
-            assert!(value.literal_component().is_some());
+            assert!(value.literal().map(|literal| literal.component()).is_some());
             assert!(value.calculation().is_none());
         }
     }
-    let math = CssSpecifiedNonNegativeNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(
+    let math = CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(
             parse_component_values("calc(-1)").unwrap(),
             Default::default(),
         )
         .unwrap(),
     )
     .unwrap();
-    assert!(math.literal_component().is_none());
+    assert!(math.literal().map(|literal| literal.component()).is_none());
     assert!(math.calculation().is_some());
     assert_eq!(
         math.serialize_specified(Default::default()).unwrap(),
         "calc(-1)"
     );
     crate::css::support::value_assertions::assert_calculation_rejected(
-        CssNumberCalculation::try_from_components(
+        CssCalculation::<CssNumber>::try_from_components(
             parse_component_values("calc(1 + 2%)").unwrap(),
             Default::default(),
         ),
@@ -123,12 +128,13 @@ fn bare_calculation_roots_reenter_literals_and_actual_math_stays_symbolic() {
 }
 
 #[test]
-fn shared_scalar_equality_retains_provenance_and_budgets_are_atomic() {
+fn shared_scalar_equality_ignores_provenance_and_budgets_are_atomic() {
     let parsed = parse_component_values("1.250").unwrap();
     let parsed =
-        CssSpecifiedNonNegativeNumber::try_from_component(parsed.items()[0].clone()).unwrap();
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(parsed.items()[0].clone())
+            .unwrap();
     let programmatic = literal("1.250");
-    assert_ne!(parsed, programmatic);
+    assert_eq!(parsed, programmatic);
     assert_eq!(
         parsed.serialize_specified(Default::default()).unwrap(),
         "1.25"

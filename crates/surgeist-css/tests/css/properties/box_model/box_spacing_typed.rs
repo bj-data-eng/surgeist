@@ -1,10 +1,9 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::{
-    CssBoxSideKind, CssComponentValue, CssComponentValueRef, CssLengthPercentageCalculation,
-    CssMarginPair, CssMarginShorthand, CssMarginValue, CssPaddingPair, CssPaddingShorthand,
-    CssPaddingValue, CssSerializationLimits, CssSpecifiedLengthPercentage,
-    CssSpecifiedNonNegativeLengthPercentage, CssValueOrigin, CssValueTokenRef,
+    CssBoxSideKind, CssCalculation, CssComponentValue, CssComponentValueRef, CssLengthPercentage,
+    CssMarginPair, CssMarginShorthand, CssMarginValue, CssNonNegative, CssNumeric, CssPaddingPair,
+    CssPaddingShorthand, CssPaddingValue, CssSerializationLimits, CssValueOrigin, CssValueTokenRef,
     parse_component_values,
 };
 
@@ -21,8 +20,8 @@ fn margin(text: &str) -> CssMarginValue {
         CssMarginValue::Auto
     } else if text.starts_with("calc(") {
         CssMarginValue::LengthPercentage(
-            CssSpecifiedLengthPercentage::try_from_calculation(
-                CssLengthPercentageCalculation::try_from_components(
+            CssNumeric::<CssLengthPercentage>::try_from_calculation(
+                CssCalculation::<CssLengthPercentage>::try_from_components(
                     parse_component_values(text).unwrap(),
                     Default::default(),
                 )
@@ -32,15 +31,15 @@ fn margin(text: &str) -> CssMarginValue {
         )
     } else {
         CssMarginValue::LengthPercentage(
-            CssSpecifiedLengthPercentage::try_from_component(component(text)).unwrap(),
+            CssNumeric::<CssLengthPercentage>::try_from_component(component(text)).unwrap(),
         )
     }
 }
 
 fn padding(text: &str) -> CssPaddingValue {
     let value = if text.starts_with("calc(") {
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default(),
             )
@@ -48,7 +47,8 @@ fn padding(text: &str) -> CssPaddingValue {
         )
         .unwrap()
     } else {
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component(text)).unwrap()
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component(text))
+            .unwrap()
     };
     CssPaddingValue::new(value)
 }
@@ -64,20 +64,33 @@ fn signed_length_percentage_keeps_exact_extremes_and_literal_domain() {
         "0px",
         "0%",
     ] {
-        let value = CssSpecifiedLengthPercentage::try_from_component(component(text)).unwrap();
-        assert_eq!(value.literal_component().unwrap().origin(), value.origin());
+        let value = CssNumeric::<CssLengthPercentage>::try_from_component(component(text)).unwrap();
+        assert_eq!(
+            value
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+                .origin(),
+            value.origin()
+        );
         assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
     }
     assert_eq!(
-        CssSpecifiedLengthPercentage::zero()
-            .serialize_specified(Default::default())
-            .unwrap(),
+        CssNumeric::<CssLengthPercentage>::try_from_component(
+            CssComponentValue::try_number("0").unwrap()
+        )
+        .unwrap()
+        .serialize_specified(Default::default())
+        .unwrap(),
         "0"
     );
     assert_eq!(
-        CssSpecifiedNonNegativeLengthPercentage::zero()
-            .serialize_specified(Default::default())
-            .unwrap(),
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+            CssComponentValue::try_number("0").unwrap()
+        )
+        .unwrap()
+        .serialize_specified(Default::default())
+        .unwrap(),
         "0"
     );
     let huge = margin("-1e999px")
@@ -89,20 +102,20 @@ fn signed_length_percentage_keeps_exact_extremes_and_literal_domain() {
     let before = tiny.clone();
     assert_eq!(tiny.serialize_specified(Default::default()).unwrap(), "0%");
     assert!(matches!(
-        tiny.length_percentage().unwrap().literal_component().unwrap().view(),
+        tiny.length_percentage().unwrap().literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
             if number.representation() == "-1e-999"
     ));
     assert_eq!(tiny, before);
     for text in ["1", "1fr"] {
         assert_component_rejected(
-            CssSpecifiedLengthPercentage::try_from_component,
+            CssNumeric::<CssLengthPercentage>::try_from_component,
             component(text),
             NumericFailure::RootDomainMismatch,
         );
     }
     assert_component_rejected(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component,
         component("-1e-999%"),
         NumericFailure::OutOfRange,
     );
@@ -138,33 +151,34 @@ fn typed_margin_and_padding_equality_excludes_origin_but_retains_structure() {
     let first = margin("1px");
     let later = parse_component_values("  1px").unwrap().items()[1].clone();
     let later = CssMarginValue::LengthPercentage(
-        CssSpecifiedLengthPercentage::try_from_component(later).unwrap(),
+        CssNumeric::<CssLengthPercentage>::try_from_component(later).unwrap(),
     );
     assert_ne!(first.origin(), later.origin());
     assert_eq!(first, later);
-    assert_ne!(first, margin("1PX"));
-    assert_ne!(first, margin("1.0px"));
+    assert_eq!(first, margin("1PX"));
+    assert_eq!(first, margin("1.0px"));
     assert_ne!(margin("calc(1px + 2%)"), margin("calc(1px - 2%)"));
-    assert_ne!(margin("calc(1px + 2%)"), margin("calc((1px + 2%))"));
+    // Redundant grouping is not a calculation node (Values 4 parse a calculation).
+    assert_eq!(margin("calc(1px + 2%)"), margin("calc((1px + 2%))"));
     assert_ne!(margin("auto"), margin("0"));
 
     assert_eq!(padding("1px"), padding("1px"));
     let shifted_padding = CssPaddingValue::new(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             parse_component_values("  1px").unwrap().items()[1].clone(),
         )
         .unwrap(),
     );
     assert_ne!(padding("1px").origin(), shifted_padding.origin());
     assert_eq!(padding("1px"), shifted_padding);
-    assert_ne!(padding("1px"), padding("1PX"));
+    assert_eq!(padding("1px"), padding("1PX"));
     assert_ne!(padding("calc(1px + 2%)"), padding("calc(1px - 2%)"));
-    let raw_left = CssSpecifiedLengthPercentage::try_from_component(component("1px")).unwrap();
-    let raw_right = CssSpecifiedLengthPercentage::try_from_component(
+    let raw_left = CssNumeric::<CssLengthPercentage>::try_from_component(component("1px")).unwrap();
+    let raw_right = CssNumeric::<CssLengthPercentage>::try_from_component(
         parse_component_values("  1px").unwrap().items()[1].clone(),
     )
     .unwrap();
-    assert_ne!(raw_left, raw_right, "ordinary raw equality retains origin");
+    assert_eq!(raw_left, raw_right, "numeric value equality ignores origin");
 }
 
 #[test]

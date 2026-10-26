@@ -5,9 +5,11 @@ use crate::css::support::serialization_limits::assert_limits as bounds;
 use surgeist_css::*;
 type Limits = CssSerializationLimits;
 
-fn number(text: &str) -> CssSpecifiedNonNegativeNumber {
-    CssSpecifiedNonNegativeNumber::try_from_component(CssComponentValue::try_number(text).unwrap())
-        .unwrap()
+fn number(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
+    CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
+        CssComponentValue::try_number(text).unwrap(),
+    )
+    .unwrap()
 }
 fn slice() -> CssBorderImageSlice {
     CssBorderImageSlice::try_new(
@@ -203,7 +205,7 @@ fn border_constructor_reuses_checked_edges_and_rejects_impossible_slash_groups()
         };
         assert_eq!(number.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(
-            number.literal_component(),
+            number.literal().map(|literal| literal.component()),
             Some(&CssComponentValue::try_number("10").unwrap())
         );
     }
@@ -318,9 +320,11 @@ fn source_retained_size_only_projection_and_all_new_children_compose() {
 #[test]
 fn mask_border_math_retains_hinted_and_dimensioned_domains_with_shared_projection() {
     let components = parse_component_values("calc((1px + 1%) / 1px)").unwrap();
-    let hinted =
-        CssHintedNumberCalculation::try_from_components(components.clone(), Default::default())
-            .unwrap();
+    let hinted = CssCalculation::<CssHintedNumber>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(hinted.origin(), components.items()[0].origin());
     assert!(hinted.position().is_some());
     assert_eq!(hinted.components(), &components);

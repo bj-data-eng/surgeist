@@ -1919,12 +1919,12 @@ fn ordinary_time_pair_providers_keep_their_own_comparison_and_projection_tariffs
 
 #[test]
 fn ordinary_numeric_owner_keeps_its_math_and_keyword_tariffs() {
-    let calculation = CssTimeCalculation::try_from_components(
+    let calculation = CssCalculation::<CssTime>::try_from_components(
         parse_component_values("calc(1s + 2s)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let value = CssTimeValue::try_from_calculation(calculation).unwrap();
+    let value = CssNumeric::<CssTime>::try_from_calculation(calculation).unwrap();
     let exact = CssSerializationLimits::new(4, 3, 8);
     assert_eq!(value.serialize_specified(exact).unwrap(), "calc(3s)");
     for (limits, kind) in [

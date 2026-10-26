@@ -76,7 +76,7 @@ fn residual_ui_containment_and_compositing_properties_are_typed() {
         panic!("expected outline-offset");
     };
     assert!(exact_dimension(
-        offset.offset().literal_component(),
+        offset.offset().literal().map(|literal| literal.component()),
         "-2",
         "px"
     ));
@@ -316,13 +316,13 @@ fn checked_public_containment_transform_and_list_construction_rejects_invalid_st
 
     for css in ["auto", "10%"] {
         assert_component_rejected(
-            CssSpecifiedLength::try_from_component,
+            CssNumeric::<CssLength>::try_from_component,
             CssComponentValue::try_token(css).unwrap(),
             NumericFailure::RootDomainMismatch,
         );
     }
     assert!(
-        CssSpecifiedLength::try_from_component(
+        CssNumeric::<CssLength>::try_from_component(
             CssComponentValue::try_dimension("-2", "px").unwrap()
         )
         .is_ok()

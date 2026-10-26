@@ -19,7 +19,10 @@ fn assert_margin(page: &CssPageRule) {
         let CssMarginValue::LengthPercentage(length_percentage) = side else {
             panic!("exact page margin literal")
         };
-        let literal = length_percentage.literal_component().unwrap();
+        let literal = length_percentage
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap();
         match (expected, literal.view()) {
             ("-1px", CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })) => {
                 assert_eq!((number.representation(), unit), ("-1", "px"));

@@ -143,7 +143,7 @@ fn construction_matches_parsing_without_erasing_omissions_boxes_or_child_origins
 
 #[test]
 fn direct_typed_construction_retains_components_omissions_and_programmatic_origin() {
-    let offset = CssSpecifiedLengthPercentage::try_from_component(
+    let offset = CssNumeric::<CssLengthPercentage>::try_from_component(
         CssComponentValue::try_dimension("42.50", "px").unwrap(),
     )
     .unwrap();
@@ -195,7 +195,7 @@ fn direct_typed_construction_retains_components_omissions_and_programmatic_origi
         panic!("checked edge offset retained")
     };
     assert_eq!(offset.origin(), &CssValueOrigin::Programmatic);
-    let component = offset.literal_component().unwrap();
+    let component = offset.literal().map(|literal| literal.component()).unwrap();
     assert_eq!(component.origin(), &CssValueOrigin::Programmatic);
     let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
         component.view()

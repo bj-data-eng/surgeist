@@ -114,8 +114,8 @@ fn custom_profile_identity_decodes_escapes_without_folding_case() {
 fn bare_percentage_roots_cannot_masquerade_as_calculated_mix_weights() {
     for coefficient in [-5.0, 120.0, 25.0] {
         for root in [
-            CssPercentageCalculation::try_literal(coefficient).unwrap(),
-            CssPercentageCalculation::try_from_components(
+            CssCalculation::<CssPercentage>::try_literal(coefficient).unwrap(),
+            CssCalculation::<CssPercentage>::try_from_components(
                 parse_component_values(&format!("{coefficient}%")).unwrap(),
                 Default::default(),
             )
@@ -169,9 +169,11 @@ fn genuine_calculations_preserve_the_graph_origins_and_specified_range() {
         )
         .unwrap();
         for graph in [parsed_graph, programmatic_graph] {
-            let root =
-                CssPercentageCalculation::try_from_components(graph.clone(), Default::default())
-                    .unwrap();
+            let root = CssCalculation::<CssPercentage>::try_from_components(
+                graph.clone(),
+                Default::default(),
+            )
+            .unwrap();
             let origin = root.origin().clone();
             let weight = CssColorMixWeight::try_calculation(root.clone()).unwrap();
             assert!(weight.literal_value().is_none());
@@ -296,7 +298,7 @@ fn checked_mixed_origin_weights_keep_the_actual_leaf_source() {
 fn enclosing_mix_counts_calculation_depth_in_its_composed_graph() {
     for (depth, succeeds) in [(255, true), (256, false)] {
         let source = format!("{}25%{}", "calc(".repeat(depth), ")".repeat(depth));
-        let calculation = CssPercentageCalculation::try_from_components(
+        let calculation = CssCalculation::<CssPercentage>::try_from_components(
             parse_component_values(&source).unwrap(),
             Default::default(),
         )

@@ -28,7 +28,7 @@ fn parsed(property: &str, css: &str) -> CssBackgroundSizeList {
 }
 
 fn typed(height: Option<CssBackgroundSizeComponent>) -> CssBackgroundSize {
-    let width = CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+    let width = CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token("1px").unwrap(),
     )
     .unwrap();
@@ -138,7 +138,7 @@ fn symbolic_width_stays_unresolved_while_effective_height_is_serialized() {
             panic!("authored symbolic width with absent height")
         };
         assert!(width.calculation().is_some());
-        assert!(width.literal_component().is_none());
+        assert!(width.literal().map(|literal| literal.component()).is_none());
     }
 }
 

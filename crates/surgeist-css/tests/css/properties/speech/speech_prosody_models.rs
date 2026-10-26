@@ -5,6 +5,7 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_declaration as declaration;
+use crate::css::support::value_assertions::literal_specified;
 use surgeist_css::*;
 
 fn pitch(source: &CssDeclaration) -> &CssVoicePitchRange {
@@ -22,23 +23,26 @@ fn rate(source: &CssDeclaration) -> &CssVoiceRate {
     };
     value.value()
 }
-fn frequency(number: &str, unit: CssFrequencyUnit) -> CssFrequencyValue {
-    CssFrequencyValue::from_literal(CssFrequencyLiteral::try_new(number, unit).unwrap())
+fn frequency(number: &str, unit: CssFrequencyUnit) -> CssNumeric<CssFrequency> {
+    CssNumeric::<CssFrequency>::try_from_literal(
+        CssNumericLiteral::<CssFrequency>::try_new(number, unit).unwrap(),
+    )
+    .unwrap()
 }
-fn percentage(text: &str) -> CssSpecifiedPercentage {
-    CssSpecifiedPercentage::try_from_component(
+fn percentage(text: &str) -> CssNumeric<CssPercentage> {
+    CssNumeric::<CssPercentage>::try_from_component(
         CssComponentValue::try_token(&format!("{text}%")).unwrap(),
     )
     .unwrap()
 }
-fn nonnegative_percentage(text: &str) -> CssSpecifiedNonNegativePercentage {
-    CssSpecifiedNonNegativePercentage::try_from_component(
+fn nonnegative_percentage(text: &str) -> CssNumeric<CssPercentage, CssNonNegative> {
+    CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token(&format!("{text}%")).unwrap(),
     )
     .unwrap()
 }
-fn calculation(text: &str) -> CssFrequencyPercentageCalculation {
-    CssFrequencyPercentageCalculation::try_from_components(
+fn calculation(text: &str) -> CssCalculation<CssFrequencyPercentage> {
+    CssCalculation::<CssFrequencyPercentage>::try_from_components(
         parse_component_values(text).unwrap(),
         Default::default(),
     )
@@ -54,9 +58,12 @@ fn duration_checked_construction_distinguishes_auto_nonnegative_time_and_retaine
         "auto"
     );
     for (text, output) in [("-0", "0s"), ("+3", "3s"), ("0.25", "0.25s")] {
-        let value = CssVoiceDuration::try_time(CssTimeValue::from_literal(
-            CssTimeLiteral::try_new(text, CssTimeUnit::Seconds).unwrap(),
-        ))
+        let value = CssVoiceDuration::try_time(
+            CssNumeric::<CssTime>::try_from_literal(
+                CssNumericLiteral::<CssTime>::try_new(text, CssTimeUnit::Seconds).unwrap(),
+            )
+            .unwrap(),
+        )
         .unwrap();
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
@@ -65,25 +72,20 @@ fn duration_checked_construction_distinguishes_auto_nonnegative_time_and_retaine
         let CssVoiceDuration::Time(duration) = value else {
             panic!("time")
         };
-        assert_eq!(
-            duration
-                .time()
-                .literal()
-                .unwrap()
-                .numeric()
-                .representation(),
-            text
-        );
+        assert_eq!(duration.literal().unwrap().numeric().representation(), text);
     }
     for text in ["-1", "-1e-999"] {
-        let error = CssVoiceDuration::try_time(CssTimeValue::from_literal(
-            CssTimeLiteral::try_new(text, CssTimeUnit::Seconds).unwrap(),
-        ))
+        let error = CssVoiceDuration::try_time(
+            CssNumeric::<CssTime>::try_from_literal(
+                CssNumericLiteral::<CssTime>::try_new(text, CssTimeUnit::Seconds).unwrap(),
+            )
+            .unwrap(),
+        )
         .unwrap_err();
         assert!(error.is_out_of_range(), "{error:?}");
     }
-    let time = CssTimeValue::try_from_calculation(
-        CssTimeCalculation::try_from_components(
+    let time = CssNumeric::<CssTime>::try_from_calculation(
+        CssCalculation::<CssTime>::try_from_components(
             parse_component_values("calc(-1s)").unwrap(),
             Default::default(),
         )
@@ -95,7 +97,7 @@ fn duration_checked_construction_distinguishes_auto_nonnegative_time_and_retaine
         value.serialize_specified(Default::default()).unwrap(),
         "calc(-1s)"
     );
-    assert!(matches!(value, CssVoiceDuration::Time(value) if value.time().calculation().is_some()));
+    assert!(matches!(value, CssVoiceDuration::Time(value) if value.calculation().is_some()));
 }
 
 #[test]
@@ -165,7 +167,7 @@ fn ordinary_absolute_frequency_fails_closed_when_shared_precision_rounds_to_zero
             assert!(matches!(literal.origin(), CssValueOrigin::Programmatic));
             // The primitive's policy and legal relative zero emission remain intact.
             assert_eq!(
-                literal.serialize_specified(Default::default()).unwrap(),
+                literal_specified(literal, Default::default()).unwrap(),
                 format!("0{suffix}")
             );
             let relative = CssVoicePitchRange::try_relative(
@@ -265,8 +267,8 @@ fn absolute_precision_failure_respects_resources_encountered_before_value_detect
 #[test]
 fn absolute_frequency_calculations_defer_range_checks_and_reject_ordinary_root_conversion() {
     for text in ["calc(-20Hz)", "calc(0Hz)"] {
-        let frequency = CssFrequencyValue::try_from_calculation(
-            CssFrequencyCalculation::try_from_components(
+        let frequency = CssNumeric::<CssFrequency>::try_from_calculation(
+            CssCalculation::<CssFrequency>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default(),
             )
@@ -278,8 +280,8 @@ fn absolute_frequency_calculations_defer_range_checks_and_reject_ordinary_root_c
         let output = value.serialize_specified(Default::default()).unwrap();
         assert!(validate_style_attribute(&format!("voice-pitch:{output}")).is_ok());
     }
-    let ordinary = CssFrequencyValue::try_from_calculation(
-        CssFrequencyCalculation::try_literal("0", CssFrequencyUnit::Hertz).unwrap(),
+    let ordinary = CssNumeric::<CssFrequency>::try_from_calculation(
+        CssCalculation::<CssFrequency>::try_literal("0", CssFrequencyUnit::Hertz).unwrap(),
     )
     .unwrap();
     assert!(ordinary.literal().is_some());
@@ -433,7 +435,7 @@ fn frequency_percentage_root_reuses_shared_hint_algebra_and_excludes_other_dimen
         "calc(1Hz * 1Hz)",
     ] {
         assert!(
-            CssFrequencyPercentageCalculation::try_from_components(
+            CssCalculation::<CssFrequencyPercentage>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default()
             )
@@ -442,7 +444,7 @@ fn frequency_percentage_root_reuses_shared_hint_algebra_and_excludes_other_dimen
         );
     }
     assert!(
-        CssFrequencyCalculation::try_from_components(
+        CssCalculation::<CssFrequency>::try_from_components(
             parse_component_values("calc(10Hz + 25%)").unwrap(),
             Default::default()
         )
@@ -603,7 +605,7 @@ fn checked_composition_rejects_original_recovered_numeric_children() {
                 let CssVoiceDuration::Time(duration) = value.value() else {
                     panic!("time")
                 };
-                CssVoiceDuration::try_time(duration.time().clone()).unwrap_err()
+                CssVoiceDuration::try_time(duration.clone().into_any_range()).unwrap_err()
             }
             CssKnownPropertyValueRef::VoicePitch(value) => CssVoicePitchRange::try_absolute(
                 value.value().absolute_frequency().unwrap().clone(),

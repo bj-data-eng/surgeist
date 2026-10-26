@@ -647,7 +647,11 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
                     panic!("expected literal width: {id}")
                 };
                 let actual = match (
-                    length.literal_component().unwrap().view(),
+                    length
+                        .literal()
+                        .map(|literal| literal.component())
+                        .unwrap()
+                        .view(),
                     matches!(expected, Percent(_)),
                 ) {
                     (

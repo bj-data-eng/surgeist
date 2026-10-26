@@ -107,7 +107,7 @@ mod combine_cumulative_bridge_contract {
     use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::specified_rule_serialization::SpecifiedRuleWriter;
     use crate::{
-        CssIntegerCalculation, CssSerializationLimits as Limits,
+        CssCalculation, CssInteger, CssSerializationLimits as Limits,
         CssSpecifiedValueSerializationErrorKind as Kind, CssTextCombineDigitCount, CssValueOrigin,
     };
 
@@ -183,7 +183,8 @@ mod combine_cumulative_bridge_contract {
 
     #[test]
     fn programmatic_literal_calculation_keeps_calc_category() {
-        let count = CssTextCombineDigitCount::from_calculation(CssIntegerCalculation::literal(1));
+        let count =
+            CssTextCombineDigitCount::from_calculation(CssCalculation::<CssInteger>::literal(1));
         let value = CssTextCombineUpright::Digits(Some(count));
         let mut writer = SpecifiedRuleWriter::new(Limits::default());
         writer.append("!").unwrap();

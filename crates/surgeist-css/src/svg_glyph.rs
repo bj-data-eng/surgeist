@@ -4,12 +4,13 @@ use crate::*;
 #[derive(Clone, Debug, PartialEq)]
 enum Value {
     Auto,
-    Angle(CssAngleValue),
+    Angle(CssNumeric<CssAngle>),
     Unitless(Box<CssComponentValue>),
 }
 
 /// An authored SVG `auto`, angle, or Number literal with implied degrees.
-/// Equality includes the retained providers' provenance, not computed orientation.
+/// Equality follows the retained providers' numeric value equality, not computed
+/// orientation.
 ///
 /// # Specified serialization
 ///
@@ -47,7 +48,9 @@ impl CssSvgGlyphOrientationVerticalValue {
     }
     /// Retains an Angle-root provider, rejecting recovered closure and raw overflow.
     /// Nonfinite constants inside angle math remain authored and unevaluated.
-    pub fn try_from_angle(angle: CssAngleValue) -> Result<Self, CssNumericConstructionError> {
+    pub fn try_from_angle(
+        angle: CssNumeric<CssAngle>,
+    ) -> Result<Self, CssNumericConstructionError> {
         if let Some(calculation) = angle.calculation()
             && let Some(origin) = calculation.components().first_implicit_origin()
         {
@@ -59,7 +62,7 @@ impl CssSvgGlyphOrientationVerticalValue {
         Self::from_parser_angle(angle)
     }
     pub(crate) fn from_parser_angle(
-        angle: CssAngleValue,
+        angle: CssNumeric<CssAngle>,
     ) -> Result<Self, CssNumericConstructionError> {
         if let Some(literal) = angle.literal() {
             raw_number(literal.numeric(), literal.origin())?;
@@ -89,7 +92,7 @@ impl CssSvgGlyphOrientationVerticalValue {
         matches!(self.value, Value::Auto)
     }
     #[must_use]
-    pub const fn angle(&self) -> Option<&CssAngleValue> {
+    pub const fn angle(&self) -> Option<&CssNumeric<CssAngle>> {
         match &self.value {
             Value::Angle(value) => Some(value),
             _ => None,

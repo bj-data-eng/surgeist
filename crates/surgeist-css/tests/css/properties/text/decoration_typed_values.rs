@@ -6,16 +6,21 @@ use crate::css::support::sole_declaration as declaration;
 use CssSerializationLimits as L;
 use surgeist_css::*;
 
-fn length(text: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_component(CssComponentValue::try_token(text).unwrap()).unwrap()
-}
-fn nonnegative(text: &str) -> CssSpecifiedNonNegativeLength {
-    CssSpecifiedNonNegativeLength::try_from_component(CssComponentValue::try_token(text).unwrap())
+fn length(text: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(text).unwrap())
         .unwrap()
 }
-fn signed_percentage(text: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
-        .unwrap()
+fn nonnegative(text: &str) -> CssNumeric<CssLength, CssNonNegative> {
+    CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+        CssComponentValue::try_token(text).unwrap(),
+    )
+    .unwrap()
+}
+fn signed_percentage(text: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
+        CssComponentValue::try_token(text).unwrap(),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -97,7 +102,7 @@ fn underline_models_encode_separate_auto_and_nonempty_choices_and_signed_offset(
     };
     assert!(matches!(value.value().origin(), CssValueOrigin::Parsed(_)));
     assert!(
-        matches!(value.value().literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.representation() == "-25")
+        matches!(value.value().literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.representation() == "-25")
     );
 }
 
@@ -296,17 +301,18 @@ fn underline_offset_owner_compares_exact_numeric_structure_without_erasing_child
     let literal = offset("text-underline-offset:-25%");
     let shifted = offset("/*😀*/text-underline-offset:-25%!important");
     assert_eq!(literal, shifted);
-    assert_ne!(
+    assert_eq!(
         literal.value(),
         shifted.value(),
-        "raw scalar equality retains provenance"
+        "numeric value equality ignores provenance"
     );
     assert_ne!(literal.value().origin(), shifted.value().origin());
     assert_eq!(
         literal,
         CssTextUnderlineOffsetLength::try_new(signed_percentage("-25%")).unwrap()
     );
-    for different in ["-25px", "-25.0%", "25%"] {
+    assert_eq!(literal, offset("text-underline-offset:-25.0%"));
+    for different in ["-25px", "25%"] {
         assert_ne!(
             literal,
             offset(&format!("text-underline-offset:{different}")),
@@ -316,22 +322,22 @@ fn underline_offset_owner_compares_exact_numeric_structure_without_erasing_child
     let calculation = offset("text-underline-offset:calc(1px + 2%)");
     let shifted = offset("/*😀*/text-underline-offset:CALC(1px + 2%)!important");
     assert_eq!(calculation, shifted);
-    assert_ne!(
+    assert_eq!(
         calculation.value().calculation(),
         shifted.value().calculation()
     );
-    for different in [
-        "calc(1px + 2px)",
-        "calc(1px - 2%)",
-        "calc((1px + 2%))",
-        "calc(2px + 2%)",
-    ] {
+    for different in ["calc(1px + 2px)", "calc(1px - 2%)", "calc(2px + 2%)"] {
         assert_ne!(
             calculation,
             offset(&format!("text-underline-offset:{different}")),
             "{different}"
         );
     }
+    // Redundant grouping is not a calculation node (Values 4 parse a calculation).
+    assert_eq!(
+        calculation,
+        offset("text-underline-offset:calc((1px + 2%))")
+    );
 }
 
 #[test]

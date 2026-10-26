@@ -4,8 +4,8 @@
 //! layout, computed integer rounding and contextual spacing remain downstream.
 
 use crate::{
-    CssComponentValue, CssComponentValueError, CssComponentValueRef, CssIntegerLiteral,
-    CssIntegerValue, CssSerializationError, CssValueOrigin, CssValueTokenRef,
+    CssComponentValue, CssComponentValueError, CssComponentValueRef, CssInteger, CssNonNegative,
+    CssNumeric, CssSerializationError, CssValueOrigin, CssValueTokenRef,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
 
@@ -70,61 +70,12 @@ pub enum CssHyphenateCharacter {
     String(CssHyphenateString),
 }
 
-/// A nonnegative ordinary integer or deferred Integer-root function math.
-///
-/// This shared hyphenation payload retains existing integer spelling, equality,
-/// origins and arithmetic policy. Function results are not clamped or rounded.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssHyphenateLimitInteger {
-    value: CssIntegerValue,
-}
-impl CssHyphenateLimitInteger {
-    /// Rejects negative or noninteger bare roots while retaining function math.
-    #[must_use]
-    pub fn try_new(value: CssIntegerValue) -> Option<Self> {
-        let value = match value {
-            CssIntegerValue::Literal(literal) => {
-                if literal.is_negative() {
-                    return None;
-                }
-                CssIntegerValue::Literal(literal)
-            }
-            CssIntegerValue::Calculation(calculation) => {
-                let root =
-                    crate::specified_numeric::significant_root(calculation.components()).ok()?;
-                match root.view() {
-                    CssComponentValueRef::Token(_) => {
-                        let literal = CssIntegerLiteral::try_from_component(root.clone()).ok()?;
-                        if literal.is_negative() {
-                            return None;
-                        }
-                        CssIntegerValue::Literal(literal)
-                    }
-                    CssComponentValueRef::Function(_) => CssIntegerValue::Calculation(calculation),
-                    _ => return None,
-                }
-            }
-        };
-        Some(Self { value })
-    }
-    /// Borrows the admitted exact literal or symbolic function root.
-    pub const fn value(&self) -> &CssIntegerValue {
-        &self.value
-    }
-    /// Borrows the existing integer root's original origin.
-    pub fn origin(&self) -> &CssValueOrigin {
-        match &self.value {
-            CssIntegerValue::Literal(value) => value.origin(),
-            CssIntegerValue::Calculation(value) => value.origin(),
-        }
-    }
-}
 /// One authored hyphenation count, with an unresolved `auto` alternative.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssHyphenateLimitCharsComponent {
     Auto,
-    Integer(CssHyphenateLimitInteger),
+    Integer(CssNumeric<CssInteger, CssNonNegative>),
 }
 /// One to three authored slots; an after slot cannot exist without a before slot.
 #[derive(Clone, Debug, PartialEq)]
@@ -188,7 +139,7 @@ impl CssHyphenateLimitChars {
 #[non_exhaustive]
 pub enum CssHyphenateLimitLines {
     NoLimit,
-    Integer(CssHyphenateLimitInteger),
+    Integer(CssNumeric<CssInteger, CssNonNegative>),
 }
 /// Authored restrictions on hyphenation of the last line.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -459,7 +410,6 @@ keywords!(CssSpacingTrim, SpaceAll => "space-all", Normal => "normal", SpaceFirs
 keywords!(CssHangingPunctuationEnd, ForceEnd => "force-end", AllowEnd => "allow-end");
 provider!(CssHyphenateString, value, writer => { writer.node()?; writer.append_string(value.as_str()) });
 provider!(CssHyphenateCharacter, value, writer => match value { Self::Auto => writer.keyword("auto"), Self::String(value) => value.append_to_rule_writer(writer) });
-provider!(CssHyphenateLimitInteger, value, writer => value.value.append_to_rule_writer(writer));
 provider!(CssHyphenateLimitCharsComponent, value, writer => match value { Self::Auto => writer.keyword("auto"), Self::Integer(value) => value.append_to_rule_writer(writer) });
 provider!(CssHyphenateLimitChars, value, writer => {
     value.total.append_to_rule_writer(writer)?;

@@ -3,7 +3,7 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
-fn order(text: &str) -> CssIntegerValue {
+fn order(text: &str) -> CssNumeric<CssInteger> {
     let report = parse_style_attribute(&format!("order:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Order(value) = report.syntax()[0]
@@ -17,14 +17,17 @@ fn order(text: &str) -> CssIntegerValue {
     value.value().clone()
 }
 
-fn exact(text: &str) -> CssIntegerValue {
-    CssIntegerValue::Literal(
-        CssIntegerLiteral::try_from_component(CssComponentValue::try_number(text).unwrap())
-            .unwrap(),
+fn exact(text: &str) -> CssNumeric<CssInteger> {
+    CssNumeric::<CssInteger>::try_from_literal(
+        CssNumericLiteral::<CssInteger>::try_from_component(
+            CssComponentValue::try_number(text).unwrap(),
+        )
+        .unwrap(),
     )
+    .unwrap()
 }
 
-fn assert_output(value: &CssIntegerValue, expected: &str) {
+fn assert_output(value: &CssNumeric<CssInteger>, expected: &str) {
     let before = value.clone();
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
@@ -69,7 +72,8 @@ fn checked_integer_literals_preserve_components_and_reject_other_token_kinds() {
             parsed.items()[0].clone(),
             CssComponentValue::try_number(text).unwrap(),
         ] {
-            let literal = CssIntegerLiteral::try_from_component(component.clone()).unwrap();
+            let literal =
+                CssNumericLiteral::<CssInteger>::try_from_component(component.clone()).unwrap();
             assert_eq!(literal.component(), &component);
             assert_eq!(literal.origin(), component.origin());
             assert_eq!(literal.numeric().representation(), text);
@@ -80,9 +84,10 @@ fn checked_integer_literals_preserve_components_and_reject_other_token_kinds() {
         let components = parse_component_values(text).unwrap();
         assert_eq!(components.items().len(), 1);
         let component = components.items()[0].clone();
-        let error = CssIntegerLiteral::try_from_component(component.clone()).unwrap_err();
-        assert!(error.is_invalid_token(), "{error:?}");
-        assert_eq!(error.origin(), component.origin());
+        let error =
+            CssNumericLiteral::<CssInteger>::try_from_component(component.clone()).unwrap_err();
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
+        assert_eq!(error.origin(), Some(component.origin()));
     }
 }
 
@@ -118,7 +123,7 @@ fn both_integer_properties_preserve_exact_payloads_and_original_origins() {
                     },
                     _ => panic!("integer property"),
                 };
-                let CssIntegerValue::Literal(literal) = payload else {
+                let Some(literal) = payload.literal() else {
                     panic!("exact payload")
                 };
                 assert_eq!(literal.component(), &supplied.items()[0]);
@@ -133,7 +138,8 @@ fn both_integer_properties_preserve_exact_payloads_and_original_origins() {
         ("-000", 0),
     ] {
         assert_output(&order(text), &expected.to_string());
-        let CssIntegerValue::Literal(literal) = order(text) else {
+        let value = order(text);
+        let Some(literal) = value.literal() else {
             panic!("ordinary integer")
         };
         assert_eq!(literal.numeric().representation(), text);
@@ -164,7 +170,10 @@ fn ordinary_integer_serialization_is_exact_and_canonical_without_magnitude_round
         (0, "0"),
     ] {
         assert_output(
-            &CssIntegerValue::Literal(CssIntegerLiteral::from_i32(input)),
+            &CssNumeric::<CssInteger>::try_from_literal(CssNumericLiteral::<CssInteger>::from_i32(
+                input,
+            ))
+            .unwrap(),
             expected,
         );
     }
@@ -177,7 +186,10 @@ fn ordinary_integer_serialization_is_exact_and_canonical_without_magnitude_round
 #[test]
 fn ordinary_integer_limits_charge_canonical_bytes_and_one_node_per_stage() {
     for value in [
-        CssIntegerValue::Literal(surgeist_css::CssIntegerLiteral::from_i32(-2)),
+        CssNumeric::<CssInteger>::try_from_literal(surgeist_css::CssNumericLiteral::<
+            surgeist_css::CssInteger,
+        >::from_i32(-2))
+        .unwrap(),
         exact("-0002"),
     ] {
         for (limits, expected) in [
@@ -214,17 +226,29 @@ fn explicit_calculation_leaf_keeps_its_exact_coefficient_without_mutating_input(
     // coefficient, as the literal does (#1297), not binary64 9007199254740992.
     let components = parse_component_values("9007199254740993").unwrap();
     let calculation =
-        CssIntegerCalculation::try_from_components(components.clone(), Default::default()).unwrap();
+        CssCalculation::<CssInteger>::try_from_components(components.clone(), Default::default())
+            .unwrap();
     let CssCalculationExpressionRef::Value(leaf) = calculation.expression() else {
         panic!("exact authored leaf")
     };
     assert_eq!(leaf.literal().representation(), "9007199254740993");
     assert_eq!(calculation.components(), &components);
+    // A bare root re-enters literal admission; an operation-free math function
+    // keeps its leaf's exact coefficient in its projection.
     assert_output(
-        &CssIntegerValue::Calculation(calculation.clone()),
-        "calc(9007199254740993)",
+        &CssNumeric::<CssInteger>::try_from_calculation(calculation.clone()).unwrap(),
+        "9007199254740993",
     );
     assert_eq!(calculation.components(), &components);
+    let math = CssCalculation::<CssInteger>::try_from_components(
+        parse_component_values("calc(9007199254740993)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    assert_output(
+        &CssNumeric::<CssInteger>::try_from_calculation(math).unwrap(),
+        "calc(9007199254740993)",
+    );
     assert_output(&exact("9007199254740993"), "9007199254740993");
 }
 
@@ -262,12 +286,15 @@ fn integer_context_math_preserves_fractional_results_and_symbolic_requirements()
         ("sign(1em - 1px)", "sign(1em - 1px)"),
     ] {
         assert_output(&order(input), expected);
-        let calculation = CssIntegerCalculation::try_from_components(
+        let calculation = CssCalculation::<CssInteger>::try_from_components(
             parse_component_values(input).unwrap(),
             Default::default(),
         )
         .unwrap();
-        assert_output(&CssIntegerValue::Calculation(calculation), expected);
+        assert_output(
+            &CssNumeric::<CssInteger>::try_from_calculation(calculation).unwrap(),
+            expected,
+        );
     }
     let value = order("calc(1 + 2)");
     for (limits, expected) in [
@@ -305,7 +332,7 @@ fn parsed_exact_payloads_retain_the_original_source_token() {
             },
             _ => panic!("integer property"),
         };
-        let CssIntegerValue::Literal(literal) = value else {
+        let Some(literal) = value.literal() else {
             panic!("exact")
         };
         assert_eq!(literal.numeric().representation(), expected);
@@ -329,12 +356,23 @@ fn ordinary_huge_integers_and_operation_free_calculation_leaves_stay_exact() {
     let digits = "9".repeat(400);
     let components = parse_component_values(&digits).unwrap();
     let calculation =
-        CssIntegerCalculation::try_from_components(components.clone(), Default::default()).unwrap();
+        CssCalculation::<CssInteger>::try_from_components(components.clone(), Default::default())
+            .unwrap();
+    // A bare root re-enters literal admission.
     assert_output(
-        &CssIntegerValue::Calculation(calculation.clone()),
-        &format!("calc({digits})"),
+        &CssNumeric::<CssInteger>::try_from_calculation(calculation.clone()).unwrap(),
+        &digits,
     );
     assert_eq!(calculation.components(), &components);
+    let math = CssCalculation::<CssInteger>::try_from_components(
+        parse_component_values(&format!("calc({digits})")).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    assert_output(
+        &CssNumeric::<CssInteger>::try_from_calculation(math).unwrap(),
+        &format!("calc({digits})"),
+    );
     // Arithmetic keeps binary64 projection; its finite overflow converts to the
     // closest finite value rather than an infinity (#1297).
     assert_output(

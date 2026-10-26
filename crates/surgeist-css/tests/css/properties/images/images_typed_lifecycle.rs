@@ -223,7 +223,7 @@ fn selected_fixed_initials_are_exact_typed_values_with_programmatic_percentage_o
                 for offset in [x, y] {
                     assert_eq!(offset.origin(), &CssValueOrigin::Programmatic);
                     assert!(
-                        matches!(offset.literal_component().unwrap().view(), CssComponentValueRef::Token(
+                        matches!(offset.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(
                         CssValueTokenRef::Percentage(number)) if number.representation() == "50")
                     );
                 }
@@ -282,11 +282,11 @@ fn parsed_and_checked_terminal_payloads_preserve_raw_scalars_origins_and_propert
                     exact_origin(x.origin(), text, "-1e-2px");
                     exact_origin(y.origin(), text, "-2.00%");
                     assert!(
-                        matches!(x.literal_component().unwrap().view(), CssComponentValueRef::Token(
+                        matches!(x.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(
                         CssValueTokenRef::Dimension { number, unit }) if number.representation() == "-1e-2" && unit == "px")
                     );
                     assert!(
-                        matches!(y.literal_component().unwrap().view(), CssComponentValueRef::Token(
+                        matches!(y.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(
                         CssValueTokenRef::Percentage(number)) if number.representation() == "-2.00")
                     );
                 }

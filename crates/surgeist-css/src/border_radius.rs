@@ -2,12 +2,12 @@
 
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{CssSerializationError, CssSpecifiedNonNegativeLengthPercentage};
+use crate::{CssLengthPercentage, CssNonNegative, CssNumeric, CssSerializationError};
 
 type Result<T> = std::result::Result<T, CssSerializationError>;
 
 fn append_scalar(
-    value: &CssSpecifiedNonNegativeLengthPercentage,
+    value: &CssNumeric<CssLengthPercentage, CssNonNegative>,
     context: &mut SpecifiedSerializationContext,
     output: &mut String,
 ) -> Result<()> {
@@ -26,16 +26,16 @@ fn append_scalar(
 /// Serializes the authored corner without resolving box geometry.
 #[derive(Clone, Debug)]
 pub struct CssCornerRadiusValue {
-    horizontal: CssSpecifiedNonNegativeLengthPercentage,
-    authored_vertical: Option<CssSpecifiedNonNegativeLengthPercentage>,
+    horizontal: CssNumeric<CssLengthPercentage, CssNonNegative>,
+    authored_vertical: Option<CssNumeric<CssLengthPercentage, CssNonNegative>>,
 }
 
 impl CssCornerRadiusValue {
     /// Retains the checked horizontal radius and optional authored vertical radius.
     #[must_use]
     pub fn new(
-        horizontal: CssSpecifiedNonNegativeLengthPercentage,
-        authored_vertical: Option<CssSpecifiedNonNegativeLengthPercentage>,
+        horizontal: CssNumeric<CssLengthPercentage, CssNonNegative>,
+        authored_vertical: Option<CssNumeric<CssLengthPercentage, CssNonNegative>>,
     ) -> Self {
         Self {
             horizontal,
@@ -44,15 +44,15 @@ impl CssCornerRadiusValue {
     }
 
     /// Borrows the horizontal radius.
-    pub fn horizontal(&self) -> &CssSpecifiedNonNegativeLengthPercentage {
+    pub fn horizontal(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
         &self.horizontal
     }
     /// Borrows the explicitly authored vertical radius, if present.
-    pub fn authored_vertical(&self) -> Option<&CssSpecifiedNonNegativeLengthPercentage> {
+    pub fn authored_vertical(&self) -> Option<&CssNumeric<CssLengthPercentage, CssNonNegative>> {
         self.authored_vertical.as_ref()
     }
     /// Borrows the effective vertical radius, repeating horizontal when omitted.
-    pub fn vertical(&self) -> &CssSpecifiedNonNegativeLengthPercentage {
+    pub fn vertical(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
         self.authored_vertical.as_ref().unwrap_or(&self.horizontal)
     }
 }
@@ -77,10 +77,10 @@ crate::specified_rule_serialization::specified_serialization!(CssCornerRadiusVal
 
 impl PartialEq for CssCornerRadiusValue {
     fn eq(&self, other: &Self) -> bool {
-        self.horizontal.structural_eq(&other.horizontal)
+        self.horizontal == other.horizontal
             && match (&self.authored_vertical, &other.authored_vertical) {
                 (None, None) => true,
-                (Some(left), Some(right)) => left.structural_eq(right),
+                (Some(left), Some(right)) => left == right,
                 _ => false,
             }
     }
@@ -94,16 +94,16 @@ impl Eq for CssCornerRadiusValue {}
 /// slash is a byte separator, not an extra node.
 #[derive(Clone, Debug)]
 pub struct CssBorderRadiusShorthand {
-    horizontal: Box<[CssSpecifiedNonNegativeLengthPercentage]>,
-    authored_vertical: Option<Box<[CssSpecifiedNonNegativeLengthPercentage]>>,
+    horizontal: Box<[CssNumeric<CssLengthPercentage, CssNonNegative>]>,
+    authored_vertical: Option<Box<[CssNumeric<CssLengthPercentage, CssNonNegative>]>>,
 }
 
 impl CssBorderRadiusShorthand {
     /// Rejects an empty or overlong horizontal or supplied vertical list.
     #[must_use]
     pub fn try_new(
-        horizontal: Vec<CssSpecifiedNonNegativeLengthPercentage>,
-        authored_vertical: Option<Vec<CssSpecifiedNonNegativeLengthPercentage>>,
+        horizontal: Vec<CssNumeric<CssLengthPercentage, CssNonNegative>>,
+        authored_vertical: Option<Vec<CssNumeric<CssLengthPercentage, CssNonNegative>>>,
     ) -> Option<Self> {
         if !(1..=4).contains(&horizontal.len())
             || authored_vertical
@@ -118,24 +118,26 @@ impl CssBorderRadiusShorthand {
         })
     }
     /// Borrows the one to four authored horizontal values.
-    pub fn horizontal_values(&self) -> &[CssSpecifiedNonNegativeLengthPercentage] {
+    pub fn horizontal_values(&self) -> &[CssNumeric<CssLengthPercentage, CssNonNegative>] {
         &self.horizontal
     }
     /// Borrows the explicitly authored vertical list, if a slash appeared.
-    pub fn authored_vertical_values(&self) -> Option<&[CssSpecifiedNonNegativeLengthPercentage]> {
+    pub fn authored_vertical_values(
+        &self,
+    ) -> Option<&[CssNumeric<CssLengthPercentage, CssNonNegative>]> {
         self.authored_vertical.as_deref()
     }
     /// Borrows the effective vertical list, repeating the horizontal list without a slash.
-    pub fn vertical_values(&self) -> &[CssSpecifiedNonNegativeLengthPercentage] {
+    pub fn vertical_values(&self) -> &[CssNumeric<CssLengthPercentage, CssNonNegative>] {
         self.authored_vertical
             .as_deref()
             .unwrap_or(&self.horizontal)
     }
 
     fn assigned(
-        values: &[CssSpecifiedNonNegativeLengthPercentage],
+        values: &[CssNumeric<CssLengthPercentage, CssNonNegative>],
         corner: usize,
-    ) -> &CssSpecifiedNonNegativeLengthPercentage {
+    ) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
         let index = match (values.len(), corner) {
             (1, _) => 0,
             (2, 0 | 2) => 0,
@@ -209,10 +211,10 @@ crate::specified_rule_serialization::specified_serialization!(CssBorderRadiusSho
 impl PartialEq for CssBorderRadiusShorthand {
     fn eq(&self, other: &Self) -> bool {
         fn equal(
-            left: &[CssSpecifiedNonNegativeLengthPercentage],
-            right: &[CssSpecifiedNonNegativeLengthPercentage],
+            left: &[CssNumeric<CssLengthPercentage, CssNonNegative>],
+            right: &[CssNumeric<CssLengthPercentage, CssNonNegative>],
         ) -> bool {
-            left.len() == right.len() && left.iter().zip(right).all(|(a, b)| a.structural_eq(b))
+            left.len() == right.len() && left.iter().zip(right).all(|(a, b)| a == b)
         }
         equal(&self.horizontal, &other.horizontal)
             && match (&self.authored_vertical, &other.authored_vertical) {

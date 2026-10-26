@@ -10,7 +10,7 @@ fn percent(text: &str) -> CssFontWidth {
         panic!("one percentage")
     };
     CssFontWidth::Percentage(
-        CssSpecifiedNonNegativePercentage::try_from_component(component.clone()).unwrap(),
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(component.clone()).unwrap(),
     )
 }
 
@@ -147,7 +147,12 @@ fn raw_and_sheet_parsing_preserve_numeric_origin_and_descriptor_name_position() 
     };
     for component in [&start, &end] {
         assert!(matches!(component.origin(), CssValueOrigin::Parsed(_)));
-        assert!(component.literal_component().is_some());
+        assert!(
+            component
+                .literal()
+                .map(|literal| literal.component())
+                .is_some()
+        );
     }
     let CssValueOrigin::Parsed(start_origin) = start.origin() else {
         panic!("start retains sheet source")
@@ -175,12 +180,12 @@ fn raw_and_sheet_parsing_preserve_numeric_origin_and_descriptor_name_position() 
     assert_eq!(end.serialize_specified(Default::default()).unwrap(), "75%");
     assert_ne!(
         start,
-        CssSpecifiedNonNegativePercentage::try_from_component(
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("62.5%").unwrap()
         )
         .unwrap()
     );
-    let programmatic = CssSpecifiedNonNegativePercentage::try_from_component(
+    let programmatic = CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token("62.5%").unwrap(),
     )
     .unwrap();
@@ -215,7 +220,7 @@ fn percentage_math_endpoints_remain_deferred_in_raw_and_sheet_values() {
             panic!("percentage literal end")
         };
         assert!(start.calculation().is_some());
-        assert!(start.literal_component().is_none());
+        assert!(start.literal().map(|literal| literal.component()).is_none());
         assert!(end.calculation().is_none());
         assert_eq!(end.serialize_specified(Default::default()).unwrap(), "125%");
         assert!(matches!(start.origin(), CssValueOrigin::Parsed(_)));

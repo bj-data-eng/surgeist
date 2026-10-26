@@ -49,11 +49,13 @@ fn component(text: &str, programmatic: bool) -> CssColorComponent {
         };
         return if text.contains('%') {
             CssColorComponent::PercentageCalculation(
-                CssPercentageCalculation::try_from_components(values, Default::default()).unwrap(),
+                CssCalculation::<CssPercentage>::try_from_components(values, Default::default())
+                    .unwrap(),
             )
         } else {
             CssColorComponent::NumberCalculation(
-                CssNumberCalculation::try_from_components(values, Default::default()).unwrap(),
+                CssCalculation::<CssNumber>::try_from_components(values, Default::default())
+                    .unwrap(),
             )
         };
     }

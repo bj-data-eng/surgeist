@@ -158,9 +158,10 @@ fn contextual_contrast_exclusion_propagates_through_color_wrappers() {
 
 #[test]
 fn absolute_palette_construction_rejects_the_admitted_contextual_contrast_input() {
-    let index =
-        CssFontPaletteIndex::try_new(CssIntegerValue::Literal(CssIntegerLiteral::from_i32(0)))
-            .unwrap();
+    let index = CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(CssNumericLiteral::<
+        CssInteger,
+    >::from_i32(0))
+    .unwrap();
     for source in [
         "contrast-color(red)",
         "alpha(from contrast-color(red))",

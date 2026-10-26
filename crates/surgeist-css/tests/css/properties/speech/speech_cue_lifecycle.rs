@@ -97,7 +97,8 @@ fn cue_expansion_groups_url_and_optional_decibel_before_then_after() {
             &parts[before_count..]
         };
         for (item, name, group) in [(before, "cue-before", left), (after, "cue-after", right)] {
-            // Reuse the original roots; payload equality includes URL/number origins.
+            // Rebuild the terminal from the exact source groups. Numeric value
+            // equality ignores origins, so the checked value equals the expanded one.
             let expected = expanded(&checked(
                 name,
                 CssComponentValues::try_new(group.to_vec(), Default::default()).unwrap(),

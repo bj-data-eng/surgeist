@@ -305,9 +305,9 @@ fn parse_keyframe_selector<'i, 't>(
                     parse_numeric_function(input, &start, numeric, CalculationRoot::Percentage)
                 },
             )?;
-            CssKeyframePercent::from_parser_calculation(CssPercentageCalculation::from_expression(
-                expression,
-            ))
+            CssKeyframePercent::from_parser_calculation(
+                CssCalculation::<CssPercentage>::from_expression(expression),
+            )
             .map(CssKeyframeSelector::Percent)
             .ok_or_else(|| invalid_syntax(location))
         }

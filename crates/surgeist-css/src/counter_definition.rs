@@ -3,7 +3,7 @@ use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::{
     CssCounterStyleDescriptorKind as Kind, CssCounterStyleDescriptorRef,
     CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef as Value,
-    CssCounterStyleDescriptors, CssCounterStyleSystem, CssDescriptorOccurrence, CssIntegerValue,
+    CssCounterStyleDescriptors, CssCounterStyleSystem, CssDescriptorOccurrence,
     CssSerializationError, CssSerializationLimits,
     specified_rule_serialization::SpecifiedRuleWriter,
 };
@@ -172,7 +172,7 @@ impl<'a> CssCounterStyleDescriptorCollection<'a> {
                     if symbols
                         .tuples()
                         .iter()
-                        .any(|tuple| !matches!(tuple.weight(), CssIntegerValue::Literal(_))) =>
+                        .any(|tuple| tuple.weight().literal().is_none()) =>
                 {
                     S::RequiresResolution
                 }

@@ -5,14 +5,15 @@
 use crate::css::support::rules::sole_counter_style as parsed;
 use surgeist_css::*;
 
-fn calculation(text: &str) -> CssIntegerValue {
-    CssIntegerValue::Calculation(
-        CssIntegerCalculation::try_from_components(
+fn calculation(text: &str) -> CssNumeric<CssInteger> {
+    CssNumeric::<CssInteger>::try_from_calculation(
+        CssCalculation::<CssInteger>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
         .unwrap(),
     )
+    .unwrap()
 }
 
 fn symbol() -> CssCounterSymbol {
@@ -39,7 +40,7 @@ fn typed_constructors_preserve_fractional_negative_and_nonfinite_calculation_gra
         let tuple = CssCounterAdditiveTuple::try_new(value.clone(), symbol()).unwrap();
         assert_eq!(tuple.weight(), &value);
         assert_eq!(tuple, tuple.clone());
-        let CssIntegerValue::Calculation(graph) = pad.minimum_length() else {
+        let Some(graph) = pad.minimum_length().calculation() else {
             panic!("calculation variant must be retained")
         };
         assert_eq!(graph.components(), &parse_component_values(text).unwrap());
@@ -62,7 +63,10 @@ fn symbolic_order_is_deferred_while_adjacent_literal_descent_remains_checked() {
         assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     }
     let tuple = |value| CssCounterAdditiveTuple::try_new(value, symbol()).unwrap();
-    let literal = |value| CssIntegerValue::Literal(CssIntegerLiteral::from_i32(value));
+    let literal = |value| {
+        CssNumeric::<CssInteger>::try_from_literal(CssNumericLiteral::<CssInteger>::from_i32(value))
+            .unwrap()
+    };
     assert!(
         CssCounterAdditiveSymbols::try_new(vec![
             tuple(calculation("calc(100)")),
@@ -134,7 +138,7 @@ fn isolated_rule_and_genuine_body_fronts_share_math_and_complete_member_recovery
 }
 
 #[test]
-fn parsed_integer_graphs_keep_exact_lexical_source_and_origin_sensitive_identity() {
+fn parsed_integer_graphs_keep_exact_lexical_source_and_origin_blind_identity() {
     let source = "@counter-style x { system: fixed calc(+0001 + 1); }";
     let rule = parsed(source);
     let CssCounterStyleDescriptorValueRef::System(CssCounterStyleSystem::Fixed(fixed)) =
@@ -142,7 +146,7 @@ fn parsed_integer_graphs_keep_exact_lexical_source_and_origin_sensitive_identity
     else {
         panic!("fixed system")
     };
-    let CssIntegerValue::Calculation(graph) = fixed.first_symbol_value().unwrap() else {
+    let Some(graph) = fixed.first_symbol_value().unwrap().calculation() else {
         panic!("calculation graph")
     };
     let CssValueOrigin::Parsed(origin) = graph.origin() else {
@@ -168,7 +172,7 @@ fn parsed_integer_graphs_keep_exact_lexical_source_and_origin_sensitive_identity
         rule.descriptors().system().unwrap().value().view(),
         same.descriptors().system().unwrap().value().view()
     );
-    assert_ne!(
+    assert_eq!(
         rule.descriptors().system().unwrap().value().view(),
         shifted.descriptors().system().unwrap().value().view()
     );

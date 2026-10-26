@@ -81,15 +81,22 @@ fn lists(
     (property, duration, easing, delay)
 }
 
-fn assert_literal(time: &CssTimeValue, coefficient: &str, unit: CssTimeUnit) {
+fn assert_literal<R: CssRange<CssTime>>(
+    time: &CssNumeric<CssTime, R>,
+    coefficient: &str,
+    unit: CssTimeUnit,
+) {
     let literal = time.literal().unwrap();
     assert_eq!(literal.numeric().representation(), coefficient);
     assert_eq!(literal.unit(), unit);
 }
 
-fn assert_time_clone(actual: &CssTimeValue, expected: &CssTimeValue) {
-    // Raw time equality includes component spans and delimiter origins, unlike
-    // duration/list structural equality. Also check parsed snapshot identity.
+fn assert_time_clone<R: CssRange<CssTime>>(
+    actual: &CssNumeric<CssTime, R>,
+    expected: &CssNumeric<CssTime, R>,
+) {
+    // Time equality compares the unit and exact value only. Check the origin
+    // and the parsed snapshot identity separately.
     assert_eq!(actual, expected);
     assert_eq!(actual.origin(), expected.origin());
     if let (CssValueOrigin::Parsed(actual), CssValueOrigin::Parsed(expected)) =
@@ -125,7 +132,7 @@ fn all_four_initial_variants_contain_one_intrinsic_entry() {
             }
             CssLonghandValueRef::TransitionDuration(list) => {
                 assert_eq!(list.values().len(), 1);
-                assert_literal(list.values()[0].time(), "0", CssTimeUnit::Seconds);
+                assert_literal(&list.values()[0], "0", CssTimeUnit::Seconds);
                 assert_eq!(list.values()[0].origin(), &CssValueOrigin::Programmatic);
             }
             CssLonghandValueRef::TransitionTimingFunction(list) => {
@@ -181,12 +188,8 @@ fn assert_twenty(source: &CssDeclaration, property: P) {
                 .zip(original.durations().values())
                 .enumerate()
             {
-                assert_literal(
-                    actual.time(),
-                    &(index + 1).to_string(),
-                    CssTimeUnit::Milliseconds,
-                );
-                assert_time_clone(actual.time(), original.time());
+                assert_literal(actual, &(index + 1).to_string(), CssTimeUnit::Milliseconds);
+                assert_time_clone(actual, original);
             }
         }
         CssKnownPropertyValueRef::TransitionDelay(original) => {
@@ -248,14 +251,11 @@ fn assert_twenty(source: &CssDeclaration, property: P) {
                 assert_eq!(name.as_str(), format!("unknown{index}"));
                 assert_eq!(Some(&properties.properties()[index]), original.property());
                 assert_literal(
-                    durations.values()[index].time(),
+                    &durations.values()[index],
                     &(index + 1).to_string(),
                     CssTimeUnit::Milliseconds,
                 );
-                assert_time_clone(
-                    durations.values()[index].time(),
-                    original.duration().unwrap().time(),
-                );
+                assert_time_clone(&durations.values()[index], original.duration().unwrap());
                 assert_literal(
                     &delays.values()[index],
                     &format!("-{}", index + 1),
@@ -333,23 +333,17 @@ fn sparse_items_clone_explicit_time_children_and_supply_scalar_defaults() {
     assert_eq!(delays.values().len(), 3);
     assert_eq!(properties.properties()[2], CssTransitionProperty::All);
     assert_time_clone(
-        durations.values()[0].time(),
-        original.transitions().values()[0]
-            .duration()
-            .unwrap()
-            .time(),
+        &durations.values()[0],
+        original.transitions().values()[0].duration().unwrap(),
     );
-    assert_literal(durations.values()[1].time(), "0", CssTimeUnit::Seconds);
+    assert_literal(&durations.values()[1], "0", CssTimeUnit::Seconds);
     assert_eq!(
         durations.values()[1].origin(),
         &CssValueOrigin::Programmatic
     );
     assert_time_clone(
-        durations.values()[2].time(),
-        original.transitions().values()[2]
-            .duration()
-            .unwrap()
-            .time(),
+        &durations.values()[2],
+        original.transitions().values()[2].duration().unwrap(),
     );
     assert_eq!(
         easings.values(),
@@ -394,7 +388,7 @@ fn checked_mixed_origin_children_survive_projection_and_reentry() {
     let values = completed(&source);
     let (_, durations, _, delays) = lists(&values);
     assert_eq!(
-        durations.values()[0].time().literal().unwrap().component(),
+        durations.values()[0].literal().unwrap().component(),
         &programmatic
     );
     assert_eq!(
@@ -422,10 +416,7 @@ fn checked_mixed_origin_children_survive_projection_and_reentry() {
         panic!("replacement")
     };
     let (_, reentered_durations, _, reentered_delays) = lists(&reentered);
-    assert_time_clone(
-        reentered_durations.values()[0].time(),
-        durations.values()[0].time(),
-    );
+    assert_time_clone(&reentered_durations.values()[0], &durations.values()[0]);
     assert_time_clone(&reentered_delays.values()[0], &delays.values()[0]);
     for item in reentered.items() {
         assert!(item.source().same_occurrence(&pending));
@@ -460,29 +451,27 @@ fn late_recovered_time_children_keep_their_implicit_graph_and_source_snapshot() 
         assert_eq!(durations.values().len(), 2);
         assert_eq!(delays.values().len(), 2);
         assert_time_clone(
-            durations.values()[0].time(),
-            original.transitions().values()[0]
-                .duration()
-                .unwrap()
-                .time(),
+            &durations.values()[0],
+            original.transitions().values()[0].duration().unwrap(),
         );
         let (actual, expected) = if duration_recovered {
             assert!(CssDurationList::try_new(durations.values().to_vec()).is_none());
             (
-                durations.values()[1].time(),
+                durations.values()[1].clone().into_any_range(),
                 original.transitions().values()[1]
                     .duration()
                     .unwrap()
-                    .time(),
+                    .clone()
+                    .into_any_range(),
             )
         } else {
             assert!(CssDelayList::try_new(delays.values().to_vec()).is_none());
             (
-                &delays.values()[1],
-                original.transitions().values()[1].delay().unwrap(),
+                delays.values()[1].clone(),
+                original.transitions().values()[1].delay().unwrap().clone(),
             )
         };
-        assert_time_clone(actual, expected);
+        assert_time_clone(&actual, &expected);
         let components = actual.calculation().unwrap().components();
         let CssComponentValueRef::Function(function) = components.items()[0].view() else {
             panic!("calc")
@@ -666,10 +655,7 @@ fn projected_time_lists_keep_cumulative_specified_limits_and_atomic_failure() {
         panic!("transition")
     };
     for (index, original) in original.transitions().values().iter().enumerate() {
-        assert_time_clone(
-            durations.values()[index].time(),
-            original.duration().unwrap().time(),
-        );
+        assert_time_clone(&durations.values()[index], original.duration().unwrap());
         assert_time_clone(&delays.values()[index], original.delay().unwrap());
     }
 }
@@ -680,7 +666,6 @@ fn projected_math_retains_raw_graph_and_uses_numeric_provider_budgets() {
     let values = completed(&source);
     let (_, durations, _, delays) = lists(&values);
     let raw = durations.values()[0]
-        .time()
         .calculation()
         .unwrap()
         .components()
@@ -706,11 +691,7 @@ fn projected_math_retains_raw_graph_and_uses_numeric_provider_budgets() {
             kind
         );
         assert_eq!(
-            durations.values()[0]
-                .time()
-                .calculation()
-                .unwrap()
-                .components(),
+            durations.values()[0].calculation().unwrap().components(),
             &raw
         );
     }
@@ -724,11 +705,8 @@ fn projected_math_retains_raw_graph_and_uses_numeric_provider_budgets() {
         panic!("transition")
     };
     assert_time_clone(
-        durations.values()[0].time(),
-        original.transitions().values()[0]
-            .duration()
-            .unwrap()
-            .time(),
+        &durations.values()[0],
+        original.transitions().values()[0].duration().unwrap(),
     );
 }
 

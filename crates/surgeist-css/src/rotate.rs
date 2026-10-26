@@ -1,6 +1,6 @@
 //! Checked authored individual rotation, before contextual transform execution.
 
-use crate::{CssAngleValue, CssSpecifiedNumber, CssValueOrigin};
+use crate::{CssAngle, CssNumber, CssNumeric, CssValueOrigin};
 
 /// The authored individual rotation; `none` is distinct from an identity rotation.
 ///
@@ -29,17 +29,16 @@ pub enum CssRotateAxis {
     X,
     Y,
     Z,
-    Vector([CssSpecifiedNumber; 3]),
+    Vector([CssNumeric<CssNumber>; 3]),
 }
 
 impl PartialEq for CssRotateAxis {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::X, Self::X) | (Self::Y, Self::Y) | (Self::Z, Self::Z) => true,
-            (Self::Vector(left), Self::Vector(right)) => left
-                .iter()
-                .zip(right)
-                .all(|(left, right)| left.structural_eq(right)),
+            (Self::Vector(left), Self::Vector(right)) => {
+                left.iter().zip(right).all(|(left, right)| left == right)
+            }
             _ => false,
         }
     }
@@ -49,21 +48,21 @@ impl PartialEq for CssRotateAxis {
 /// Unlike transform-function angles, this property's angle does not admit bare zero.
 #[derive(Clone, Debug)]
 pub struct CssRotateValues {
-    angle: CssAngleValue,
+    angle: CssNumeric<CssAngle>,
     axis: Option<CssRotateAxis>,
     keyword_axis_origin: Option<CssValueOrigin>,
 }
 
 impl PartialEq for CssRotateValues {
     fn eq(&self, other: &Self) -> bool {
-        self.angle.structural_eq(&other.angle) && self.axis == other.axis
+        self.angle == other.angle && self.axis == other.axis
     }
 }
 
 impl CssRotateValues {
     /// Retains checked operands without normalizing or resolving the axis.
     /// Keyword axes receive programmatic provenance; vector operands keep their origins.
-    pub fn new(angle: CssAngleValue, axis: Option<CssRotateAxis>) -> Self {
+    pub fn new(angle: CssNumeric<CssAngle>, axis: Option<CssRotateAxis>) -> Self {
         let keyword_axis_origin = match &axis {
             Some(CssRotateAxis::X | CssRotateAxis::Y | CssRotateAxis::Z) => {
                 Some(CssValueOrigin::Programmatic)
@@ -78,7 +77,7 @@ impl CssRotateValues {
     }
 
     pub(crate) fn from_keyword_axis(
-        angle: CssAngleValue,
+        angle: CssNumeric<CssAngle>,
         axis: CssRotateAxis,
         origin: CssValueOrigin,
     ) -> Self {
@@ -95,7 +94,7 @@ impl CssRotateValues {
 
     /// Borrows the original checked angle, including literal or math provenance.
     #[must_use]
-    pub const fn angle(&self) -> &CssAngleValue {
+    pub const fn angle(&self) -> &CssNumeric<CssAngle> {
         &self.angle
     }
 
@@ -114,7 +113,7 @@ impl CssRotateValues {
 }
 
 use crate::{
-    CssAngleLiteral, CssAngleUnit, CssComponentValueRef, CssSerializationError,
+    CssAngleUnit, CssComponentValueRef, CssNumericLiteral, CssSerializationError,
     CssSpecifiedValueSerializationErrorKind, CssValueTokenRef, exact_decimal::LexicalDecimal,
     numeric::DeferredNumericProjection, specified_rule_serialization::SpecifiedRuleWriter,
     specified_serialization::SpecifiedSerializationContext,
@@ -224,7 +223,7 @@ enum PreparedNumber<'a> {
 }
 impl<'a> PreparedNumber<'a> {
     fn new(
-        number: &'a CssSpecifiedNumber,
+        number: &'a CssNumeric<CssNumber>,
         context: &mut SpecifiedSerializationContext,
     ) -> SerializationResult<Self> {
         if let Some(component) = number.literal_component() {
@@ -240,9 +239,7 @@ impl<'a> PreparedNumber<'a> {
             })
         } else {
             crate::numeric::prepare_calculation_specified(
-                crate::numeric::SpecifiedCalculationRef::Number(
-                    number.calculation().expect("checked number calculation"),
-                ),
+                number.calculation().expect("checked number calculation"),
                 context,
             )
             .map(Self::Calculation)
@@ -345,7 +342,7 @@ impl PreparedAxis<'_> {
 }
 
 enum PreparedAngle<'a> {
-    Literal(&'a CssAngleLiteral),
+    Literal(&'a CssNumericLiteral<CssAngle>),
     Zero,
     Calculation(DeferredNumericProjection<'a>),
 }
@@ -364,7 +361,7 @@ impl<'a> PreparedAngle<'a> {
     }
 
     fn new(
-        angle: &'a CssAngleValue,
+        angle: &'a CssNumeric<CssAngle>,
         context: &mut SpecifiedSerializationContext,
     ) -> SerializationResult<Self> {
         if let Some(literal) = angle.literal() {
@@ -372,9 +369,7 @@ impl<'a> PreparedAngle<'a> {
             Ok(Self::Literal(literal))
         } else {
             crate::numeric::prepare_calculation_specified(
-                crate::numeric::SpecifiedCalculationRef::Angle(
-                    angle.calculation().expect("checked angle calculation"),
-                ),
+                angle.calculation().expect("checked angle calculation"),
                 context,
             )
             .map(Self::Calculation)
@@ -483,25 +478,30 @@ mod serialization_tests {
     type Limits = crate::CssSerializationLimits;
     type Kind = CssSpecifiedValueSerializationErrorKind;
 
-    fn number(text: &str) -> CssSpecifiedNumber {
-        CssSpecifiedNumber::try_from_component(CssComponentValue::try_number(text).unwrap())
+    fn number(text: &str) -> CssNumeric<CssNumber> {
+        CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_number(text).unwrap())
             .unwrap()
     }
-    fn rotation(axis: [&str; 3], angle: CssAngleValue) -> CssRotate {
+    fn rotation(axis: [&str; 3], angle: CssNumeric<CssAngle>) -> CssRotate {
         CssRotate::Value(CssRotateValues::new(
             angle,
             Some(CssRotateAxis::Vector(axis.map(number))),
         ))
     }
-    fn angle(text: &str) -> CssAngleValue {
-        CssAngleValue::from_literal(CssAngleLiteral::try_new(text, CssAngleUnit::Degrees).unwrap())
+    fn angle(text: &str) -> CssNumeric<CssAngle> {
+        CssNumeric::<CssAngle>::from_literal(
+            CssNumericLiteral::<CssAngle>::try_new(text, CssAngleUnit::Degrees).unwrap(),
+        )
     }
-    fn math_angle() -> CssAngleValue {
+    fn math_angle() -> CssNumeric<CssAngle> {
         let components: CssComponentValues =
             crate::parse_component_values("calc(15deg + 15deg)").unwrap();
-        CssAngleValue::try_from_calculation(
-            crate::CssAngleCalculation::try_from_components(components, Default::default())
-                .unwrap(),
+        CssNumeric::<CssAngle>::try_from_calculation(
+            crate::CssCalculation::<crate::CssAngle>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     }

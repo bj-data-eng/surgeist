@@ -290,9 +290,14 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
         parsed,
         CssComponentValue::try_dimension("+2", "PX").unwrap(),
     ] {
-        let exact =
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.clone()).unwrap();
-        assert_eq!(exact.literal_component(), Some(&component));
+        let exact = CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+            component.clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            exact.literal().map(|literal| literal.component()),
+            Some(&component)
+        );
         assert_eq!(exact.origin(), component.origin());
         let components =
             CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
@@ -314,7 +319,10 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
         let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(value)) = value.value() else {
             panic!("an exact literal length");
         };
-        assert_eq!(value.literal_component(), Some(&component));
+        assert_eq!(
+            value.literal().map(|literal| literal.component()),
+            Some(&component)
+        );
         assert_eq!(value.origin(), component.origin());
         atomic_bytes(&declaration, EXPECTED);
 
@@ -344,7 +352,7 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
     }
     let negative = CssComponentValue::try_dimension("-1e-999", "px").unwrap();
     assert!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(negative.clone())
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(negative.clone())
             .unwrap_err()
             .is_out_of_range()
     );

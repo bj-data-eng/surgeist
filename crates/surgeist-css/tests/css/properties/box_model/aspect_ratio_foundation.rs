@@ -10,12 +10,13 @@ use crate::css::support::property_admission::{
     assert_numeric_rejected,
 };
 use surgeist_css::{
-    CssAspectRatioValue, CssComponentValue, CssContributionValueRef, CssContributions,
-    CssExpansion, CssGlobalKeyword, CssImportance, CssInitialValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssLonghandValueRef, CssNormalizedItem, CssNumberCalculation,
-    CssPropertyKindRef, CssPropertyNameRef, CssRatioOperand, CssRecoveryAction,
-    CssSerializationLimits, CssSpecifiedRatio, CssValueOrigin, expand_declaration, normalize_sheet,
-    parse_component_values, parse_property_value, parse_sheet, parse_style_attribute,
+    CssAspectRatioValue, CssCalculation, CssComponentValue, CssContributionValueRef,
+    CssContributions, CssExpansion, CssGlobalKeyword, CssImportance, CssInitialValueRef,
+    CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef, CssNonNegative,
+    CssNormalizedItem, CssNumber, CssNumeric, CssPropertyKindRef, CssPropertyNameRef,
+    CssRecoveryAction, CssSerializationLimits, CssSpecifiedRatio, CssValueOrigin,
+    expand_declaration, normalize_sheet, parse_component_values, parse_property_value, parse_sheet,
+    parse_style_attribute,
 };
 
 fn parsed(value: &str) -> surgeist_css::CssDeclaration {
@@ -88,7 +89,7 @@ fn assert_authored_ratio(declaration: &surgeist_css::CssDeclaration, value: &str
             .denominator()
             .map(|operand| (operand, numeric_text.split('/').nth(1).unwrap().trim())),
     ) {
-        if let Some(component) = operand.literal_component() {
+        if let Some(component) = operand.literal().map(|literal| literal.component()) {
             assert!(
                 matches!(component.view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number)) if number.representation() == spelling)
             );
@@ -166,7 +167,7 @@ fn ordinary_numbers_keep_their_authored_single_operand() {
             };
             assert!(ratio.denominator().is_none());
             assert!(
-                matches!(ratio.numerator().literal_component().unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number)) if number.representation() == value)
+                matches!(ratio.numerator().literal().map(|literal| literal.component()).unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number)) if number.representation() == value)
             );
         }
     }
@@ -269,32 +270,43 @@ fn checked_operands_cannot_hide_invalid_literals_in_typed_calculations() {
         ("auto", NumericFailure::RootDomainMismatch),
     ] {
         let component = parse_component_values(text).unwrap().items()[0].clone();
-        assert_component_rejected(CssRatioOperand::try_from_component, component, kind);
+        assert_component_rejected(
+            CssNumeric::<CssNumber, CssNonNegative>::try_from_component,
+            component,
+            kind,
+        );
     }
-    let exact =
-        CssRatioOperand::try_from_component(CssComponentValue::try_number("1e999").unwrap())
-            .unwrap();
+    let exact = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
+        CssComponentValue::try_number("1e999").unwrap(),
+    )
+    .unwrap();
     assert!(matches!(exact.origin(), CssValueOrigin::Programmatic));
-    assert!(exact.literal_component().is_some());
+    assert!(exact.literal().map(|literal| literal.component()).is_some());
     assert!(exact.calculation().is_none());
-    let bare_negative = CssNumberCalculation::try_from_components(
+    let bare_negative = CssCalculation::<CssNumber>::try_from_components(
         parse_component_values("-1e-999").unwrap(),
         Default::default(),
     )
     .unwrap();
     assert_numeric_rejected(
-        CssRatioOperand::try_from_calculation(bare_negative),
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(bare_negative),
         NumericFailure::OutOfRange,
     );
-    let math = CssNumberCalculation::try_from_components(
+    let math = CssCalculation::<CssNumber>::try_from_components(
         parse_component_values("calc(-1)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let deferred = CssRatioOperand::try_from_calculation(math).unwrap();
+    let deferred = CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(math).unwrap();
     assert!(deferred.calculation().is_some());
     let ratio = CssSpecifiedRatio::new(exact, Some(deferred));
-    assert!(ratio.numerator().literal_component().is_some());
+    assert!(
+        ratio
+            .numerator()
+            .literal()
+            .map(|literal| literal.component())
+            .is_some()
+    );
     assert!(ratio.denominator().unwrap().calculation().is_some());
     assert_eq!(
         ratio.serialize_specified(Default::default()).unwrap(),

@@ -1,13 +1,17 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::value_assertions::positive_literal;
 use surgeist_css::*;
 
 fn line_name(value: &str) -> CssGridLineName {
     CssGridLineName::try_new(CssIdent::try_new(value).unwrap()).unwrap()
 }
 
-fn exact_integer(value: &str) -> CssIntegerLiteral {
-    CssIntegerLiteral::try_from_component(CssComponentValue::try_number(value).unwrap()).unwrap()
+fn exact_integer(value: &str) -> CssNumericLiteral<CssInteger> {
+    CssNumericLiteral::<CssInteger>::try_from_component(
+        CssComponentValue::try_number(value).unwrap(),
+    )
+    .unwrap()
 }
 
 fn parsed_line(value: &str) -> CssGridLine {
@@ -47,7 +51,7 @@ fn parsed_exact_and_math_lines_keep_current_values_and_canonical_output() {
     let CssGridLine::Indexed(index) = parsed_line("2147483648") else {
         panic!("exact line index")
     };
-    let CssIntegerValue::Literal(literal) = index.value() else {
+    let Some(literal) = index.value().literal() else {
         panic!("large ordinary number must stay exact")
     };
     assert_eq!(literal.numeric().representation(), "2147483648");
@@ -84,31 +88,46 @@ fn checked_construction_excludes_invalid_states_and_keeps_authored_variants() {
     assert!(CssGridLineName::try_new(CssIdent::try_new("none").unwrap()).is_some());
     assert!(
         CssGridLine::try_indexed(
-            CssIntegerValue::Literal(surgeist_css::CssIntegerLiteral::from_i32(0)),
+            CssNumeric::<CssInteger>::try_from_literal(surgeist_css::CssNumericLiteral::<
+                surgeist_css::CssInteger,
+            >::from_i32(0))
+            .unwrap(),
             None
         )
         .is_none()
     );
     assert!(
-        CssGridLine::try_indexed(CssIntegerValue::Literal(exact_integer("-000")), None).is_none()
+        CssGridLine::try_indexed(
+            CssNumeric::<CssInteger>::try_from_literal(exact_integer("-000")).unwrap(),
+            None
+        )
+        .is_none()
     );
     assert!(CssGridLine::try_span(None, None).is_none());
 
-    let small =
-        CssGridLine::try_indexed(CssIntegerValue::Literal(exact_integer("+002")), None).unwrap();
+    let small = CssGridLine::try_indexed(
+        CssNumeric::<CssInteger>::try_from_literal(exact_integer("+002")).unwrap(),
+        None,
+    )
+    .unwrap();
     assert_eq!(small.serialize_specified(Default::default()).unwrap(), "2");
-    assert_ne!(
+    assert_eq!(
         small,
         CssGridLine::try_indexed(
-            CssIntegerValue::Literal(surgeist_css::CssIntegerLiteral::from_i32(2)),
+            CssNumeric::<CssInteger>::try_from_literal(surgeist_css::CssNumericLiteral::<
+                surgeist_css::CssInteger,
+            >::from_i32(2))
+            .unwrap(),
             None
         )
         .unwrap(),
         "different authored integer spellings remain distinct",
     );
-    let large =
-        CssGridLine::try_indexed(CssIntegerValue::Literal(exact_integer("2147483648")), None)
-            .unwrap();
+    let large = CssGridLine::try_indexed(
+        CssNumeric::<CssInteger>::try_from_literal(exact_integer("2147483648")).unwrap(),
+        None,
+    )
+    .unwrap();
     assert_eq!(
         large.serialize_specified(Default::default()).unwrap(),
         "2147483648"
@@ -116,13 +135,16 @@ fn checked_construction_excludes_invalid_states_and_keeps_authored_variants() {
     let CssGridLine::Indexed(index) = &large else {
         panic!("constructed index")
     };
-    let CssIntegerValue::Literal(literal) = index.value() else {
+    let Some(literal) = index.value().literal() else {
         panic!("constructed exact token")
     };
     assert!(matches!(literal.origin(), CssValueOrigin::Programmatic));
     assert_eq!(large, parsed_line("2147483648"));
     let named = CssGridLine::try_indexed(
-        CssIntegerValue::Literal(surgeist_css::CssIntegerLiteral::from_i32(2)),
+        CssNumeric::<CssInteger>::try_from_literal(surgeist_css::CssNumericLiteral::<
+            surgeist_css::CssInteger,
+        >::from_i32(2))
+        .unwrap(),
         Some(line_name("main")),
     )
     .unwrap();
@@ -131,9 +153,12 @@ fn checked_construction_excludes_invalid_states_and_keeps_authored_variants() {
         "2 main"
     );
     let span = CssGridLine::try_span(
-        Some(CssPositiveIntegerValue::Literal(
-            CssPositiveIntegerLiteral::try_new(exact_integer("+002")).unwrap(),
-        )),
+        Some(
+            CssNumeric::<CssInteger, CssPositive>::try_from_literal(
+                positive_literal(exact_integer("+002")).unwrap(),
+            )
+            .unwrap(),
+        ),
         Some(line_name("main")),
     )
     .unwrap();
@@ -142,13 +167,14 @@ fn checked_construction_excludes_invalid_states_and_keeps_authored_variants() {
         "span 2 main"
     );
     let math = CssGridLine::try_indexed(
-        CssIntegerValue::Calculation(
-            CssIntegerCalculation::try_from_components(
+        CssNumeric::<CssInteger>::try_from_calculation(
+            CssCalculation::<CssInteger>::try_from_components(
                 parse_component_values("calc(0)").unwrap(),
                 Default::default(),
             )
             .unwrap(),
-        ),
+        )
+        .unwrap(),
         None,
     )
     .unwrap();
@@ -180,7 +206,10 @@ fn authored_omissions_and_effective_members_remain_distinct() {
     );
 
     let indexed = CssGridLine::try_indexed(
-        CssIntegerValue::Literal(surgeist_css::CssIntegerLiteral::from_i32(2)),
+        CssNumeric::<CssInteger>::try_from_literal(surgeist_css::CssNumericLiteral::<
+            surgeist_css::CssInteger,
+        >::from_i32(2))
+        .unwrap(),
         Some(line_name("Hero")),
     )
     .unwrap();

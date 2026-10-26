@@ -118,7 +118,10 @@ fn construct_relative_color_expression<'input>(
             if result_domain == D::Hue =>
         {
             V::Angle(
-                crate::CssAngleLiteral::try_from_component(component.clone()).map_err(|error| {
+                crate::CssNumericLiteral::<crate::CssAngle>::from_component_token(
+                    component.clone(),
+                )
+                .map_err(|error| {
                     CssNumericConstructionError::component(error)
                         .with_path(Some(vec![index].into_boxed_slice()))
                 })?,

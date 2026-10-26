@@ -1,6 +1,7 @@
 //! Grid Layout 2 and Flexbox 1 properties keep authored track, line and flex
 //! syntax, and reject invalid grids.
 
+use crate::css::support::value_assertions::positive_literal;
 use surgeist_css::*;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
@@ -172,7 +173,7 @@ fn parses_order_flex_and_content_alignment() {
         Order,
         value
     );
-    let CssIntegerValue::Literal(integer) = order else {
+    let Some(integer) = order.literal() else {
         panic!("exact order integer")
     };
     assert_eq!(integer.numeric().representation(), "-2");
@@ -185,11 +186,25 @@ fn parses_order_flex_and_content_alignment() {
         panic!("authored flex components")
     };
     assert_eq!(
-        number_spelling(components.grow().unwrap().literal_component().unwrap()),
+        number_spelling(
+            components
+                .grow()
+                .unwrap()
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+        ),
         "2"
     );
     assert_eq!(
-        number_spelling(components.shrink().unwrap().literal_component().unwrap()),
+        number_spelling(
+            components
+                .shrink()
+                .unwrap()
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+        ),
         "0"
     );
     let CssFlexBasisRef::Size(CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length))) =
@@ -197,7 +212,11 @@ fn parses_order_flex_and_content_alignment() {
     else {
         panic!("length flex basis")
     };
-    assert_length_literal(length.literal_component().unwrap(), "10", "rem");
+    assert_length_literal(
+        length.literal().map(|literal| literal.component()).unwrap(),
+        "10",
+        "rem",
+    );
     assert_eq!(
         property_payload!(
             declaration(".panel { flex: none; }", CssKnownProperty::Flex),
@@ -331,14 +350,17 @@ fn checked_grid_constructors_reject_parser_invalid_states() {
     assert_eq!(CssGridLineNames::new(Vec::new()).names(), &[]);
     assert_eq!(CssGridGeneralTrackList::try_new(Vec::new()), None);
     assert_eq!(
-        CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(0)),
+        positive_literal(CssNumericLiteral::<CssInteger>::from_i32(0)),
         None
     );
     assert_eq!(CssGridTrackSizeList::try_new(Vec::new()), None);
     assert!(CssGridTemplateAreas::try_rows(Vec::new()).is_err());
     assert_eq!(
         CssGridLine::try_indexed(
-            CssIntegerValue::Literal(CssIntegerLiteral::from_i32(0)),
+            CssNumeric::<CssInteger>::try_from_literal(CssNumericLiteral::<CssInteger>::from_i32(
+                0
+            ))
+            .unwrap(),
             None
         ),
         None

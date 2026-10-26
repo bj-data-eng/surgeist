@@ -11,12 +11,18 @@ use crate::css::support::failure_classes::serialization_failure;
 use std::cmp::Ordering;
 use surgeist_css::*;
 
-fn integer(text: &str) -> CssIntegerLiteral {
-    CssIntegerLiteral::try_from_component(CssComponentValue::try_number(text).unwrap()).unwrap()
+fn integer(text: &str) -> CssNumericLiteral<CssInteger> {
+    CssNumericLiteral::<CssInteger>::try_from_component(
+        CssComponentValue::try_number(text).unwrap(),
+    )
+    .unwrap()
 }
 
-fn positive(text: &str) -> CssPositiveIntegerLiteral {
-    CssPositiveIntegerLiteral::try_new(integer(text)).unwrap()
+/// An exact integer literal that the `[1,∞]` range admits.
+fn positive(text: &str) -> CssNumericLiteral<CssInteger> {
+    let literal = integer(text);
+    assert!(CssNumeric::<CssInteger, CssPositive>::try_from_literal(literal.clone()).is_ok());
+    literal
 }
 
 fn symbol(text: &str) -> CssCounterSymbol {
@@ -24,7 +30,9 @@ fn symbol(text: &str) -> CssCounterSymbol {
 }
 
 fn bound(text: &str) -> CssCounterStyleRangeBound {
-    CssCounterStyleRangeBound::Integer(CssIntegerValue::Literal(integer(text)))
+    CssCounterStyleRangeBound::Integer(
+        CssNumeric::<CssInteger>::try_from_literal(integer(text)).unwrap(),
+    )
 }
 
 fn parsed_origin(origin: &CssValueOrigin, source: &str, token: &str) {
@@ -40,12 +48,16 @@ fn parsed_origin(origin: &CssValueOrigin, source: &str, token: &str) {
     );
 }
 
-fn auto_repeat(count: CssPositiveIntegerLiteral) -> CssGridIntegerTrackRepeat {
+fn auto_repeat(count: CssNumericLiteral<CssInteger>) -> CssGridIntegerTrackRepeat {
     let content = CssGridTrackRepeatContent::try_new(vec![CssGridTrackRepeatComponent::TrackSize(
         CssGridTrackSize::from_breadth(CssGridTrackBreadth::auto()),
     )])
     .unwrap();
-    CssGridIntegerTrackRepeat::try_new(CssPositiveIntegerValue::Literal(count), content).unwrap()
+    CssGridIntegerTrackRepeat::try_new(
+        CssNumeric::<CssInteger, CssPositive>::try_from_literal(count).unwrap(),
+        content,
+    )
+    .unwrap()
 }
 
 #[test]
@@ -79,40 +91,43 @@ fn mathematical_comparison_handles_signs_zeroes_digit_lengths_and_huge_adjacent_
 }
 
 #[test]
-fn mathematical_comparison_preserves_distinct_lexical_and_provenance_equality_contracts() {
+fn mathematical_comparison_and_equality_ignore_lexical_spelling_and_provenance() {
     let parsed_component = parse_component_values("+0007").unwrap().items()[0].clone();
-    let parsed = CssIntegerLiteral::try_from_component(parsed_component.clone()).unwrap();
+    let parsed =
+        CssNumericLiteral::<CssInteger>::try_from_component(parsed_component.clone()).unwrap();
     let programmatic = integer("+0007");
     assert_eq!(parsed.compare_value(&programmatic), Ordering::Equal);
-    assert_ne!(parsed, programmatic);
-    assert_ne!(integer("+0007"), integer("7"));
-    assert_ne!(integer("-0"), integer("+0"));
+    assert_eq!(parsed, programmatic);
+    assert_eq!(integer("+0007"), integer("7"));
+    assert_eq!(integer("-0"), integer("+0"));
     assert_eq!(parsed.component(), &parsed_component);
     assert_eq!(programmatic.origin(), &CssValueOrigin::Programmatic);
-    assert_eq!(
-        CssPositiveIntegerLiteral::try_new(parsed).unwrap(),
-        CssPositiveIntegerLiteral::try_new(programmatic).unwrap(),
-    );
-    assert_ne!(positive("+0007"), positive("7"));
+    // A semantic owner compares the exact lexical integer without provenance.
+    let count = |literal| {
+        CssColumnCount::Count(
+            CssNumeric::<CssInteger, CssPositive>::try_from_literal(literal).unwrap(),
+        )
+    };
+    assert_eq!(count(parsed), count(programmatic));
+    assert_eq!(count(positive("+0007")), count(positive("7")));
 }
 
 #[test]
 fn positive_literal_admission_rejects_noninteger_kinds_zero_and_negative_values() {
     for text in ["0", "+0000", "-0", "-1", "-2147483649"] {
-        assert!(
-            CssPositiveIntegerLiteral::try_new(integer(text)).is_none(),
-            "{text}"
-        );
+        let error =
+            CssNumeric::<CssInteger, CssPositive>::try_from_literal(integer(text)).unwrap_err();
+        assert!(error.is_out_of_range(), "{text}");
     }
     for text in ["2.0", "2e0", "2px", "2%", "calc(2)"] {
         let component = parse_component_values(text).unwrap().items()[0].clone();
         let origin = component.origin().clone();
-        let error = CssIntegerLiteral::try_from_component(component).unwrap_err();
-        assert!(error.is_invalid_token(), "{text}");
-        assert_eq!(error.origin(), &origin, "{text}");
+        let error = CssNumericLiteral::<CssInteger>::try_from_component(component).unwrap_err();
+        assert!(error.is_root_domain_mismatch(), "{text}");
+        assert_eq!(error.origin(), Some(&origin), "{text}");
     }
     for text in ["+0007", "2147483648", "999999999999999999999999999999"] {
-        assert_eq!(positive(text).integer().numeric().representation(), text);
+        assert_eq!(positive(text).numeric().representation(), text);
     }
 }
 
@@ -123,13 +138,11 @@ fn both_grid_repeat_owners_retain_checked_count_components_and_origins() {
             CssComponentValue::try_number(text).unwrap(),
             parse_component_values(text).unwrap().items()[0].clone(),
         ] {
-            let count = CssPositiveIntegerLiteral::try_new(
-                CssIntegerLiteral::try_from_component(component.clone()).unwrap(),
-            )
-            .unwrap();
+            let count =
+                CssNumericLiteral::<CssInteger>::try_from_component(component.clone()).unwrap();
             let track = auto_repeat(count.clone());
             let size = CssGridTrackSize::from_breadth(CssGridTrackBreadth::from_length_percentage(
-                CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+                CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
                     CssComponentValue::try_dimension("1", "px").unwrap(),
                 )
                 .unwrap(),
@@ -140,17 +153,17 @@ fn both_grid_repeat_owners_retain_checked_count_components_and_origins() {
                 )])
                 .unwrap();
             let fixed = CssGridIntegerFixedRepeat::try_new(
-                CssPositiveIntegerValue::Literal(count),
+                CssNumeric::<CssInteger, CssPositive>::try_from_literal(count).unwrap(),
                 content,
             )
             .unwrap();
             for retained in [track.count(), fixed.count()] {
-                let CssPositiveIntegerValue::Literal(retained) = retained else {
+                let Some(retained) = retained.literal() else {
                     panic!("ordinary exact positive count");
                 };
-                assert_eq!(retained.integer().component(), &component);
-                assert_eq!(retained.integer().numeric().representation(), text);
-                assert_eq!(retained.integer().origin(), component.origin());
+                assert_eq!(retained.component(), &component);
+                assert_eq!(retained.numeric().representation(), text);
+                assert_eq!(retained.origin(), component.origin());
             }
         }
     }
@@ -172,10 +185,9 @@ fn parsed_repeat_count_keeps_original_snapshot_and_precise_token_span() {
     else {
         panic!("one integer repeat");
     };
-    let CssPositiveIntegerValue::Literal(count) = repeat.count() else {
+    let Some(count) = repeat.count().literal() else {
         panic!("ordinary exact positive count");
     };
-    let count = count.integer();
     assert_eq!(count.numeric().representation(), "+0007");
     parsed_origin(count.origin(), source, "+0007");
     let CssValueOrigin::Parsed(origin) = count.origin() else {
@@ -247,23 +259,27 @@ fn fixed_system_keeps_omission_distinct_from_explicit_default_and_huge_signed_st
         "-2147483649",
         "999999999999999999999999999999",
     ] {
-        let start = CssIntegerValue::Literal(integer(text));
+        let start = CssNumeric::<CssInteger>::try_from_literal(integer(text)).unwrap();
         let fixed = CssCounterStyleFixedSystem::new(Some(start.clone()));
         assert_eq!(fixed.first_symbol_value(), Some(&start));
         assert_eq!(
             fixed
                 .first_symbol_value()
                 .unwrap()
-                .literal()
+                .expect_literal()
                 .numeric()
                 .representation(),
             text
         );
         assert_ne!(fixed, omitted);
     }
-    assert_ne!(
-        CssCounterStyleFixedSystem::new(Some(CssIntegerValue::Literal(integer("1")))),
-        CssCounterStyleFixedSystem::new(Some(CssIntegerValue::Literal(integer("+0001")))),
+    assert_eq!(
+        CssCounterStyleFixedSystem::new(Some(
+            CssNumeric::<CssInteger>::try_from_literal(integer("1")).unwrap()
+        )),
+        CssCounterStyleFixedSystem::new(Some(
+            CssNumeric::<CssInteger>::try_from_literal(integer("+0001")).unwrap()
+        )),
     );
 }
 
@@ -285,7 +301,7 @@ fn counter_ranges_validate_mathematical_order_and_preserve_interval_order_and_in
         .unwrap();
     assert_eq!(list.ranges(), [equal, first, infinite]);
     assert!(
-        matches!(list.ranges()[0].lower(), CssCounterStyleRangeBound::Integer(value) if value.literal().numeric().representation() == "+0007")
+        matches!(list.ranges()[0].lower(), CssCounterStyleRangeBound::Integer(value) if value.expect_literal().numeric().representation() == "+0007")
     );
     assert_eq!(
         list.ranges()[2].lower(),
@@ -302,29 +318,40 @@ fn counter_ranges_validate_mathematical_order_and_preserve_interval_order_and_in
 fn pad_and_additive_tuples_keep_nonnegative_exact_tokens_including_signed_zero() {
     for text in ["-0000", "+0", "+0007", "2147483648"] {
         let component = parse_component_values(text).unwrap().items()[0].clone();
-        let literal = CssIntegerLiteral::try_from_component(component.clone()).unwrap();
-        let pad =
-            CssCounterStylePad::try_new(CssIntegerValue::Literal(literal.clone()), symbol("_"))
-                .unwrap();
-        let tuple =
-            CssCounterAdditiveTuple::try_new(CssIntegerValue::Literal(literal), symbol("x"))
-                .unwrap();
+        let literal =
+            CssNumericLiteral::<CssInteger>::try_from_component(component.clone()).unwrap();
+        let pad = CssCounterStylePad::try_new(
+            CssNumeric::<CssInteger>::try_from_literal(literal.clone()).unwrap(),
+            symbol("_"),
+        )
+        .unwrap();
+        let tuple = CssCounterAdditiveTuple::try_new(
+            CssNumeric::<CssInteger>::try_from_literal(literal).unwrap(),
+            symbol("x"),
+        )
+        .unwrap();
         for value in [pad.minimum_length(), tuple.weight()] {
-            assert_eq!(value.literal().component(), &component);
-            assert_eq!(value.literal().numeric().representation(), text);
-            assert_eq!(value.literal().origin(), component.origin());
+            assert_eq!(value.expect_literal().component(), &component);
+            assert_eq!(value.expect_literal().numeric().representation(), text);
+            assert_eq!(value.expect_literal().origin(), component.origin());
         }
         assert!(matches!(pad.symbol(), CssCounterSymbol::String(value) if value.as_str() == "_"));
         assert!(matches!(tuple.symbol(), CssCounterSymbol::String(value) if value.as_str() == "x"));
     }
     for text in ["-1", "-2147483649"] {
         assert!(
-            CssCounterStylePad::try_new(CssIntegerValue::Literal(integer(text)), symbol("_"))
-                .is_none()
+            CssCounterStylePad::try_new(
+                CssNumeric::<CssInteger>::try_from_literal(integer(text)).unwrap(),
+                symbol("_")
+            )
+            .is_none()
         );
         assert!(
-            CssCounterAdditiveTuple::try_new(CssIntegerValue::Literal(integer(text)), symbol("x"))
-                .is_none()
+            CssCounterAdditiveTuple::try_new(
+                CssNumeric::<CssInteger>::try_from_literal(integer(text)).unwrap(),
+                symbol("x")
+            )
+            .is_none()
         );
     }
 }
@@ -332,8 +359,11 @@ fn pad_and_additive_tuples_keep_nonnegative_exact_tokens_including_signed_zero()
 #[test]
 fn additive_lists_require_strict_mathematical_descent_without_sorting_or_deduplication() {
     let tuple = |weight, text| {
-        CssCounterAdditiveTuple::try_new(CssIntegerValue::Literal(integer(weight)), symbol(text))
-            .unwrap()
+        CssCounterAdditiveTuple::try_new(
+            CssNumeric::<CssInteger>::try_from_literal(integer(weight)).unwrap(),
+            symbol(text),
+        )
+        .unwrap()
     };
     let input = vec![
         tuple("2147483649", "a"),
@@ -373,23 +403,29 @@ fn parsed_counter_fields_retain_huge_lexemes_exact_origins_and_descriptor_order(
         panic!("fixed system");
     };
     let start = fixed.first_symbol_value().unwrap();
-    assert_eq!(start.literal().numeric().representation(), "-0002147483649");
-    parsed_origin(start.literal().origin(), source, "-0002147483649");
+    assert_eq!(
+        start.expect_literal().numeric().representation(),
+        "-0002147483649"
+    );
+    parsed_origin(start.expect_literal().origin(), source, "-0002147483649");
     let CssCounterStyleRange::Ranges(ranges) = descriptors.range().unwrap().ordinary_range() else {
         panic!("finite range");
     };
     let CssCounterStyleRangeBound::Integer(lower) = ranges.ranges()[0].lower() else {
         panic!("finite lower bound");
     };
-    parsed_origin(lower.literal().origin(), source, "+0002147483648");
-    assert_eq!(lower.literal().numeric().representation(), "+0002147483648");
+    parsed_origin(lower.expect_literal().origin(), source, "+0002147483648");
+    assert_eq!(
+        lower.expect_literal().numeric().representation(),
+        "+0002147483648"
+    );
     assert_eq!(
         descriptors
             .pad()
             .unwrap()
             .ordinary_pad()
             .minimum_length()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "2147483648"
@@ -401,7 +437,7 @@ fn parsed_counter_fields_retain_huge_lexemes_exact_origins_and_descriptor_order(
             .ordinary_additive_symbols()
             .tuples()
             .iter()
-            .map(|value| value.weight().literal().numeric().representation())
+            .map(|value| value.weight().expect_literal().numeric().representation())
             .collect::<Vec<_>>(),
         ["2147483649", "2147483648"],
     );
@@ -481,40 +517,52 @@ fn steps_share_positive_literals_and_defer_calculation_range_with_authored_omiss
     for text in ["1", "+0001"] {
         assert!(
             CssSteps::try_new(
-                CssPositiveIntegerValue::Literal(positive(text)),
+                CssNumeric::<CssInteger, CssPositive>::try_from_literal(positive(text)).unwrap(),
                 Some(CssStepPosition::JumpNone)
             )
             .is_none()
         );
         assert!(
-            CssSteps::try_new(CssPositiveIntegerValue::Literal(positive(text)), None).is_some()
+            CssSteps::try_new(
+                CssNumeric::<CssInteger, CssPositive>::try_from_literal(positive(text)).unwrap(),
+                None
+            )
+            .is_some()
         );
     }
     for text in ["2", "2147483648"] {
         let steps = CssSteps::try_new(
-            CssPositiveIntegerValue::Literal(positive(text)),
+            CssNumeric::<CssInteger, CssPositive>::try_from_literal(positive(text)).unwrap(),
             Some(CssStepPosition::JumpNone),
         )
         .unwrap();
         assert!(
-            matches!(steps.count(), CssPositiveIntegerValue::Literal(value) if value.integer().numeric().representation() == text)
+            steps
+                .count()
+                .literal()
+                .is_some_and(|value| value.numeric().representation() == text)
         );
     }
     let components = parse_component_values("calc(1)").unwrap();
     let calculation =
-        CssIntegerCalculation::try_from_components(components.clone(), Default::default()).unwrap();
+        CssCalculation::<CssInteger>::try_from_components(components.clone(), Default::default())
+            .unwrap();
     let steps = CssSteps::try_new(
-        CssPositiveIntegerValue::Calculation(calculation),
+        CssNumeric::<CssInteger, CssPositive>::try_from_calculation(calculation).unwrap(),
         Some(CssStepPosition::JumpNone),
     )
     .unwrap();
-    let CssPositiveIntegerValue::Calculation(calculation) = steps.count() else {
+    let Some(calculation) = steps.count().calculation() else {
         panic!("symbolic count");
     };
     assert_eq!(calculation.components(), &components);
-    let omitted = CssSteps::try_new(CssPositiveIntegerValue::Literal(positive("2")), None).unwrap();
+    let omitted = CssSteps::try_new(
+        CssNumeric::<CssInteger, CssPositive>::try_from_literal(positive("2")).unwrap(),
+        None,
+    )
+    .unwrap();
     let explicit = CssSteps::try_new(
-        CssPositiveIntegerValue::Literal(positive("2")),
+        CssNumeric::<CssInteger, CssPositive>::try_from_literal(positive("2")).unwrap(),
         Some(CssStepPosition::End),
     )
     .unwrap();
@@ -539,42 +587,51 @@ fn steps_classify_bare_calculation_tokens_without_losing_authored_components_or_
         .unwrap()
         .clone();
     let steps = CssSteps::try_new(
-        CssPositiveIntegerValue::Calculation(
-            CssIntegerCalculation::try_from_components(components, Default::default()).unwrap(),
-        ),
+        CssNumeric::<CssInteger, CssPositive>::try_from_calculation(
+            CssCalculation::<CssInteger>::try_from_components(components, Default::default())
+                .unwrap(),
+        )
+        .unwrap(),
         Some(CssStepPosition::JumpNone),
     )
     .unwrap();
-    let CssPositiveIntegerValue::Literal(literal) = steps.count() else {
+    let Some(literal) = steps.count().literal() else {
         panic!("ordinary bare integer root");
     };
-    assert_eq!(literal.integer().component(), &original);
-    assert_eq!(literal.integer().numeric().representation(), "+0002");
-    parsed_origin(literal.integer().origin(), source, "+0002");
+    assert_eq!(literal.component(), &original);
+    assert_eq!(literal.numeric().representation(), "+0002");
+    parsed_origin(literal.origin(), source, "+0002");
     assert_eq!(steps.position(), Some(CssStepPosition::JumpNone));
 
     let bare = CssSteps::try_new(
-        CssPositiveIntegerValue::Calculation(CssIntegerCalculation::literal(2)),
+        CssNumeric::<CssInteger, CssPositive>::try_from_calculation(
+            CssCalculation::<CssInteger>::literal(2),
+        )
+        .unwrap(),
         None,
     )
     .unwrap();
-    let CssPositiveIntegerValue::Literal(literal) = bare.count() else {
+    let Some(literal) = bare.count().literal() else {
         panic!("programmatic bare integer root");
     };
-    assert_eq!(literal.integer().component(), integer("2").component());
-    assert_eq!(literal.integer().origin(), &CssValueOrigin::Programmatic);
+    assert_eq!(literal.component(), integer("2").component());
+    assert_eq!(literal.origin(), &CssValueOrigin::Programmatic);
 
     for source in ["calc(0)", "calc(-1)", "calc(1)"] {
         let components = parse_component_values(source).unwrap();
         let steps = CssSteps::try_new(
-            CssPositiveIntegerValue::Calculation(
-                CssIntegerCalculation::try_from_components(components.clone(), Default::default())
-                    .unwrap(),
-            ),
+            CssNumeric::<CssInteger, CssPositive>::try_from_calculation(
+                CssCalculation::<CssInteger>::try_from_components(
+                    components.clone(),
+                    Default::default(),
+                )
+                .unwrap(),
+            )
+            .unwrap(),
             Some(CssStepPosition::JumpNone),
         )
         .unwrap();
-        let CssPositiveIntegerValue::Calculation(calculation) = steps.count() else {
+        let Some(calculation) = steps.count().calculation() else {
             panic!("genuine symbolic function");
         };
         assert_eq!(calculation.components(), &components);
@@ -603,12 +660,12 @@ fn parsed_steps_keep_count_origins_symbolic_math_and_position_omission() {
             steps
         })
         .collect::<Vec<_>>();
-    let CssPositiveIntegerValue::Literal(first) = steps[0].count() else {
+    let Some(first) = steps[0].count().literal() else {
         panic!("ordinary count");
     };
-    assert_eq!(first.integer().numeric().representation(), "+0002");
-    parsed_origin(first.integer().origin(), source, "+0002");
-    let CssPositiveIntegerValue::Calculation(calculation) = steps[1].count() else {
+    assert_eq!(first.numeric().representation(), "+0002");
+    parsed_origin(first.origin(), source, "+0002");
+    let Some(calculation) = steps[1].count().calculation() else {
         panic!("math count");
     };
     parsed_origin(calculation.expression().origin(), source, "calc(");
@@ -622,7 +679,10 @@ fn parsed_steps_keep_count_origins_symbolic_math_and_position_omission() {
     );
     assert_eq!(steps[1].position(), Some(CssStepPosition::JumpNone));
     assert!(
-        matches!(steps[2].count(), CssPositiveIntegerValue::Literal(value) if value.integer().numeric().representation() == "2147483648")
+        steps[2]
+            .count()
+            .literal()
+            .is_some_and(|value| value.numeric().representation() == "2147483648")
     );
     assert_eq!(steps[2].position(), None);
     assert_eq!(steps[3].position(), Some(CssStepPosition::End));

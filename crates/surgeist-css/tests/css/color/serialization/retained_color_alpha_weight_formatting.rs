@@ -983,7 +983,7 @@ fn custom_alpha(calculation: CssColorComponent) -> CssColor {
 fn checked_number_alpha_retains_parsed_graph_kind_and_source() {
     let raw = components("calc(.0078125 * 1em / 1px)");
     let calculation =
-        CssNumberCalculation::try_from_components(raw.clone(), Default::default()).unwrap();
+        CssCalculation::<CssNumber>::try_from_components(raw.clone(), Default::default()).unwrap();
     assert_eq!(calculation.result_type(), CssCalculationType::Number);
     assert_eq!(calculation.components(), &raw);
     assert_eq!(calculation.expression().origin(), raw.items()[0].origin());
@@ -1007,7 +1007,8 @@ fn checked_number_alpha_retains_parsed_graph_kind_and_source() {
 fn checked_percentage_alpha_retains_authored_dimension_and_scaling_graph() {
     let raw = components("calc(.78125%)");
     let calculation =
-        CssPercentageCalculation::try_from_components(raw.clone(), Default::default()).unwrap();
+        CssCalculation::<CssPercentage>::try_from_components(raw.clone(), Default::default())
+            .unwrap();
     assert_eq!(calculation.result_type(), CssCalculationType::Percentage);
     assert_eq!(calculation.components(), &raw);
     let value = custom_alpha(CssColorComponent::PercentageCalculation(
@@ -1042,7 +1043,7 @@ fn programmatic_number_alpha_has_the_same_retained_coefficient_policy() {
     )
     .unwrap();
     let calculation =
-        CssNumberCalculation::try_from_components(raw.clone(), Default::default()).unwrap();
+        CssCalculation::<CssNumber>::try_from_components(raw.clone(), Default::default()).unwrap();
     assert_eq!(
         calculation.expression().origin(),
         &CssValueOrigin::Programmatic
@@ -1071,7 +1072,8 @@ fn mixed_origin_calculated_weight_retains_the_actual_leaf_source() {
     )
     .unwrap();
     let calculation =
-        CssPercentageCalculation::try_from_components(raw.clone(), Default::default()).unwrap();
+        CssCalculation::<CssPercentage>::try_from_components(raw.clone(), Default::default())
+            .unwrap();
     assert_eq!(calculation.origin(), &CssValueOrigin::Programmatic);
     let mut expression = calculation.expression();
     loop {
@@ -1173,7 +1175,7 @@ fn alpha_and_weight_substitutions_remain_pending_contributions() {
         ));
         assert_eq!(value, before);
     }
-    let error = CssPercentageCalculation::try_from_components(
+    let error = CssCalculation::<CssPercentage>::try_from_components(
         components("calc(var(--w) + .0078125%)"),
         Default::default(),
     )

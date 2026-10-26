@@ -7,6 +7,7 @@
 //! https://www.w3.org/TR/2026/WD-css-transitions-1-20260108/#transition-property-property
 //! https://www.w3.org/TR/2026/WD-css-transitions-1-20260108/#transition-shorthand-property
 
+use crate::css::support::value_assertions::checked_range;
 use crate::css::support::value_assertions::validated_sole_declaration as declaration;
 use surgeist_css::*;
 
@@ -70,7 +71,7 @@ fn assert_transition_name(authored: &str, decoded: &str) {
         item.property(),
         Some(CssTransitionProperty::Custom(name)) if name.as_str() == decoded
     ));
-    let duration = item.duration().unwrap().time().literal().unwrap();
+    let duration = item.duration().unwrap().literal().unwrap();
     assert_eq!(duration.numeric().representation(), "1");
     assert_eq!(duration.unit(), CssTimeUnit::Seconds);
     assert!(item.delay().is_none());
@@ -100,7 +101,7 @@ fn assert_animation_shorthand_name(authored: &str, decoded: &str) {
         item.name(),
         Some(CssAnimationName::Custom(name)) if name.as_str() == decoded
     ));
-    let duration = item.duration().unwrap().time().literal().unwrap();
+    let duration = item.duration().unwrap().literal().unwrap();
     assert_eq!(duration.numeric().representation(), "1");
     assert_eq!(duration.unit(), CssTimeUnit::Seconds);
     assert!(item.delay().is_none());
@@ -229,11 +230,13 @@ fn grid_tracks(value: &str) -> CssGridTrackList {
 }
 
 fn one_second_transition(property: CssTransitionProperty) -> CssTransition {
-    let time =
-        CssTimeValue::from_literal(CssTimeLiteral::try_new("1", CssTimeUnit::Seconds).unwrap());
+    let time = CssNumeric::<CssTime>::try_from_literal(
+        CssNumericLiteral::<CssTime>::try_new("1", CssTimeUnit::Seconds).unwrap(),
+    )
+    .unwrap();
     CssTransition::try_new(
         Some(property),
-        Some(CssDuration::try_new(time).unwrap()),
+        Some(checked_range::<CssTime, CssNonNegative>(&time).unwrap()),
         None,
         None,
     )

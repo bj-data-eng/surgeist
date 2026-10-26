@@ -9,7 +9,9 @@
 //! specified value; the prose additionally gives contextual rules for `auto`.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{CssDuration, CssNumericConstructionError, CssSerializationError, CssTimeValue};
+use crate::{
+    CssNonNegative, CssNumeric, CssNumericConstructionError, CssSerializationError, CssTime,
+};
 
 /// Whether an element is authored to participate in speech rendering.
 ///
@@ -197,7 +199,7 @@ impl CssSpeechBreakStrength {
 
 /// One authored pause or rest, retaining a strength, `none`, or checked duration.
 ///
-/// Ordinary times are nonnegative under [`CssDuration`]'s exact lexical rule;
+/// Ordinary times are nonnegative under [`CssNumeric<CssTime, CssNonNegative>`]'s exact lexical rule;
 /// calculations remain authored until computed range handling downstream.
 /// `none` is preserved separately from an explicit zero time. This model does
 /// not assign strength durations or execute pause collapse or additive rests.
@@ -210,18 +212,18 @@ impl CssSpeechBreakStrength {
 pub enum CssSpeechBreak {
     None,
     Strength(CssSpeechBreakStrength),
-    Time(CssDuration),
+    Time(CssNumeric<CssTime, CssNonNegative>),
 }
 
 impl CssSpeechBreak {
-    /// Checks ordinary time range and original closure through the duration owner.
-    pub fn try_time(time: CssTimeValue) -> Result<Self, CssNumericConstructionError> {
-        CssDuration::try_new(time).map(Self::Time)
+    /// Checks the nonnegative range of an ordinary time and the closure of original math.
+    pub fn try_time(time: CssNumeric<CssTime>) -> Result<Self, CssNumericConstructionError> {
+        time.try_narrow_checked().map(Self::Time)
     }
 
     fn ensure_closed(&self) -> Result<(), CssNumericConstructionError> {
         match self {
-            Self::Time(duration) => duration.time().ensure_closed(),
+            Self::Time(duration) => duration.ensure_closed(),
             _ => Ok(()),
         }
     }
@@ -811,51 +813,27 @@ pub(crate) fn reserved_voice_identifier(value: &str) -> bool {
 pub struct CssGenericVoice {
     age: Option<CssVoiceAge>,
     gender: CssVoiceGender,
-    variant: Option<crate::CssPositiveIntegerValue>,
+    variant: Option<crate::CssNumeric<crate::CssInteger, crate::CssPositive>>,
 }
+
 impl CssGenericVoice {
     /// Constructs a generic voice without selecting an installed voice.
-    /// Bare calculation literals also pass exact positivity validation.
+    /// The variant's own type checks positivity; recovered variant math is rejected.
     pub fn try_new(
         age: Option<CssVoiceAge>,
         gender: CssVoiceGender,
-        variant: Option<crate::CssPositiveIntegerValue>,
+        variant: Option<crate::CssNumeric<crate::CssInteger, crate::CssPositive>>,
     ) -> Result<Self, CssNumericConstructionError> {
-        if let Some(crate::CssPositiveIntegerValue::Calculation(value)) = &variant
-            && let Some(origin) = value.components().first_implicit_origin()
-        {
-            return Err(CssNumericConstructionError::at_origin(
-                crate::CssNumericConstructionErrorKind::RecoveredComponent,
-                origin.clone(),
-            ));
+        if let Some(value) = &variant {
+            value.ensure_closed()?;
         }
         Self::from_parser(age, gender, variant)
     }
     pub(crate) fn from_parser(
         age: Option<CssVoiceAge>,
         gender: CssVoiceGender,
-        mut variant: Option<crate::CssPositiveIntegerValue>,
+        variant: Option<crate::CssNumeric<crate::CssInteger, crate::CssPositive>>,
     ) -> Result<Self, CssNumericConstructionError> {
-        if let Some(crate::CssPositiveIntegerValue::Calculation(value)) = &variant {
-            let root = crate::specified_numeric::significant_root(value.components())?;
-            if matches!(root.view(), crate::CssComponentValueRef::Token(_)) {
-                let integer =
-                    crate::CssIntegerLiteral::try_from_component(root.clone()).map_err(|_| {
-                        CssNumericConstructionError::at(
-                            crate::CssNumericConstructionErrorKind::RootDomainMismatch,
-                            Some(root),
-                        )
-                    })?;
-                let positive =
-                    crate::CssPositiveIntegerLiteral::try_new(integer).ok_or_else(|| {
-                        CssNumericConstructionError::at(
-                            crate::CssNumericConstructionErrorKind::OutOfRange,
-                            Some(root),
-                        )
-                    })?;
-                variant = Some(crate::CssPositiveIntegerValue::Literal(positive));
-            }
-        }
         Ok(Self {
             age,
             gender,
@@ -872,7 +850,9 @@ impl CssGenericVoice {
     }
     /// `None` retains omission of the variant, independently of variant `1`.
     #[must_use]
-    pub const fn variant(&self) -> Option<&crate::CssPositiveIntegerValue> {
+    pub const fn variant(
+        &self,
+    ) -> Option<&crate::CssNumeric<crate::CssInteger, crate::CssPositive>> {
         self.variant.as_ref()
     }
 }
@@ -893,10 +873,11 @@ impl CssVoiceFamilyList {
     /// Rejects an empty list or an originally recovered variant calculation.
     #[must_use]
     pub fn try_new(entries: Vec<CssVoiceFamilyEntry>) -> Option<Self> {
-        if entries.iter().any(|entry| matches!(entry,
+        if entries.iter().any(|entry| {
+            matches!(entry,
             CssVoiceFamilyEntry::Generic(value)
-                if matches!(value.variant(), Some(crate::CssPositiveIntegerValue::Calculation(value))
-                    if value.components().first_implicit_origin().is_some()))) {
+                if value.variant().is_some_and(|value| value.first_implicit_origin().is_some()))
+        }) {
             return None;
         }
         Self::from_parser(entries)
@@ -960,16 +941,7 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssVoiceFamily {
                             writer.append(value.gender.keyword())?;
                             if let Some(variant) = &value.variant {
                                 writer.append(" ")?;
-                                match variant {
-                                    crate::CssPositiveIntegerValue::Literal(value) => value
-                                        .integer()
-                                        .append_specified(&mut writer.context, &mut writer.css)?,
-                                    crate::CssPositiveIntegerValue::Calculation(value) => value
-                                        .serialize_specified_into(
-                                            &mut writer.context,
-                                            &mut writer.css,
-                                        )?,
-                                }
+                                variant.append_specified(&mut writer.context, &mut writer.css)?;
                             }
                         }
                     }
@@ -990,12 +962,13 @@ crate::specified_rule_serialization::specified_serialization!(CssVoiceFamily);
 #[non_exhaustive]
 pub enum CssVoiceDuration {
     Auto,
-    Time(CssDuration),
+    Time(CssNumeric<CssTime, CssNonNegative>),
 }
+
 impl CssVoiceDuration {
     /// Checks ordinary nonnegativity and original calculation closure.
-    pub fn try_time(time: CssTimeValue) -> Result<Self, CssNumericConstructionError> {
-        CssDuration::try_new(time).map(Self::Time)
+    pub fn try_time(time: CssNumeric<CssTime>) -> Result<Self, CssNumericConstructionError> {
+        time.try_narrow_checked().map(Self::Time)
     }
 }
 impl crate::specified_rule_serialization::SpecifiedProvider for CssVoiceDuration {
@@ -1112,17 +1085,17 @@ crate::specified_rule_serialization::specified_serialization!(CssSemitoneLiteral
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceOffset {
-    Frequency(crate::CssFrequencyValue),
+    Frequency(crate::CssNumeric<crate::CssFrequency>),
     Semitones(CssSemitoneLiteral),
-    Percentage(crate::CssSpecifiedPercentage),
+    Percentage(crate::CssNumeric<crate::CssPercentage>),
     /// Typed math permits frequency and percentage against an unresolved frequency basis.
-    Calculation(crate::CssFrequencyPercentageCalculation),
+    Calculation(crate::CssCalculation<crate::CssFrequencyPercentage>),
 }
 impl CssVoiceOffset {
     /// Requires original closure and normalizes an ordinary calculation root back
     /// into the corresponding frequency/percentage literal owner.
     pub fn try_from_calculation(
-        value: crate::CssFrequencyPercentageCalculation,
+        value: crate::CssCalculation<crate::CssFrequencyPercentage>,
     ) -> Result<Self, CssNumericConstructionError> {
         if let Some(origin) = value.components().first_implicit_origin() {
             return Err(CssNumericConstructionError::at_origin(
@@ -1141,7 +1114,8 @@ impl CssVoiceOffset {
     ) -> Result<Self, CssNumericConstructionError> {
         match component.view() {
             crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(_)) => {
-                crate::CssSpecifiedPercentage::try_from_component(component).map(Self::Percentage)
+                crate::CssNumeric::<crate::CssPercentage>::try_from_component(component)
+                    .map(Self::Percentage)
             }
             crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension {
                 unit, ..
@@ -1150,8 +1124,8 @@ impl CssVoiceOffset {
                     .map(Self::Semitones)
                     .map_err(CssNumericConstructionError::component)
             }
-            _ => crate::CssFrequencyLiteral::try_from_component(component)
-                .map(crate::CssFrequencyValue::from_literal)
+            _ => crate::CssNumericLiteral::<crate::CssFrequency>::from_component_token(component)
+                .map(crate::CssNumeric::<crate::CssFrequency>::from_literal)
                 .map(Self::Frequency)
                 .map_err(CssNumericConstructionError::component),
         }
@@ -1167,9 +1141,9 @@ impl CssVoiceOffset {
             .map_err(CssNumericConstructionError::component)?;
         let expression =
             context.admit(values, crate::numeric::CalculationRoot::FrequencyPercentage)?;
-        Ok(Self::Calculation(
-            crate::CssFrequencyPercentageCalculation::from_expression(expression),
-        ))
+        Ok(Self::Calculation(crate::CssCalculation::<
+            crate::CssFrequencyPercentage,
+        >::from_expression(expression)))
     }
     fn ensure_closed(&self) -> Result<(), CssNumericConstructionError> {
         let components = match self {
@@ -1177,7 +1151,7 @@ impl CssVoiceOffset {
             Self::Semitones(_) => None,
             Self::Percentage(value) => value
                 .calculation()
-                .map(crate::CssPercentageCalculation::components),
+                .map(crate::CssCalculation::<crate::CssPercentage>::components),
             Self::Calculation(value) => Some(value.components()),
         };
         if let Some(origin) = components.and_then(crate::CssComponentValues::first_implicit_origin)
@@ -1209,7 +1183,7 @@ impl CssVoiceOffset {
 
 #[derive(Clone, Debug, PartialEq)]
 enum VoicePitchRangeState {
-    Absolute(crate::CssFrequencyValue),
+    Absolute(crate::CssNumeric<crate::CssFrequency>),
     Relative {
         level: Option<CssVoiceLevel>,
         offset: Option<CssVoiceOffset>,
@@ -1233,13 +1207,13 @@ impl CssVoicePitchRange {
     /// Requires strictly positive ordinary absolute frequency. Typed frequency
     /// calculations retain their authored range for downstream processing.
     pub fn try_absolute(
-        value: crate::CssFrequencyValue,
+        value: crate::CssNumeric<crate::CssFrequency>,
     ) -> Result<Self, CssNumericConstructionError> {
         value.ensure_closed()?;
         Self::from_parser_absolute(value)
     }
     pub(crate) fn from_parser_absolute(
-        value: crate::CssFrequencyValue,
+        value: crate::CssNumeric<crate::CssFrequency>,
     ) -> Result<Self, CssNumericConstructionError> {
         if let Some(literal) = value.literal() {
             let coefficient =
@@ -1290,7 +1264,7 @@ impl CssVoicePitchRange {
         }
     }
     #[must_use]
-    pub const fn absolute_frequency(&self) -> Option<&crate::CssFrequencyValue> {
+    pub const fn absolute_frequency(&self) -> Option<&crate::CssNumeric<crate::CssFrequency>> {
         match &self.state {
             VoicePitchRangeState::Absolute(value) => Some(value),
             VoicePitchRangeState::Relative { .. } => None,
@@ -1323,7 +1297,9 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssVoicePitchRan
                 value.append_specified(&mut writer.context, &mut writer.css)?;
                 if let Some(literal) = value.literal() {
                     let coefficient = writer.css[start..]
-                        .strip_suffix(crate::frequency::suffix(literal.unit()))
+                        .strip_suffix(crate::numeric::units::suffix(
+                            crate::CssNumericUnit::Frequency(literal.unit()),
+                        ))
                         .expect("frequency provider emits its selected canonical unit");
                     if crate::exact_decimal::LexicalDecimal::new(coefficient).is_zero() {
                         return Err(CssSerializationError::new(
@@ -1385,16 +1361,17 @@ impl CssVoiceRateKeyword {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssVoiceRate {
     keyword: Option<CssVoiceRateKeyword>,
-    percentage: Option<crate::CssSpecifiedNonNegativePercentage>,
+    percentage: Option<crate::CssNumeric<crate::CssPercentage, crate::CssNonNegative>>,
 }
+
 impl CssVoiceRate {
     pub fn try_new(
         keyword: Option<CssVoiceRateKeyword>,
-        percentage: Option<crate::CssSpecifiedNonNegativePercentage>,
+        percentage: Option<crate::CssNumeric<crate::CssPercentage, crate::CssNonNegative>>,
     ) -> Result<Self, CssNumericConstructionError> {
         if let Some(value) = percentage
             .as_ref()
-            .and_then(crate::CssSpecifiedNonNegativePercentage::calculation)
+            .and_then(crate::CssNumeric::<crate::CssPercentage, crate::CssNonNegative>::calculation)
             && let Some(origin) = value.components().first_implicit_origin()
         {
             return Err(CssNumericConstructionError::at_origin(
@@ -1406,7 +1383,7 @@ impl CssVoiceRate {
     }
     pub(crate) fn from_parser(
         keyword: Option<CssVoiceRateKeyword>,
-        percentage: Option<crate::CssSpecifiedNonNegativePercentage>,
+        percentage: Option<crate::CssNumeric<crate::CssPercentage, crate::CssNonNegative>>,
     ) -> Result<Self, CssNumericConstructionError> {
         if keyword.is_none() && percentage.is_none() {
             return Err(CssNumericConstructionError::at(
@@ -1431,7 +1408,9 @@ impl CssVoiceRate {
         self.keyword
     }
     #[must_use]
-    pub const fn percentage(&self) -> Option<&crate::CssSpecifiedNonNegativePercentage> {
+    pub const fn percentage(
+        &self,
+    ) -> Option<&crate::CssNumeric<crate::CssPercentage, crate::CssNonNegative>> {
         self.percentage.as_ref()
     }
 }
@@ -1490,7 +1469,7 @@ impl CssVoiceBalanceKeyword {
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum VoiceBalanceState {
     Keyword(CssVoiceBalanceKeyword),
-    Number(crate::CssSpecifiedNumber),
+    Number(crate::CssNumeric<crate::CssNumber>),
 }
 /// Exact authored balance keyword or unrestricted pure Number value.
 /// Specified admission does not clamp numbers or resolve inherited adjustments.
@@ -1511,14 +1490,14 @@ impl CssVoiceBalance {
     }
     /// Retains pure Number syntax, rejecting original recovered math closure.
     /// Percentage values cannot cross this Number-only construction boundary.
-    /// ```compile_fail
-    /// use surgeist_css::{CssComponentValue, CssSpecifiedPercentage, CssVoiceBalance};
-    /// let percentage = CssSpecifiedPercentage::try_from_component(
+    /// ```compile_fail,E0308
+    /// use surgeist_css::{CssComponentValue, CssNumeric, CssPercentage, CssVoiceBalance};
+    /// let percentage = CssNumeric::<CssPercentage>::try_from_component(
     ///     CssComponentValue::try_percentage("50").unwrap()).unwrap();
     /// CssVoiceBalance::try_number(percentage);
     /// ```
     pub fn try_number(
-        number: crate::CssSpecifiedNumber,
+        number: crate::CssNumeric<crate::CssNumber>,
     ) -> Result<Self, CssNumericConstructionError> {
         if let Some(value) = number.calculation()
             && let Some(origin) = value.components().first_implicit_origin()
@@ -1530,7 +1509,7 @@ impl CssVoiceBalance {
         }
         Ok(Self::from_parser_number(number))
     }
-    pub(crate) const fn from_parser_number(number: crate::CssSpecifiedNumber) -> Self {
+    pub(crate) const fn from_parser_number(number: crate::CssNumeric<crate::CssNumber>) -> Self {
         Self {
             state: VoiceBalanceState::Number(number),
         }
@@ -1543,7 +1522,7 @@ impl CssVoiceBalance {
         }
     }
     #[must_use]
-    pub const fn number(&self) -> Option<&crate::CssSpecifiedNumber> {
+    pub const fn number(&self) -> Option<&crate::CssNumeric<crate::CssNumber>> {
         match &self.state {
             VoiceBalanceState::Number(value) => Some(value),
             VoiceBalanceState::Keyword(_) => None,

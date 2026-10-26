@@ -69,12 +69,12 @@ fn typed_axes_preserve_offset_origin_and_symbolic_values() {
         "-1px -2%"
     );
 
-    let calculation = CssLengthPercentageCalculation::try_from_components(
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
         parse_component_values("calc(1px + 5%)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let offset = CssSpecifiedLengthPercentage::try_from_calculation(calculation).unwrap();
+    let offset = CssNumeric::<CssLengthPercentage>::try_from_calculation(calculation).unwrap();
     let symbolic = CssPhysicalPosition::try_new(H::Offset(offset), V::Center).unwrap();
     assert_eq!(
         symbolic.serialize_specified(Default::default()).unwrap(),
@@ -169,11 +169,13 @@ fn typed_math_projection_is_cumulative_across_both_axes() {
     );
 }
 
-fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
+fn signed_length_percentage(
+    css: &str,
+) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage> {
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(
+        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_calculation(
+            surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(
                 components,
                 Default::default(),
             )
@@ -181,7 +183,7 @@ fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercen
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_component(
+        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_component(
             surgeist_css::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()

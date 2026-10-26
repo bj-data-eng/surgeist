@@ -5,14 +5,15 @@
 
 use surgeist_color::PredefinedColorSpace;
 use surgeist_css::{
-    CssColorComponent, CssColorConstructionError, CssColorHue, CssColorNumberLiteral,
-    CssColorProfileName, CssColorSyntax, CssComponentValue, CssContainerCondition,
-    CssContainerConditionKind, CssContainerFeatureQuery, CssContainerRatioRef, CssCustomColor,
-    CssDeviceCmykColor, CssHslColor, CssHwbColor, CssLabColor, CssLchColor, CssMediaRangeRef,
-    CssNumberCalculation, CssPredefinedColor, CssRgbColor, parse_component_values,
+    CssCalculation, CssColorComponent, CssColorConstructionError, CssColorHue,
+    CssColorNumberLiteral, CssColorProfileName, CssColorSyntax, CssComponentValue,
+    CssContainerCondition, CssContainerConditionKind, CssContainerFeatureQuery,
+    CssContainerRatioRef, CssCustomColor, CssDeviceCmykColor, CssHslColor, CssHwbColor,
+    CssLabColor, CssLchColor, CssMediaRangeRef, CssNumber, CssPredefinedColor, CssRgbColor,
+    parse_component_values,
 };
 
-fn container_number(expression: &str) -> CssNumberCalculation {
+fn container_number(expression: &str) -> CssCalculation<CssNumber> {
     let source = format!("(aspect-ratio: {expression})");
     let condition = CssContainerCondition::try_from_components(
         parse_component_values(&source).unwrap(),
@@ -34,7 +35,7 @@ fn container_number(expression: &str) -> CssNumberCalculation {
 }
 
 fn rgb_with_calculation(
-    calculation: CssNumberCalculation,
+    calculation: CssCalculation<CssNumber>,
 ) -> Result<CssRgbColor, CssColorConstructionError> {
     let zero =
         CssColorNumberLiteral::try_from_component(CssComponentValue::try_number("0").unwrap())
@@ -63,7 +64,7 @@ fn rgb_constructor_rejects_container_tree_counting_calculations() {
     ] {
         let calculation = container_number(expression);
         assert!(
-            CssNumberCalculation::try_from_components(
+            CssCalculation::<CssNumber>::try_from_components(
                 parse_component_values(expression).unwrap(),
                 Default::default()
             )
@@ -84,7 +85,7 @@ fn rgb_constructor_rejects_container_tree_counting_calculations() {
 #[test]
 fn rgb_constructor_accepts_pure_number_calculations() {
     for expression in ["calc(1 + 2)", "max(1, 2)"] {
-        let calculation = CssNumberCalculation::try_from_components(
+        let calculation = CssCalculation::<CssNumber>::try_from_components(
             parse_component_values(expression).unwrap(),
             Default::default(),
         )

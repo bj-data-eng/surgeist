@@ -18,8 +18,11 @@ fn first_object_position_percent(source: &str) -> String {
     let CssHorizontalPosition::Offset(offset) = value.position().horizontal() else {
         panic!("expected percentage offset");
     };
-    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) =
-        offset.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = offset
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("expected percentage length");
     };
@@ -46,7 +49,10 @@ fn parsed_gradient_stop_keeps_authored_thirty_percent() {
         panic!("expected first color stop");
     };
     assert!(exact_percentage(
-        stop.position().unwrap().literal_component(),
+        stop.position()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component()),
         "30"
     ));
 }
@@ -77,8 +83,11 @@ fn checked_object_position_percent(components: CssComponentValues) -> String {
     let CssHorizontalPosition::Offset(offset) = value.position().horizontal() else {
         panic!("expected checked percentage offset");
     };
-    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) =
-        offset.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = offset
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("expected checked percentage length");
     };
@@ -151,7 +160,7 @@ fn transform_scale_keeps_authored_thirty_percent() {
         panic!("expected scale3d");
     };
     assert!(
-        matches!(scale.y(), CssTransformScaleComponent::Percentage(number) if exact_percentage(number.literal_component(), "30"))
+        matches!(scale.y(), CssTransformScaleComponent::Percentage(number) if exact_percentage(number.literal().map(|literal| literal.component()), "30"))
     );
 }
 
@@ -171,7 +180,7 @@ fn filter_amount_keeps_authored_thirty_percent() {
         panic!("expected filter functions");
     };
     assert!(
-        matches!(&functions.functions()[0], CssFilterFunction::Grayscale(CssFilterAmount::Percentage(number)) if exact_percentage(number.literal_component(), "30"))
+        matches!(&functions.functions()[0], CssFilterFunction::Grayscale(CssFilterAmount::Percentage(number)) if exact_percentage(number.literal().map(|literal| literal.component()), "30"))
     );
 }
 
@@ -188,7 +197,7 @@ fn border_image_slice_keeps_authored_thirty_percent() {
         panic!("expected border-image-slice");
     };
     assert!(
-        matches!(&slice.slice().values()[0], CssBorderImageSliceComponent::Percentage(number) if exact_percentage(number.literal_component(), "30"))
+        matches!(&slice.slice().values()[0], CssBorderImageSliceComponent::Percentage(number) if exact_percentage(number.literal().map(|literal| literal.component()), "30"))
     );
 }
 

@@ -65,13 +65,13 @@ fn query_numeric_constructors_preserve_finite_nonnegative_values_and_authored_un
     assert_eq!(CssRatio::try_new(f32::INFINITY, 1.0), None);
 
     assert_eq!(
-        CssResolutionLiteral::try_new("2", CssResolutionUnit::Dppx)
+        CssNumericLiteral::<CssResolution>::try_new("2", CssResolutionUnit::Dppx)
             .unwrap()
             .unit(),
         CssResolutionUnit::Dppx
     );
-    assert!(CssResolutionLiteral::try_new("0", CssResolutionUnit::Dpi).is_ok());
-    assert!(CssResolutionLiteral::try_new("NaN", CssResolutionUnit::Dpi).is_err());
+    assert!(CssNumericLiteral::<CssResolution>::try_new("0", CssResolutionUnit::Dpi).is_ok());
+    assert!(CssNumericLiteral::<CssResolution>::try_new("NaN", CssResolutionUnit::Dpi).is_err());
 }
 
 #[test]

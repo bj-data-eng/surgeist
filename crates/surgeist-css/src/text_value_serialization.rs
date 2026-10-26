@@ -170,11 +170,11 @@ mod tests {
     use super::*;
     use crate::CssSerializationLimits as L;
     use crate::specified_rule_serialization::SpecifiedProvider as _;
-    use crate::{CssColor, CssSpecifiedLengthPercentage, CssTextDecorationStyle};
+    use crate::{CssColor, CssLengthPercentage, CssNumeric, CssTextDecorationStyle};
     use CssSpecifiedValueSerializationErrorKind as K;
 
-    fn length() -> CssSpecifiedLengthPercentage {
-        CssSpecifiedLengthPercentage::try_from_component(
+    fn length() -> CssNumeric<CssLengthPercentage> {
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             crate::CssComponentValue::try_token("-1px").unwrap(),
         )
         .unwrap()
@@ -286,8 +286,8 @@ mod tests {
 
     #[test]
     fn suppressed_thickness_and_indent_math_still_project_every_numeric_child() {
-        let number = CssSpecifiedLengthPercentage::try_from_calculation(
-            crate::CssLengthPercentageCalculation::try_from_components(
+        let number = CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            crate::CssCalculation::<crate::CssLengthPercentage>::try_from_components(
                 crate::parse_component_values("calc(1px + 2px)").unwrap(),
                 Default::default(),
             )
@@ -358,22 +358,22 @@ mod tests {
     #[test]
     fn tab_size_numeric_carriers_share_existing_work_and_suppression_without_aggregate_cost() {
         let number = CssTabSize::Number(
-            crate::CssSpecifiedNonNegativeNumber::try_from_component(
+            crate::CssNumeric::<crate::CssNumber, crate::CssNonNegative>::try_from_component(
                 crate::CssComponentValue::try_number("8").unwrap(),
             )
             .unwrap(),
         );
         shared("8", 1, 1, |w| number.append_to_rule_writer(w));
         let length = CssTabSize::Length(
-            crate::CssSpecifiedNonNegativeLength::try_from_component(
+            crate::CssNumeric::<crate::CssLength, crate::CssNonNegative>::try_from_component(
                 crate::CssComponentValue::try_dimension("0", "px").unwrap(),
             )
             .unwrap(),
         );
         shared("0px", 1, 1, |w| length.append_to_rule_writer(w));
         let math = CssTabSize::Length(
-            crate::CssSpecifiedNonNegativeLength::try_from_calculation(
-                crate::CssLengthCalculation::try_from_components(
+            crate::CssNumeric::<crate::CssLength, crate::CssNonNegative>::try_from_calculation(
+                crate::CssCalculation::<crate::CssLength>::try_from_components(
                     crate::parse_component_values("calc(1px + 2em)").unwrap(),
                     Default::default(),
                 )

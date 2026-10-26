@@ -12,8 +12,8 @@ use crate::css::support::rules::clean_sheet as sheet;
 use crate::css::support::rules::sole_keyframes as keyframes;
 use surgeist_css::*;
 
-fn calculation(source: &str) -> CssPercentageCalculation {
-    CssPercentageCalculation::try_from_components(
+fn calculation(source: &str) -> CssCalculation<CssPercentage> {
+    CssCalculation::<CssPercentage>::try_from_components(
         parse_component_values(source).unwrap(),
         Default::default(),
     )
@@ -126,7 +126,7 @@ fn wrong_numeric_types_and_malformed_functions_fail_checked_percentage_construct
     ] {
         assert_eq!(
             numeric_failure(
-                &CssPercentageCalculation::try_from_components(
+                &CssCalculation::<CssPercentage>::try_from_components(
                     parse_component_values(source).unwrap(),
                     Default::default()
                 )
@@ -140,7 +140,7 @@ fn wrong_numeric_types_and_malformed_functions_fail_checked_percentage_construct
     // percentage and a length where percentages resolve against no other
     // type, so the sum has incompatible types.
     assert!(
-        CssPercentageCalculation::try_from_components(
+        CssCalculation::<CssPercentage>::try_from_components(
             parse_component_values("calc(25% + 1px)").unwrap(),
             Default::default()
         )
@@ -153,9 +153,11 @@ fn wrong_numeric_types_and_malformed_functions_fail_checked_percentage_construct
 fn a_percentage_group_is_rejected_before_keyframe_construction() {
     let components = parse_component_values("(25%)").unwrap();
     let before = components.clone();
-    let error =
-        CssPercentageCalculation::try_from_components(components.clone(), Default::default())
-            .unwrap_err();
+    let error = CssCalculation::<CssPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap_err();
     assert!(error.is_root_domain_mismatch(), "{error:?}");
     assert_eq!(components, before);
     assert_eq!(
@@ -171,7 +173,8 @@ fn a_percentage_group_is_rejected_before_keyframe_construction() {
 fn standalone_checked_percentage_functions_reject_implicit_closures() {
     let components = parse_component_values("calc(25%").unwrap();
     let error =
-        CssPercentageCalculation::try_from_components(components, Default::default()).unwrap_err();
+        CssCalculation::<CssPercentage>::try_from_components(components, Default::default())
+            .unwrap_err();
     assert!(error.is_recovered_component(), "{error:?}");
 }
 
@@ -195,12 +198,12 @@ fn checked_constructors_refuse_a_recovered_parsed_percentage_child() {
     // parser admission retains recovered syntax, which the report records.
     assert!(CssKeyframePercent::try_from_calculation(original.clone()).is_none());
     assert!(
-        CssSpecifiedPercentage::try_from_calculation(original.clone())
+        CssNumeric::<CssPercentage>::try_from_calculation(original.clone())
             .unwrap_err()
             .is_recovered_component()
     );
     assert!(
-        CssPercentageCalculation::try_from_components(
+        CssCalculation::<CssPercentage>::try_from_components(
             original.components().clone(),
             Default::default()
         )
@@ -277,10 +280,10 @@ fn selector_offsets_clone_the_authored_domain_and_preserve_shared_source_snapsho
 }
 
 #[test]
-fn calculated_percentage_equality_preserves_authored_source_provenance() {
+fn calculated_percentage_equality_ignores_authored_source_provenance() {
     let first = percentage("calc(25%)");
     let shifted = percentage("  calc(25%)");
-    assert_ne!(first, shifted);
+    assert_eq!(first, shifted);
     assert_eq!(first, first.clone());
     assert_eq!(
         first

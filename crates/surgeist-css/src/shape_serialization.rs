@@ -2,7 +2,7 @@
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::*;
 type Result<T> = std::result::Result<T, CssSerializationError>;
-fn scalar(v: &CssSpecifiedLengthPercentage, w: &mut SpecifiedRuleWriter) -> Result<()> {
+fn scalar(v: &CssNumeric<CssLengthPercentage>, w: &mut SpecifiedRuleWriter) -> Result<()> {
     v.append_specified(&mut w.context, &mut w.css)
 }
 fn pair(v: &CssShapeCoordinatePair, w: &mut SpecifiedRuleWriter) -> Result<()> {

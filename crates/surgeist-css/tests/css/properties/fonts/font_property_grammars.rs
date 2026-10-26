@@ -907,11 +907,11 @@ fn font_feature_settings_preserve_authored_values() {
     ));
     assert!(matches!(
         features.features()[3].value(),
-        CssAuthoredFontFeatureValue::Index(index) if index.i32_value() == Some(0)
+        CssAuthoredFontFeatureValue::Index(index) if index.literal().and_then(|literal| literal.value()) == Some(0)
     ));
     assert!(matches!(
         features.features()[4].value(),
-        CssAuthoredFontFeatureValue::Index(index) if index.i32_value() == Some(12)
+        CssAuthoredFontFeatureValue::Index(index) if index.literal().and_then(|literal| literal.value()) == Some(12)
     ));
 
     assert_eq!(features.features().len(), 5);

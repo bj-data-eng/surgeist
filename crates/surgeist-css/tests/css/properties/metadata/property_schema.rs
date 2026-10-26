@@ -570,7 +570,7 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
                     ({
                         let values = value.durations().values();
                         if values.len() == 1 {
-                            values[0].time().calculation()
+                            values[0].calculation()
                         } else {
                             None
                         }
@@ -589,7 +589,7 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
                     ({
                         let values = value.durations().values();
                         if values.len() == 1 {
-                            values[0].time().calculation()
+                            values[0].calculation()
                         } else {
                             None
                         }
@@ -617,7 +617,7 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
                     matches!(item.property(), Some(CssTransitionProperty::Custom(name)) if name.as_str() == "opacity")
                 );
                 assert!(
-                    matches!(item.duration().and_then(|value| value.time().literal()), Some(t) if t.numeric().representation() == "1")
+                    matches!(item.duration().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "1")
                 );
                 assert!(
                     matches!(item.delay().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "-2")
@@ -628,7 +628,7 @@ fn timing_wrappers_expose_exact_property_specific_accessors() {
                     panic!("one animation");
                 };
                 assert!(
-                    matches!(item.duration().and_then(|value| value.time().literal()), Some(t) if t.numeric().representation() == "3")
+                    matches!(item.duration().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "3")
                 );
                 assert!(
                     matches!(item.delay().and_then(|value| value.literal()), Some(t) if t.numeric().representation() == "-4")
@@ -863,12 +863,18 @@ fn shadow_and_filter_wrappers_expose_ordered_typed_values() {
     };
     assert!(shadow.inset());
     assert!(exact_dimension(
-        shadow.offset_x().literal_component(),
+        shadow
+            .offset_x()
+            .literal()
+            .map(|literal| literal.component()),
         "1",
         "px"
     ));
     assert!(exact_dimension(
-        shadow.offset_y().literal_component(),
+        shadow
+            .offset_y()
+            .literal()
+            .map(|literal| literal.component()),
         "2",
         "px"
     ));
@@ -895,14 +901,14 @@ fn shadow_and_filter_wrappers_expose_ordered_typed_values() {
         panic!("expected ordered blur and opacity functions");
     };
     assert!(exact_dimension(
-        blur.length().literal_component(),
+        blur.length().literal().map(|literal| literal.component()),
         "4",
         "px"
     ));
     assert!(matches!(
         amount,
         CssFilterAmount::Percentage(value)
-            if exact_percentage(value.literal_component(), "50")
+            if exact_percentage(value.literal().map(|literal| literal.component()), "50")
     ));
 
     let CssKnownPropertyValueRef::BackdropFilter(backdrop) = report.syntax()[2]
@@ -1064,12 +1070,18 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
     assert_srgb_mix_with_lab_and_blue(shadow.color().expect("box-shadow color"));
     assert!(!shadow.inset());
     assert!(exact_dimension(
-        shadow.offset_x().literal_component(),
+        shadow
+            .offset_x()
+            .literal()
+            .map(|literal| literal.component()),
         "1",
         "px"
     ));
     assert!(exact_dimension(
-        shadow.offset_y().literal_component(),
+        shadow
+            .offset_y()
+            .literal()
+            .map(|literal| literal.component()),
         "2",
         "px"
     ));
@@ -1090,12 +1102,18 @@ fn every_aggregate_color_consumer_retains_typed_color_mix() {
         };
         assert_srgb_mix_with_lab_and_blue(shadow.color().expect("drop-shadow color"));
         assert!(exact_dimension(
-            shadow.offset_x().literal_component(),
+            shadow
+                .offset_x()
+                .literal()
+                .map(|literal| literal.component()),
             "1",
             "px"
         ));
         assert!(exact_dimension(
-            shadow.offset_y().literal_component(),
+            shadow
+                .offset_y()
+                .literal()
+                .map(|literal| literal.component()),
             "2",
             "px"
         ));
@@ -1142,7 +1160,7 @@ fn clip_path_wrapper_separates_authored_global_and_substitution_values() {
     };
     assert!(
         matches!(shape.radius(), CssCircleRadius::LengthPercentage(radius)
-        if exact_percentage(radius.literal_component(), "50"))
+        if exact_percentage(radius.literal().map(|literal| literal.component()), "50"))
     );
     assert!(shape.position().is_some());
 

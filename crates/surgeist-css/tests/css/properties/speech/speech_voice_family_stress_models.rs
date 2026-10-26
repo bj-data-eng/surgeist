@@ -4,6 +4,7 @@
 //! remain authored; ordinary positive indices have no machine magnitude bound.
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::value_assertions::positive_literal;
 use surgeist_css::*;
 
 fn parsed(text: &str) -> CssVoiceFamily {
@@ -31,14 +32,17 @@ fn named(values: &[&str]) -> CssVoiceFamilyName {
 fn family(entries: Vec<CssVoiceFamilyEntry>) -> CssVoiceFamily {
     CssVoiceFamily::Voices(CssVoiceFamilyList::try_new(entries).unwrap())
 }
-fn positive(text: &str) -> CssPositiveIntegerValue {
-    CssPositiveIntegerValue::Literal(
-        CssPositiveIntegerLiteral::try_new(
-            CssIntegerLiteral::try_from_component(CssComponentValue::try_number(text).unwrap())
-                .unwrap(),
+fn positive(text: &str) -> CssNumeric<CssInteger, CssPositive> {
+    CssNumeric::<CssInteger, CssPositive>::try_from_literal(
+        positive_literal(
+            CssNumericLiteral::<CssInteger>::try_from_component(
+                CssComponentValue::try_number(text).unwrap(),
+            )
+            .unwrap(),
         )
         .unwrap(),
     )
+    .unwrap()
 }
 
 #[test]
@@ -143,7 +147,7 @@ fn generic_voice_retains_optional_age_and_variant_without_default_voice_selectio
                 .unwrap();
         assert_eq!(value.age(), Some(age));
         assert!(
-            matches!(value.variant(), Some(CssPositiveIntegerValue::Literal(value)) if value.integer().numeric().representation() == "+0002")
+            matches!(value.variant(), Some(value) if value.literal().is_some_and(|value| value.numeric().representation() == "+0002"))
         );
         assert_eq!(
             family(vec![CssVoiceFamilyEntry::Generic(value)])
@@ -177,31 +181,31 @@ fn voice_variant_serialization_keeps_exact_large_indices() {
 }
 
 #[test]
-fn checked_generic_constructor_validates_bare_calculation_literals_and_retains_math() {
+fn checked_generic_variant_rejects_nonpositive_bare_calculation_literals_and_retains_math() {
+    // A bare root is an ordinary token, so the variant's `[1,∞]` applies when
+    // it is admitted rather than being deferred like math.
     for literal in [0, -1] {
-        let error = CssGenericVoice::try_new(
-            None,
-            CssVoiceGender::Male,
-            Some(CssPositiveIntegerValue::Calculation(
-                CssIntegerCalculation::literal(literal),
-            )),
-        )
-        .unwrap_err();
+        let error =
+            CssNumeric::<CssInteger, CssPositive>::try_from_calculation(
+                CssCalculation::<CssInteger>::literal(literal),
+            )
+            .unwrap_err();
         assert!(error.is_out_of_range(), "{error:?}");
+        assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
     }
     let literal = CssGenericVoice::try_new(
         None,
         CssVoiceGender::Male,
-        Some(CssPositiveIntegerValue::Calculation(
-            CssIntegerCalculation::literal(2),
-        )),
+        Some(
+            CssNumeric::<CssInteger, CssPositive>::try_from_calculation(
+                CssCalculation::<CssInteger>::literal(2),
+            )
+            .unwrap(),
+        ),
     )
     .unwrap();
-    assert!(matches!(
-        literal.variant(),
-        Some(CssPositiveIntegerValue::Literal(_))
-    ));
-    let calculation = CssIntegerCalculation::try_from_components(
+    assert!(matches!(literal.variant(), Some(value) if value.literal().is_some()));
+    let calculation = CssCalculation::<CssInteger>::try_from_components(
         parse_component_values("calc(1 + 1)").unwrap(),
         Default::default(),
     )
@@ -209,13 +213,10 @@ fn checked_generic_constructor_validates_bare_calculation_literals_and_retains_m
     let generic = CssGenericVoice::try_new(
         None,
         CssVoiceGender::Male,
-        Some(CssPositiveIntegerValue::Calculation(calculation)),
+        Some(CssNumeric::<CssInteger, CssPositive>::try_from_calculation(calculation).unwrap()),
     )
     .unwrap();
-    assert!(matches!(
-        generic.variant(),
-        Some(CssPositiveIntegerValue::Calculation(_))
-    ));
+    assert!(matches!(generic.variant(), Some(value) if value.calculation().is_some()));
     let value = family(vec![CssVoiceFamilyEntry::Generic(generic)]);
     // Specified math projection is owned by the shared integer engine.
     let serialized = value.serialize_specified(Default::default()).unwrap();
@@ -350,10 +351,7 @@ fn checked_generic_construction_rejects_original_recovered_variant_calculations(
     assert!(
         CssVoiceFamilyList::try_new(vec![CssVoiceFamilyEntry::Generic(generic.clone())]).is_none()
     );
-    assert!(matches!(
-        generic.variant(),
-        Some(CssPositiveIntegerValue::Calculation(_))
-    ));
+    assert!(matches!(generic.variant(), Some(value) if value.calculation().is_some()));
     assert!(
         CssGenericVoice::try_new(generic.age(), generic.gender(), generic.variant().cloned())
             .unwrap_err()

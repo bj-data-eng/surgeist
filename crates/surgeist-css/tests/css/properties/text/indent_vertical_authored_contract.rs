@@ -48,7 +48,7 @@ fn align(source: &CssDeclaration) -> &CssVerticalAlign {
     value.value()
 }
 
-fn scalar(source: &CssDeclaration) -> &CssSpecifiedLengthPercentage {
+fn scalar(source: &CssDeclaration) -> &CssNumeric<CssLengthPercentage> {
     match source.known().unwrap().property() {
         P::TextIndent => indent(source).length(),
         P::VerticalAlign => {
@@ -690,7 +690,10 @@ fn accepted_indent_permutations_signed_flags_and_tiny_origins_remain_controls() 
         }
     }
     for source in fronts(P::TextIndent, "each-line -1e-999% hanging") {
-        let component = scalar(&source).literal_component().unwrap();
+        let component = scalar(&source)
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap();
         let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = component.view()
         else {
             panic!("exact tiny percentage")
@@ -761,14 +764,20 @@ fn numeric_checked_components_retain_programmatic_origin_and_original_token() {
             ),
         ] {
             let source = result.unwrap();
-            assert_eq!(scalar(&source).literal_component(), Some(&component));
+            assert_eq!(
+                scalar(&source).literal().map(|literal| literal.component()),
+                Some(&component)
+            );
             assert_eq!(scalar(&source).origin(), &CssValueOrigin::Programmatic);
             assert_eq!(source.value_components(), &components);
             assert_eq!(
                 source.serialize_specified(Default::default()).unwrap(),
                 format!("{}: -0.5em !important;", p.canonical_name())
             );
-            assert_eq!(scalar(&source).literal_component(), Some(&component));
+            assert_eq!(
+                scalar(&source).literal().map(|literal| literal.component()),
+                Some(&component)
+            );
         }
     }
 }

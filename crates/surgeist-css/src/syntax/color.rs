@@ -1,8 +1,7 @@
 use super::{
-    CssAngleCalculation, CssAngleLiteral, CssAuthoredDeclarationValue, CssCalculationExpression,
+    CssAngle, CssAuthoredDeclarationValue, CssCalculation, CssCalculationExpression,
     CssCalculationExpressionRef, CssCalculationType, CssColorNumberLiteral,
-    CssColorPercentageLiteral, CssHintedNumberCalculation, CssNumberCalculation,
-    CssPercentageCalculation,
+    CssColorPercentageLiteral, CssHintedNumber, CssNumber, CssNumericLiteral, CssPercentage,
 };
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 
@@ -761,9 +760,9 @@ pub enum CssColorComponent {
     None,
     Number(CssColorNumberLiteral),
     Percentage(CssColorPercentageLiteral),
-    NumberCalculation(CssNumberCalculation),
-    HintedNumberCalculation(CssHintedNumberCalculation),
-    PercentageCalculation(CssPercentageCalculation),
+    NumberCalculation(CssCalculation<CssNumber>),
+    HintedNumberCalculation(CssCalculation<CssHintedNumber>),
+    PercentageCalculation(CssCalculation<CssPercentage>),
 }
 
 impl CssColorComponent {
@@ -789,9 +788,9 @@ impl CssColorComponent {
 pub enum CssColorHue {
     None,
     Number(CssColorNumberLiteral),
-    Angle(CssAngleLiteral),
-    NumberCalculation(CssNumberCalculation),
-    AngleCalculation(CssAngleCalculation),
+    Angle(CssNumericLiteral<CssAngle>),
+    NumberCalculation(CssCalculation<CssNumber>),
+    AngleCalculation(CssCalculation<CssAngle>),
 }
 
 impl CssColorHue {
@@ -1635,7 +1634,7 @@ pub enum CssRelativeColorExpressionValue {
     None,
     Number(CssColorNumberLiteral),
     Percentage(CssColorPercentageLiteral),
-    Angle(CssAngleLiteral),
+    Angle(CssNumericLiteral<CssAngle>),
     Channel(CssRelativeColorChannel),
     Calculation(CssRelativeColorCalculation),
 }
@@ -1945,7 +1944,7 @@ pub struct CssColorMixWeight(ColorMixWeight);
 #[derive(Clone, Debug, PartialEq)]
 enum ColorMixWeight {
     Literal(CssColorMixPercentage),
-    Calculation(CssPercentageCalculation),
+    Calculation(CssCalculation<CssPercentage>),
 }
 impl CssColorMixWeight {
     #[must_use]
@@ -1953,7 +1952,7 @@ impl CssColorMixWeight {
         Self(ColorMixWeight::Literal(value))
     }
     pub fn try_calculation(
-        value: CssPercentageCalculation,
+        value: CssCalculation<CssPercentage>,
     ) -> Result<Self, crate::CssComponentValueError> {
         use crate::{CssComponentValueRef as V, CssValueTokenRef as T};
         let mut significant = value
@@ -1980,7 +1979,7 @@ impl CssColorMixWeight {
         }
     }
     #[must_use]
-    pub fn calculation(&self) -> Option<&CssPercentageCalculation> {
+    pub fn calculation(&self) -> Option<&CssCalculation<CssPercentage>> {
         match &self.0 {
             ColorMixWeight::Calculation(v) => Some(v),
             ColorMixWeight::Literal(_) => None,

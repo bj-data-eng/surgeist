@@ -125,22 +125,9 @@ fn intrinsic_initials_and_inheritance_equal_authored_terminal_values_without_fab
             panic!("ordinary initial")
         };
         assert_eq!(value.property().known_property(), p);
-        // Numeric equality includes origin. Compare the zero initial against
-        // an exact programmatic zero; a parsed zero has distinct provenance.
-        let declaration = if name == "line-padding" {
-            checked_components(
-                name,
-                CssComponentValues::try_new(
-                    vec![CssComponentValue::try_number("0").unwrap()],
-                    Default::default(),
-                )
-                .unwrap(),
-                true,
-            )
-            .unwrap()
-        } else {
-            checked(name, text, true)
-        };
+        // Numeric equality ignores origin, so the parsed zero equals the
+        // programmatic initial.
+        let declaration = checked(name, text, true);
         let values = contributions(&declaration);
         assert_eq!(values.items()[0].ordinary_value(), Some(value));
     }
@@ -813,9 +800,12 @@ fn signed_length_provider_keeps_exact_source_and_bare_root_admission_with_atomic
                 )
             })
             .unwrap();
-        let numeric = CssSpecifiedLength::try_from_component(token.clone()).unwrap();
+        let numeric = CssNumeric::<CssLength>::try_from_component(token.clone()).unwrap();
         assert_eq!(numeric.origin(), token.origin());
-        assert_eq!(numeric.literal_component(), Some(token));
+        assert_eq!(
+            numeric.literal().map(|literal| literal.component()),
+            Some(token)
+        );
         let before = numeric.clone();
         let exact = Limits::new(1, 1, expected.len());
         assert_eq!(numeric.serialize_specified(exact).unwrap(), expected);
@@ -835,12 +825,12 @@ fn signed_length_provider_keeps_exact_source_and_bare_root_admission_with_atomic
         assert_eq!(numeric.serialize_specified(exact).unwrap(), expected);
     }
     for text in ["1", "-1", "1%"] {
-        let calculation = CssLengthCalculation::try_from_components(
+        let calculation = CssCalculation::<CssLength>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         );
         if let Ok(calculation) = calculation {
-            assert!(CssSpecifiedLength::try_from_calculation(calculation).is_err());
+            assert!(CssNumeric::<CssLength>::try_from_calculation(calculation).is_err());
         }
     }
 }

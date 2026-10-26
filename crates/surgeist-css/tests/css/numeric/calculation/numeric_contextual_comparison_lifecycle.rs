@@ -17,12 +17,12 @@ use surgeist_css::*;
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;
 
-fn length_percentage(source: &str) -> CssSpecifiedLengthPercentage {
+fn length_percentage(source: &str) -> CssNumeric<CssLengthPercentage> {
     let components = parse_component_values(source).unwrap();
     let calculation =
-        CssLengthPercentageCalculation::try_from_components(components, Default::default())
+        CssCalculation::<CssLengthPercentage>::try_from_components(components, Default::default())
             .unwrap();
-    CssSpecifiedLengthPercentage::try_from_calculation(calculation).unwrap()
+    CssNumeric::<CssLengthPercentage>::try_from_calculation(calculation).unwrap()
 }
 
 fn assert_length_percentage(source: &str, expected: &str) {
@@ -106,11 +106,13 @@ fn raw_percentage_comparisons_fold_without_a_dimension_hint() {
         ("clamp(1%,2%,none)", "calc(2%)"),
     ] {
         let components = parse_component_values(source).unwrap();
-        let calculation =
-            CssPercentageCalculation::try_from_components(components.clone(), Default::default())
-                .unwrap();
+        let calculation = CssCalculation::<CssPercentage>::try_from_components(
+            components.clone(),
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(calculation.numeric_type().percent_hint(), None);
-        let value = CssSpecifiedPercentage::try_from_calculation(calculation).unwrap();
+        let value = CssNumeric::<CssPercentage>::try_from_calculation(calculation).unwrap();
         let before = value.clone();
         let result = value.serialize_specified(Default::default());
         assert_eq!(value, before);
@@ -147,10 +149,12 @@ fn programmatic_comparison_keeps_exact_coefficients_and_programmatic_origin() {
     .unwrap();
     let root = CssComponentValue::try_function("MAX", arguments).unwrap();
     let components = CssComponentValues::try_new(vec![root], Default::default()).unwrap();
-    let calculation =
-        CssLengthPercentageCalculation::try_from_components(components.clone(), Default::default())
-            .unwrap();
-    let value = CssSpecifiedLengthPercentage::try_from_calculation(calculation).unwrap();
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
+    let value = CssNumeric::<CssLengthPercentage>::try_from_calculation(calculation).unwrap();
     let before = value.clone();
     assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
     let result = value.serialize_specified(Default::default());

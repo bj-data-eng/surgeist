@@ -1091,22 +1091,22 @@ impl CssRetainedSources for CssUrl {
         Ok(())
     }
 }
-macro_rules! numeric {
-    ($($ty:ty),+) => { $(impl CssRetainedSources for $ty {
-        fn visit_retained_sources(&self, sources: &mut CssSourceRetention) -> Result<(), CssSourceRetentionError> {
-            if let Some(value) = self.literal_component() { sources.visit(value)?; }
-            if let Some(value) = self.calculation() { sources.visit(value.components())?; }
-            Ok(())
+impl<T: crate::CssNumericRoot, R: crate::CssRange<T>> CssRetainedSources
+    for crate::CssNumeric<T, R>
+{
+    fn visit_retained_sources(
+        &self,
+        sources: &mut CssSourceRetention<'_>,
+    ) -> Result<(), CssSourceRetentionError> {
+        if let Some(value) = self.literal() {
+            sources.visit(value.component())?;
         }
-    })+ };
+        if let Some(value) = self.calculation() {
+            sources.visit(value.components())?;
+        }
+        Ok(())
+    }
 }
-numeric!(
-    CssFontWeightNumber,
-    CssFontObliqueAngle,
-    CssFontFeatureIndex,
-    CssSpecifiedNumber,
-    CssSpecifiedNonNegativePercentage
-);
 via!(CssSpecifiedFontFaceDeclarationBlock, self, self.entries());
 via!(CssSpecifiedPageDeclarationBlock, self, self.entries());
 via!(

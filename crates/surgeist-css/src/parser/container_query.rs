@@ -394,7 +394,7 @@ fn container_length(items: &[CssComponentValue]) -> ContainerFeatureResult<CssCo
             values,
         )));
     }
-    let value = CssLengthCalculation::from_expression(container_numeric(
+    let value = CssCalculation::<CssLength>::from_expression(container_numeric(
         values.clone(),
         CalculationRoot::Length,
     )?);
@@ -408,16 +408,16 @@ fn container_ratio(items: &[CssComponentValue]) -> ContainerFeatureResult<CssCon
             values,
         )));
     }
-    let operand = |items: &[CssComponentValue]| -> ContainerFeatureResult<CssNumberCalculation> {
-        let values = CssComponentValues::try_new(items.to_vec(), Default::default())?;
-        if media_literal_number(&values).is_some_and(negative_literal) {
-            return Err(ContainerFeatureError::Grammar);
-        }
-        Ok(CssNumberCalculation::from_expression(container_numeric(
-            values,
-            CalculationRoot::Number,
-        )?))
-    };
+    let operand =
+        |items: &[CssComponentValue]| -> ContainerFeatureResult<CssCalculation<CssNumber>> {
+            let values = CssComponentValues::try_new(items.to_vec(), Default::default())?;
+            if media_literal_number(&values).is_some_and(negative_literal) {
+                return Err(ContainerFeatureError::Grammar);
+            }
+            Ok(CssCalculation::<CssNumber>::from_expression(
+                container_numeric(values, CalculationRoot::Number)?,
+            ))
+        };
     let mut split = values.items().split(|item| {
         matches!(
             item.view(),
@@ -432,7 +432,7 @@ fn container_ratio(items: &[CssComponentValue]) -> ContainerFeatureResult<CssCon
     let denominator = if let Some(items) = denominator_items {
         operand(items)?
     } else {
-        CssNumberCalculation::try_from_components(
+        CssCalculation::<CssNumber>::try_from_components(
             CssComponentValues::try_new(
                 vec![CssComponentValue::try_number("1")?],
                 Default::default(),

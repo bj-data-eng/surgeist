@@ -280,12 +280,16 @@ fn parsed_lists_preserve_exact_ordered_size_repeat_box_and_attachment_payloads()
                 else {
                     panic!("cover, explicit width/auto, then width with omitted second component")
                 };
-                assert!(matches!(width.literal_component().unwrap().view(),
+                assert!(
+                    matches!(width.literal().map(|literal| literal.component()).unwrap().view(),
                     CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
-                    if number.representation() == "10" && unit == "px"));
-                assert!(matches!(last.literal_component().unwrap().view(),
+                    if number.representation() == "10" && unit == "px")
+                );
+                assert!(
+                    matches!(last.literal().map(|literal| literal.component()).unwrap().view(),
                     CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
-                    if number.representation() == "50"));
+                    if number.representation() == "50")
+                );
                 assert!(matches!(width.origin(), CssValueOrigin::Parsed(_)));
             }
             CssKnownPropertyValueRef::BackgroundRepeat(value) => assert_eq!(
@@ -333,7 +337,7 @@ fn parsed_lists_preserve_exact_ordered_size_repeat_box_and_attachment_payloads()
         panic!("contain and one symbolic explicit size")
     };
     assert!(width.calculation().is_some());
-    assert!(width.literal_component().is_none());
+    assert!(width.literal().map(|literal| literal.component()).is_none());
 }
 
 #[test]

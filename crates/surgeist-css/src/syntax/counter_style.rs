@@ -1,6 +1,8 @@
 //! Authored Counter Styles models and descriptor identity.
-
-use super::{CssContentString, CssDescriptorOccurrence, CssIdent, CssImage, CssIntegerValue};
+use super::{
+    CssContentString, CssDescriptorOccurrence, CssIdent, CssImage, CssInteger, CssNumeric,
+    CssNumericLiteral,
+};
 use crate::source::{CssParsedOrigin, CssSourcePosition};
 
 /// One syntactically valid parser-produced Counter Styles 3 rule.
@@ -294,17 +296,17 @@ pub enum CssCounterStyleSystem {
 /// Calculation graphs remain distinct from literal tokens and omitted defaults.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCounterStyleFixedSystem {
-    first_symbol_value: Option<CssIntegerValue>,
+    first_symbol_value: Option<CssNumeric<CssInteger>>,
 }
 
 impl CssCounterStyleFixedSystem {
     #[must_use]
-    pub const fn new(first_symbol_value: Option<CssIntegerValue>) -> Self {
+    pub const fn new(first_symbol_value: Option<CssNumeric<CssInteger>>) -> Self {
         Self { first_symbol_value }
     }
 
     #[must_use]
-    pub const fn first_symbol_value(&self) -> Option<&CssIntegerValue> {
+    pub const fn first_symbol_value(&self) -> Option<&CssNumeric<CssInteger>> {
         self.first_symbol_value.as_ref()
     }
 }
@@ -379,9 +381,10 @@ impl CssCounterStyleRangeInterval {
         upper: CssCounterStyleRangeBound,
     ) -> Option<Self> {
         if let (
-            CssCounterStyleRangeBound::Integer(CssIntegerValue::Literal(lower)),
-            CssCounterStyleRangeBound::Integer(CssIntegerValue::Literal(upper)),
+            CssCounterStyleRangeBound::Integer(lower),
+            CssCounterStyleRangeBound::Integer(upper),
         ) = (&lower, &upper)
+            && let (Some(lower), Some(upper)) = (lower.literal(), upper.literal())
             && lower.compare_value(upper).is_gt()
         {
             return None;
@@ -406,31 +409,36 @@ impl CssCounterStyleRangeInterval {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterStyleRangeBound {
-    Integer(CssIntegerValue),
+    Integer(CssNumeric<CssInteger>),
     Infinite,
 }
 
 /// One valid authored zero-padding descriptor.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCounterStylePad {
-    minimum_length: CssIntegerValue,
+    minimum_length: CssNumeric<CssInteger>,
     symbol: CssCounterSymbol,
 }
 
 impl CssCounterStylePad {
     #[must_use]
-    pub fn try_new(minimum_length: CssIntegerValue, symbol: CssCounterSymbol) -> Option<Self> {
-        (!matches!(&minimum_length, CssIntegerValue::Literal(value) if value.is_negative()))
-            .then_some(Self {
-                minimum_length,
-                symbol,
-            })
+    pub fn try_new(
+        minimum_length: CssNumeric<CssInteger>,
+        symbol: CssCounterSymbol,
+    ) -> Option<Self> {
+        (!minimum_length
+            .literal()
+            .is_some_and(CssNumericLiteral::is_negative))
+        .then_some(Self {
+            minimum_length,
+            symbol,
+        })
     }
 
     /// Returns the authored minimum length. Literals are nonnegative; calculations
     /// retain their specified graph before computed integer rounding and clamping.
     #[must_use]
-    pub const fn minimum_length(&self) -> &CssIntegerValue {
+    pub const fn minimum_length(&self) -> &CssNumeric<CssInteger> {
         &self.minimum_length
     }
 
@@ -459,14 +467,12 @@ impl CssCounterAdditiveSymbols {
         // §11.12 defers calculation rounding and clamping to computed/used
         // values. Only adjacent ordinary literals can be compared here;
         // downstream must check the complete list after resolving all weights.
-        tuples
-            .windows(2)
-            .all(|pair| match (&pair[0].weight, &pair[1].weight) {
-                (CssIntegerValue::Literal(left), CssIntegerValue::Literal(right)) => {
-                    left.compare_value(right).is_gt()
-                }
+        tuples.windows(2).all(
+            |pair| match (pair[0].weight.literal(), pair[1].weight.literal()) {
+                (Some(left), Some(right)) => left.compare_value(right).is_gt(),
                 _ => true,
-            })
+            },
+        )
     }
 
     /// Returns the additive tuples in authored order without evaluating weights.
@@ -480,20 +486,20 @@ impl CssCounterAdditiveSymbols {
 /// nonnegative; symbolic calculations defer integer rounding and range clamping.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCounterAdditiveTuple {
-    weight: CssIntegerValue,
+    weight: CssNumeric<CssInteger>,
     symbol: CssCounterSymbol,
 }
 
 impl CssCounterAdditiveTuple {
     #[must_use]
-    pub fn try_new(weight: CssIntegerValue, symbol: CssCounterSymbol) -> Option<Self> {
-        (!matches!(&weight, CssIntegerValue::Literal(value) if value.is_negative()))
+    pub fn try_new(weight: CssNumeric<CssInteger>, symbol: CssCounterSymbol) -> Option<Self> {
+        (!weight.literal().is_some_and(CssNumericLiteral::is_negative))
             .then_some(Self { weight, symbol })
     }
 
     /// Returns the authored weight, retaining symbolic integer calculations.
     #[must_use]
-    pub const fn weight(&self) -> &CssIntegerValue {
+    pub const fn weight(&self) -> &CssNumeric<CssInteger> {
         &self.weight
     }
 

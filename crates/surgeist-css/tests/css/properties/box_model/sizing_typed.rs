@@ -1,8 +1,8 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::{
-    CssBoxSize, CssCalcSize, CssKnownPropertyValueRef, CssMaxSizeValue, CssSizeValue,
-    CssSpecifiedNonNegativeLengthPercentage, parse_component_values, parse_style_attribute,
+    CssBoxSize, CssCalcSize, CssKnownPropertyValueRef, CssLengthPercentage, CssMaxSizeValue,
+    CssNonNegative, CssNumeric, CssSizeValue, parse_component_values, parse_style_attribute,
 };
 
 fn component(text: &str) -> surgeist_css::CssComponentValue {
@@ -34,18 +34,27 @@ fn size(name: &str, text: &str) -> CssSizeValue {
 #[test]
 fn checked_literal_preserves_exact_lexeme_and_rejects_tiny_negative() {
     let literal =
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component("1e999px")).unwrap();
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component("1e999px"))
+            .unwrap();
     let surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension {
         number,
         unit,
-    }) = literal.literal_component().unwrap().view()
+    }) = literal
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("exact authored dimension")
     };
     assert_eq!(number.representation(), "1e999");
     assert_eq!(unit, "px");
     assert_eq!(
-        literal.literal_component().unwrap().origin(),
+        literal
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .origin(),
         literal.origin()
     );
     let box_size = CssBoxSize::LengthPercentage(literal);
@@ -53,7 +62,7 @@ fn checked_literal_preserves_exact_lexeme_and_rejects_tiny_negative() {
     assert!(canonical.ends_with("px"));
     assert_eq!(canonical.len(), 1002); // 1 followed by 999 zeroes, then px.
     assert_component_rejected(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component,
         component("-1e-999%"),
         NumericFailure::OutOfRange,
     );
@@ -84,8 +93,9 @@ fn parsed_intrinsic_and_fit_content_values_have_distinct_typed_branches() {
 
 #[test]
 fn programmatic_checked_values_preserve_their_typed_boundary() {
-    let length = CssSpecifiedNonNegativeLengthPercentage::try_from_component(component("2.5%"))
-        .expect("checked percentage");
+    let length =
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component("2.5%"))
+            .expect("checked percentage");
     let preferred = CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length));
     assert_eq!(
         preferred.serialize_specified(Default::default()).unwrap(),
@@ -188,7 +198,7 @@ fn checked_maximum_reports_nested_auto_origin_after_programmatic_trivia() {
 fn sizing_equality_preserves_structure_across_distinct_origins() {
     let parsed = size("width", "2px");
     let checked = CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             surgeist_css::CssComponentValue::try_dimension("2", "px").unwrap(),
         )
         .unwrap(),
@@ -218,7 +228,7 @@ fn sizing_equality_preserves_structure_across_distinct_origins() {
         panic!("parsed maximum")
     };
     let checked_max = CssMaxSizeValue::try_box_size(CssBoxSize::LengthPercentage(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             surgeist_css::CssComponentValue::try_dimension("2", "px").unwrap(),
         )
         .unwrap(),
@@ -228,8 +238,8 @@ fn sizing_equality_preserves_structure_across_distinct_origins() {
 
     let authored_fit = size("height", "fit-content(calc(1px + 2%))");
     let checked_fit = CssSizeValue::BoxSize(CssBoxSize::FitContentFunction(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+            surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(
                 parse_component_values("calc(1px + 2%)").unwrap(),
                 Default::default(),
             )
@@ -252,8 +262,8 @@ fn sizing_equality_preserves_structure_across_distinct_origins() {
     assert_eq!(authored_calc, checked_calc);
 
     assert_ne!(parsed, size("width", "3px"));
-    assert_ne!(parsed, size("width", "02px"));
-    assert_ne!(parsed, size("width", "2.0px"));
+    assert_eq!(parsed, size("width", "02px"));
+    assert_eq!(parsed, size("width", "2.0px"));
     assert_ne!(parsed, CssSizeValue::Auto);
     assert_ne!(
         size("width", "calc(1px + 2%)"),
@@ -263,7 +273,8 @@ fn sizing_equality_preserves_structure_across_distinct_origins() {
         size("width", "calc(1px + 2%)"),
         size("width", "calc(1px - 2%)")
     );
-    assert_ne!(
+    // Redundant grouping is not a calculation node (Values 4 parse a calculation).
+    assert_eq!(
         size("width", "calc(1px + 2%)"),
         size("width", "calc((1px + 2%))")
     );

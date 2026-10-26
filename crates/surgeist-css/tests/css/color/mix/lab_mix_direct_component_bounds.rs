@@ -646,8 +646,11 @@ fn checked_family_mix(
         CssColorMixPercentage::try_from_component(components("30%").items()[0].clone()).unwrap(),
     );
     let second_weight = CssColorMixWeight::try_calculation(
-        CssPercentageCalculation::try_from_components(components("calc(70%)"), Default::default())
-            .unwrap(),
+        CssCalculation::<CssPercentage>::try_from_components(
+            components("calc(70%)"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     let interpolation = CssColorInterpolation::from_predefined(

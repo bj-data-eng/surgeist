@@ -46,8 +46,11 @@ fn programmatic_width_keeps_exact_spelling_and_has_no_source_coordinates() {
     else {
         panic!("typed literal width")
     };
-    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
-        length.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) = length
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("exact typed dimension")
     };

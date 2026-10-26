@@ -9,19 +9,22 @@ use crate::css::support::{
 };
 use surgeist_css::*;
 
-fn scalar(text: &str) -> CssSpecifiedNonNegativeLengthPercentage {
+fn scalar(text: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
     let components = parse_component_values(text).expect("valid component syntax");
     if text.starts_with("calc(") {
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(components, Default::default())
-                .expect("length-percentage math"),
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .expect("length-percentage math"),
         )
         .expect("checked deferred math")
     } else {
         let [component] = components.items() else {
             panic!("one scalar: {text}")
         };
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.clone())
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component.clone())
             .expect("checked nonnegative scalar")
     }
 }
@@ -97,7 +100,7 @@ fn typed_longhands_preserve_normal_and_exact_nonnegative_numeric_values() {
                     panic!("numeric gap")
                 };
                 assert!(matches!(
-                    scalar.literal_component().unwrap().view(),
+                    scalar.literal().map(|literal| literal.component()).unwrap().view(),
                     CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
                         if number.representation() == "1.0000000000000000000001" && unit == "px"
                 ));

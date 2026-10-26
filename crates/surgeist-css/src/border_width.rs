@@ -2,8 +2,8 @@
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssBorderStyle, CssBoxSideKind, CssColor, CssSerializationError, CssSpecifiedNonNegativeLength,
-    CssValueOrigin,
+    CssBorderStyle, CssBoxSideKind, CssColor, CssLength, CssNonNegative, CssNumeric,
+    CssSerializationError, CssValueOrigin,
 };
 
 type Result<T> = std::result::Result<T, CssSerializationError>;
@@ -15,18 +15,19 @@ pub enum CssBorderWidth {
     Thin,
     Medium,
     Thick,
-    Length(CssSpecifiedNonNegativeLength),
+    Length(CssNumeric<CssLength, CssNonNegative>),
 }
 
 impl CssBorderWidth {
-    pub fn length(&self) -> Option<&CssSpecifiedNonNegativeLength> {
+    pub fn length(&self) -> Option<&CssNumeric<CssLength, CssNonNegative>> {
         match self {
             Self::Length(value) => Some(value),
             _ => None,
         }
     }
     pub fn origin(&self) -> Option<&CssValueOrigin> {
-        self.length().map(CssSpecifiedNonNegativeLength::origin)
+        self.length()
+            .map(CssNumeric::<CssLength, CssNonNegative>::origin)
     }
     pub(crate) fn append_specified(
         &self,
@@ -59,7 +60,7 @@ impl PartialEq for CssBorderWidth {
             (Self::Thin, Self::Thin)
             | (Self::Medium, Self::Medium)
             | (Self::Thick, Self::Thick) => true,
-            (Self::Length(left), Self::Length(right)) => left.structural_eq(right),
+            (Self::Length(left), Self::Length(right)) => left == right,
             _ => false,
         }
     }
@@ -356,7 +357,7 @@ mod cumulative_bridge_contract {
 
     #[test]
     fn suppressed_exact_width_retains_numeric_origin_and_uses_no_byte_scratch() {
-        let width = CssSpecifiedNonNegativeLength::try_from_component(
+        let width = CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension("1e50", "px").unwrap(),
         )
         .unwrap();

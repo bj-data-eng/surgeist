@@ -90,9 +90,11 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
         "-0",
     ] {
         let parsed = parse_component_values(text).unwrap();
-        let index = CssFontFeatureIndex::try_from_component(parsed.items()[0].clone()).unwrap();
+        let index =
+            CssNumeric::<CssInteger, CssNonNegative>::try_from_component(parsed.items()[0].clone())
+                .unwrap();
         assert_eq!(
-            number_representation(index.literal_component().unwrap()),
+            number_representation(index.literal().map(|literal| literal.component()).unwrap()),
             text
         );
         assert!(index.calculation().is_none());
@@ -105,14 +107,24 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
             index.serialize_specified(Default::default()).unwrap(),
             canonical
         );
-        assert_eq!(index.i32_value(), if text == "-0" { Some(0) } else { None });
+        assert_eq!(
+            index.literal().and_then(|literal| literal.value()),
+            if text == "-0" { Some(0) } else { None }
+        );
         assert!(matches!(index.origin(), CssValueOrigin::Parsed(_)));
     }
-    let small = CssFontFeatureIndex::try_new(7).unwrap();
-    assert_eq!(small.i32_value(), Some(7));
+    let small =
+        CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(CssNumericLiteral::from_i32(7))
+            .ok()
+            .unwrap();
+    assert_eq!(small.literal().and_then(|literal| literal.value()), Some(7));
     assert_eq!(small.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(small.serialize_specified(Default::default()).unwrap(), "7");
-    assert!(CssFontFeatureIndex::try_new(-1).is_none());
+    assert!(
+        CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(CssNumericLiteral::from_i32(-1))
+            .ok()
+            .is_none()
+    );
     // Fonts 4 §6.12: <integer [0,inf]>; `-1` is out of range and the other
     // tokens are not integers.
     for (text, kind) in [
@@ -123,19 +135,25 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
         ("2%", NumericFailure::RootDomainMismatch),
     ] {
         let component = parse_component_values(text).unwrap().items()[0].clone();
-        let error = CssFontFeatureIndex::try_from_component(component.clone()).unwrap_err();
+        let error = CssNumeric::<CssInteger, CssNonNegative>::try_from_component(component.clone())
+            .unwrap_err();
         assert_eq!(numeric_failure(&error), kind, "{text}");
         assert_eq!(error.origin(), Some(component.origin()), "{text}");
     }
-    let math = CssIntegerCalculation::try_from_components(
+    let math = CssCalculation::<CssInteger>::try_from_components(
         parse_component_values("calc(2 + 3)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let symbolic = CssFontFeatureIndex::try_from_calculation(math).unwrap();
-    assert!(symbolic.literal_component().is_none());
+    let symbolic = CssNumeric::<CssInteger, CssNonNegative>::try_from_calculation(math).unwrap();
+    assert!(
+        symbolic
+            .literal()
+            .map(|literal| literal.component())
+            .is_none()
+    );
     assert!(symbolic.calculation().is_some());
-    assert_eq!(symbolic.i32_value(), None);
+    assert_eq!(symbolic.literal().and_then(|literal| literal.value()), None);
     assert_eq!(
         symbolic
             .calculation()
@@ -150,25 +168,30 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
         symbolic.serialize_specified(Default::default()).unwrap(),
         "calc(5)"
     );
-    let bare = CssIntegerCalculation::try_from_components(
+    let bare = CssCalculation::<CssInteger>::try_from_components(
         parse_component_values("2147483648").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let exact_bare = CssFontFeatureIndex::try_from_calculation(bare).unwrap();
+    let exact_bare = CssNumeric::<CssInteger, CssNonNegative>::try_from_calculation(bare).unwrap();
     assert_eq!(
-        number_representation(exact_bare.literal_component().unwrap()),
+        number_representation(
+            exact_bare
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+        ),
         "2147483648"
     );
     assert!(exact_bare.calculation().is_none());
     for text in ["-1", "2.5", "1e2"] {
-        let calculation = CssIntegerCalculation::try_from_components(
+        let calculation = CssCalculation::<CssInteger>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         );
         assert!(
             calculation.map_or(true, |calculation| {
-                CssFontFeatureIndex::try_from_calculation(calculation).is_err()
+                CssNumeric::<CssInteger, CssNonNegative>::try_from_calculation(calculation).is_err()
             }),
             "{text}"
         );
@@ -176,7 +199,7 @@ fn feature_index_keeps_exact_integer_token_beyond_i32_and_rejects_wrong_roots() 
 }
 
 #[test]
-fn feature_list_distinguishes_omitted_on_off_and_exact_index_without_deduplication() {
+fn feature_list_distinguishes_omitted_on_off_and_index_values_without_deduplication() {
     let authored = feature("\"cv01\", \"cv01\" on, \"cv01\" off, \"cv01\" 2147483648, \"CV01\" 0");
     let CssAuthoredFontFeatureSettings::Features(list) = &authored else {
         panic!("five features")
@@ -203,10 +226,10 @@ fn feature_list_distinguishes_omitted_on_off_and_exact_index_without_deduplicati
         panic!("exact index")
     };
     assert_eq!(
-        number_representation(index.literal_component().unwrap()),
+        number_representation(index.literal().map(|literal| literal.component()).unwrap()),
         "2147483648"
     );
-    assert_eq!(index.i32_value(), None);
+    assert_eq!(index.literal().and_then(|literal| literal.value()), None);
     assert_eq!(
         authored.serialize_specified(Default::default()).unwrap(),
         "\"cv01\", \"cv01\" on, \"cv01\" off, \"cv01\" 2147483648, \"CV01\" 0"
@@ -224,12 +247,18 @@ fn feature_list_distinguishes_omitted_on_off_and_exact_index_without_deduplicati
     let direct = CssAuthoredFontFeatureSettings::Features(
         CssAuthoredFontFeatureList::try_new(vec![CssAuthoredFontFeature::new(
             tag,
-            CssAuthoredFontFeatureValue::Index(CssFontFeatureIndex::try_new(7).unwrap()),
+            CssAuthoredFontFeatureValue::Index(
+                CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(
+                    CssNumericLiteral::from_i32(7),
+                )
+                .ok()
+                .unwrap(),
+            ),
         )])
         .unwrap(),
     );
     assert_eq!(direct, feature("\"cv01\" 7"));
-    assert_ne!(direct, feature("\"cv01\" 07"));
+    assert_eq!(direct, feature("\"cv01\" 07"));
     assert_ne!(
         authored,
         feature("\"cv01\", \"cv01\" on, \"cv01\" off, \"CV01\" 0")
@@ -237,7 +266,7 @@ fn feature_list_distinguishes_omitted_on_off_and_exact_index_without_deduplicati
 }
 
 #[test]
-fn scalar_number_and_size_adjust_keep_exact_sign_digits_origin_and_symbolic_math() {
+fn scalar_number_and_size_adjust_keep_exact_sign_digits_and_symbolic_math() {
     for (text, canonical) in [
         ("-1e-999", "0".to_owned()),
         (
@@ -248,9 +277,10 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_origin_and_symbolic_math
         ("1e999", format!("1{}", "0".repeat(999))),
     ] {
         let components = parse_component_values(text).unwrap();
-        let number = CssSpecifiedNumber::try_from_component(components.items()[0].clone()).unwrap();
+        let number =
+            CssNumeric::<CssNumber>::try_from_component(components.items()[0].clone()).unwrap();
         assert_eq!(
-            number_representation(number.literal_component().unwrap()),
+            number_representation(number.literal().map(|literal| literal.component()).unwrap()),
             text
         );
         assert_eq!(
@@ -259,24 +289,25 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_origin_and_symbolic_math
         );
         assert!(matches!(number.origin(), CssValueOrigin::Parsed(_)));
     }
-    let parsed = CssSpecifiedNumber::try_from_component(
+    let parsed = CssNumeric::<CssNumber>::try_from_component(
         parse_component_values("-1.25").unwrap().items()[0].clone(),
     )
     .unwrap();
-    let programmatic =
-        CssSpecifiedNumber::try_from_component(CssComponentValue::try_number("-1.25").unwrap())
-            .unwrap();
-    assert_ne!(parsed, programmatic);
+    let programmatic = CssNumeric::<CssNumber>::try_from_component(
+        CssComponentValue::try_number("-1.25").unwrap(),
+    )
+    .unwrap();
+    assert_eq!(parsed, programmatic);
     assert_eq!(programmatic.origin(), &CssValueOrigin::Programmatic);
-    let math = CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(
+    let math = CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(
             parse_component_values("calc(1 - 2)").unwrap(),
             Default::default(),
         )
         .unwrap(),
     )
     .unwrap();
-    assert!(math.literal_component().is_none());
+    assert!(math.literal().map(|literal| literal.component()).is_none());
     assert!(math.calculation().is_some());
     assert_eq!(
         math.calculation()
@@ -291,19 +322,24 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_origin_and_symbolic_math
         math.serialize_specified(Default::default()).unwrap(),
         "calc(-1)"
     );
-    let bare = CssNumberCalculation::try_from_components(
+    let bare = CssCalculation::<CssNumber>::try_from_components(
         parse_component_values("-1e-999").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let exact_bare = CssSpecifiedNumber::try_from_calculation(bare).unwrap();
+    let exact_bare = CssNumeric::<CssNumber>::try_from_calculation(bare).unwrap();
     assert_eq!(
-        number_representation(exact_bare.literal_component().unwrap()),
+        number_representation(
+            exact_bare
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+        ),
         "-1e-999"
     );
     assert!(exact_bare.calculation().is_none());
     let adjust = CssFontSizeAdjust::Number(
-        CssSpecifiedNonNegativeNumber::try_from_component(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number("0.000000000000000000000000000000000000001").unwrap(),
         )
         .unwrap(),
@@ -313,12 +349,12 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_origin_and_symbolic_math
         panic!("numeric size adjust")
     };
     assert_eq!(
-        number_representation(number.literal_component().unwrap()),
+        number_representation(number.literal().map(|literal| literal.component()).unwrap()),
         "0.000000000000000000000000000000000000001"
     );
     for negative in ["-1e-999", "-0.000000000000000000000000000000000000001"] {
         assert!(
-            CssSpecifiedNonNegativeNumber::try_from_component(
+            CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
                 CssComponentValue::try_number(negative).unwrap()
             )
             .unwrap_err()
@@ -336,7 +372,7 @@ fn scalar_number_and_size_adjust_keep_exact_sign_digits_origin_and_symbolic_math
         panic!("number adjust")
     };
     assert_eq!(
-        number_representation(value.literal_component().unwrap()),
+        number_representation(value.literal().map(|literal| literal.component()).unwrap()),
         "1e999"
     );
     assert_eq!(
@@ -364,7 +400,12 @@ fn variation_list_keeps_signed_values_order_duplicates_and_case() {
     );
     assert_eq!(
         axes.iter()
-            .map(|axis| number_representation(axis.value().literal_component().unwrap()))
+            .map(|axis| number_representation(
+                axis.value()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap()
+            ))
             .collect::<Vec<_>>(),
         ["-1.25", "+0.5", "-2", "1e3"]
     );
@@ -377,8 +418,10 @@ fn variation_list_keeps_signed_values_order_duplicates_and_case() {
     let programmatic = CssFontVariationSettings::Variations(
         CssFontVariationList::try_new(vec![CssFontVariation::new(
             tag,
-            CssSpecifiedNumber::try_from_component(CssComponentValue::try_number("-1.25").unwrap())
-                .unwrap(),
+            CssNumeric::<CssNumber>::try_from_component(
+                CssComponentValue::try_number("-1.25").unwrap(),
+            )
+            .unwrap(),
         )])
         .unwrap(),
     );

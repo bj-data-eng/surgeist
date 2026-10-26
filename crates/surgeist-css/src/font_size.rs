@@ -1,7 +1,7 @@
 //! Exact authored Fonts 4 font sizes, before parent-relative resolution.
 
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{CssSerializationError, CssSpecifiedNonNegativeLengthPercentage};
+use crate::{CssLengthPercentage, CssNonNegative, CssNumeric, CssSerializationError};
 
 type SerializationResult<T> = Result<T, CssSerializationError>;
 
@@ -25,15 +25,13 @@ pub enum CssFontSize {
     Larger,
     Smaller,
     Math,
-    LengthPercentage(CssSpecifiedNonNegativeLengthPercentage),
+    LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>),
 }
 
 impl PartialEq for CssFontSize {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
-                left.structural_eq(right)
-            }
+            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => left == right,
             (Self::LengthPercentage(_), _) | (_, Self::LengthPercentage(_)) => false,
             _ => std::mem::discriminant(self) == std::mem::discriminant(other),
         }

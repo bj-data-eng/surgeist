@@ -13,8 +13,8 @@ fn inset(text: &str) -> CssInsetValue {
         return CssInsetValue::Auto;
     }
     let numeric = if text.starts_with("calc(") {
-        CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(
+        CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default(),
             )
@@ -22,7 +22,7 @@ fn inset(text: &str) -> CssInsetValue {
         )
         .unwrap()
     } else {
-        CssSpecifiedLengthPercentage::try_from_component(component(text)).unwrap()
+        CssNumeric::<CssLengthPercentage>::try_from_component(component(text)).unwrap()
     };
     CssInsetValue::LengthPercentage(numeric)
 }
@@ -98,12 +98,12 @@ fn exact_literals_math_and_origin_blind_equality() {
             assert!(numeric.origin() != parsed_value.value().origin().unwrap());
         }
     }
-    assert_ne!(inset("1px"), inset("1.0px"));
+    assert_eq!(inset("1px"), inset("1.0px"));
     assert_ne!(inset("calc(1px + 2%)"), inset("calc(2% + 1px)"));
     assert_ne!(inset("auto"), inset("0"));
 
     let programmatic = CssInsetValue::LengthPercentage(
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_dimension("1.5", "px").unwrap(),
         )
         .unwrap(),

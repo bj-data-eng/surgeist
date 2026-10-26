@@ -9,16 +9,20 @@ fn scalar(text: &str) -> CssGapValue {
     }
     let components = parse_component_values(text).unwrap();
     let numeric = if text.starts_with("calc(") {
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(components, Default::default())
-                .unwrap(),
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
         let [component] = components.items() else {
             panic!("one numeric gap component: {text}")
         };
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.clone()).unwrap()
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component.clone())
+            .unwrap()
     };
     CssGapValue::LengthPercentage(numeric)
 }
@@ -35,7 +39,7 @@ fn parsed_gap(value: &str) -> CssGapShorthand {
 #[test]
 fn constructed_gap_preserves_authored_arity_and_numeric_origins() {
     let row = CssGapValue::LengthPercentage(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension("1.25", "px").unwrap(),
         )
         .unwrap(),

@@ -1,7 +1,9 @@
 //! Authored Grid placement values.
 
-use super::{CssIdent, CssIntegerValue, CssPositiveIntegerValue};
-use crate::{CssSerializationError, specified_rule_serialization::SpecifiedRuleWriter};
+use super::{CssIdent, CssInteger, CssNumeric, CssPositive};
+use crate::{
+    CssNumericLiteral, CssSerializationError, specified_rule_serialization::SpecifiedRuleWriter,
+};
 
 /// A decoded Grid line name with Values 4 and Grid reserved words excluded.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -23,40 +25,28 @@ impl CssGridLineName {
 }
 
 /// A nonzero ordinary line index or symbolic integer-root calculation.
-/// Equality keeps integer variant and token spelling while ignoring diagnostic origins.
+/// Equality compares the integer value and name, ignoring spelling and diagnostic origins.
 #[derive(Clone, Debug)]
 pub struct CssGridLineIndex {
-    value: CssIntegerValue,
+    value: CssNumeric<CssInteger>,
     name: Option<CssGridLineName>,
 }
 
 impl PartialEq for CssGridLineIndex {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-            && match (&self.value, &other.value) {
-                (CssIntegerValue::Literal(left), CssIntegerValue::Literal(right)) => left
-                    .component()
-                    .structural_eq_ignoring_origin(right.component()),
-                (CssIntegerValue::Calculation(left), CssIntegerValue::Calculation(right)) => {
-                    left.structural_eq(right)
-                }
-                _ => false,
-            }
+        self.name == other.name && self.value == other.value
     }
 }
 
 impl CssGridLineIndex {
     #[must_use]
-    pub fn try_new(value: CssIntegerValue, name: Option<CssGridLineName>) -> Option<Self> {
-        let valid = match &value {
-            CssIntegerValue::Literal(number) => !number.is_zero(),
-            CssIntegerValue::Calculation(_) => true,
-        };
+    pub fn try_new(value: CssNumeric<CssInteger>, name: Option<CssGridLineName>) -> Option<Self> {
+        let valid = !value.literal().is_some_and(CssNumericLiteral::is_zero);
         valid.then_some(Self { value, name })
     }
 
     #[must_use]
-    pub fn value(&self) -> &CssIntegerValue {
+    pub fn value(&self) -> &CssNumeric<CssInteger> {
         &self.value
     }
 
@@ -69,21 +59,21 @@ impl CssGridLineIndex {
 /// A Grid span containing a positive ordinary index, a name, or both.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssGridLineSpan {
-    integer: Option<CssPositiveIntegerValue>,
+    integer: Option<CssNumeric<CssInteger, CssPositive>>,
     name: Option<CssGridLineName>,
 }
 
 impl CssGridLineSpan {
     #[must_use]
     pub fn try_new(
-        integer: Option<CssPositiveIntegerValue>,
+        integer: Option<CssNumeric<CssInteger, CssPositive>>,
         name: Option<CssGridLineName>,
     ) -> Option<Self> {
         (integer.is_some() || name.is_some()).then_some(Self { integer, name })
     }
 
     #[must_use]
-    pub fn integer(&self) -> Option<&CssPositiveIntegerValue> {
+    pub fn integer(&self) -> Option<&CssNumeric<CssInteger, CssPositive>> {
         self.integer.as_ref()
     }
 
@@ -105,13 +95,16 @@ pub enum CssGridLine {
 
 impl CssGridLine {
     #[must_use]
-    pub fn try_indexed(value: CssIntegerValue, name: Option<CssGridLineName>) -> Option<Self> {
+    pub fn try_indexed(
+        value: CssNumeric<CssInteger>,
+        name: Option<CssGridLineName>,
+    ) -> Option<Self> {
         CssGridLineIndex::try_new(value, name).map(Self::Indexed)
     }
 
     #[must_use]
     pub fn try_span(
-        integer: Option<CssPositiveIntegerValue>,
+        integer: Option<CssNumeric<CssInteger, CssPositive>>,
         name: Option<CssGridLineName>,
     ) -> Option<Self> {
         CssGridLineSpan::try_new(integer, name).map(Self::Span)
@@ -149,14 +142,7 @@ impl CssGridLine {
                 writer.append("span")?;
                 if let Some(integer) = &span.integer {
                     writer.append(" ")?;
-                    match integer {
-                        CssPositiveIntegerValue::Literal(value) => value
-                            .integer()
-                            .append_specified(&mut writer.context, &mut writer.css)?,
-                        CssPositiveIntegerValue::Calculation(value) => {
-                            value.serialize_specified_into(&mut writer.context, &mut writer.css)?
-                        }
-                    }
+                    integer.append_specified(&mut writer.context, &mut writer.css)?;
                 }
                 if let Some(name) = &span.name {
                     writer.append(" ")?;

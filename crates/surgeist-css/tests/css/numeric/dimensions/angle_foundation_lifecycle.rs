@@ -457,17 +457,17 @@ fn image_orientation_calculation_aggregate_equality_ignores_original_source_coor
 
 #[test]
 fn raw_angle_math_and_color_compare_original_provenance() {
-    let first = CssAngleCalculation::try_from_components(
+    let first = CssCalculation::<CssAngle>::try_from_components(
         parse_component_values("calc(25deg + 5deg)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let second = CssAngleCalculation::try_from_components(
+    let second = CssCalculation::<CssAngle>::try_from_components(
         parse_component_values("  calc(25deg + 5deg)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    assert_ne!(first, second);
+    assert_eq!(first, second);
     assert_ne!(first.origin(), second.origin());
     let (first, second) = located(CssKnownProperty::Color, "hsl(25deg 20% 30%)");
     let CssKnownPropertyValueRef::Color(first) = first.known().unwrap().property_value().unwrap()
@@ -823,9 +823,12 @@ mod checked_construction {
         CssFilterFunction::HueRotate(CssFilterHueRotate::new(angle))
     }
     fn literal(text: &str) -> CssAngleOrZero {
-        CssAngleOrZero::Angle(CssAngleValue::from_literal(
-            CssAngleLiteral::try_from_component(component(text)).unwrap(),
-        ))
+        CssAngleOrZero::Angle(
+            CssNumeric::<CssAngle>::try_from_literal(
+                CssNumericLiteral::<CssAngle>::try_from_component(component(text)).unwrap(),
+            )
+            .unwrap(),
+        )
     }
     fn budget(value: &CssFilterFunction, expected: &str) {
         crate::css::support::serialization_limits::LimitLadder::new(expected, 2, 2)
@@ -845,7 +848,8 @@ mod checked_construction {
             ("-1e-999rad", "-1e-999", CssAngleUnit::Radians),
         ] {
             let supplied = component(text);
-            let angle = CssAngleLiteral::try_from_component(supplied.clone()).unwrap();
+            let angle =
+                CssNumericLiteral::<CssAngle>::try_from_component(supplied.clone()).unwrap();
             assert_eq!(angle.numeric().representation(), coefficient);
             assert_eq!(angle.unit(), unit);
             assert_eq!(angle.component(), &supplied);
@@ -858,7 +862,8 @@ mod checked_construction {
             CssAngleUnit::Radians,
             CssAngleUnit::Turns,
         ] {
-            let angle = CssAngleLiteral::try_new("+1.00000000000000000001e999", unit).unwrap();
+            let angle = CssNumericLiteral::<CssAngle>::try_new("+1.00000000000000000001e999", unit)
+                .unwrap();
             assert_eq!(
                 angle.numeric().representation(),
                 "+1.00000000000000000001e999"
@@ -871,9 +876,10 @@ mod checked_construction {
     fn literal_and_zero_failures_report_the_supplied_component_origin() {
         for text in ["0", "25%", "1px", "calc(1deg)", "auto"] {
             let supplied = component(text);
-            let error = CssAngleLiteral::try_from_component(supplied.clone()).unwrap_err();
-            assert!(error.is_invalid_token(), "{error:?}");
-            assert_eq!(error.origin(), supplied.origin());
+            let error =
+                CssNumericLiteral::<CssAngle>::try_from_component(supplied.clone()).unwrap_err();
+            assert!(error.is_root_domain_mismatch(), "{error:?}");
+            assert_eq!(error.origin(), Some(supplied.origin()));
         }
         for text in ["1e-999", "-1e-999", "0deg", "0%", "calc(0)"] {
             let supplied = component(text);
@@ -883,12 +889,12 @@ mod checked_construction {
         }
         for number in ["NaN", "infinity", "1 2", ""] {
             assert!(
-                CssAngleLiteral::try_new(number, CssAngleUnit::Degrees)
+                CssNumericLiteral::<CssAngle>::try_new(number, CssAngleUnit::Degrees)
                     .unwrap_err()
                     .is_invalid_dimension()
             );
             crate::css::support::value_assertions::assert_numeric_kind(
-                CssAngleCalculation::try_literal(number, CssAngleUnit::Degrees),
+                CssCalculation::<CssAngle>::try_literal(number, CssAngleUnit::Degrees),
                 NumericFailure::Component(ComponentFailure::InvalidDimension),
             );
         }
@@ -916,19 +922,20 @@ mod checked_construction {
     #[test]
     fn checked_calculation_transfer_normalizes_only_an_ordinary_dimension_root() {
         let supplied = component("+1.23000000000000000001TURN");
-        let calculation = CssAngleCalculation::try_from_components(
+        let calculation = CssCalculation::<CssAngle>::try_from_components(
             CssComponentValues::try_new(vec![supplied.clone()], Default::default()).unwrap(),
             Default::default(),
         )
         .unwrap();
-        let angle = CssAngleValue::try_from_calculation(calculation).unwrap();
+        let angle = CssNumeric::<CssAngle>::try_from_calculation(calculation).unwrap();
         assert!(angle.calculation().is_none());
         assert_eq!(angle.literal().unwrap().component(), &supplied);
         assert_eq!(angle.origin(), supplied.origin());
-        let ordinary = CssAngleCalculation::try_literal("1e999", CssAngleUnit::Radians).unwrap();
+        let ordinary =
+            CssCalculation::<CssAngle>::try_literal("1e999", CssAngleUnit::Radians).unwrap();
         assert_eq!(ordinary.result_type(), CssCalculationType::Angle);
         assert_eq!(
-            CssAngleValue::try_from_calculation(ordinary)
+            CssNumeric::<CssAngle>::try_from_calculation(ordinary)
                 .unwrap()
                 .literal()
                 .unwrap()
@@ -937,12 +944,12 @@ mod checked_construction {
             "1e999"
         );
         for text in ["calc(180deg)", "calc(90deg + 90deg)", "min(180deg, 200deg)"] {
-            let calculation = CssAngleCalculation::try_from_components(
+            let calculation = CssCalculation::<CssAngle>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default(),
             )
             .unwrap();
-            let angle = CssAngleValue::try_from_calculation(calculation.clone()).unwrap();
+            let angle = CssNumeric::<CssAngle>::try_from_calculation(calculation.clone()).unwrap();
             assert!(angle.literal().is_none());
             assert_eq!(angle.calculation(), Some(&calculation));
             assert_eq!(angle.origin(), calculation.origin());
@@ -979,7 +986,7 @@ mod checked_construction {
         let CssComponentValueRef::Function(function) = root.view() else {
             panic!("math")
         };
-        let error = CssAngleValue::try_from_calculation(calculation.clone()).unwrap_err();
+        let error = CssNumeric::<CssAngle>::try_from_calculation(calculation.clone()).unwrap_err();
         assert!(error.is_recovered_component(), "{error:?}");
         assert_eq!(error.origin(), Some(function.closing_origin()));
         assert!(error.path().is_none());
@@ -996,19 +1003,19 @@ mod checked_construction {
     }
 
     #[test]
-    fn raw_owner_equality_preserves_provenance_while_aggregates_compare_structure() {
+    fn raw_and_aggregate_equality_ignore_provenance_and_spelling() {
         let first = literal("25deg");
         let second = literal(" 25deg");
-        assert_ne!(first, second);
+        assert_eq!(first, second);
         assert_eq!(hue(first.clone()), hue(second.clone()));
         assert_eq!(
             CssTransformFunction::Rotate(first.clone()),
             CssTransformFunction::Rotate(second.clone())
         );
-        assert_ne!(hue(first), hue(literal("25.0deg")));
+        assert_eq!(hue(first), hue(literal("25.0deg")));
         let first = CssZeroLiteral::try_from_component(component("-0e999")).unwrap();
         let second = CssZeroLiteral::try_from_component(component(" -0e999")).unwrap();
-        assert_ne!(first, second);
+        assert_eq!(first, second);
         assert_eq!(
             hue(CssAngleOrZero::Zero(first)),
             hue(CssAngleOrZero::Zero(second))

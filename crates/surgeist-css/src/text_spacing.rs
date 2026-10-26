@@ -1,6 +1,6 @@
 //! Exact authored word and letter spacing from CSS Text 4.
 
-use crate::{CssSpecifiedLengthPercentage, CssValueOrigin};
+use crate::{CssLengthPercentage, CssNumeric, CssValueOrigin};
 
 /// A checked specified spacing adjustment, shared by word and letter spacing.
 ///
@@ -16,12 +16,12 @@ pub enum CssTextSpacingAdjustment {
     /// The symbolic initial adjustment.
     Normal,
     /// A signed exact length-percentage, including deferred math.
-    LengthPercentage(CssSpecifiedLengthPercentage),
+    LengthPercentage(CssNumeric<CssLengthPercentage>),
 }
 
 impl CssTextSpacingAdjustment {
     /// Borrows the checked numeric adjustment, if present.
-    pub fn length_percentage(&self) -> Option<&CssSpecifiedLengthPercentage> {
+    pub fn length_percentage(&self) -> Option<&CssNumeric<CssLengthPercentage>> {
         match self {
             Self::Normal => None,
             Self::LengthPercentage(value) => Some(value),
@@ -31,7 +31,7 @@ impl CssTextSpacingAdjustment {
     /// Borrows the original numeric origin; `normal` has no numeric origin.
     pub fn origin(&self) -> Option<&CssValueOrigin> {
         self.length_percentage()
-            .map(CssSpecifiedLengthPercentage::origin)
+            .map(CssNumeric::<CssLengthPercentage>::origin)
     }
 }
 impl crate::specified_rule_serialization::SpecifiedProvider for CssTextSpacingAdjustment {
@@ -60,9 +60,7 @@ impl PartialEq for CssTextSpacingAdjustment {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Normal, Self::Normal) => true,
-            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
-                left.structural_eq(right)
-            }
+            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => left == right,
             _ => false,
         }
     }

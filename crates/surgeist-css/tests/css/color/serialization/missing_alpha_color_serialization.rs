@@ -347,8 +347,11 @@ fn omitted_direct_unity_and_calculated_alpha_are_distinct_from_none() {
     let omitted = checked_rgb(true, None);
     let missing = checked_rgb(true, Some(CssColorComponent::None));
     let calculated = CssColorComponent::NumberCalculation(
-        CssNumberCalculation::try_from_components(components("calc(1 / 128)"), Default::default())
-            .unwrap(),
+        CssCalculation::<CssNumber>::try_from_components(
+            components("calc(1 / 128)"),
+            Default::default(),
+        )
+        .unwrap(),
     );
     let retained = checked_rgb(true, Some(calculated.clone()));
     assert_eq!(omitted.rgb_value().unwrap().alpha(), None);

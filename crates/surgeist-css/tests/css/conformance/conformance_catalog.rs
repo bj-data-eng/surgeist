@@ -10,8 +10,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use surgeist_css::CssTimeLiteral;
 use surgeist_css::*;
+use surgeist_css::{CssNumericLiteral, CssTime};
 
 mod expected;
 
@@ -1035,33 +1035,34 @@ fn selected_alignment_grammars_cite_the_superseding_align3_source() {
 
 #[test]
 fn numeric_value_types_construct_checked_literals_and_drop_cross_type_declarations() {
-    let dimension = CssSpecifiedLength::try_from_component(
+    let dimension = CssNumeric::<CssLength>::try_from_component(
         CssComponentValue::try_dimension("-1.5", "cqw").unwrap(),
     )
     .unwrap();
     assert!(exact_dimension(
-        dimension.literal_component(),
+        dimension.literal().map(|literal| literal.component()),
         "-1.5",
         "cqw"
     ));
     assert!(CssComponentValue::try_dimension("infinity", "px").is_err());
 
     let angle =
-        CssAngleCalculation::try_literal("-0.5", CssAngleUnit::Turns).expect("finite angle");
-    let percentage = CssPercentageCalculation::try_literal(25.0).expect("finite percentage");
-    let time =
-        CssTimeCalculation::try_literal("-250", CssTimeUnit::Milliseconds).expect("finite time");
-    let frequency = CssFrequencyCalculation::try_literal("1.5", CssFrequencyUnit::Kilohertz)
+        CssCalculation::<CssAngle>::try_literal("-0.5", CssAngleUnit::Turns).expect("finite angle");
+    let percentage = CssCalculation::<CssPercentage>::try_literal(25.0).expect("finite percentage");
+    let time = CssCalculation::<CssTime>::try_literal("-250", CssTimeUnit::Milliseconds)
+        .expect("finite time");
+    let frequency = CssCalculation::<CssFrequency>::try_literal("1.5", CssFrequencyUnit::Kilohertz)
         .expect("finite frequency");
     assert_eq!(angle.result_type(), CssCalculationType::Angle);
     assert_eq!(percentage.result_type(), CssCalculationType::Percentage);
     assert_eq!(time.result_type(), CssCalculationType::Time);
     assert_eq!(frequency.result_type(), CssCalculationType::Frequency);
-    assert!(CssAngleCalculation::try_literal("NaN", CssAngleUnit::Degrees).is_err());
+    assert!(CssCalculation::<CssAngle>::try_literal("NaN", CssAngleUnit::Degrees).is_err());
     assert!(
-        CssTimeCalculation::try_literal(&f32::INFINITY.to_string(), CssTimeUnit::Seconds).is_err()
+        CssCalculation::<CssTime>::try_literal(&f32::INFINITY.to_string(), CssTimeUnit::Seconds)
+            .is_err()
     );
-    assert!(CssFrequencyCalculation::try_literal("-inf", CssFrequencyUnit::Hertz).is_err());
+    assert!(CssCalculation::<CssFrequency>::try_literal("-inf", CssFrequencyUnit::Hertz).is_err());
 
     let parsed = parse_style_attribute(concat!(
         "width: calc((1cqw + 2%) * 3); ",
@@ -1167,12 +1168,12 @@ fn official_position_metadata_matches_generic_position_behavior() {
     assert!(matches!(
         value.position().horizontal(),
         CssHorizontalPosition::RightOffset(offset)
-            if exact_percentage(offset.literal_component(), "5")
+            if exact_percentage(offset.literal().map(|literal| literal.component()), "5")
     ));
     assert!(matches!(
         value.position().vertical(),
         CssVerticalPosition::BottomOffset(offset)
-            if exact_dimension(offset.literal_component(), "2", "px")
+            if exact_dimension(offset.literal().map(|literal| literal.component()), "2", "px")
     ));
 }
 
@@ -1194,7 +1195,7 @@ fn official_background_position_metadata_matches_three_component_layer_behavior(
     assert!(matches!(
         layer.horizontal(),
         CssHorizontalPosition::LeftOffset(offset)
-            if exact_dimension(offset.literal_component(), "10", "px")
+            if exact_dimension(offset.literal().map(|literal| literal.component()), "10", "px")
     ));
     assert!(matches!(layer.vertical(), CssVerticalPosition::Top));
 }
@@ -1235,7 +1236,7 @@ fn object_position_property_metadata_matches_semantic_accessor_behavior() {
     assert!(matches!(
         value.position().vertical(),
         CssVerticalPosition::Offset(offset)
-            if exact_percentage(offset.literal_component(), "25")
+            if exact_percentage(offset.literal().map(|literal| literal.component()), "25")
     ));
 }
 
@@ -1259,12 +1260,11 @@ fn transform_origin_property_metadata_matches_directed_z_behavior() {
         value.origin().vertical(),
         CssVerticalPosition::Top
     ));
-    assert!(
-        value
-            .origin()
-            .z()
-            .is_some_and(|z| exact_dimension(z.literal_component(), "50", "px"))
-    );
+    assert!(value.origin().z().is_some_and(|z| exact_dimension(
+        z.literal().map(|literal| literal.component()),
+        "50",
+        "px"
+    )));
 }
 
 #[test]
@@ -1285,7 +1285,7 @@ fn mask_position_property_metadata_matches_generic_layer_behavior() {
     assert!(matches!(
         first.horizontal(),
         CssHorizontalPosition::LeftOffset(offset)
-            if exact_dimension(offset.literal_component(), "10", "px")
+            if exact_dimension(offset.literal().map(|literal| literal.component()), "10", "px")
     ));
     assert!(matches!(second.horizontal(), CssHorizontalPosition::Center));
 }
@@ -1297,7 +1297,7 @@ fn mask_position_property_metadata_matches_generic_layer_behavior() {
 
 #[test]
 fn official_integer_metadata_matches_checked_integer_behavior() {
-    let value = CssIntegerCalculation::literal(-3);
+    let value = CssCalculation::<CssInteger>::literal(-3);
     assert_eq!(value.result_type(), CssCalculationType::Number);
     assert!(!value.requires_rounding());
     // Values 3 section 5.1; z-index is `auto | <integer>`.
@@ -1307,7 +1307,7 @@ fn official_integer_metadata_matches_checked_integer_behavior() {
 
 #[test]
 fn official_number_metadata_matches_checked_number_behavior() {
-    let value = CssNumberCalculation::try_literal(-3.5).expect("finite number");
+    let value = CssCalculation::<CssNumber>::try_literal(-3.5).expect("finite number");
     assert_eq!(value.result_type(), CssCalculationType::Number);
     // Values 3 section 5.2; flex-grow is `<number [0,∞]>`.
     assert_single_known_declaration("flex-grow: 1.5", "baseline.property.flex-grow");
@@ -1316,11 +1316,15 @@ fn official_number_metadata_matches_checked_number_behavior() {
 
 #[test]
 fn official_dimension_metadata_matches_checked_dimension_behavior() {
-    let value = CssSpecifiedLength::try_from_component(
+    let value = CssNumeric::<CssLength>::try_from_component(
         CssComponentValue::try_dimension("1.5", "rem").unwrap(),
     )
     .unwrap();
-    assert!(exact_dimension(value.literal_component(), "1.5", "rem"));
+    assert!(exact_dimension(
+        value.literal().map(|literal| literal.component()),
+        "1.5",
+        "rem"
+    ));
     // Values 3 section 5.4: a dimension carries a unit; an unknown unit is
     // not a length.
     assert_single_known_declaration("width: 1.5rem", "baseline.property.width");
@@ -1329,7 +1333,7 @@ fn official_dimension_metadata_matches_checked_dimension_behavior() {
 
 #[test]
 fn official_percentage_metadata_matches_checked_percentage_behavior() {
-    let value = CssPercentageCalculation::try_literal(-12.5).expect("finite percentage");
+    let value = CssCalculation::<CssPercentage>::try_literal(-12.5).expect("finite percentage");
     assert_eq!(value.result_type(), CssCalculationType::Percentage);
     // Values 3 section 5.5: `%` must immediately follow the number.
     assert_single_known_declaration("text-indent: -12.5%", "baseline.property.text-indent");
@@ -1338,7 +1342,7 @@ fn official_percentage_metadata_matches_checked_percentage_behavior() {
 
 #[test]
 fn official_length_metadata_matches_checked_length_behavior() {
-    let value = CssLengthCalculation::try_dimension(2.0, CssLengthUnit::Cqw)
+    let value = CssCalculation::<CssLength>::try_dimension(2.0, CssLengthUnit::Cqw)
         .expect("finite length dimension");
     assert_eq!(value.result_type(), CssCalculationType::Length);
     assert_single_known_declaration("width: 2cqw", "baseline.property.width");
@@ -1360,7 +1364,7 @@ fn official_length_percentage_metadata_matches_mixed_length_parser_behavior() {
 #[test]
 fn official_angle_metadata_matches_checked_angle_behavior() {
     let value =
-        CssAngleCalculation::try_literal("-0.5", CssAngleUnit::Turns).expect("finite angle");
+        CssCalculation::<CssAngle>::try_literal("-0.5", CssAngleUnit::Turns).expect("finite angle");
     assert_eq!(value.result_type(), CssCalculationType::Angle);
     assert_single_known_declaration("rotate: -0.5turn", "baseline.property.rotate");
     assert_dropped_declaration("rotate: 1hz");
@@ -1369,8 +1373,8 @@ fn official_angle_metadata_matches_checked_angle_behavior() {
 #[test]
 fn official_angle_percentage_metadata_matches_checked_mixed_models() {
     let angle =
-        CssAngleCalculation::try_literal("45", CssAngleUnit::Degrees).expect("finite angle");
-    let percentage = CssPercentageCalculation::try_literal(25.0).expect("finite percentage");
+        CssCalculation::<CssAngle>::try_literal("45", CssAngleUnit::Degrees).expect("finite angle");
+    let percentage = CssCalculation::<CssPercentage>::try_literal(25.0).expect("finite percentage");
     assert_eq!(angle.result_type(), CssCalculationType::Angle);
     assert_eq!(percentage.result_type(), CssCalculationType::Percentage);
     // Images 4 conic color stops are `<angle-percentage>`; a length is not.
@@ -1383,8 +1387,8 @@ fn official_angle_percentage_metadata_matches_checked_mixed_models() {
 
 #[test]
 fn official_time_metadata_matches_checked_time_behavior() {
-    let value =
-        CssTimeLiteral::try_new("-250", CssTimeUnit::Milliseconds).expect("finite signed time");
+    let value = CssNumericLiteral::<CssTime>::try_new("-250", CssTimeUnit::Milliseconds)
+        .expect("finite signed time");
     assert_eq!(value.numeric().representation(), "-250");
     assert_eq!(value.unit(), CssTimeUnit::Milliseconds);
     assert_single_known_declaration(
@@ -1396,8 +1400,9 @@ fn official_time_metadata_matches_checked_time_behavior() {
 
 #[test]
 fn official_time_percentage_metadata_matches_checked_mixed_models() {
-    let time = CssTimeCalculation::try_literal("-1", CssTimeUnit::Seconds).expect("finite time");
-    let percentage = CssPercentageCalculation::try_literal(50.0).expect("finite percentage");
+    let time =
+        CssCalculation::<CssTime>::try_literal("-1", CssTimeUnit::Seconds).expect("finite time");
+    let percentage = CssCalculation::<CssPercentage>::try_literal(50.0).expect("finite percentage");
     assert_eq!(time.result_type(), CssCalculationType::Time);
     assert_eq!(percentage.result_type(), CssCalculationType::Percentage);
     // No selected property consumes <time-percentage>; a pure <time> context
@@ -1407,7 +1412,7 @@ fn official_time_percentage_metadata_matches_checked_mixed_models() {
 
 #[test]
 fn official_frequency_metadata_matches_checked_frequency_behavior() {
-    let value = CssFrequencyCalculation::try_literal("440", CssFrequencyUnit::Hertz)
+    let value = CssCalculation::<CssFrequency>::try_literal("440", CssFrequencyUnit::Hertz)
         .expect("finite frequency");
     assert_eq!(value.result_type(), CssCalculationType::Frequency);
     // Speech 1 voice-pitch admits `<frequency [0Hz,∞]> && absolute`.
@@ -1420,9 +1425,9 @@ fn official_frequency_metadata_matches_checked_frequency_behavior() {
 
 #[test]
 fn official_frequency_percentage_metadata_matches_checked_mixed_models() {
-    let frequency = CssFrequencyCalculation::try_literal("1.5", CssFrequencyUnit::Kilohertz)
+    let frequency = CssCalculation::<CssFrequency>::try_literal("1.5", CssFrequencyUnit::Kilohertz)
         .expect("finite frequency");
-    let percentage = CssPercentageCalculation::try_literal(75.0).expect("finite percentage");
+    let percentage = CssCalculation::<CssPercentage>::try_literal(75.0).expect("finite percentage");
     assert_eq!(frequency.result_type(), CssCalculationType::Frequency);
     assert_eq!(percentage.result_type(), CssCalculationType::Percentage);
     assert_single_known_declaration(
@@ -1434,8 +1439,8 @@ fn official_frequency_percentage_metadata_matches_checked_mixed_models() {
 
 #[test]
 fn official_resolution_metadata_matches_checked_resolution_behavior() {
-    let value =
-        CssResolutionLiteral::try_new("2", CssResolutionUnit::Dppx).expect("exact resolution");
+    let value = CssNumericLiteral::<CssResolution>::try_new("2", CssResolutionUnit::Dppx)
+        .expect("exact resolution");
     assert_eq!(value.numeric().representation(), "2");
     assert_eq!(value.unit(), CssResolutionUnit::Dppx);
     // The resolution media feature is the selected <resolution> consumer. A
@@ -2507,7 +2512,7 @@ fn transform_perspective_accepts_none_and_zero_and_rejects_invalid_dimensions() 
     assert!(matches!(
         &functions.functions()[1],
         CssTransformFunction::Perspective(CssTransformPerspective::Length(length))
-            if matches!(length.literal_component().map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == "0")
+            if matches!(length.literal().map(|literal| literal.component()).map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == "0")
     ));
     assert!(!parse_style_attribute("transform: perspective(10%)").is_clean());
     assert!(!parse_style_attribute("transform: perspective(-1px)").is_clean());

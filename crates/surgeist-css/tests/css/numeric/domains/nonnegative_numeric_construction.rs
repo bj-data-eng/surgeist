@@ -12,19 +12,21 @@ use crate::css::support::value_assertions::assert_component_rejected;
 use crate::css::support::value_assertions::first_token as token;
 use surgeist_css::*;
 
-fn number(text: &str) -> CssSpecifiedNonNegativeNumber {
-    CssSpecifiedNonNegativeNumber::try_from_component(CssComponentValue::try_number(text).unwrap())
-        .unwrap()
+fn number(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
+    CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
+        CssComponentValue::try_number(text).unwrap(),
+    )
+    .unwrap()
 }
-fn percentage(text: &str) -> CssSpecifiedNonNegativePercentage {
-    CssSpecifiedNonNegativePercentage::try_from_component(
+fn percentage(text: &str) -> CssNumeric<CssPercentage, CssNonNegative> {
+    CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token(text).unwrap(),
     )
     .unwrap()
 }
-fn number_math(text: &str) -> CssSpecifiedNonNegativeNumber {
-    CssSpecifiedNonNegativeNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(
+fn number_math(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
+    CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
@@ -32,9 +34,9 @@ fn number_math(text: &str) -> CssSpecifiedNonNegativeNumber {
     )
     .unwrap()
 }
-fn percentage_math(text: &str) -> CssSpecifiedNonNegativePercentage {
-    CssSpecifiedNonNegativePercentage::try_from_calculation(
-        CssPercentageCalculation::try_from_components(
+fn percentage_math(text: &str) -> CssNumeric<CssPercentage, CssNonNegative> {
+    CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssPercentage>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
@@ -42,17 +44,23 @@ fn percentage_math(text: &str) -> CssSpecifiedNonNegativePercentage {
     )
     .unwrap()
 }
-fn number_text(value: &CssSpecifiedNonNegativeNumber) -> &str {
-    let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) =
-        value.literal_component().unwrap().view()
+fn number_text(value: &CssNumeric<CssNumber, CssNonNegative>) -> &str {
+    let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = value
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("number")
     };
     number.representation()
 }
-fn percentage_text(value: &CssSpecifiedNonNegativePercentage) -> &str {
-    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) =
-        value.literal_component().unwrap().view()
+fn percentage_text(value: &CssNumeric<CssPercentage, CssNonNegative>) -> &str {
+    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = value
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("percentage")
     };
@@ -80,10 +88,10 @@ fn shared_nonnegative_scalars_keep_exact_huge_tiny_positive_and_signed_zero_lexe
         assert_eq!(number_text(&n), text);
         assert_eq!(percentage_text(&p), text);
         assert!(
-            matches!(n.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.kind() == kind)
+            matches!(n.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.kind() == kind)
         );
         assert!(
-            matches!(p.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.kind() == kind)
+            matches!(p.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.kind() == kind)
         );
         assert_eq!(n.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(p.origin(), &CssValueOrigin::Programmatic);
@@ -101,34 +109,35 @@ fn ordinary_tiny_negatives_and_wrong_domains_return_exact_errors_with_origins() 
     for text in ["-1e-999", "-0.00000000000000000001", "-1"] {
         let input = token(&format!("  {text}"));
         let origin = input.origin().clone();
-        let error = CssSpecifiedNonNegativeNumber::try_from_component(input).unwrap_err();
+        let error = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(input).unwrap_err();
         assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(&origin));
         let input = token(&format!("  {text}%"));
         let origin = input.origin().clone();
-        let error = CssSpecifiedNonNegativePercentage::try_from_component(input).unwrap_err();
+        let error =
+            CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(input).unwrap_err();
         assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(&origin));
     }
     for text in ["1px", "1deg", "auto"] {
         assert!(
-            CssSpecifiedNonNegativeNumber::try_from_component(token(text))
+            CssNumeric::<CssNumber, CssNonNegative>::try_from_component(token(text))
                 .unwrap_err()
                 .is_root_domain_mismatch()
         );
         assert!(
-            CssSpecifiedNonNegativePercentage::try_from_component(token(text))
+            CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(token(text))
                 .unwrap_err()
                 .is_root_domain_mismatch()
         );
     }
     assert_component_rejected(
-        CssSpecifiedNonNegativeNumber::try_from_component,
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component,
         token("1%"),
         NumericFailure::RootDomainMismatch,
     );
     assert_component_rejected(
-        CssSpecifiedNonNegativePercentage::try_from_component,
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component,
         token("0"),
         NumericFailure::RootDomainMismatch,
     );
@@ -140,30 +149,30 @@ fn bare_nonnegative_roots_recheck_range_and_actual_math_remains_symbolic() {
         assert_eq!(number_text(&number_math(text)), text);
         assert_eq!(percentage_text(&percentage_math(&format!("{text}%"))), text);
     }
-    let number_root = CssNumberCalculation::try_from_components(
+    let number_root = CssCalculation::<CssNumber>::try_from_components(
         parse_component_values("-1e-999").unwrap(),
         Default::default(),
     )
     .unwrap();
     assert!(
-        CssSpecifiedNonNegativeNumber::try_from_calculation(number_root)
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(number_root)
             .unwrap_err()
             .is_out_of_range()
     );
-    let percentage_root = CssPercentageCalculation::try_from_components(
+    let percentage_root = CssCalculation::<CssPercentage>::try_from_components(
         parse_component_values("-1e-999%").unwrap(),
         Default::default(),
     )
     .unwrap();
     assert!(
-        CssSpecifiedNonNegativePercentage::try_from_calculation(percentage_root)
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(percentage_root)
             .unwrap_err()
             .is_out_of_range()
     );
     let n = number_math("calc(-1)");
     let p = percentage_math("calc(-1%)");
-    assert!(n.literal_component().is_none());
-    assert!(p.literal_component().is_none());
+    assert!(n.literal().map(|literal| literal.component()).is_none());
+    assert!(p.literal().map(|literal| literal.component()).is_none());
     assert_eq!(
         n.calculation().unwrap().result_type(),
         CssCalculationType::Number
@@ -210,25 +219,28 @@ fn bare_nonnegative_roots_recheck_range_and_actual_math_remains_symbolic() {
 }
 
 #[test]
-fn direct_number_provenance_and_established_percentage_equality_remain_distinct() {
-    let n = CssSpecifiedNonNegativeNumber::try_from_component(token("  1.250")).unwrap();
-    let p = CssSpecifiedNonNegativePercentage::try_from_component(token("  1.250%")).unwrap();
+fn direct_number_and_percentage_equality_ignore_provenance_and_spelling() {
+    let n = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(token("  1.250")).unwrap();
+    let p =
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(token("  1.250%")).unwrap();
     let CssValueOrigin::Parsed(origin) = n.origin() else {
         panic!("parsed number origin")
     };
     assert_eq!(origin.source().as_str(), "  1.250");
     assert_eq!(origin.span().start().byte_offset().value(), 2);
-    assert_ne!(n, number("1.250"));
+    assert_eq!(n, number("1.250"));
+    assert_eq!(n, number("1.25"));
     assert_eq!(p, percentage("1.250%"));
-    assert_ne!(p, percentage("1.25%"));
+    assert_eq!(p, percentage("1.25%"));
+    assert_eq!(p.literal().unwrap().numeric().representation(), "1.250");
     let a = number_math("calc(1 + 2)");
     let b = number_math("  calc(1 + 2)");
-    assert_ne!(a, b);
-    assert_ne!(a.calculation().unwrap(), b.calculation().unwrap());
+    assert_eq!(a, b);
+    assert_eq!(a.calculation().unwrap(), b.calculation().unwrap());
     let a = percentage_math("calc(1% + 2%)");
     let b = percentage_math("  calc(1% + 2%)");
     assert_eq!(a, b);
-    assert_ne!(a.calculation().unwrap(), b.calculation().unwrap());
+    assert_eq!(a.calculation().unwrap(), b.calculation().unwrap());
 }
 
 fn filter_amounts(value: &CssFilter) -> [&CssFilterAmount; 7] {
@@ -374,7 +386,7 @@ fn filter_and_backdrop_parsers_preserve_all_amount_roles_and_exact_payloads() {
 
 #[test]
 fn filter_aggregate_equality_ignores_numeric_origins_without_erasing_roles_or_order() {
-    let parsed = CssSpecifiedNonNegativeNumber::try_from_component(token("  1")).unwrap();
+    let parsed = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(token("  1")).unwrap();
     assert_eq!(
         CssFilterAmount::Number(parsed),
         CssFilterAmount::Number(number("1"))
@@ -383,7 +395,7 @@ fn filter_aggregate_equality_ignores_numeric_origins_without_erasing_roles_or_or
         CssFilterAmount::Number(number_math("calc(1 + 2)")),
         CssFilterAmount::Number(number_math("  calc(1 + 2)"))
     );
-    assert_ne!(
+    assert_eq!(
         CssFilterAmount::Number(number("1")),
         CssFilterAmount::Number(number("1.0"))
     );
@@ -483,7 +495,7 @@ fn border_slice_width_and_outset_retain_percentage_length_keyword_and_math_roles
     assert!(
         matches!(&slice.values()[1], CssBorderImageSliceComponent::Number(value) if value.calculation().is_some())
     );
-    let length_percentage = CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+    let length_percentage = CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token("25%").unwrap(),
     )
     .unwrap();
@@ -498,12 +510,12 @@ fn border_slice_width_and_outset_retain_percentage_length_keyword_and_math_roles
         CssBorderImageWidthComponent::Auto
     ));
     assert!(
-        matches!(&width.values()[1], CssBorderImageWidthComponent::LengthPercentage(value) if matches!(value.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.representation() == "25"))
+        matches!(&width.values()[1], CssBorderImageWidthComponent::LengthPercentage(value) if matches!(value.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.representation() == "25"))
     );
     assert!(
         matches!(&width.values()[2], CssBorderImageWidthComponent::Number(value) if value.calculation().is_some())
     );
-    let length = CssSpecifiedNonNegativeLength::try_from_component(
+    let length = CssNumeric::<CssLength, CssNonNegative>::try_from_component(
         CssComponentValue::try_token("2px").unwrap(),
     )
     .unwrap();
@@ -549,7 +561,7 @@ fn border_shorthand_construction_preserves_coupling_omission_and_exact_structure
     assert!(explicit.source().is_none());
     assert!(explicit.repeat().is_none());
     assert_ne!(omitted, explicit);
-    let parsed = CssSpecifiedNonNegativeNumber::try_from_component(token("  1")).unwrap();
+    let parsed = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(token("  1")).unwrap();
     assert_eq!(
         CssBorderImageSliceComponent::Number(parsed.clone()),
         CssBorderImageSliceComponent::Number(number("1"))
@@ -583,13 +595,13 @@ fn border_shorthand_construction_preserves_coupling_omission_and_exact_structure
     assert_ne!(
         CssBorderImageOutsetComponent::Number(number("2")),
         CssBorderImageOutsetComponent::Length(
-            CssSpecifiedNonNegativeLength::try_from_component(
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token("2px").unwrap()
             )
             .unwrap()
         )
     );
-    assert_ne!(
+    assert_eq!(
         CssBorderImageWidthComponent::Number(number("1")),
         CssBorderImageWidthComponent::Number(number("1.0"))
     );
@@ -743,8 +755,10 @@ fn iteration_constructor_retains_fraction_zero_infinite_math_nonempty_order_and_
 }
 
 #[test]
-fn iteration_aggregate_equality_ignores_only_numeric_origins_and_preserves_ast_roles_order() {
-    let parsed = CssSpecifiedNonNegativeNumber::try_from_component(token("  .5")).unwrap();
+fn iteration_aggregate_equality_ignores_numeric_origins_and_spelling_and_preserves_ast_roles_order()
+{
+    let parsed =
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(token("  .5")).unwrap();
     assert_eq!(
         CssAnimationIterationCount::Number(parsed),
         CssAnimationIterationCount::Number(number(".5"))
@@ -753,7 +767,7 @@ fn iteration_aggregate_equality_ignores_only_numeric_origins_and_preserves_ast_r
         CssAnimationIterationCount::Number(number_math("calc(1 + 2)")),
         CssAnimationIterationCount::Number(number_math("  calc(1 + 2)"))
     );
-    assert_ne!(
+    assert_eq!(
         CssAnimationIterationCount::Number(number("1")),
         CssAnimationIterationCount::Number(number("1.0"))
     );
@@ -822,7 +836,7 @@ fn iteration_longhand_and_shorthand_keep_shared_exact_counts_and_authored_omissi
             matches!(animation.name(), Some(CssAnimationName::Custom(name)) if name.as_str() == "fade")
         );
         assert!(
-            matches!(animation.duration().and_then(|value| value.time().literal()), Some(value) if value.numeric().representation() == "1" && value.unit() == CssTimeUnit::Seconds)
+            matches!(animation.duration().and_then(|value| value.literal()), Some(value) if value.numeric().representation() == "1" && value.unit() == CssTimeUnit::Seconds)
         );
         if supplied {
             assert!(
@@ -963,7 +977,7 @@ fn border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
     assert_eq!(number_text(number), "-0");
     assert_origin(number.origin(), source, 80, 2);
     assert!(
-        matches!(number.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.kind() == CssNumericTokenKind::Integer)
+        matches!(number.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.kind() == CssNumericTokenKind::Integer)
     );
     let CssKnownPropertyValueRef::AnimationIterationCount(counts) = report.syntax()[3]
         .known()
@@ -983,7 +997,7 @@ fn border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
     assert_eq!(number_text(fraction), ".5");
     assert_origin(fraction.origin(), source, 111, 2);
     assert!(
-        matches!(fraction.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.kind() == CssNumericTokenKind::Number)
+        matches!(fraction.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.kind() == CssNumericTokenKind::Number)
     );
     let calculation = math.calculation().expect("symbolic number function");
     assert_origin(calculation.origin(), source, 115, 5);

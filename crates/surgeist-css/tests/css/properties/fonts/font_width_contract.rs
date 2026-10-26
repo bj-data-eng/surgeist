@@ -6,12 +6,12 @@ use crate::css::support::failure_classes::numeric_failure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_css::*;
 
-fn scalar(text: &str) -> CssSpecifiedNonNegativePercentage {
+fn scalar(text: &str) -> CssNumeric<CssPercentage, CssNonNegative> {
     let values = parse_component_values(text).unwrap();
     let [component] = values.items() else {
         panic!("one percentage: {text}")
     };
-    CssSpecifiedNonNegativePercentage::try_from_component(component.clone()).unwrap()
+    CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(component.clone()).unwrap()
 }
 
 fn ordinary_percentage_spelling(value: &CssFontWidth) -> &str {
@@ -19,7 +19,8 @@ fn ordinary_percentage_spelling(value: &CssFontWidth) -> &str {
         panic!("percentage width")
     };
     let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = value
-        .literal_component()
+        .literal()
+        .map(|literal| literal.component())
         .expect("ordinary percentage")
         .view()
     else {
@@ -136,7 +137,8 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
             panic!("one invalid scalar")
         };
         let error =
-            CssSpecifiedNonNegativePercentage::try_from_component(component.clone()).unwrap_err();
+            CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(component.clone())
+                .unwrap_err();
         assert_eq!(numeric_failure(&error), kind, "{text}");
         assert_eq!(error.origin(), Some(component.origin()), "{text}");
     }
@@ -158,27 +160,32 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
 #[test]
 fn bare_percentage_calculation_roots_reenter_exact_range_admission() {
     for text in ["-1%", "-1e-999%"] {
-        let typed = CssPercentageCalculation::try_from_components(
+        let typed = CssCalculation::<CssPercentage>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
         .expect("negative percentage is in the percentage calculation domain");
         assert!(
-            CssSpecifiedNonNegativePercentage::try_from_calculation(typed)
+            CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(typed)
                 .unwrap_err()
                 .is_out_of_range(),
             "{text}"
         );
     }
-    let positive = CssSpecifiedNonNegativePercentage::try_from_calculation(
-        CssPercentageCalculation::try_from_components(
+    let positive = CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssPercentage>::try_from_components(
             parse_component_values("125%").unwrap(),
             Default::default(),
         )
         .unwrap(),
     )
     .unwrap();
-    assert!(positive.literal_component().is_some());
+    assert!(
+        positive
+            .literal()
+            .map(|literal| literal.component())
+            .is_some()
+    );
     assert!(positive.calculation().is_none());
     assert_eq!(
         positive.serialize_specified(Default::default()).unwrap(),
@@ -212,19 +219,20 @@ fn parsed_percentages_keep_source_origin_and_symbolic_math_unresolved() {
     );
 
     assert!(matches!(
-        parsed.literal_component().unwrap().view(),
+        parsed.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
             if number.representation() == "62.500000000000000000001"
     ));
     for text in ["calc(25% + 50%)", "calc(25% - 50%)"] {
-        let calculation = CssPercentageCalculation::try_from_components(
+        let calculation = CssCalculation::<CssPercentage>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
         .unwrap();
-        let exact = CssSpecifiedNonNegativePercentage::try_from_calculation(calculation).unwrap();
+        let exact =
+            CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(calculation).unwrap();
         assert!(exact.calculation().is_some());
-        assert!(exact.literal_component().is_none());
+        assert!(exact.literal().map(|literal| literal.component()).is_none());
         let value = CssFontWidth::Percentage(exact);
         assert!(value.serialize_specified(Default::default()).is_ok());
         for checked in [false, true] {

@@ -480,14 +480,14 @@ fn parse_transform_scale_component<'i, 't>(
 fn parse_transform_length_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssSpecifiedLengthPercentage, ParseError<'i, Error>> {
+) -> Result<CssNumeric<CssLengthPercentage>, ParseError<'i, Error>> {
     parse_length_percentage(input, numeric)
 }
 
 fn parse_transform_length<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssSpecifiedLength, ParseError<'i, Error>> {
+) -> Result<CssNumeric<CssLength>, ParseError<'i, Error>> {
     parse_length(input, numeric)
 }
 
@@ -567,14 +567,14 @@ fn parse_optional_shape_position<'i, 't>(
 fn parse_shape_length_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssSpecifiedLengthPercentage, ParseError<'i, Error>> {
+) -> Result<CssNumeric<CssLengthPercentage>, ParseError<'i, Error>> {
     parse_length_percentage(input, numeric)
 }
 
 fn parse_non_negative_shape_length_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssSpecifiedNonNegativeLengthPercentage, ParseError<'i, Error>> {
+) -> Result<CssNumeric<CssLengthPercentage, CssNonNegative>, ParseError<'i, Error>> {
     parse_nonnegative_length_percentage(input, numeric)
 }
 

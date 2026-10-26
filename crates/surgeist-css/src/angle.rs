@@ -1,8 +1,8 @@
-//! Exact authored ordinary angles and the grammar-specific number-zero exception.
+//! The grammar-specific number-zero exception to strict authored angles.
 use crate::{
-    CssAngleCalculation, CssAngleUnit, CssComponentValue, CssComponentValueError,
-    CssComponentValueErrorKind, CssComponentValueRef, CssNumericConstructionError,
-    CssNumericTokenRef, CssValueOrigin, CssValueTokenRef,
+    CssAngle, CssAngleUnit, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
+    CssComponentValueRef, CssNumeric, CssNumericConstructionError, CssNumericTokenRef,
+    CssValueOrigin, CssValueTokenRef,
 };
 
 pub(crate) const fn suffix(unit: CssAngleUnit) -> &'static str {
@@ -15,55 +15,24 @@ fn invalid(component: &CssComponentValue) -> CssComponentValueError {
     )
 }
 
-crate::dimension::dimension_literal_owner!(
-    /// An exact ordinary angle dimension, retaining spelling, unit and provenance.
-    CssAngleLiteral,
-    CssAngleUnit,
-    suffix
-);
-impl CssAngleLiteral {
-    pub(crate) fn is_default_gradient_direction(&self) -> bool {
-        let decimal = crate::exact_decimal::LexicalDecimal::new(self.numeric().representation());
-        let (digits, exponent) = match self.unit() {
-            CssAngleUnit::Degrees => ("18", 1),
-            CssAngleUnit::Gradians => ("2", 2),
-            CssAngleUnit::Turns => ("5", -1),
-            CssAngleUnit::Radians => return false,
-        };
-        decimal.is_positive(digits, exponent)
-    }
-}
-
-crate::dimension::dimension_value_owner!(
-    /// A strict authored angle dimension or Angle-root calculation; never a bare number.
-    CssAngleValue,
-    CssAngleLiteral,
-    CssAngleCalculation
-);
-impl CssAngleValue {
-    pub(crate) fn from_parser_component(
-        component: CssComponentValue,
-        context: &crate::numeric::NumericInputContext<'_>,
-    ) -> Result<Self, CssNumericConstructionError> {
-        crate::dimension::DimensionValue::from_parser_component(
-            component,
-            context,
-            crate::numeric::CalculationRoot::Angle,
-            true,
-            CssAngleCalculation::from_expression,
-        )
-        .map(|value| Self { value })
-    }
-    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
-        self.value.structural_eq(&other.value)
-    }
-}
-
 /// One exact Number token with zero coefficient, retaining signed spelling and provenance.
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// # Equality
+///
+/// Every zero literal has the same exact value and no unit, so all are equal
+/// (CSS Typed OM 1 "equal numeric values"); spelling and origin are ignored.
+#[derive(Clone, Debug)]
 pub struct CssZeroLiteral {
     component: Box<CssComponentValue>,
 }
+
+impl PartialEq for CssZeroLiteral {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for CssZeroLiteral {}
 impl CssZeroLiteral {
     /// Requires an exact Number token whose coefficient is zero.
     pub fn try_from_component(
@@ -94,17 +63,13 @@ impl CssZeroLiteral {
     pub const fn origin(&self) -> &CssValueOrigin {
         self.component.origin()
     }
-    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
-        self.component
-            .structural_eq_ignoring_origin(&other.component)
-    }
 }
 
 /// A checked angle or the literal number-zero exception selected by a consumer grammar.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAngleOrZero {
-    Angle(CssAngleValue),
+    Angle(CssNumeric<CssAngle>),
     Zero(CssZeroLiteral),
 }
 impl CssAngleOrZero {
@@ -127,13 +92,6 @@ impl CssAngleOrZero {
                 .map(Self::Zero)
                 .map_err(CssNumericConstructionError::component);
         }
-        CssAngleValue::from_parser_component(component, context).map(Self::Angle)
-    }
-    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Angle(left), Self::Angle(right)) => left.structural_eq(right),
-            (Self::Zero(left), Self::Zero(right)) => left.structural_eq(right),
-            _ => false,
-        }
+        CssNumeric::<CssAngle>::from_parser_component(component, context).map(Self::Angle)
     }
 }

@@ -8,21 +8,21 @@ use surgeist_css::{
     CssColorComponent, CssColorInterpolationMethod, CssColorMixPercentage, CssColorSyntax,
     CssComponentValue, CssCounterStyleRange, CssCounterStyleSpeakAs, CssCounterSymbol,
     CssDefinedFalseMediaReason, CssErrorCode, CssExclusionReason, CssFeatureKind,
-    CssFontFamilyNameKind, CssFontFeatureIndex, CssFontSize, CssFontSizeAdjust, CssFontSynthesis,
+    CssFontFamilyNameKind, CssFontSize, CssFontSizeAdjust, CssFontSynthesis,
     CssFontSynthesisValues, CssFontVariantCaps, CssFontVariantEastAsianValues,
     CssFontVariantLigatureState, CssFontVariantLigatureValues, CssFontVariantNumericFigure,
     CssFontVariantNumericValues, CssFontVariantPosition, CssFontVariantValues,
-    CssGenericFontFamily, CssGridAutoFlowAxis, CssImportance, CssKnownDeclaredValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLanguageRange, CssMediaConditionKind,
-    CssMediaQuery, CssMediaQueryModifier, CssMediaType, CssNamespaceConstraint, CssNamespaceName,
-    CssNamespacePrefix, CssOpenTypeTag, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
+    CssGenericFontFamily, CssGridAutoFlowAxis, CssImportance, CssInteger, CssKnownDeclaredValueRef,
+    CssKnownProperty, CssKnownPropertyValueRef, CssLanguageRange, CssLengthPercentage,
+    CssMediaConditionKind, CssMediaQuery, CssMediaQueryModifier, CssMediaType,
+    CssNamespaceConstraint, CssNamespaceName, CssNamespacePrefix, CssNonNegative, CssNumeric,
+    CssNumericLiteral, CssOpenTypeTag, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
     CssPseudoElementSegment, CssRecoveryAction, CssRelativeColorChannel,
     CssRelativeColorEnvironment, CssRelativeColorExpressionValue, CssRelativeColorFunction,
     CssRelativeColorResultDomain, CssRule, CssSelector, CssSelectorCombinator,
-    CssSpecificationTier, CssSpecifiedNonNegativeLengthPercentage, CssSupportStatus,
-    CssSupportsConditionKind, CssSupportsConditionList, CssSystemColor, conformance_exclusion,
-    feature_metadata, parse_sheet, parse_style_attribute, property_support_metadata,
-    specification_source,
+    CssSpecificationTier, CssSupportStatus, CssSupportsConditionKind, CssSupportsConditionList,
+    CssSystemColor, conformance_exclusion, feature_metadata, parse_sheet, parse_style_attribute,
+    property_support_metadata, specification_source,
 };
 
 #[test]
@@ -78,7 +78,7 @@ fn public_surface_exposes_checked_counter_style_descriptor_models() {
             .unwrap()
             .ordinary_pad()
             .minimum_length()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "3"
@@ -98,7 +98,7 @@ fn public_surface_exposes_checked_counter_style_descriptor_models() {
             .ordinary_additive_symbols()
             .tuples()[0]
             .weight()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "100"
@@ -276,13 +276,13 @@ fn public_surface_exposes_checked_core_font_models() {
     assert_eq!(item.generic_family(), Some(CssGenericFontFamily::Serif));
 
     assert!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("-1px").unwrap()
         )
         .is_err()
     );
     assert!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("-1%").unwrap()
         )
         .is_err()
@@ -298,11 +298,22 @@ fn public_surface_checks_current_opentype_construction() {
     assert!(CssOpenTypeTag::try_new("éabc").is_none());
     assert!(CssOpenTypeTag::try_new("😀abc").is_none());
 
-    let zero = CssFontFeatureIndex::try_new(0).expect("zero index");
-    let positive = CssFontFeatureIndex::try_new(7).expect("positive index");
-    assert_eq!(zero.i32_value(), Some(0));
-    assert_eq!(positive.i32_value(), Some(7));
-    assert!(CssFontFeatureIndex::try_new(-1).is_none());
+    let zero =
+        CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(CssNumericLiteral::from_i32(0))
+            .expect("zero index");
+    let positive =
+        CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(CssNumericLiteral::from_i32(7))
+            .expect("positive index");
+    assert_eq!(zero.literal().and_then(|literal| literal.value()), Some(0));
+    assert_eq!(
+        positive.literal().and_then(|literal| literal.value()),
+        Some(7)
+    );
+    assert!(
+        CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(CssNumericLiteral::from_i32(-1))
+            .ok()
+            .is_none()
+    );
 
     let feature = CssAuthoredFontFeature::new(tag, CssAuthoredFontFeatureValue::Index(positive));
     let list = CssAuthoredFontFeatureList::try_new(vec![feature]).expect("nonempty feature list");

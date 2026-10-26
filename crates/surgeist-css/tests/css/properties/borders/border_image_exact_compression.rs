@@ -52,10 +52,10 @@ impl Group {
                 .iter()
                 .map(|edge| match edge {
                     CssBorderImageSliceComponent::Number(value) => {
-                        value.literal_component().unwrap()
+                        value.literal().map(|literal| literal.component()).unwrap()
                     }
                     CssBorderImageSliceComponent::Percentage(value) => {
-                        value.literal_component().unwrap()
+                        value.literal().map(|literal| literal.component()).unwrap()
                     }
                     _ => panic!("numeric edge"),
                 })
@@ -65,10 +65,10 @@ impl Group {
                 .iter()
                 .map(|edge| match edge {
                     CssBorderImageWidthComponent::Number(value) => {
-                        value.literal_component().unwrap()
+                        value.literal().map(|literal| literal.component()).unwrap()
                     }
                     CssBorderImageWidthComponent::LengthPercentage(value) => {
-                        value.literal_component().unwrap()
+                        value.literal().map(|literal| literal.component()).unwrap()
                     }
                     _ => panic!("numeric edge"),
                 })
@@ -78,10 +78,10 @@ impl Group {
                 .iter()
                 .map(|edge| match edge {
                     CssBorderImageOutsetComponent::Number(value) => {
-                        value.literal_component().unwrap()
+                        value.literal().map(|literal| literal.component()).unwrap()
                     }
                     CssBorderImageOutsetComponent::Length(value) => {
-                        value.literal_component().unwrap()
+                        value.literal().map(|literal| literal.component()).unwrap()
                     }
                     _ => panic!("numeric edge"),
                 })
@@ -109,11 +109,14 @@ fn group(slot: Slot, coefficients: [&str; 4]) -> Group {
                     .into_iter()
                     .map(|component| match slot {
                         Slot::SlicePercentage => CssBorderImageSliceComponent::Percentage(
-                            CssSpecifiedNonNegativePercentage::try_from_component(component)
-                                .unwrap(),
+                            CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
+                                component,
+                            )
+                            .unwrap(),
                         ),
                         _ => CssBorderImageSliceComponent::Number(
-                            CssSpecifiedNonNegativeNumber::try_from_component(component).unwrap(),
+                            CssNumeric::<CssNumber, CssNonNegative>::try_from_component(component)
+                                .unwrap(),
                         ),
                     })
                     .collect(),
@@ -127,11 +130,14 @@ fn group(slot: Slot, coefficients: [&str; 4]) -> Group {
                     .into_iter()
                     .map(|component| match slot {
                         Slot::WidthLength => CssBorderImageWidthComponent::LengthPercentage(
-                            CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
-                                .unwrap(),
+                            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                                component,
+                            )
+                            .unwrap(),
                         ),
                         _ => CssBorderImageWidthComponent::Number(
-                            CssSpecifiedNonNegativeNumber::try_from_component(component).unwrap(),
+                            CssNumeric::<CssNumber, CssNonNegative>::try_from_component(component)
+                                .unwrap(),
                         ),
                     })
                     .collect(),
@@ -144,10 +150,12 @@ fn group(slot: Slot, coefficients: [&str; 4]) -> Group {
                     .into_iter()
                     .map(|component| match slot {
                         Slot::OutsetLength => CssBorderImageOutsetComponent::Length(
-                            CssSpecifiedNonNegativeLength::try_from_component(component).unwrap(),
+                            CssNumeric::<CssLength, CssNonNegative>::try_from_component(component)
+                                .unwrap(),
                         ),
                         _ => CssBorderImageOutsetComponent::Number(
-                            CssSpecifiedNonNegativeNumber::try_from_component(component).unwrap(),
+                            CssNumeric::<CssNumber, CssNonNegative>::try_from_component(component)
+                                .unwrap(),
                         ),
                     })
                     .collect(),
@@ -431,7 +439,7 @@ fn exponent_compensation_and_signed_actual_zero_still_compress() {
 fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
     let length_percentage = |text| {
         CssBorderImageWidthComponent::LengthPercentage(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token(text).unwrap(),
             )
             .unwrap(),
@@ -450,7 +458,7 @@ fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
     );
     let value = CssBorderImageWidth::try_new(vec![
         CssBorderImageWidthComponent::Number(
-            CssSpecifiedNonNegativeNumber::try_from_component(
+            CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
                 CssComponentValue::try_number("0").unwrap(),
             )
             .unwrap(),
@@ -466,7 +474,7 @@ fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
     );
     let length = |text| {
         CssBorderImageOutsetComponent::Length(
-            CssSpecifiedNonNegativeLength::try_from_component(
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token(text).unwrap(),
             )
             .unwrap(),
@@ -497,13 +505,13 @@ fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
     let value = CssBorderImageSlice::try_new(
         vec![
             CssBorderImageSliceComponent::Number(
-                CssSpecifiedNonNegativeNumber::try_from_component(
+                CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
                     CssComponentValue::try_number("0").unwrap(),
                 )
                 .unwrap(),
             ),
             CssBorderImageSliceComponent::Percentage(
-                CssSpecifiedNonNegativePercentage::try_from_component(
+                CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
                     CssComponentValue::try_token("0%").unwrap(),
                 )
                 .unwrap(),
@@ -581,8 +589,10 @@ fn ordinary_length_compression_folds_unit_case_without_converting_units() {
                 .cloned()
                 .map(|component| {
                     CssBorderImageWidthComponent::LengthPercentage(
-                        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
-                            .unwrap(),
+                        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                            component,
+                        )
+                        .unwrap(),
                     )
                 })
                 .collect(),
@@ -593,7 +603,8 @@ fn ordinary_length_compression_folds_unit_case_without_converting_units() {
                 .into_iter()
                 .map(|component| {
                     CssBorderImageOutsetComponent::Length(
-                        CssSpecifiedNonNegativeLength::try_from_component(component).unwrap(),
+                        CssNumeric::<CssLength, CssNonNegative>::try_from_component(component)
+                            .unwrap(),
                     )
                 })
                 .collect(),

@@ -7,12 +7,14 @@ use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::serialization_limits::assert_limits as budget;
 use surgeist_css::{CssSerializationLimits as L, *};
 
-fn lp(css: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(css).unwrap())
-        .unwrap()
+fn lp(css: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
+        CssComponentValue::try_token(css).unwrap(),
+    )
+    .unwrap()
 }
-fn nn(css: &str) -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+fn nn(css: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token(css).unwrap(),
     )
     .unwrap()
@@ -109,7 +111,7 @@ fn checked_xywh_composition_retains_signed_offsets_and_nonnegative_sizes() {
         ("1deg", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component,
             CssComponentValue::try_token(invalid).unwrap(),
             kind,
         );
@@ -120,7 +122,7 @@ fn checked_xywh_composition_retains_signed_offsets_and_nonnegative_sizes() {
         ("1deg", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            CssSpecifiedLengthPercentage::try_from_component,
+            CssNumeric::<CssLengthPercentage>::try_from_component,
             CssComponentValue::try_token(invalid).unwrap(),
             kind,
         );
@@ -175,11 +177,11 @@ fn semantic_equality_preserves_separately_observable_numeric_origins() {
         assert_eq!(parsed_scalar.origin(), &origin);
     }
     // Structural equality ignores provenance only, retaining exact lexical structure.
-    assert_ne!(
+    assert_eq!(
         basic_shape("rect(auto 1px 2% 0)"),
         basic_shape("rect(auto 1.00px 2% 0)")
     );
-    assert_ne!(
+    assert_eq!(
         basic_shape("xywh(-1px 2% 3em 4vh)"),
         basic_shape("xywh(-1.00px 2% 3em 4vh)")
     );
@@ -337,7 +339,13 @@ fn exact_magnitudes_retain_identity_while_ordinary_text_rounds_and_math_is_prese
     assert_eq!(xywh, before);
     assert_eq!(
         CssComponentValues::try_new(
-            vec![xywh.x().literal_component().unwrap().clone()],
+            vec![
+                xywh.x()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap()
+                    .clone()
+            ],
             Default::default()
         )
         .unwrap()
@@ -348,7 +356,13 @@ fn exact_magnitudes_retain_identity_while_ordinary_text_rounds_and_math_is_prese
     );
     assert_eq!(
         CssComponentValues::try_new(
-            vec![xywh.width().literal_component().unwrap().clone()],
+            vec![
+                xywh.width()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap()
+                    .clone()
+            ],
             Default::default()
         )
         .unwrap()

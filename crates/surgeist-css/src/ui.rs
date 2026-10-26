@@ -1,7 +1,7 @@
 //! Authored UI4 values. Contextual caret, widget, focus and timing behavior is downstream.
 use crate::{
     CssCaretColor, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
-    CssComponentValueRef, CssHashFlag, CssTimeValue, CssValueOrigin, CssValueTokenRef,
+    CssComponentValueRef, CssHashFlag, CssNumeric, CssTime, CssValueOrigin, CssValueTokenRef,
 };
 
 macro_rules! keywords {
@@ -93,20 +93,20 @@ impl CssCaret {
 pub enum CssInterestDelayValue {
     #[default]
     Normal,
-    Time(CssTimeValue),
+    Time(CssNumeric<CssTime>),
 }
 impl PartialEq for CssInterestDelayValue {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Normal, Self::Normal) => true,
-            (Self::Time(left), Self::Time(right)) => left.structural_eq(right),
+            (Self::Time(left), Self::Time(right)) => left == right,
             _ => false,
         }
     }
 }
 impl Eq for CssInterestDelayValue {}
 impl CssInterestDelayValue {
-    pub fn time(&self) -> Option<&CssTimeValue> {
+    pub fn time(&self) -> Option<&CssNumeric<CssTime>> {
         match self {
             Self::Normal => None,
             Self::Time(value) => Some(value),

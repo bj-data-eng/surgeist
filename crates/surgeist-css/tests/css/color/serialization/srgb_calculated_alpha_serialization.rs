@@ -461,7 +461,8 @@ fn checked_color(family: &str, programmatic: bool) -> CssColor {
         programmatic
     );
     let calculation =
-        CssNumberCalculation::try_from_components(values.clone(), Default::default()).unwrap();
+        CssCalculation::<CssNumber>::try_from_components(values.clone(), Default::default())
+            .unwrap();
     assert_eq!(calculation.components(), &values);
     let alpha = Some(CssColorComponent::NumberCalculation(calculation));
     let CssColorComponent::Number(hue) = number("0", programmatic) else {

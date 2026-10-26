@@ -119,12 +119,18 @@ fn profile_math_is_scoped_and_has_no_percentage_hint() {
         expression(valid);
     }
     assert!(
-        CssNumberCalculation::try_from_components(components("calc(cyan)"), Default::default())
-            .is_err()
+        CssCalculation::<CssNumber>::try_from_components(
+            components("calc(cyan)"),
+            Default::default()
+        )
+        .is_err()
     );
     assert!(
-        CssPercentageCalculation::try_from_components(components("calc(cyan)"), Default::default())
-            .is_err()
+        CssCalculation::<CssPercentage>::try_from_components(
+            components("calc(cyan)"),
+            Default::default()
+        )
+        .is_err()
     );
 }
 
@@ -228,7 +234,7 @@ fn custom_and_relative_math_share_the_composed_depth_limit() {
     for depth in [254, 255, 256] {
         let text = format!("{}1{}", "calc(".repeat(depth), ")".repeat(depth));
         let calculation =
-            CssNumberCalculation::try_from_components(components(&text), Default::default())
+            CssCalculation::<CssNumber>::try_from_components(components(&text), Default::default())
                 .unwrap();
         let custom = CssCustomColor::try_new(
             profile(),

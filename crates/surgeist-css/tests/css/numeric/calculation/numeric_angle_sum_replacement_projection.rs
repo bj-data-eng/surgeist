@@ -89,8 +89,9 @@ fn programmatic_angle_sum_keeps_exact_coefficients_and_origin() {
         parse_component_values("(+01e308DEG + +01e308DEG - +01e308DEG) / +01e308DEG").unwrap();
     let root = CssComponentValue::try_function("CALC", arguments).unwrap();
     let components = CssComponentValues::try_new(vec![root], Default::default()).unwrap();
-    let value = CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(components.clone(), Default::default()).unwrap(),
+    let value = CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(components.clone(), Default::default())
+            .unwrap(),
     )
     .unwrap();
     let before = value.clone();

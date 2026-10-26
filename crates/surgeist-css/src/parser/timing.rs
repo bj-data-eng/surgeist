@@ -4,7 +4,6 @@ use crate::error::property::{CssFeatureId, Error, ParseError, basic, unexpected_
 use cssparser::{Token, match_ignore_ascii_case};
 
 use super::values::{parse_custom_ident_from_str_at, parse_nonnegative_number};
-use crate::CssDuration;
 use crate::syntax::*;
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
@@ -34,25 +33,25 @@ pub(super) fn parse_delay_list<'i, 't>(
 pub(super) fn parse_duration<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssDuration, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssTime, CssNonNegative>, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let offset = input.position();
     let time = parse_delay(input, numeric)?;
-    crate::CssDuration::from_parser_value(time)
+    time.try_narrow()
         .map_err(|error| time_error(numeric, &error, location, offset))
 }
 
 pub(super) fn parse_delay<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<crate::CssTimeValue, ParseError<'i, Error>> {
+) -> std::result::Result<crate::CssNumeric<crate::CssTime>, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
     let offset = input.position();
     let component = input
         .collect_numeric_component(numeric)
         .map_err(|error| time_error(numeric, &error, location, offset))?;
-    crate::CssTimeValue::from_parser_component(component, numeric)
+    crate::CssNumeric::<crate::CssTime>::from_parser_component(component, numeric)
         .map_err(|error| time_error(numeric, &error, location, offset))
 }
 fn time_error<'i>(
@@ -220,14 +219,9 @@ fn parse_steps<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssSteps, ParseError<'i, Error>> {
     let count_location = input.current_source_location();
-    let count = match super::values::parse_integer_value(input, numeric)? {
-        CssIntegerValue::Literal(literal) => {
-            let literal = CssPositiveIntegerLiteral::try_new(literal)
-                .ok_or_else(|| unexpected_at(count_location))?;
-            CssPositiveIntegerValue::Literal(literal)
-        }
-        CssIntegerValue::Calculation(value) => CssPositiveIntegerValue::Calculation(value),
-    };
+    let count = super::values::parse_integer_value(input, numeric)?
+        .try_narrow::<CssPositive>()
+        .map_err(|_| unexpected_at(count_location))?;
 
     let mut position_location = None;
     let position = if input.is_exhausted() {

@@ -8,8 +8,8 @@
 //! Uses callable public APIs at 0ec18c1388dbccee62e20c0386d3b3a908d37750.
 //! No future borrowed longhand variants are referenced. Generic owned-value
 //! equality compares projections with independently authored explicit lists.
-//! Duration and delay list equality compares retained structure without source
-//! origins; raw time literal/component equality includes origins. Source occurrence
+//! Duration and delay list equality compares retained structure and exact time
+//! values without source origins. Source occurrence
 //! and replacement-component provenance are asserted separately. Direct projected
 //! time-child origin inspection requires borrowed variants added with implementation.
 //! The standard determines members/defaults. The adopted Surgeist contribution
@@ -100,7 +100,7 @@ fn assert_projected_lists(values: &CssLonghandContributions, expected: [&str; 4]
         let [expected_item] = expected_values.items() else {
             panic!("one terminal for an explicit longhand")
         };
-        // CssDurationList compares CssDuration's structural equality; CssDelayList
+        // CssDurationList compares CssNumeric<CssTime, CssNonNegative>'s structural equality; CssDelayList
         // also compares structural time values. Distinct parsed origins therefore
         // do not invalidate this independent content oracle. Exact raw origins
         // remain observable, and are not inferred from ordinary-value equality.
@@ -324,9 +324,9 @@ fn recovered_shorthand_time_projects_without_strict_reconstruction() {
         assert!(CssTransitionList::try_new(wrapper.transitions().values().to_vec()).is_none());
         let transition = &wrapper.transitions().values()[0];
         let time = if member_index == 1 {
-            transition.duration().unwrap().time()
+            transition.duration().unwrap().clone().into_any_range()
         } else {
-            transition.delay().unwrap()
+            transition.delay().unwrap().clone()
         };
         let CssComponentValueRef::Function(function) =
             time.calculation().unwrap().components().items()[0].view()

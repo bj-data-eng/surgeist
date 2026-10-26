@@ -96,10 +96,13 @@ fn contextual_hypot_projects_same_unit_norms_including_zero_coefficients() {
 fn percentage_hypot_distinguishes_raw_norms_from_unknown_signed_bases() {
     let source = "hypot(3%,4%)";
     let components = parse_component_values(source).unwrap();
-    let raw = CssPercentageCalculation::try_from_components(components.clone(), Default::default())
-        .unwrap();
+    let raw = CssCalculation::<CssPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(raw.numeric_type().percent_hint(), None);
-    let raw = CssSpecifiedPercentage::try_from_calculation(raw).unwrap();
+    let raw = CssNumeric::<CssPercentage>::try_from_calculation(raw).unwrap();
     let raw_before = raw.clone();
     assert_eq!(
         raw.serialize_specified(Default::default()).unwrap(),
@@ -108,14 +111,16 @@ fn percentage_hypot_distinguishes_raw_norms_from_unknown_signed_bases() {
     assert_eq!(raw, raw_before);
     assert_eq!(raw.calculation().unwrap().components(), &components);
 
-    let hinted =
-        CssLengthPercentageCalculation::try_from_components(components.clone(), Default::default())
-            .unwrap();
+    let hinted = CssCalculation::<CssLengthPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         hinted.numeric_type().percent_hint(),
         Some(CssNumericDimension::Length)
     );
-    let hinted = CssSpecifiedLengthPercentage::try_from_calculation(hinted).unwrap();
+    let hinted = CssNumeric::<CssLengthPercentage>::try_from_calculation(hinted).unwrap();
     let hinted_before = hinted.clone();
     assert_eq!(
         hinted.serialize_specified(Default::default()).unwrap(),
@@ -136,8 +141,8 @@ fn sign_retains_unknown_zero_bases_and_mixed_unit_magnitudes() {
         ("sign(abs(-2em))", "sign(2em)"),
         ("sign(-2px)", "calc(-1)"),
     ] {
-        let value = CssSpecifiedNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(
+        let value = CssNumeric::<CssNumber>::try_from_calculation(
+            CssCalculation::<CssNumber>::try_from_components(
                 parse_component_values(source).unwrap(),
                 Default::default(),
             )
@@ -160,10 +165,13 @@ fn sign_retains_unknown_zero_bases_and_mixed_unit_magnitudes() {
 fn percentage_abs_distinguishes_raw_coefficients_from_unknown_signed_bases() {
     let source = "abs(-2%)";
     let components = parse_component_values(source).unwrap();
-    let raw = CssPercentageCalculation::try_from_components(components.clone(), Default::default())
-        .unwrap();
+    let raw = CssCalculation::<CssPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(raw.numeric_type().percent_hint(), None);
-    let raw = CssSpecifiedPercentage::try_from_calculation(raw).unwrap();
+    let raw = CssNumeric::<CssPercentage>::try_from_calculation(raw).unwrap();
     let raw_before = raw.clone();
     assert_eq!(
         raw.serialize_specified(Default::default()).unwrap(),
@@ -172,14 +180,16 @@ fn percentage_abs_distinguishes_raw_coefficients_from_unknown_signed_bases() {
     assert_eq!(raw, raw_before);
     assert_eq!(raw.calculation().unwrap().components(), &components);
 
-    let hinted =
-        CssLengthPercentageCalculation::try_from_components(components.clone(), Default::default())
-            .unwrap();
+    let hinted = CssCalculation::<CssLengthPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         hinted.numeric_type().percent_hint(),
         Some(CssNumericDimension::Length)
     );
-    let hinted = CssSpecifiedLengthPercentage::try_from_calculation(hinted).unwrap();
+    let hinted = CssNumeric::<CssLengthPercentage>::try_from_calculation(hinted).unwrap();
     let hinted_before = hinted.clone();
     assert_eq!(
         hinted.serialize_specified(Default::default()).unwrap(),
@@ -198,8 +208,9 @@ fn programmatic_abs_keeps_exact_authored_coefficient_and_origin() {
     .unwrap();
     let component = CssComponentValue::try_function("ABS", arguments).unwrap();
     let components = CssComponentValues::try_new(vec![component], Default::default()).unwrap();
-    let value = CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(components.clone(), Default::default()).unwrap(),
+    let value = CssNumeric::<CssLength>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(components.clone(), Default::default())
+            .unwrap(),
     )
     .unwrap();
     let before = value.clone();
@@ -296,8 +307,8 @@ fn numeric_color_consumption_censors_only_after_nested_arithmetic() {
         ("calc(0 / 0)", "calc(NaN)"),
         ("calc(1 / calc(0 * -1))", "calc(-infinity)"),
     ] {
-        let value = CssSpecifiedNumber::try_from_calculation(
-            CssNumberCalculation::try_from_components(
+        let value = CssNumeric::<CssNumber>::try_from_calculation(
+            CssCalculation::<CssNumber>::try_from_components(
                 parse_component_values(source).unwrap(),
                 Default::default(),
             )

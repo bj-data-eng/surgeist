@@ -19,7 +19,7 @@ fn color(css: &str) -> CssColor {
     value.value().clone()
 }
 
-fn stop(css: &str, position: Option<CssSpecifiedLengthPercentage>) -> CssGradientColorStop {
+fn stop(css: &str, position: Option<CssNumeric<CssLengthPercentage>>) -> CssGradientColorStop {
     CssGradientColorStop::from_color(color(css), position)
 }
 
@@ -78,7 +78,11 @@ fn constructed_color_stops_keep_authored_color_and_signed_line_positions() {
     let built = CssGradientColorStop::from_color(authored.clone(), Some(negative));
     assert_eq!(built.color(), &authored);
     assert!(exact_dimension(
-        built.position().unwrap().literal_component(),
+        built
+            .position()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component()),
         "-1",
         "px"
     ));
@@ -90,18 +94,19 @@ fn constructed_color_stops_keep_authored_color_and_signed_line_positions() {
         "currentcolor"
     );
     assert!(
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_ident("auto").unwrap()
         )
         .is_err()
     );
 
-    let calculation = CssLengthPercentageCalculation::try_from_components(
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
         parse_component_values("calc(1px + 5%)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let symbolic = CssSpecifiedLengthPercentage::try_from_calculation(calculation.clone()).unwrap();
+    let symbolic =
+        CssNumeric::<CssLengthPercentage>::try_from_calculation(calculation.clone()).unwrap();
     let stop = CssGradientColorStop::from_color(color("red"), Some(symbolic));
     assert!(
         stop.position()
@@ -155,9 +160,10 @@ fn linear_constructor_preserves_omitted_angle_and_side_directions() {
 
     let angle = CssLinearGradient::new(
         Some(CssLinearGradientDirection::Angle(CssAngleOrZero::Angle(
-            CssAngleValue::from_literal(
-                CssAngleLiteral::try_new("25", CssAngleUnit::Degrees).unwrap(),
-            ),
+            CssNumeric::<CssAngle>::try_from_literal(
+                CssNumericLiteral::<CssAngle>::try_new("25", CssAngleUnit::Degrees).unwrap(),
+            )
+            .unwrap(),
         ))),
         stops(),
     );
@@ -175,14 +181,14 @@ fn linear_constructor_preserves_omitted_angle_and_side_directions() {
     );
     assert!(CssSideOrCorner::try_new(None, None).is_none());
 
-    let symbolic_angle = CssAngleCalculation::try_from_components(
+    let symbolic_angle = CssCalculation::<CssAngle>::try_from_components(
         parse_component_values("calc(25deg + 5deg)").unwrap(),
         Default::default(),
     )
     .unwrap();
     let calculated = CssLinearGradient::new(
         Some(CssLinearGradientDirection::Angle(CssAngleOrZero::Angle(
-            CssAngleValue::try_from_calculation(symbolic_angle.clone()).unwrap(),
+            CssNumeric::<CssAngle>::try_from_calculation(symbolic_angle.clone()).unwrap(),
         ))),
         stops(),
     );
@@ -237,25 +243,25 @@ fn radial_constructor_checks_shape_size_matrix_without_inventing_defaults() {
     }
 
     assert!(
-        CssSpecifiedNonNegativeLength::try_from_component(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension("-1", "px").unwrap()
         )
         .is_err()
     );
     assert!(
-        CssSpecifiedNonNegativeLength::try_from_component(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("10%").unwrap()
         )
         .is_err()
     );
 
-    let symbolic_radius = CssLengthPercentageCalculation::try_from_components(
+    let symbolic_radius = CssCalculation::<CssLengthPercentage>::try_from_components(
         parse_component_values("calc(2px + 3px)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let radius = CssSpecifiedNonNegativeLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(
+    let radius = CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(
             symbolic_radius.components().clone(),
             Default::default(),
         )
@@ -303,10 +309,10 @@ fn generic_position_requires_edge_offsets_on_both_axes_or_neither() {
     )
     .unwrap();
     assert!(
-        matches!(paired.horizontal(), CssHorizontalPosition::RightOffset(value) if exact_dimension(value.literal_component(), "10", "px"))
+        matches!(paired.horizontal(), CssHorizontalPosition::RightOffset(value) if exact_dimension(value.literal().map(|literal| literal.component()), "10", "px"))
     );
     assert!(
-        matches!(paired.vertical(), CssVerticalPosition::TopOffset(value) if exact_dimension(value.literal_component(), "20", "px"))
+        matches!(paired.vertical(), CssVerticalPosition::TopOffset(value) if exact_dimension(value.literal().map(|literal| literal.component()), "20", "px"))
     );
 
     assert!(
@@ -336,26 +342,30 @@ fn exact_dimension(
 ) -> bool {
     matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }
-fn nonnegative_length(css: &str) -> surgeist_css::CssSpecifiedNonNegativeLength {
+fn nonnegative_length(
+    css: &str,
+) -> surgeist_css::CssNumeric<surgeist_css::CssLength, surgeist_css::CssNonNegative> {
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedNonNegativeLength::try_from_calculation(
-            surgeist_css::CssLengthCalculation::try_from_components(components, Default::default())
+        surgeist_css::CssNumeric::<surgeist_css::CssLength, surgeist_css::CssNonNegative>::try_from_calculation(
+            surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(components, Default::default())
                 .unwrap(),
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedNonNegativeLength::try_from_component(
+        surgeist_css::CssNumeric::<surgeist_css::CssLength, surgeist_css::CssNonNegative>::try_from_component(
             surgeist_css::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
     }
 }
-fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
+fn signed_length_percentage(
+    css: &str,
+) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage> {
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(
+        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_calculation(
+            surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(
                 components,
                 Default::default(),
             )
@@ -363,7 +373,7 @@ fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercen
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_component(
+        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_component(
             surgeist_css::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
@@ -371,11 +381,11 @@ fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercen
 }
 fn nonnegative_length_percentage(
     css: &str,
-) -> surgeist_css::CssSpecifiedNonNegativeLengthPercentage {
+) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage, surgeist_css::CssNonNegative> {
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(
+        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage, surgeist_css::CssNonNegative>::try_from_calculation(
+            surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(
                 components,
                 Default::default(),
             )
@@ -383,7 +393,7 @@ fn nonnegative_length_percentage(
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage, surgeist_css::CssNonNegative>::try_from_component(
             surgeist_css::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()

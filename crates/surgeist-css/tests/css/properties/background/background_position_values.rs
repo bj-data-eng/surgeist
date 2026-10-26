@@ -17,10 +17,10 @@ fn authored(source: &CssDeclaration) -> &CssBackgroundPositionList {
     value.positions()
 }
 
-fn offset(css: &str) -> CssSpecifiedLengthPercentage {
+fn offset(css: &str) -> CssNumeric<CssLengthPercentage> {
     if css.starts_with("calc(") {
-        CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(
+        CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
                 parse_component_values(css).unwrap(),
                 Default::default(),
             )
@@ -28,8 +28,10 @@ fn offset(css: &str) -> CssSpecifiedLengthPercentage {
         )
         .unwrap()
     } else {
-        CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(css).unwrap())
-            .unwrap()
+        CssNumeric::<CssLengthPercentage>::try_from_component(
+            CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
     }
 }
 
@@ -83,9 +85,11 @@ fn intrinsic_initial_is_one_pair_of_zero_percentages_without_authored_provenance
     };
     for axis in [x, y] {
         assert!(matches!(axis.origin(), CssValueOrigin::Programmatic));
-        assert!(matches!(axis.literal_component().unwrap().view(),
+        assert!(
+            matches!(axis.literal().map(|literal| literal.component()).unwrap().view(),
             CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
-            if number.representation() == "0"));
+            if number.representation() == "0")
+        );
     }
 }
 
@@ -170,7 +174,7 @@ fn reentry_preserves_checked_programmatic_axes_and_symbolic_calculation() {
         panic!("symbolic axis")
     };
     assert!(x.calculation().is_some());
-    assert!(x.literal_component().is_none());
+    assert!(x.literal().map(|literal| literal.component()).is_none());
     assert!(matches!(value.positions()[0].vertical(), V::Center));
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
@@ -232,7 +236,7 @@ fn specified_positions_follow_horizontal_first_order_and_keep_omitted_offsets() 
             ));
             assert!(
                 matches!(authored(&roundtrip).positions()[0].vertical(), V::Offset(value)
-                if value.calculation().is_some() && value.literal_component().is_none())
+                if value.calculation().is_some() && value.literal().map(|literal| literal.component()).is_none())
             );
         }
     }

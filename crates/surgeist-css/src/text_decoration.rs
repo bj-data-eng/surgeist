@@ -62,24 +62,24 @@ pub enum CssTextUnderlineOffset {
     Length(CssTextUnderlineOffsetLength),
 }
 /// A signed offset with strictly closed original numeric components.
-/// Equality compares exact numeric structure; the borrowed child retains its origins.
+/// Equality compares the numeric value; the child retains, but does not compare, its origins.
 #[derive(Clone, Debug)]
 pub struct CssTextUnderlineOffsetLength {
-    value: CssSpecifiedLengthPercentage,
+    value: CssNumeric<CssLengthPercentage>,
 }
 impl PartialEq for CssTextUnderlineOffsetLength {
     fn eq(&self, other: &Self) -> bool {
-        self.value.structural_eq(&other.value)
+        self.value == other.value
     }
 }
 impl CssTextUnderlineOffsetLength {
-    pub fn try_new(value: CssSpecifiedLengthPercentage) -> Option<Self> {
+    pub fn try_new(value: CssNumeric<CssLengthPercentage>) -> Option<Self> {
         length_percentage_closed(&value).then_some(Self { value })
     }
-    pub(crate) fn from_parsed(value: CssSpecifiedLengthPercentage) -> Self {
+    pub(crate) fn from_parsed(value: CssNumeric<CssLengthPercentage>) -> Self {
         Self { value }
     }
-    pub const fn value(&self) -> &CssSpecifiedLengthPercentage {
+    pub const fn value(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.value
     }
 }
@@ -401,13 +401,13 @@ pub struct CssTextShadowLayer {
 impl CssTextShadowLayer {
     pub fn try_new(
         inset: bool,
-        offset_x: CssSpecifiedLength,
-        offset_y: CssSpecifiedLength,
-        blur_radius: Option<CssSpecifiedNonNegativeLength>,
-        spread_radius: Option<CssSpecifiedNonNegativeLength>,
+        offset_x: CssNumeric<CssLength>,
+        offset_y: CssNumeric<CssLength>,
+        blur_radius: Option<CssNumeric<CssLength, CssNonNegative>>,
+        spread_radius: Option<CssNumeric<CssLength, CssNonNegative>>,
         color: Option<CssColor>,
     ) -> Option<Self> {
-        let spread = spread_radius.map(CssSpecifiedNonNegativeLength::into_signed);
+        let spread = spread_radius.map(CssNumeric::into_any_range);
         Self::try_from_shadow(CssShadow::try_new(
             inset,
             offset_x,
@@ -434,7 +434,7 @@ impl CssTextShadowLayer {
     }
     pub(crate) fn from_parsed(shadow: CssShadow) -> Option<Self> {
         if let Some(spread) = shadow.spread_radius() {
-            spread.try_nonnegative().ok()?;
+            spread.clone().try_narrow::<CssNonNegative>().ok()?;
         }
         Some(Self { shadow })
     }
@@ -442,12 +442,12 @@ impl CssTextShadowLayer {
         &self.shadow
     }
 }
-pub(crate) fn length_closed(value: &CssSpecifiedLength) -> bool {
+pub(crate) fn length_closed(value: &CssNumeric<CssLength>) -> bool {
     value
         .calculation()
         .is_none_or(|c| c.components().first_implicit_origin().is_none())
 }
-pub(crate) fn length_percentage_closed(value: &CssSpecifiedLengthPercentage) -> bool {
+pub(crate) fn length_percentage_closed(value: &CssNumeric<CssLengthPercentage>) -> bool {
     value
         .calculation()
         .is_none_or(|c| c.components().first_implicit_origin().is_none())
@@ -592,7 +592,7 @@ mod provider_tests {
         shared("-25%", 1, 1, |w| {
             CssTextUnderlineOffset::Length(
                 CssTextUnderlineOffsetLength::try_new(
-                    CssSpecifiedLengthPercentage::try_from_component(
+                    CssNumeric::<CssLengthPercentage>::try_from_component(
                         CssComponentValue::try_token("-25%").unwrap(),
                     )
                     .unwrap(),
@@ -665,7 +665,7 @@ mod provider_tests {
             CssTextShadow::None.append_to_rule_writer(w)
         });
         let length = |text| {
-            CssSpecifiedLength::try_from_component(CssComponentValue::try_token(text).unwrap())
+            CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(text).unwrap())
                 .unwrap()
         };
         let layer = CssTextShadowLayer::try_new(

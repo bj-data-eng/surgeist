@@ -10,12 +10,16 @@ use crate::css::support::failure_classes::serialization_failure;
 use CssSerializationLimits as Limits;
 use surgeist_css::*;
 
-fn number(value: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_component(CssComponentValue::try_token(value).unwrap()).unwrap()
+fn number(value: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_token(value).unwrap())
+        .unwrap()
 }
 
-fn resolution(value: &str, unit: CssResolutionUnit) -> CssResolutionValue {
-    CssResolutionValue::from_literal(CssResolutionLiteral::try_new(value, unit).unwrap())
+fn resolution(value: &str, unit: CssResolutionUnit) -> CssNumeric<CssResolution, CssNonNegative> {
+    CssNumeric::<CssResolution, CssNonNegative>::try_from_literal(
+        CssNumericLiteral::<CssResolution>::try_new(value, unit).unwrap(),
+    )
+    .unwrap()
 }
 
 fn string(value: &str) -> CssContentString {
@@ -129,8 +133,11 @@ fn parsed_hotspots_retain_exact_coefficients_and_original_positions_after_emissi
     let source = declaration.parsed_name().unwrap().source().as_str();
     let pair = images(&value).images()[0].hotspot().unwrap();
     for (number, token) in pair.iter().zip(["3.000e1", "-0.25"]) {
-        let CssComponentValueRef::Token(CssValueTokenRef::Number(numeric)) =
-            number.literal_component().unwrap().view()
+        let CssComponentValueRef::Token(CssValueTokenRef::Number(numeric)) = number
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .view()
         else {
             panic!("ordinary Number")
         };

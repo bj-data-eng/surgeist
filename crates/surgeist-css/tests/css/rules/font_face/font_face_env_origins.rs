@@ -89,7 +89,7 @@ fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_kee
     };
     assert_eq!(origin.source().as_str(), "62.500000000000000000001% ");
     assert!(matches!(
-        start.literal_component().unwrap().view(),
+        start.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
             if number.representation() == "62.500000000000000000001"
     ));
@@ -137,7 +137,7 @@ fn mixed_width_replacement_keeps_exact_numeric_origin_and_pending_components_kee
     };
     assert_eq!(start.origin(), &CssValueOrigin::Programmatic);
     assert!(matches!(
-        start.literal_component().unwrap().view(),
+        start.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
             if number.representation() == "62.500000000000000000001"
     ));

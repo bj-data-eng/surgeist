@@ -106,9 +106,10 @@ fn parsed_origin(origin: &CssValueOrigin, source: &str, token: &str) {
     }
 }
 
-fn percentage(value: &CssSpecifiedLengthPercentage, source: &str, spelling: &str) {
+fn percentage(value: &CssNumeric<CssLengthPercentage>, source: &str, spelling: &str) {
     let component = value
-        .literal_component()
+        .literal()
+        .map(|literal| literal.component())
         .expect("literal authored percentage");
     let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = component.view() else {
         panic!("percentage branch")
@@ -292,8 +293,16 @@ fn radial_siblings_keep_unordered_shape_size_and_omitted_authored_defaults() {
                 let Some(CssRadialSize::Ellipse(size)) = value.size() else {
                     panic!("two nonnegative ellipse radii")
                 };
-                let horizontal = size.horizontal().literal_component().unwrap();
-                let vertical = size.vertical().literal_component().unwrap();
+                let horizontal = size
+                    .horizontal()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap();
+                let vertical = size
+                    .vertical()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap();
                 parsed_origin(horizontal.origin(), &source, "20%");
                 parsed_origin(vertical.origin(), &source, "30%");
                 assert_eq!(

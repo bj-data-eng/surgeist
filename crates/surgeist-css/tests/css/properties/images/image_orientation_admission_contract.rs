@@ -72,7 +72,7 @@ fn flip_angle<'a>(
     declaration: &'a CssDeclaration,
     coefficient: &str,
     unit: CssAngleUnit,
-) -> &'a CssAngleValue {
+) -> &'a CssNumeric<CssAngle> {
     let CssImageOrientation::Flip(Some(angle)) = orientation(declaration) else {
         panic!("flip and its authored angle must both be retained")
     };

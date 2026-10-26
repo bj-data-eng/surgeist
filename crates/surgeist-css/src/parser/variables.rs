@@ -392,10 +392,10 @@ fn env_valid_with_control(
                             )
                         })?
                 } else {
-                    match crate::integer_value::admit_integer_literal(argument.clone()) {
-                        Ok(crate::CssIntegerValue::Literal(value)) => !value.is_negative(),
-                        _ => false,
-                    }
+                    crate::CssNumericLiteral::<crate::CssInteger>::try_from_component(
+                        argument.clone(),
+                    )
+                    .is_ok_and(|value| !value.is_negative())
                 };
                 if !nonnegative {
                     return Ok(false);

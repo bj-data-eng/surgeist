@@ -17,8 +17,8 @@ fn component(css: &str) -> CssComponentValue {
 fn angular(css: &str) -> CssAngularColorStopPosition {
     CssAngularColorStopPosition::try_from_component(component(css)).unwrap()
 }
-fn lp(css: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(component(css)).unwrap()
+fn lp(css: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(component(css)).unwrap()
 }
 fn angular_stop(positions: Vec<CssAngularColorStopPosition>) -> CssAngularColorStopListItem {
     CssAngularColorStopListItem::Stop(Box::new(
@@ -111,7 +111,7 @@ fn angular_literals_admit_angles_percentages_and_exact_zero_without_number_coerc
 
 #[test]
 fn angular_percentage_math_retains_the_contextual_angle_type_and_authored_origin() {
-    let expression = CssAnglePercentageCalculation::try_from_components(
+    let expression = CssCalculation::<CssAnglePercentage>::try_from_components(
         parse_component_values("calc(1turn + 25%)").unwrap(),
         Default::default(),
     )
@@ -133,7 +133,7 @@ fn angular_percentage_math_retains_the_contextual_angle_type_and_authored_origin
     );
     for css in ["calc(1px + 25%)", "calc(1deg + 1s)", "calc(0)"] {
         assert!(
-            CssAnglePercentageCalculation::try_from_components(
+            CssCalculation::<CssAnglePercentage>::try_from_components(
                 parse_component_values(css).unwrap(),
                 Default::default()
             )
@@ -277,16 +277,16 @@ fn math(functions: usize, leaf: &str) -> CssComponentValues {
 }
 fn angular_math(functions: usize) -> CssAngularColorStopPosition {
     CssAngularColorStopPosition::from_calculation(
-        CssAnglePercentageCalculation::try_from_components(
+        CssCalculation::<CssAnglePercentage>::try_from_components(
             math(functions, "1deg"),
             Default::default(),
         )
         .unwrap(),
     )
 }
-fn line_math(functions: usize) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(
+fn line_math(functions: usize) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_calculation(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
             math(functions, "1px"),
             Default::default(),
         )
@@ -340,8 +340,8 @@ fn checked_image_depth_visits_conic_from_and_full_flow_position() {
     check_depth(|depth| {
         conic(
             Some(CssAngleOrZero::Angle(
-                CssAngleValue::try_from_calculation(
-                    CssAngleCalculation::try_from_components(
+                CssNumeric::<CssAngle>::try_from_calculation(
+                    CssCalculation::<CssAngle>::try_from_components(
                         math(depth, "1deg"),
                         Default::default(),
                     )

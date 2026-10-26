@@ -606,25 +606,26 @@ impl CssStringSet {
 /// Serializes the exact level or its symbolic integer calculation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBookmarkLevel {
-    level: Option<crate::CssPositiveIntegerValue>,
+    level: Option<crate::CssNumeric<crate::CssInteger, crate::CssPositive>>,
 }
+
 impl CssBookmarkLevel {
     /// Constructs the intrinsic `none` value without generating a bookmark.
     #[must_use]
     pub const fn none() -> Self {
         Self { level: None }
     }
-    /// Normalizes bare calculation tokens through the shared positive literal boundary.
-    /// Genuine function math retains its graph and defers computed rounding/range.
+    /// Retains a positive level; its type already admits only positive
+    /// literals and keeps function math with deferred computed rounding/range.
     #[must_use]
-    pub fn try_new(level: crate::CssPositiveIntegerValue) -> Option<Self> {
-        level
-            .normalized_positive_root()
-            .map(|level| Self { level: Some(level) })
+    pub fn try_new(
+        level: crate::CssNumeric<crate::CssInteger, crate::CssPositive>,
+    ) -> Option<Self> {
+        Some(Self { level: Some(level) })
     }
     /// Borrows the exact integer or deferred calculation; `None` is the CSS keyword.
     #[must_use]
-    pub const fn level(&self) -> Option<&crate::CssPositiveIntegerValue> {
+    pub const fn level(&self) -> Option<&crate::CssNumeric<crate::CssInteger, crate::CssPositive>> {
         self.level.as_ref()
     }
 }

@@ -90,11 +90,13 @@ pub fn component(text: &str) -> CssColorComponent {
         let values = parse_component_values(text).unwrap();
         if text.contains('%') {
             CssColorComponent::PercentageCalculation(
-                CssPercentageCalculation::try_from_components(values, Default::default()).unwrap(),
+                CssCalculation::<CssPercentage>::try_from_components(values, Default::default())
+                    .unwrap(),
             )
         } else {
             CssColorComponent::NumberCalculation(
-                CssNumberCalculation::try_from_components(values, Default::default()).unwrap(),
+                CssCalculation::<CssNumber>::try_from_components(values, Default::default())
+                    .unwrap(),
             )
         }
     } else if text.ends_with('%') {

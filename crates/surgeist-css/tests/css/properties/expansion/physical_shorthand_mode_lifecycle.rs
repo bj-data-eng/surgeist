@@ -162,9 +162,10 @@ fn one_value(name: &str, value: &str) -> CssLonghandValue {
     assert_eq!(values.items().len(), 1);
     values.items()[0].ordinary_value().unwrap().clone()
 }
-// Scalar equality deliberately includes diagnostic provenance. Compare the
+// Scalar equality compares the numeric value and ignores spelling and
+// diagnostic provenance. Expansion must also preserve both, so compare the
 // selected length's exact literal structure separately from its real origin.
-fn scroll_margin_length(value: &CssLonghandValue) -> Option<&CssSpecifiedLength> {
+fn scroll_margin_length(value: &CssLonghandValue) -> Option<&CssNumeric<CssLength>> {
     match value.view() {
         CssLonghandValueRef::ScrollMarginTop(value)
         | CssLonghandValueRef::ScrollMarginRight(value)
@@ -235,9 +236,13 @@ fn assert_semantic_payload(actual: &CssLonghandValue, expected: &CssLonghandValu
                 assert!(actual.calculation().is_none());
                 assert!(expected.calculation().is_none());
                 assert_literal_payload(
-                    actual.literal_component().expect("ordinary exact padding"),
+                    actual
+                        .literal()
+                        .map(|literal| literal.component())
+                        .expect("ordinary exact padding"),
                     expected
-                        .literal_component()
+                        .literal()
+                        .map(|literal| literal.component())
                         .expect("ordinary exact padding"),
                 );
             }
@@ -250,8 +255,14 @@ fn assert_semantic_payload(actual: &CssLonghandValue, expected: &CssLonghandValu
             assert!(actual.calculation().is_none());
             assert!(expected.calculation().is_none());
             assert_literal_payload(
-                actual.literal_component().expect("ordinary exact length"),
-                expected.literal_component().expect("ordinary exact length"),
+                actual
+                    .literal()
+                    .map(|literal| literal.component())
+                    .expect("ordinary exact length"),
+                expected
+                    .literal()
+                    .map(|literal| literal.component())
+                    .expect("ordinary exact length"),
             );
         }
         (None, None) => assert_eq!(actual, expected),
@@ -260,7 +271,7 @@ fn assert_semantic_payload(actual: &CssLonghandValue, expected: &CssLonghandValu
 }
 fn scroll_scalar_origin(value: &CssLonghandValue) -> Option<&CssValueOrigin> {
     scroll_margin_length(value)
-        .map(CssSpecifiedLength::origin)
+        .map(CssNumeric::<CssLength>::origin)
         .or_else(|| match scroll_padding(value) {
             Some(CssScrollPaddingValue::LengthPercentage(value)) => Some(value.origin()),
             Some(CssScrollPaddingValue::Auto) | None => None,

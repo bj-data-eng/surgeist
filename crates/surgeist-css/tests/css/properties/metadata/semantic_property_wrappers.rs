@@ -113,7 +113,7 @@ fn sole_semantic_values_preserve_authored_trivia_exact_numbers_and_omission() {
     assert_eq!(first.name().as_str(), "chapter");
     assert!(first.value().is_none());
     assert_eq!(second.name().as_str(), "section");
-    let Some(CssIntegerValue::Literal(integer)) = second.value() else {
+    let Some(integer) = second.value().and_then(|value| value.literal()) else {
         panic!("exact integer");
     };
     assert_eq!(integer.numeric().representation(), "-9007199254740993");
@@ -124,8 +124,12 @@ fn sole_semantic_values_preserve_authored_trivia_exact_numbers_and_omission() {
     else {
         panic!("factor wrapper");
     };
-    let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) =
-        value.factor().literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = value
+        .factor()
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("exact number");
     };

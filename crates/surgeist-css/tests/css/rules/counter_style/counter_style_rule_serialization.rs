@@ -282,7 +282,7 @@ fn fixed_default_is_omitted_but_its_authored_spelling_remains() {
         fixed
             .first_symbol_value()
             .unwrap()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "+0001"
@@ -382,19 +382,28 @@ fn discarded_duplicates_keep_occurrence_positions_and_numeric_origins() {
         first
             .ordinary_pad()
             .minimum_length()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "+0002"
     );
     assert_eq!(
-        first.ordinary_pad().minimum_length().literal().origin(),
+        first
+            .ordinary_pad()
+            .minimum_length()
+            .expect_literal()
+            .origin(),
         before
             .descriptors()
             .occurrences()
             .find_map(|value| match value {
-                CssCounterStyleDescriptorRef::Pad(value) =>
-                    Some(value.ordinary_pad().minimum_length().literal().origin()),
+                CssCounterStyleDescriptorRef::Pad(value) => Some(
+                    value
+                        .ordinary_pad()
+                        .minimum_length()
+                        .expect_literal()
+                        .origin()
+                ),
                 _ => None,
             })
             .unwrap()

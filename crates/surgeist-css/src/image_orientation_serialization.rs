@@ -33,21 +33,21 @@ mod tests {
     use super::*;
     use crate::specified_rule_serialization::SpecifiedProvider as _;
     use crate::{
-        CssAngleCalculation, CssAngleLiteral, CssAngleUnit, CssAngleValue,
+        CssAngle, CssAngleUnit, CssCalculation, CssNumeric, CssNumericLiteral,
         CssSerializationLimits as Limits, CssSpecifiedValueSerializationErrorKind as Kind,
         parse_component_values,
     };
 
     fn value() -> CssImageOrientation {
-        CssImageOrientation::Flip(Some(CssAngleValue::from_literal(
-            CssAngleLiteral::try_new("3.000e1", CssAngleUnit::Degrees).unwrap(),
+        CssImageOrientation::Flip(Some(CssNumeric::<CssAngle>::from_literal(
+            CssNumericLiteral::<CssAngle>::try_new("3.000e1", CssAngleUnit::Degrees).unwrap(),
         )))
     }
 
     fn math() -> CssImageOrientation {
         CssImageOrientation::Flip(Some(
-            CssAngleValue::try_from_calculation(
-                CssAngleCalculation::try_from_components(
+            CssNumeric::<CssAngle>::try_from_calculation(
+                CssCalculation::<CssAngle>::try_from_components(
                     parse_component_values("calc(15deg + 15deg)").unwrap(),
                     Default::default(),
                 )
@@ -98,8 +98,12 @@ mod tests {
 
     #[test]
     fn suppressed_huge_angle_consumes_nodes_without_formatting_or_bytes() {
-        let value = CssImageOrientation::Flip(Some(CssAngleValue::from_literal(
-            CssAngleLiteral::try_new("1e999999999999999999999999", CssAngleUnit::Degrees).unwrap(),
+        let value = CssImageOrientation::Flip(Some(CssNumeric::<CssAngle>::from_literal(
+            CssNumericLiteral::<CssAngle>::try_new(
+                "1e999999999999999999999999",
+                CssAngleUnit::Degrees,
+            )
+            .unwrap(),
         )));
         let mut writer = SpecifiedRuleWriter::new(Limits::new(2, 2, 1));
         writer
@@ -173,8 +177,8 @@ mod tests {
         let source = "/* 🦀 */ 3.000e1deg";
         let components = parse_component_values(source).unwrap();
         let component = components.items().last().unwrap().clone();
-        let value = CssImageOrientation::Flip(Some(CssAngleValue::from_literal(
-            CssAngleLiteral::try_from_component(component.clone()).unwrap(),
+        let value = CssImageOrientation::Flip(Some(CssNumeric::<CssAngle>::from_literal(
+            CssNumericLiteral::<CssAngle>::try_from_component(component.clone()).unwrap(),
         )));
         let mut emitted = SpecifiedRuleWriter::new(Limits::new(2, 2, 17));
         emitted.append("prefix ").unwrap();

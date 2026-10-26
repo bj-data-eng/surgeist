@@ -294,12 +294,12 @@ fn programmatic_and_parsed_calculated_failures_keep_their_actual_origins() {
         .unwrap(),
     )
     .unwrap();
-    let programmatic = CssPercentageCalculation::try_from_components(
+    let programmatic = CssCalculation::<CssPercentage>::try_from_components(
         CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
         Default::default(),
     )
     .unwrap();
-    let recovered = CssPercentageCalculation::try_from_components(
+    let recovered = CssCalculation::<CssPercentage>::try_from_components(
         parse_component_values("calc(-1%)").unwrap(),
         Default::default(),
     )

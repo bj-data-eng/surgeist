@@ -13,8 +13,8 @@
 use std::ops::Range;
 
 use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
-    CssNumericTokenRef, CssSpecifiedNumber, CssValueOrigin, CssValueTokenRef,
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumber, CssNumeric,
+    CssNumericTokenKind, CssNumericTokenRef, CssValueOrigin, CssValueTokenRef,
     parse_component_values,
 };
 
@@ -308,7 +308,7 @@ fn validated_numeric_conversion_uses_sign_fraction_and_signed_decimal_exponent()
             CssComponentValue::try_number(source).unwrap(),
         ] {
             assert_token(&component, &Expected::Number(source, kind, sign));
-            let value = CssSpecifiedNumber::try_from_component(component.clone()).unwrap();
+            let value = CssNumeric::<CssNumber>::try_from_component(component.clone()).unwrap();
             let before = value.clone();
             assert_eq!(
                 value.serialize_specified(Default::default()).unwrap(),
@@ -316,7 +316,10 @@ fn validated_numeric_conversion_uses_sign_fraction_and_signed_decimal_exponent()
                 "{source}"
             );
             assert_eq!(value, before);
-            assert_eq!(value.literal_component(), Some(&component));
+            assert_eq!(
+                value.literal().map(|literal| literal.component()),
+                Some(&component)
+            );
             assert_eq!(value.origin(), component.origin());
             // Mathematical conversion does not erase the authored spelling.
             assert_eq!(
@@ -346,7 +349,7 @@ fn whole_number_construction_rejects_invalid_spelling_and_admits_a_valid_retry()
         assert_token(&retry, &Expected::Number("-.5e+2", Number, true));
         assert_eq!(retry.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(
-            CssSpecifiedNumber::try_from_component(retry)
+            CssNumeric::<CssNumber>::try_from_component(retry)
                 .unwrap()
                 .serialize_specified(Default::default())
                 .unwrap(),

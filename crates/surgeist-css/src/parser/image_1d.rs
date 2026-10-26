@@ -3,8 +3,8 @@ use crate::error::property::ParseError;
 use crate::error::property::{Error, basic, unexpected_at};
 use crate::numeric::{CalculationRoot, NumericInputContext};
 use crate::{
-    CssColor, CssComponentValueRef, CssComponentValues, CssFlexCalculation, CssImage1D,
-    CssImageConstructionError, CssLengthPercentageCalculation, CssSpecifiedFlex, CssStripe,
+    CssCalculation, CssColor, CssComponentValueRef, CssComponentValues, CssFlex, CssImage1D,
+    CssImageConstructionError, CssLengthPercentage, CssNumeric, CssStripe,
     CssStripeLengthPercentage, CssStripeThickness, CssStripes, CssValueTokenRef,
 };
 use cssparser::Token;
@@ -144,8 +144,8 @@ fn parse_thickness<'i, 't>(
             .map_err(|error| crate::error::property::invalid_component_value(location, error))?;
         let values = match numeric.admit_or_return_input(values, CalculationRoot::Flex) {
             Ok(value) => {
-                return CssSpecifiedFlex::from_parser_calculation(
-                    CssFlexCalculation::from_expression(value),
+                return CssNumeric::<CssFlex>::from_parser_calculation(
+                    CssCalculation::<CssFlex>::from_expression(value),
                 )
                 .map(CssStripeThickness::Flex)
                 .map_err(|error| numeric_error(numeric, &error, location, offset));
@@ -163,16 +163,18 @@ fn parse_thickness<'i, 't>(
         let expression = numeric
             .admit(values, CalculationRoot::LengthPercentage)
             .map_err(|error| numeric_error(numeric, &error, location, offset))?;
-        return CssStripeLengthPercentage::from_parser_calculation(
-            CssLengthPercentageCalculation::from_expression(expression),
-        )
+        return CssStripeLengthPercentage::from_parser_calculation(CssCalculation::<
+            CssLengthPercentage,
+        >::from_expression(
+            expression
+        ))
         .map(CssStripeThickness::LengthPercentage)
         .map_err(|error| numeric_error(numeric, &error, location, offset));
     }
     let component = component.into_owned();
     if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) if unit.eq_ignore_ascii_case("fr"))
     {
-        CssSpecifiedFlex::try_from_component(component)
+        CssNumeric::<CssFlex>::try_from_component(component)
             .map(CssStripeThickness::Flex)
             .map_err(|error| numeric_error(numeric, &error, location, offset))
     } else {

@@ -12,9 +12,11 @@ fn one_component(text: &str) -> CssComponentValue {
     component.clone()
 }
 
-fn factor(text: &str) -> CssSpecifiedNonNegativeNumber {
-    CssSpecifiedNonNegativeNumber::try_from_component(CssComponentValue::try_number(text).unwrap())
-        .unwrap()
+fn factor(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
+    CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
+        CssComponentValue::try_number(text).unwrap(),
+    )
+    .unwrap()
 }
 
 fn basis(text: &str) -> CssFlexBasisValue {
@@ -101,7 +103,7 @@ fn checked_factors_preserve_exact_lexical_numbers_and_symbolic_math() {
             value.serialize_specified(Default::default()).unwrap(),
             expected
         );
-        let Some(component) = value.literal_component() else {
+        let Some(component) = value.literal().map(|literal| literal.component()) else {
             panic!("exact lexical literal: {text}")
         };
         let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = component.view() else {
@@ -111,18 +113,18 @@ fn checked_factors_preserve_exact_lexical_numbers_and_symbolic_math() {
         assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
     }
     for text in ["-1", "-1e-100"] {
-        let error = CssSpecifiedNonNegativeNumber::try_from_component(
+        let error = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number(text).unwrap(),
         )
         .unwrap_err();
         assert!(error.is_out_of_range(), "{error:?}");
     }
-    let math = CssNumberCalculation::try_from_components(
+    let math = CssCalculation::<CssNumber>::try_from_components(
         parse_component_values("calc(1 + 2)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let value = CssSpecifiedNonNegativeNumber::try_from_calculation(math).unwrap();
+    let value = CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(math).unwrap();
     assert!(value.calculation().is_some());
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
@@ -144,7 +146,7 @@ fn flex_basis_borrows_content_size_and_calc_size_without_erasing_structure() {
     );
 
     let size = CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension("10", "px").unwrap(),
         )
         .unwrap(),
@@ -392,7 +394,10 @@ fn expanded_flex_keywords_and_omissions_have_distinct_effective_values() {
         panic!("omitted basis is unitless zero")
     };
     assert_eq!(
-        zero.literal_component().unwrap().origin(),
+        zero.literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .origin(),
         &CssValueOrigin::Programmatic
     );
 }

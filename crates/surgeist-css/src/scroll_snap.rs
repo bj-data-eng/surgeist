@@ -3,7 +3,7 @@
 use crate::numeric::{CapturedNumericComponent, length_components_equal};
 use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{CssSerializationError, CssSpecifiedLength, CssSpecifiedNonNegativeLengthPercentage};
+use crate::{CssLength, CssLengthPercentage, CssNonNegative, CssNumeric, CssSerializationError};
 
 type SerializationResult<T> = Result<T, CssSerializationError>;
 
@@ -195,7 +195,7 @@ crate::specified_rule_serialization::specified_serialization!(CssScrollSnapStop)
 #[non_exhaustive]
 pub enum CssScrollPaddingValue {
     Auto,
-    LengthPercentage(CssSpecifiedNonNegativeLengthPercentage),
+    LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>),
 }
 
 impl CssScrollPaddingValue {
@@ -305,26 +305,26 @@ crate::specified_rule_serialization::specified_serialization!(CssScrollPaddingPa
 
 /// One or two authored scroll-margin lengths for a logical axis.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssScrollMarginPair(ScrollPair<CssSpecifiedLength>);
+pub struct CssScrollMarginPair(ScrollPair<CssNumeric<CssLength>>);
 
 impl CssScrollMarginPair {
     #[must_use]
-    pub const fn new(start: CssSpecifiedLength, end: Option<CssSpecifiedLength>) -> Self {
+    pub const fn new(start: CssNumeric<CssLength>, end: Option<CssNumeric<CssLength>>) -> Self {
         Self(ScrollPair::new(start, end))
     }
 
     #[must_use]
-    pub const fn start(&self) -> &CssSpecifiedLength {
+    pub const fn start(&self) -> &CssNumeric<CssLength> {
         self.0.start()
     }
 
     #[must_use]
-    pub const fn authored_end(&self) -> Option<&CssSpecifiedLength> {
+    pub const fn authored_end(&self) -> Option<&CssNumeric<CssLength>> {
         self.0.authored_end()
     }
 
     #[must_use]
-    pub const fn end(&self) -> &CssSpecifiedLength {
+    pub const fn end(&self) -> &CssNumeric<CssLength> {
         self.0.end()
     }
 }
@@ -359,7 +359,7 @@ fn capture_padding_for_comparison(
         .map(CapturedNumericComponent::Plain)
 }
 fn capture_margin_for_comparison(
-    value: &CssSpecifiedLength,
+    value: &CssNumeric<CssLength>,
     context: &mut SpecifiedSerializationContext,
 ) -> SerializationResult<CapturedNumericComponent> {
     if let Some(calculation) = value.calculation() {
@@ -392,8 +392,8 @@ fn padding_equal(
 }
 
 fn margin_equal(
-    left: &CssSpecifiedLength,
-    right: &CssSpecifiedLength,
+    left: &CssNumeric<CssLength>,
+    right: &CssNumeric<CssLength>,
     left_css: &CapturedNumericComponent,
     right_css: &CapturedNumericComponent,
 ) -> bool {
@@ -515,11 +515,11 @@ crate::specified_rule_serialization::specified_serialization!(CssScrollPaddingSh
 
 /// The authored one-to-four lengths and physical/logical role marker for `scroll-margin`.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssScrollMarginShorthand(ScrollFour<CssSpecifiedLength>);
+pub struct CssScrollMarginShorthand(ScrollFour<CssNumeric<CssLength>>);
 
 impl CssScrollMarginShorthand {
     #[must_use]
-    pub fn try_new(kind: CssScrollSideKind, authored: Vec<CssSpecifiedLength>) -> Option<Self> {
+    pub fn try_new(kind: CssScrollSideKind, authored: Vec<CssNumeric<CssLength>>) -> Option<Self> {
         ScrollFour::try_new(kind, authored).map(Self)
     }
 
@@ -529,14 +529,14 @@ impl CssScrollMarginShorthand {
     }
 
     #[must_use]
-    pub fn authored_values(&self) -> &[CssSpecifiedLength] {
+    pub fn authored_values(&self) -> &[CssNumeric<CssLength>] {
         &self.0.authored
     }
 
     /// Borrows one of four roles in top/right/bottom/left or
     /// block-start/inline-start/block-end/inline-end order.
     #[must_use]
-    pub fn role(&self, index: usize) -> Option<&CssSpecifiedLength> {
+    pub fn role(&self, index: usize) -> Option<&CssNumeric<CssLength>> {
         (index < 4).then(|| self.0.role(index))
     }
 }
@@ -625,7 +625,7 @@ fn visit_padding(
 }
 
 fn visit_margin(
-    value: &CssSpecifiedLength,
+    value: &CssNumeric<CssLength>,
     writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
 ) -> SerializationResult<()> {
     value.append_to_rule_writer(writer)
@@ -636,19 +636,19 @@ mod cumulative_bridge_contract {
     use super::*;
     use crate::specified_rule_serialization::SpecifiedRuleWriter;
     use crate::{
-        CssComponentValue, CssLengthCalculation, CssSerializationLimits as Limits,
+        CssCalculation, CssComponentValue, CssLength, CssSerializationLimits as Limits,
         CssSpecifiedValueSerializationErrorKind as Kind, CssValueOrigin,
     };
 
-    fn length(text: &str) -> CssSpecifiedLength {
-        CssSpecifiedLength::try_from_component(
+    fn length(text: &str) -> CssNumeric<CssLength> {
+        CssNumeric::<CssLength>::try_from_component(
             CssComponentValue::try_dimension(text, "px").unwrap(),
         )
         .unwrap()
     }
     fn padding(text: &str) -> CssScrollPaddingValue {
         CssScrollPaddingValue::LengthPercentage(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
                 CssComponentValue::try_dimension(text, "px").unwrap(),
             )
             .unwrap(),
@@ -750,9 +750,12 @@ mod cumulative_bridge_contract {
     #[test]
     fn suppressed_symbolic_math_and_large_literals_need_no_remaining_bytes() {
         let components = crate::parse_component_values("calc(10px + 1em)").unwrap();
-        let math = CssSpecifiedLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(components.clone(), Default::default())
-                .unwrap(),
+        let math = CssNumeric::<CssLength>::try_from_calculation(
+            CssCalculation::<CssLength>::try_from_components(
+                components.clone(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
         let value = CssScrollMarginPair::new(math, Some(length("1e50")));

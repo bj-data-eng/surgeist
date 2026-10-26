@@ -2,9 +2,9 @@
 
 use super::{CssAngleOrZero, CssColorStopListItem, CssGradient, CssUrlModifier};
 use super::{
-    CssColor, CssColorStopList, CssGradientColorStop, CssImageValue, CssLinearGradient,
-    CssLinearGradientDirection, CssRadialGradient, CssRadialShape, CssRadialSize,
-    CssSpecifiedLengthPercentage,
+    CssColor, CssColorStopList, CssGradientColorStop, CssImageValue, CssLengthPercentage,
+    CssLinearGradient, CssLinearGradientDirection, CssNumeric, CssRadialGradient, CssRadialShape,
+    CssRadialSize,
 };
 use super::{CssFilterAmount, CssFilterFunction, CssFilterFunctionList};
 use crate::{
@@ -336,7 +336,7 @@ fn enclosing_depth(depth: u32) -> Result<u32, CssImageConstructionError> {
     }
 }
 
-fn length_percentage_depth(value: &CssSpecifiedLengthPercentage) -> u32 {
+fn length_percentage_depth(value: &CssNumeric<CssLengthPercentage>) -> u32 {
     value
         .calculation()
         .map_or(0, |v| v.components().nesting_depth())
@@ -552,7 +552,7 @@ impl CssGradientColorStop {
     /// Constructs a stop from a checked authored color and optional line position.
     /// The authored color stays symbolic; no legacy color projection is invented.
     #[must_use]
-    pub fn from_color(color: CssColor, position: Option<CssSpecifiedLengthPercentage>) -> Self {
+    pub fn from_color(color: CssColor, position: Option<CssNumeric<CssLengthPercentage>>) -> Self {
         Self {
             color,
             positions: position.into_iter().collect(),
@@ -562,7 +562,7 @@ impl CssGradientColorStop {
     /// Retains zero, one or two checked line positions on one authored color stop.
     pub fn try_from_positions(
         color: CssColor,
-        positions: Vec<CssSpecifiedLengthPercentage>,
+        positions: Vec<CssNumeric<CssLengthPercentage>>,
     ) -> Result<Self, CssImageConstructionError> {
         if positions.len() > 2 {
             return Err(CssImageConstructionError::new(

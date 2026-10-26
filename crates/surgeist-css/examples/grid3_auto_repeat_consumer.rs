@@ -107,7 +107,7 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
         "10px"
     );
     assert!(
-        matches!(after.count(), surgeist_css::CssPositiveIntegerValue::Literal(count) if count.integer().numeric().representation() == "2")
+        matches!(after.count().literal(), Some(count) if count.numeric().representation() == "2")
     );
     let [CssGridFixedRepeatComponent::FixedSize(size)] = after.content().components() else {
         panic!("surrounding integer repetition retains fixed-size content");

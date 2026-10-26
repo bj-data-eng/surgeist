@@ -8,14 +8,16 @@ use crate::css::support::serialization_limits::assert_limits_with_zero as budget
 use crate::css::support::sole_declaration as declaration;
 use surgeist_css::{CssSerializationLimits as L, *};
 
-fn length(text: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
-        .unwrap()
+fn length(text: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
+        CssComponentValue::try_token(text).unwrap(),
+    )
+    .unwrap()
 }
 
-fn calculation(text: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(
+fn calculation(text: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_calculation(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
@@ -65,8 +67,12 @@ fn indent_flags_emit_in_grammar_order_with_exact_cumulative_costs() {
             CssTextIndent::new(length("-2.5%"), hanging, each_line)
         );
         assert_eq!(value.length().origin(), &CssValueOrigin::Programmatic);
-        let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) =
-            value.length().literal_component().unwrap().view()
+        let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = value
+            .length()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .view()
         else {
             panic!("retained authored percentage")
         };
@@ -386,8 +392,11 @@ fn rounding_and_failed_serialization_keep_exact_coefficients_units_and_origins()
     let CssTextDecorationThickness::Length(retained) = value else {
         panic!("numeric thickness")
     };
-    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(token)) =
-        retained.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(token)) = retained
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("percentage")
     };
@@ -413,8 +422,11 @@ fn rounding_and_failed_serialization_keep_exact_coefficients_units_and_origins()
         unreachable!()
     };
     assert_eq!(huge.origin(), &CssValueOrigin::Programmatic);
-    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
-        huge.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) = huge
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("dimension")
     };

@@ -80,12 +80,20 @@ fn css2_residual_properties_retain_typed_values() {
         panic!("expected border-spacing");
     };
     assert!(exact_dimension(
-        border_spacing.spacing().horizontal().literal_component(),
+        border_spacing
+            .spacing()
+            .horizontal()
+            .literal()
+            .map(|literal| literal.component()),
         "2",
         "px"
     ));
     assert!(exact_dimension(
-        border_spacing.spacing().vertical().literal_component(),
+        border_spacing
+            .spacing()
+            .vertical()
+            .literal()
+            .map(|literal| literal.component()),
         "3",
         "px"
     ));
@@ -115,7 +123,7 @@ fn css2_residual_properties_retain_typed_values() {
     assert!(matches!(
         rect.left(),
         CssClipEdge::Length(length)
-            if exact_dimension(length.literal_component(), "-1", "px")
+            if exact_dimension(length.literal().map(|literal| literal.component()), "-1", "px")
     ));
 
     let CssKnownPropertyValueRef::EmptyCells(empty_cells) = report.syntax()[4]
@@ -136,10 +144,22 @@ fn css2_residual_properties_retain_typed_values() {
             .unwrap();
         match value {
             CssKnownPropertyValueRef::Orphans(value) => {
-                assert_eq!(value.minimum().literal(), Some(3));
+                assert_eq!(
+                    value
+                        .minimum()
+                        .literal()
+                        .and_then(|literal| literal.value()),
+                    Some(3)
+                );
             }
             CssKnownPropertyValueRef::Widows(value) => {
-                assert_eq!(value.minimum().literal(), Some(4));
+                assert_eq!(
+                    value
+                        .minimum()
+                        .literal()
+                        .and_then(|literal| literal.value()),
+                    Some(4)
+                );
             }
             _ => panic!("expected a page-line minimum"),
         }
@@ -220,7 +240,8 @@ fn css2_residual_properties_retain_typed_values() {
         .spacing()
         .length_percentage()
         .unwrap()
-        .literal_component()
+        .literal()
+        .map(|literal| literal.component())
         .unwrap();
     assert!(
         matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) if number.representation() == "-0.25" && unit == "em")

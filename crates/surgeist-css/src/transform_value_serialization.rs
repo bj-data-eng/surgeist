@@ -8,8 +8,8 @@
 
 use crate::specified_rule_serialization::SpecifiedProvider as _;
 use crate::{
-    CssAngleOrZero, CssComponentValue, CssComponentValueRef, CssPerspective, CssScale,
-    CssSerializationError, CssSpecifiedLengthPercentage, CssSpecifiedPercentage, CssTransform,
+    CssAngleOrZero, CssComponentValue, CssComponentValueRef, CssLengthPercentage, CssNumeric,
+    CssPercentage, CssPerspective, CssScale, CssSerializationError, CssTransform,
     CssTransformFunction, CssTransformOrigin, CssTransformPerspective, CssTransformScaleComponent,
     CssTranslate, CssValueTokenRef,
     exact_decimal::LexicalDecimal,
@@ -31,7 +31,7 @@ fn ordinary_zero(component: &CssComponentValue, allow_percentage: bool) -> bool 
     LexicalDecimal::new(number.representation()).is_zero()
 }
 
-fn zero_translation(value: &CssSpecifiedLengthPercentage, allow_percentage: bool) -> bool {
+fn zero_translation(value: &CssNumeric<CssLengthPercentage>, allow_percentage: bool) -> bool {
     value
         .literal_component()
         .is_some_and(|value| ordinary_zero(value, allow_percentage))
@@ -292,7 +292,7 @@ fn append_function(
 }
 
 fn append_numbers(
-    values: &[crate::CssSpecifiedNumber],
+    values: &[crate::CssNumeric<crate::CssNumber>],
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<()> {
     writer.comma_separated(values, |writer, value| value.append_to_rule_writer(writer))?;
@@ -324,7 +324,7 @@ fn append_scale_component(
 }
 
 fn append_percentage_as_number(
-    value: &CssSpecifiedPercentage,
+    value: &CssNumeric<CssPercentage>,
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<()> {
     if let Some(component) = value.literal_component() {
@@ -454,18 +454,18 @@ mod tests {
         });
         let translate = CssTranslate::Values(
             crate::CssTranslateValues::try_new(
-                crate::CssSpecifiedLengthPercentage::try_from_component(
+                crate::CssNumeric::<crate::CssLengthPercentage>::try_from_component(
                     crate::CssComponentValue::try_token("1px").unwrap(),
                 )
                 .unwrap(),
                 Some(
-                    crate::CssSpecifiedLengthPercentage::try_from_component(
+                    crate::CssNumeric::<crate::CssLengthPercentage>::try_from_component(
                         crate::CssComponentValue::try_token("0px").unwrap(),
                     )
                     .unwrap(),
                 ),
                 Some(
-                    crate::CssSpecifiedLength::try_from_component(
+                    crate::CssNumeric::<crate::CssLength>::try_from_component(
                         crate::CssComponentValue::try_token("0px").unwrap(),
                     )
                     .unwrap(),
@@ -480,7 +480,7 @@ mod tests {
             crate::CssScaleValues::try_new(
                 ["2", "2", "1"]
                     .map(|text| {
-                        crate::CssSpecifiedNumber::try_from_component(
+                        crate::CssNumeric::<crate::CssNumber>::try_from_component(
                             crate::CssComponentValue::try_number(text).unwrap(),
                         )
                         .unwrap()
@@ -551,13 +551,16 @@ mod tests {
         shared("none", 1, 1, |writer| {
             CssPerspective::None.append_to_rule_writer(writer)
         });
-        let perspective = CssPerspective::Length(crate::CssSpecifiedNonNegativeLength::zero());
+        let perspective = CssPerspective::Length(crate::CssNumeric::<
+            crate::CssLength,
+            crate::CssNonNegative,
+        >::exact_zero());
         shared("0", 2, 2, |writer| {
             perspective.append_to_rule_writer(writer)
         });
         let perspective = CssPerspective::Length(
-            crate::CssSpecifiedNonNegativeLength::try_from_calculation(
-                crate::CssLengthCalculation::try_from_components(
+            crate::CssNumeric::<crate::CssLength, crate::CssNonNegative>::try_from_calculation(
+                crate::CssCalculation::<crate::CssLength>::try_from_components(
                     crate::parse_component_values("calc(1px - 2px)").unwrap(),
                     Default::default(),
                 )
@@ -574,19 +577,19 @@ mod tests {
         });
         let values = crate::CssScaleValues::try_new(vec![
             CssTransformScaleComponent::Percentage(
-                crate::CssSpecifiedPercentage::try_from_component(
+                crate::CssNumeric::<crate::CssPercentage>::try_from_component(
                     crate::CssComponentValue::try_token("50%").unwrap(),
                 )
                 .unwrap(),
             ),
             CssTransformScaleComponent::Number(
-                crate::CssSpecifiedNumber::try_from_component(
+                crate::CssNumeric::<crate::CssNumber>::try_from_component(
                     crate::CssComponentValue::try_number(".5").unwrap(),
                 )
                 .unwrap(),
             ),
             CssTransformScaleComponent::Percentage(
-                crate::CssSpecifiedPercentage::try_from_component(
+                crate::CssNumeric::<crate::CssPercentage>::try_from_component(
                     crate::CssComponentValue::try_token("100%").unwrap(),
                 )
                 .unwrap(),
@@ -596,7 +599,7 @@ mod tests {
         let value = CssScale::Values(values);
         shared("0.5", 4, 4, |writer| value.append_to_rule_writer(writer));
         let symbolic = CssTransformScaleComponent::HintedNumberCalculation(
-            crate::CssHintedNumberCalculation::try_from_components(
+            crate::CssCalculation::<crate::CssHintedNumber>::try_from_components(
                 crate::parse_component_values("calc((1px + 1%) / 1px)").unwrap(),
                 Default::default(),
             )
@@ -607,7 +610,7 @@ mod tests {
                 symbolic.clone(),
                 symbolic,
                 CssTransformScaleComponent::Number(
-                    crate::CssSpecifiedNumber::try_from_component(
+                    crate::CssNumeric::<crate::CssNumber>::try_from_component(
                         crate::CssComponentValue::try_number("1").unwrap(),
                     )
                     .unwrap(),

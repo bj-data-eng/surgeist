@@ -163,8 +163,8 @@ mod tests {
 
     fn values() -> (CssOffsetPath, CssOffsetRotate) {
         let angle = |number| {
-            CssAngleValue::from_literal(
-                CssAngleLiteral::try_new(number, CssAngleUnit::Degrees).unwrap(),
+            CssNumeric::<CssAngle>::from_literal(
+                CssNumericLiteral::<CssAngle>::try_new(number, CssAngleUnit::Degrees).unwrap(),
             )
         };
         (

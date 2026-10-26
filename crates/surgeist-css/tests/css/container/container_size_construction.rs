@@ -9,7 +9,7 @@ fn feature(condition: &CssContainerCondition) -> &CssContainerFeatureQuery {
     };
     feature
 }
-fn length(value: &CssContainerLength) -> &CssLengthCalculation {
+fn length(value: &CssContainerLength) -> &CssCalculation<CssLength> {
     let CssContainerLengthRef::Numeric(value) = value.view() else {
         panic!("typed length")
     };
@@ -21,7 +21,7 @@ fn ratio(value: &CssContainerRatio) -> &CssMediaRatio {
     };
     value
 }
-fn number(value: &CssNumberCalculation) -> &str {
+fn number(value: &CssCalculation<CssNumber>) -> &str {
     let CssCalculationExpressionRef::Value(value) = value.expression() else {
         panic!("number literal")
     };
@@ -297,7 +297,7 @@ fn tree_counting_is_inspectable_and_remains_symbolic_in_container_context() {
     }
     // Tree-counting functions are scoped to element-backed contexts, so the
     // context-free number grammar does not know the function.
-    let error = CssNumberCalculation::try_from_components(
+    let error = CssCalculation::<CssNumber>::try_from_components(
         parse_component_values("sibling-count()").unwrap(),
         Default::default(),
     )

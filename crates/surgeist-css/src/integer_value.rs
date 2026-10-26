@@ -1,142 +1,10 @@
 //! Exact ordinary signed integers and specified integer/z-index serialization.
 
-use std::cmp::Ordering;
-
 use crate::{
-    CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssComponentValueRef,
-    CssIntegerValue, CssNumericTokenKind, CssNumericTokenRef, CssSerializationError,
-    CssSpecifiedValueSerializationErrorKind, CssValueOrigin, CssValueTokenRef, CssZIndexValue,
+    CssComponentValue, CssComponentValueRef, CssNumericTokenKind, CssSerializationError,
+    CssSpecifiedValueSerializationErrorKind, CssValueTokenRef, CssZIndexValue,
     specified_serialization::SpecifiedSerializationContext,
 };
-
-/// One checked lexical integer token, without a machine-integer magnitude bound.
-///
-/// Original sign, digits and provenance remain authoritative. Equality includes
-/// spelling and provenance, rather than comparing only mathematical magnitude.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssIntegerLiteral {
-    component: Box<CssComponentValue>,
-}
-
-impl CssIntegerLiteral {
-    /// Accepts only a number token with integer syntax (no point or exponent).
-    pub fn try_from_component(
-        component: CssComponentValue,
-    ) -> Result<Self, CssComponentValueError> {
-        if matches!(component.view(),
-            CssComponentValueRef::Token(CssValueTokenRef::Number(number))
-                if number.kind() == CssNumericTokenKind::Integer)
-        {
-            Ok(Self {
-                component: Box::new(component),
-            })
-        } else {
-            Err(CssComponentValueError::new(
-                CssComponentValueErrorKind::InvalidToken,
-                component.origin().clone(),
-            ))
-        }
-    }
-
-    /// Constructs the canonical programmatic spelling of a machine integer.
-    #[must_use]
-    pub fn from_i32(value: i32) -> Self {
-        Self::try_from_component(
-            CssComponentValue::try_number(&value.to_string()).expect("valid integer spelling"),
-        )
-        .expect("checked integer token")
-    }
-
-    /// Whether this lexical integer is mathematically zero, regardless of sign.
-    #[must_use]
-    pub fn is_zero(&self) -> bool {
-        self.numeric()
-            .representation()
-            .strip_prefix(['+', '-'])
-            .unwrap_or(self.numeric().representation())
-            .bytes()
-            .all(|digit| digit == b'0')
-    }
-
-    /// Whether this lexical integer is mathematically negative; signed zero is not negative.
-    #[must_use]
-    pub fn is_negative(&self) -> bool {
-        self.numeric().representation().starts_with('-') && !self.is_zero()
-    }
-
-    /// Compares mathematical integer values without changing authored identity.
-    ///
-    /// Explicit plus signs, leading zeroes and provenance do not affect this
-    /// ordering. Negative values precede zero and positive values; signed zeroes
-    /// compare equally. Equality remains sensitive to spelling and origin.
-    #[must_use]
-    pub fn compare_value(&self, other: &Self) -> Ordering {
-        fn significant_digits(value: &CssIntegerLiteral) -> &str {
-            let text = value.numeric().representation();
-            text.strip_prefix(['+', '-'])
-                .unwrap_or(text)
-                .trim_start_matches('0')
-        }
-        let left = significant_digits(self);
-        let right = significant_digits(other);
-        let left_negative = self.numeric().representation().starts_with('-') && !left.is_empty();
-        let right_negative = other.numeric().representation().starts_with('-') && !right.is_empty();
-        match (left_negative, right_negative) {
-            (true, false) => Ordering::Less,
-            (false, true) => Ordering::Greater,
-            _ => {
-                let magnitude = left.len().cmp(&right.len()).then_with(|| left.cmp(right));
-                if left_negative {
-                    magnitude.reverse()
-                } else {
-                    magnitude
-                }
-            }
-        }
-    }
-
-    /// Returns the original sign and digits without numeric approximation.
-    #[must_use]
-    pub fn numeric(&self) -> CssNumericTokenRef<'_> {
-        match self.component.view() {
-            CssComponentValueRef::Token(CssValueTokenRef::Number(number)) => number,
-            _ => unreachable!("checked integer number token"),
-        }
-    }
-
-    /// Borrows the original checked component, including its provenance.
-    #[must_use]
-    pub const fn component(&self) -> &CssComponentValue {
-        &self.component
-    }
-
-    /// Returns the original parsed or explicitly programmatic token origin.
-    #[must_use]
-    pub const fn origin(&self) -> &CssValueOrigin {
-        self.component.origin()
-    }
-
-    pub(crate) fn append_specified(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> Result<(), CssSerializationError> {
-        context.charge_nodes(1)?;
-        if context.output_suppressed() {
-            return Ok(());
-        }
-        let text =
-            serialize_integer_digits(self.numeric().representation(), context.remaining_bytes())?;
-        context.append(output, &text)
-    }
-}
-
-pub(crate) fn admit_integer_literal(
-    component: CssComponentValue,
-) -> Result<CssIntegerValue, CssComponentValueError> {
-    let literal = CssIntegerLiteral::try_from_component(component)?;
-    Ok(CssIntegerValue::Literal(literal))
-}
 
 /// The env() index grammar only needs lexical nonnegativity. Borrow the
 /// original checked token instead of retaining another integer/component graph.
@@ -155,7 +23,7 @@ pub(crate) fn nonnegative_integer_literal_controlled(
     if !text.starts_with('-') {
         return Ok(true);
     }
-    // Exactly the same signed-zero rule as CssIntegerLiteral::is_negative;
+    // Exactly the same signed-zero rule as CssNumericLiteral::<CssInteger>::is_negative;
     // each actual digit read is admitted before looking at the next digit.
     for digit in text.as_bytes().iter().skip(1) {
         control.step()?;
@@ -259,36 +127,6 @@ pub(crate) fn exact_i32(text: &str) -> Option<i32> {
     }
 }
 
-impl CssIntegerValue {
-    /// Appends one integer to a caller's cumulative specified-CSS budget.
-    pub(crate) fn append_specified(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> Result<(), CssSerializationError> {
-        if let Self::Calculation(calculation) = self {
-            crate::numeric::project_specified_into(&calculation.expression, context, output)?;
-            return Ok(());
-        }
-        match self {
-            Self::Literal(literal) => literal.append_specified(context, output),
-            Self::Calculation(_) => unreachable!("calculation handled above"),
-        }
-    }
-}
-impl crate::specified_rule_serialization::SpecifiedProvider for CssIntegerValue {
-    fn append_to_rule_writer(
-        &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        let context = &mut writer.context;
-        let output = &mut writer.css;
-        self.append_specified(context, output)?;
-        Ok(())
-    }
-}
-crate::specified_rule_serialization::specified_serialization!(CssIntegerValue);
-
 impl CssZIndexValue {
     pub(crate) fn append_specified(
         &self,
@@ -317,7 +155,7 @@ impl crate::specified_rule_serialization::SpecifiedProvider for CssZIndexValue {
 }
 crate::specified_rule_serialization::specified_serialization!(CssZIndexValue);
 
-fn serialize_integer_digits(
+pub(crate) fn serialize_integer_digits(
     text: &str,
     byte_limit: usize,
 ) -> Result<String, CssSerializationError> {
@@ -350,15 +188,15 @@ fn serialize_integer_digits(
 #[cfg(test)]
 mod z_index_serialization_tests {
     use super::*;
-    use crate::CssIntegerCalculation;
     use crate::CssSerializationLimits;
+    use crate::{CssCalculation, CssInteger, CssNumeric, CssNumericLiteral};
     use CssSpecifiedValueSerializationErrorKind as Kind;
 
     #[test]
     fn z_index_siblings_share_input_projection_and_utf8_byte_budgets() {
         let first = CssZIndexValue::Auto;
         let second =
-            CssZIndexValue::Integer(CssIntegerValue::Literal(CssIntegerLiteral::from_i32(-2)));
+            CssZIndexValue::Integer(CssNumeric::from_literal(CssNumericLiteral::from_i32(-2)));
         let before = (first.clone(), second.clone());
         // The separator is a UTF-8 accounting probe in the shared private writer,
         // not a proposed CSS property grammar. "autoé-2" occupies eight bytes.
@@ -393,9 +231,17 @@ mod z_index_serialization_tests {
     #[test]
     fn z_index_math_delegates_into_the_existing_cumulative_context() {
         let first = CssZIndexValue::Auto;
-        let second = CssZIndexValue::Integer(CssIntegerValue::Calculation(
-            CssIntegerCalculation::literal(2),
-        ));
+        // A math root; a bare root would re-enter literal admission.
+        let second = CssZIndexValue::Integer(
+            CssNumeric::<CssInteger>::try_from_calculation(
+                CssCalculation::try_from_components(
+                    crate::parse_component_values("calc(2)").unwrap(),
+                    Default::default(),
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+        );
         let before = second.clone();
         for (limits, failure) in [
             (CssSerializationLimits::new(100, 100, 12), None),

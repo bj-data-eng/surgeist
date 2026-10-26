@@ -12,11 +12,14 @@ fn counter(body: &str) -> CssCounterStyleRule {
     sole_counter_style(&format!("@counter-style Custom {{ {body} }}"))
 }
 
-fn integer(value: &str) -> CssIntegerValue {
-    CssIntegerValue::Literal(
-        CssIntegerLiteral::try_from_component(CssComponentValue::try_number(value).unwrap())
-            .unwrap(),
+fn integer(value: &str) -> CssNumeric<CssInteger> {
+    CssNumeric::<CssInteger>::try_from_literal(
+        CssNumericLiteral::<CssInteger>::try_from_component(
+            CssComponentValue::try_number(value).unwrap(),
+        )
+        .unwrap(),
     )
+    .unwrap()
 }
 
 fn string(value: &str) -> CssCounterSymbol {
@@ -99,7 +102,7 @@ fn explicit_initial_values_remain_distinct_from_omission() {
             .unwrap()
             .ordinary_pad()
             .minimum_length()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "0"
@@ -474,7 +477,10 @@ fn checked_pad_and_additive_construction_keep_exact_integer_and_image_semantics(
     let image = url("symbol.svg");
     let pad = CssCounterStylePad::try_new(integer("-000"), image.clone()).unwrap();
     assert_eq!(
-        pad.minimum_length().literal().numeric().representation(),
+        pad.minimum_length()
+            .expect_literal()
+            .numeric()
+            .representation(),
         "-000"
     );
     assert_eq!(pad.symbol(), &image);
@@ -486,7 +492,7 @@ fn checked_pad_and_additive_construction_keep_exact_integer_and_image_semantics(
     assert_eq!(
         list.tuples()[0]
             .weight()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         huge
@@ -515,7 +521,7 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
         fixed
             .first_symbol_value()
             .unwrap()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         format!("-{huge}")
@@ -538,7 +544,7 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
             .unwrap()
             .ordinary_pad()
             .minimum_length()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "-000"
@@ -550,7 +556,7 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
             .ordinary_additive_symbols()
             .tuples()[1]
             .weight()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "-000"

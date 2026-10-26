@@ -117,13 +117,13 @@ impl<T> CssMediaRange<T> {
 /// A signed authored media length, retaining its exact numeric components.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssMediaLength {
-    calculation: CssLengthCalculation,
+    calculation: CssCalculation<CssLength>,
 }
 impl CssMediaLength {
-    pub(crate) fn new(calculation: CssLengthCalculation) -> Self {
+    pub(crate) fn new(calculation: CssCalculation<CssLength>) -> Self {
         Self { calculation }
     }
-    pub fn calculation(&self) -> &CssLengthCalculation {
+    pub fn calculation(&self) -> &CssCalculation<CssLength> {
         &self.calculation
     }
     pub fn components(&self) -> &CssComponentValues {
@@ -133,13 +133,13 @@ impl CssMediaLength {
 /// A signed authored media integer, retaining its exact numeric components.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssMediaInteger {
-    calculation: CssIntegerCalculation,
+    calculation: CssCalculation<CssInteger>,
 }
 impl CssMediaInteger {
-    pub(crate) fn new(calculation: CssIntegerCalculation) -> Self {
+    pub(crate) fn new(calculation: CssCalculation<CssInteger>) -> Self {
         Self { calculation }
     }
-    pub fn calculation(&self) -> &CssIntegerCalculation {
+    pub fn calculation(&self) -> &CssCalculation<CssInteger> {
         &self.calculation
     }
     pub fn components(&self) -> &CssComponentValues {
@@ -153,17 +153,17 @@ pub struct CssMediaResolution {
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum MediaResolutionValue {
-    Numeric(CssResolutionCalculation),
+    Numeric(CssCalculation<CssResolution>),
     Infinite(Box<CssComponentValue>),
 }
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssMediaResolutionRef<'a> {
-    Numeric(&'a CssResolutionCalculation),
+    Numeric(&'a CssCalculation<CssResolution>),
     Infinite(&'a CssComponentValue),
 }
 impl CssMediaResolution {
-    pub(crate) fn numeric(value: CssResolutionCalculation) -> Self {
+    pub(crate) fn numeric(value: CssCalculation<CssResolution>) -> Self {
         Self {
             value: MediaResolutionValue::Numeric(value),
         }
@@ -184,14 +184,14 @@ impl CssMediaResolution {
 /// Calculations retain that constraint for resolution; literal operands are already checked.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssMediaRatio {
-    numerator: CssNumberCalculation,
-    denominator: CssNumberCalculation,
+    numerator: CssCalculation<CssNumber>,
+    denominator: CssCalculation<CssNumber>,
     denominator_is_omitted: bool,
 }
 impl CssMediaRatio {
     pub(crate) fn new(
-        numerator: CssNumberCalculation,
-        denominator: CssNumberCalculation,
+        numerator: CssCalculation<CssNumber>,
+        denominator: CssCalculation<CssNumber>,
         denominator_is_omitted: bool,
     ) -> Self {
         Self {
@@ -200,10 +200,10 @@ impl CssMediaRatio {
             denominator_is_omitted,
         }
     }
-    pub fn numerator(&self) -> &CssNumberCalculation {
+    pub fn numerator(&self) -> &CssCalculation<CssNumber> {
         &self.numerator
     }
-    pub fn denominator(&self) -> &CssNumberCalculation {
+    pub fn denominator(&self) -> &CssCalculation<CssNumber> {
         &self.denominator
     }
     pub const fn denominator_is_omitted(&self) -> bool {
@@ -213,17 +213,20 @@ impl CssMediaRatio {
 /// An authored grid value with a deferred closed `[0,1]` integer constraint.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssMediaGrid {
-    calculation: CssIntegerCalculation,
+    calculation: CssCalculation<CssInteger>,
     literal: Option<CssGridMode>,
 }
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssMediaGridRef<'a> {
     Literal(CssGridMode),
-    Calculation(&'a CssIntegerCalculation),
+    Calculation(&'a CssCalculation<CssInteger>),
 }
 impl CssMediaGrid {
-    pub(crate) fn new(calculation: CssIntegerCalculation, literal: Option<CssGridMode>) -> Self {
+    pub(crate) fn new(
+        calculation: CssCalculation<CssInteger>,
+        literal: Option<CssGridMode>,
+    ) -> Self {
         Self {
             calculation,
             literal,

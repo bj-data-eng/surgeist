@@ -251,7 +251,7 @@ mod tests {
     use super::*;
     use crate::CssSerializationLimits as Limits;
     use crate::{
-        CssLengthPercentageCalculation, CssSpecifiedLengthPercentage,
+        CssCalculation, CssLengthPercentage, CssNumeric,
         CssSpecifiedValueSerializationErrorKind as Kind, parse_component_values,
     };
 
@@ -363,8 +363,8 @@ mod tests {
     #[test]
     fn composed_flow_visits_final_numeric_children_during_suppression() {
         let tolerance = CssFlowTolerance::length_percentage(
-            CssSpecifiedLengthPercentage::try_from_calculation(
-                CssLengthPercentageCalculation::try_from_components(
+            CssNumeric::<CssLengthPercentage>::try_from_calculation(
+                CssCalculation::<CssLengthPercentage>::try_from_components(
                     parse_component_values("calc(1px + 2em)").unwrap(),
                     Default::default(),
                 )

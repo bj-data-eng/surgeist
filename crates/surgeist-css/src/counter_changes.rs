@@ -1,6 +1,6 @@
 //! Checked authored counter-changing values from CSS Lists 3.
 
-use crate::{CssContentCounterName, CssIntegerValue};
+use crate::{CssContentCounterName, CssInteger, CssNumeric};
 
 /// One named counter change with an optional authored integer operand.
 ///
@@ -8,13 +8,13 @@ use crate::{CssContentCounterName, CssIntegerValue};
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCounterChangeValue {
     name: CssContentCounterName,
-    value: Option<CssIntegerValue>,
+    value: Option<CssNumeric<CssInteger>>,
 }
 
 impl CssCounterChangeValue {
     /// Retains the checked name and authored presence of the integer operand.
     #[must_use]
-    pub const fn new(name: CssContentCounterName, value: Option<CssIntegerValue>) -> Self {
+    pub const fn new(name: CssContentCounterName, value: Option<CssNumeric<CssInteger>>) -> Self {
         Self { name, value }
     }
 
@@ -24,7 +24,7 @@ impl CssCounterChangeValue {
     }
 
     #[must_use]
-    pub const fn value(&self) -> Option<&CssIntegerValue> {
+    pub const fn value(&self) -> Option<&CssNumeric<CssInteger>> {
         self.value.as_ref()
     }
 }

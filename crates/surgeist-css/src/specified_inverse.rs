@@ -25,42 +25,38 @@ trait InverseValueEquality {
         context: &mut SpecifiedSerializationContext,
     ) -> EqualityResult;
 }
-macro_rules! literal_equality {
-    ($($ty:ty),+ $(,)?) => { $(impl InverseValueEquality for $ty {
-        fn inverse_equal(&self, other: &Self, context: &mut SpecifiedSerializationContext) -> EqualityResult {
-            match self.inverse_literal_eq(other) {
-                Some(equal) => Ok(equal),
-                None => match (self.calculation(), other.calculation()) {
-                    (Some(a), Some(b)) => a.expression.specified_inverse_eq(&b.expression, context),
-                    _ => Ok(false),
-                },
+// Lengths treat a quirky Number as its px length; numbers and percentages
+// compare exact ordinary coefficients; other roots compare by value. Math
+// compares its expressions under the bounded context.
+impl<T: CssNumericRoot, R: CssRange<T>> InverseValueEquality for CssNumeric<T, R> {
+    fn inverse_equal(
+        &self,
+        other: &Self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> EqualityResult {
+        let literal = match crate::numeric::root_kind::<T>() {
+            crate::numeric::RootKind::Length | crate::numeric::RootKind::LengthPercentage => {
+                self.inverse_literal_eq(other)
             }
-        }
-    })+ };
-}
-literal_equality!(
-    CssSpecifiedLength,
-    CssSpecifiedNonNegativeLength,
-    CssSpecifiedLengthPercentage,
-    CssSpecifiedNonNegativeLengthPercentage
-);
-macro_rules! ordinary_number_equality {
-    ($($ty:ty),+ $(,)?) => { $(impl InverseValueEquality for $ty {
-        fn inverse_equal(&self, other: &Self, context: &mut SpecifiedSerializationContext) -> EqualityResult {
-            match (self.literal_component(), other.literal_component()) {
-                (Some(a), Some(b)) => Ok(crate::specified_numeric::ordinary_literal_equal(a, b)),
-                _ => match (self.calculation(), other.calculation()) {
-                    (Some(a), Some(b)) => a.expression.specified_inverse_eq(&b.expression, context),
-                    _ => Ok(false),
-                },
+            crate::numeric::RootKind::Number | crate::numeric::RootKind::Percentage => {
+                match (self.literal_component(), other.literal_component()) {
+                    (Some(a), Some(b)) => {
+                        Some(crate::specified_numeric::ordinary_literal_equal(a, b))
+                    }
+                    _ => None,
+                }
             }
+            _ => return Ok(self == other),
+        };
+        match literal {
+            Some(equal) => Ok(equal),
+            None => match (self.calculation(), other.calculation()) {
+                (Some(a), Some(b)) => a.expression.specified_inverse_eq(&b.expression, context),
+                _ => Ok(false),
+            },
         }
-    })+ };
+    }
 }
-ordinary_number_equality!(
-    CssSpecifiedNonNegativeNumber,
-    CssSpecifiedNonNegativePercentage
-);
 impl InverseValueEquality for CssCornerRadiusValue {
     fn inverse_equal(
         &self,
@@ -406,19 +402,7 @@ macro_rules! inverse_value_equal {
     (CssOffsetPath, $a:ident, $b:ident, $context:ident) => {
         $a.bounded_eq($b, $context)
     };
-    (CssSpecifiedLength, $a:ident, $b:ident, $context:ident) => {
-        $a.inverse_equal($b, $context)
-    };
-    (CssSpecifiedNonNegativeLength, $a:ident, $b:ident, $context:ident) => {
-        $a.inverse_equal($b, $context)
-    };
-    (CssSpecifiedLengthPercentage, $a:ident, $b:ident, $context:ident) => {
-        $a.inverse_equal($b, $context)
-    };
-    (CssSpecifiedNonNegativeLengthPercentage, $a:ident, $b:ident, $context:ident) => {
-        $a.inverse_equal($b, $context)
-    };
-    (CssSpecifiedNonNegativeNumber, $a:ident, $b:ident, $context:ident) => {
+    (CssNumeric, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
     (CssCornerRadiusValue, $a:ident, $b:ident, $context:ident) => {
@@ -507,7 +491,7 @@ macro_rules! longhand_dispatch {
         All, $all_name:literal, [$($all_alias:literal),*], $all_id:literal,
         $all_value:ty, $all_parser:ident, $all_dispatch:block, expansion = $all_kind:ident { $($all_metadata:tt)* };
         $( $variant:ident, $name:literal, [$($alias:literal),*], $id:literal,
-           crate::$value:ident, $wrapper:ident, $accessor:ident, $parser:ident, $dispatch:block,
+           crate::$value:ident $(<$($argument:ident),+>)?, $wrapper:ident, $accessor:ident, $parser:ident, $dispatch:block,
            expansion = $kind:ident { $($metadata:tt)* }; )*
     ) => { longhand_dispatch!(@collect []; $( $variant, $value, $kind; )*); };
     (@collect [$($rows:tt)*]; $variant:ident, $value:ident, longhand; $($rest:tt)*) => {
@@ -2695,37 +2679,43 @@ mod flex_basis_math_comparison_tests {
 
     #[test]
     fn flex_basis_outer_phase_and_literal_tokens_require_zero_graph_work() {
-        for (left, right, expected) in [
-            ("flex-basis:content", "flex-basis:content", true),
-            ("flex-basis:auto", "flex-basis:auto", true),
-            ("flex-basis:1px", "flex-basis:1px", true),
-            ("flex-basis:1px", "flex-basis:1.0px", false),
-            ("flex-basis:1px", "flex-basis:01px", false),
-            ("flex-basis:0", "flex-basis:0px", false),
-            ("flex-basis:content", "flex-basis:auto", false),
+        // Ordinary equality compares numeric values; the inverse relation
+        // keeps exact literal tokens.
+        for (left, right, ordinary, expected) in [
+            ("flex-basis:content", "flex-basis:content", true, true),
+            ("flex-basis:auto", "flex-basis:auto", true, true),
+            ("flex-basis:1px", "flex-basis:1px", true, true),
+            ("flex-basis:1px", "flex-basis:1.0px", true, false),
+            ("flex-basis:1px", "flex-basis:01px", true, false),
+            ("flex-basis:0", "flex-basis:0px", true, false),
+            ("flex-basis:content", "flex-basis:auto", false, false),
             (
                 "flex-basis:content",
                 "flex-basis:calc-size(any, 1px + 2px)",
                 false,
+                false,
             ),
-            ("flex-basis:calc(1px + 2px)", "flex-basis:3px", false),
+            ("flex-basis:calc(1px + 2px)", "flex-basis:3px", false, false),
             (
                 "flex-basis:calc(1px + 2px)",
                 "flex-basis:fit-content(calc(1px + 2px))",
+                false,
                 false,
             ),
             (
                 "flex-basis:calc(1px + 2px)",
                 "flex-basis:calc-size(any, 1px + 2px)",
                 false,
+                false,
             ),
         ] {
+            let source = format!("{left} versus {right}");
             let left = basis(left);
             let right = basis(right);
             assert_eq!(
                 ordinary_equal(&left, &right),
-                expected,
-                "original owning relation"
+                ordinary,
+                "{source}: numeric value equality"
             );
             let mut context =
                 SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 0, 0));
@@ -2748,36 +2738,48 @@ mod flex_basis_math_comparison_tests {
         // A leaf spelling mismatch reaches all four already scheduled pairs.
         // CalcSize compares its three-node calculation after its own root,
         // then rejects Any versus Keyword without scheduling a nested basis.
+        // Ordinary equality compares leaf values and sees through redundant
+        // grouping, so the spelling and grouping mismatches are ordinarily equal.
         let mut failures = Vec::new();
-        for (left, right, projections) in [
+        for (left, right, projections, ordinary) in [
             (
                 "flex-basis:calc(1px + 2px)",
                 "flex-basis:calc(01px + 2px)",
                 4,
+                true,
             ),
             (
                 "flex-basis:calc(2px + 1px)",
                 "flex-basis:calc(2px - 1px)",
                 1,
+                false,
             ),
             (
                 "flex-basis:calc(1px + 2px)",
                 "flex-basis:calc((1px + 2px))",
                 1,
+                true,
             ),
-            ("flex-basis:calc(1px + 2px)", "flex-basis:calc(1px + 2%)", 1),
+            (
+                "flex-basis:calc(1px + 2px)",
+                "flex-basis:calc(1px + 2%)",
+                1,
+                false,
+            ),
             (
                 "flex-basis:calc-size(any, 1px + 2px)",
                 "flex-basis:calc-size(auto, 1px + 2px)",
                 4,
+                false,
             ),
         ] {
             let source = format!("{left} versus {right}");
             let left = basis(left);
             let right = basis(right);
-            assert!(
-                !ordinary_equal(&left, &right),
-                "{source}: original structural relation"
+            assert_eq!(
+                ordinary_equal(&left, &right),
+                ordinary,
+                "{source}: numeric value equality"
             );
             let mut exact =
                 SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
@@ -2878,22 +2880,24 @@ mod mask_position_borrowed_comparison_tests {
             );
             value.clone()
         };
-        for (source, expected) in [
-            ("mask-position:0% 0%", true),
-            ("mask-position:0.0% 0%", false),
-            ("mask-position:0% 0.0%", false),
-            ("mask-position:10% 20%", false),
-            ("mask-position:left top", false),
-            ("mask-position:calc(1px + 2px) 0%", false),
-            ("mask-position:0% calc(1px + 2px)", false),
-            ("mask-position:10% calc(1px + 2px)", false),
+        // Ordinary equality compares numeric values; the bounded relation
+        // keeps exact literal tokens.
+        for (source, ordinary, expected) in [
+            ("mask-position:0% 0%", true, true),
+            ("mask-position:0.0% 0%", true, false),
+            ("mask-position:0% 0.0%", true, false),
+            ("mask-position:10% 20%", false, false),
+            ("mask-position:left top", false, false),
+            ("mask-position:calc(1px + 2px) 0%", false, false),
+            ("mask-position:0% calc(1px + 2px)", false, false),
+            ("mask-position:10% calc(1px + 2px)", false, false),
         ] {
             let values = positions(source);
             let value = &list(&values).positions()[0];
             assert_eq!(
                 value == &initial.positions()[0],
-                expected,
-                "{source}: unchanged ordinary relation"
+                ordinary,
+                "{source}: numeric value equality"
             );
             let mut context =
                 SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 0, 0));
@@ -3040,7 +3044,7 @@ mod column_alias_and_grid_count_comparison_tests {
     }
 
     #[test]
-    fn column_schema_aliases_use_canonical_literal_relation_without_changing_ordinary_eq() {
+    fn column_schema_aliases_share_canonical_literal_relation_with_value_equality() {
         for (property, left, right) in [
             (CssKnownProperty::ColumnRuleWidth, "1px", "01px"),
             (CssKnownProperty::ColumnRuleWidth, "1px", "1.0px"),
@@ -3067,7 +3071,7 @@ mod column_alias_and_grid_count_comparison_tests {
                 ) => a == b,
                 _ => panic!("column schema alias"),
             };
-            assert!(!ordinary_equal, "{property:?}: retained ordinary spelling");
+            assert!(ordinary_equal, "{property:?}: equal numeric value");
             assert!(
                 comparison(&left, &right, 0).unwrap(),
                 "{property:?}: canonical coefficient relation"
@@ -3480,7 +3484,7 @@ mod coordinate_free_inverse_comparison_tests {
     }
 
     #[test]
-    fn shifted_grid_literals_ignore_coordinates_and_preserve_raw_owner_equality() {
+    fn shifted_grid_literals_ignore_coordinates_in_owner_and_inverse_equality() {
         for property in [
             CssKnownProperty::GridTemplateRows,
             CssKnownProperty::GridTemplateColumns,
@@ -3491,8 +3495,8 @@ mod coordinate_free_inverse_comparison_tests {
                 let left = terminal(property, value, false);
                 let right = terminal(property, value, true);
                 assert!(
-                    !raw_equal(&left, &right),
-                    "{property:?}: {value}: ordinary coordinates retained"
+                    raw_equal(&left, &right),
+                    "{property:?}: {value}: value equality ignores coordinates"
                 );
                 assert!(compare(&left, &right, 0).unwrap(), "{property:?}: {value}");
             }
@@ -3533,7 +3537,7 @@ mod coordinate_free_inverse_comparison_tests {
             ] {
                 let left = terminal(property, value, false);
                 let right = terminal(property, value, true);
-                assert!(!raw_equal(&left, &right), "{property:?}: {value}");
+                assert!(raw_equal(&left, &right), "{property:?}: {value}");
                 reached(property, value, value, true, projections);
             }
         }

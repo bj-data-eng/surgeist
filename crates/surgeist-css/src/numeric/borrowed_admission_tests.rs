@@ -231,7 +231,7 @@ fn numerical_attempt_moves_owned_input_and_returns_it_for_failed_retry() {
         original
     );
     assert_eq!(
-        crate::CssFlexCalculation::from_expression(expression)
+        crate::CssCalculation::<crate::CssFlex>::from_expression(expression)
             .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
@@ -263,7 +263,7 @@ fn numerical_attempt_moves_owned_input_and_returns_it_for_failed_retry() {
         original
     );
     assert_eq!(
-        crate::CssLengthPercentageCalculation::from_expression(expression)
+        crate::CssCalculation::<crate::CssLengthPercentage>::from_expression(expression)
             .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
@@ -304,7 +304,7 @@ fn numerical_attempt_keeps_borrowed_failure_identity_and_owns_completed_output()
     );
     drop(values);
     assert_eq!(
-        crate::CssLengthPercentageCalculation::from_expression(expression)
+        crate::CssCalculation::<crate::CssLengthPercentage>::from_expression(expression)
             .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),

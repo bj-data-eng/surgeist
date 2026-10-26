@@ -174,7 +174,7 @@ fn perceptual_color_channels_preserve_typed_calculation_domains() {
 #[test]
 fn number_calculation_literal_preserves_finite_authored_value() {
     let calculation =
-        CssNumberCalculation::try_literal(-3.5).expect("finite authored number calculation");
+        CssCalculation::<CssNumber>::try_literal(-3.5).expect("finite authored number calculation");
 
     assert_eq!(calculation.result_type(), CssCalculationType::Number);
     match calculation_body(calculation.expression()) {
@@ -208,8 +208,8 @@ fn property_consumers_accept_typed_products_and_groups_with_later_siblings() {
 
 #[test]
 fn typed_calculation_roots_enforce_checked_literal_boundaries() {
-    let integer_min = CssIntegerCalculation::literal(i32::MIN);
-    let integer_max = CssIntegerCalculation::literal(i32::MAX);
+    let integer_min = CssCalculation::<CssInteger>::literal(i32::MIN);
+    let integer_max = CssCalculation::<CssInteger>::literal(i32::MAX);
     assert_eq!(integer_min.result_type(), CssCalculationType::Number);
     assert_eq!(integer_max.result_type(), CssCalculationType::Number);
     assert!(matches!(
@@ -222,7 +222,7 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
     ));
 
     for value in [f32::MIN, -0.0, f32::MAX] {
-        let number = CssNumberCalculation::try_literal(value).expect("finite number leaf");
+        let number = CssCalculation::<CssNumber>::try_literal(value).expect("finite number leaf");
         assert_eq!(number.result_type(), CssCalculationType::Number);
         assert!(matches!(
             number.expression(),
@@ -232,27 +232,30 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
     }
 
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        assert!(CssNumberCalculation::try_literal(value).is_none());
-        assert!(CssPercentageCalculation::try_literal(value).is_none());
-        assert!(CssLengthCalculation::try_dimension(value, CssLengthUnit::Rem).is_none());
-        assert!(CssLengthPercentageCalculation::try_percentage(value).is_none());
+        assert!(CssCalculation::<CssNumber>::try_literal(value).is_none());
+        assert!(CssCalculation::<CssPercentage>::try_literal(value).is_none());
+        assert!(CssCalculation::<CssLength>::try_dimension(value, CssLengthUnit::Rem).is_none());
+        assert!(CssCalculation::<CssLengthPercentage>::try_percentage(value).is_none());
         assert_numeric_kind(
-            CssAngleCalculation::try_literal(&value.to_string(), CssAngleUnit::Degrees),
+            CssCalculation::<CssAngle>::try_literal(&value.to_string(), CssAngleUnit::Degrees),
             NumericFailure::Component(ComponentFailure::InvalidDimension),
         );
         assert_numeric_kind(
-            CssTimeCalculation::try_literal(&value.to_string(), CssTimeUnit::Seconds),
+            CssCalculation::<CssTime>::try_literal(&value.to_string(), CssTimeUnit::Seconds),
             NumericFailure::Component(ComponentFailure::InvalidDimension),
         );
         assert_numeric_kind(
-            CssFrequencyCalculation::try_literal(&value.to_string(), CssFrequencyUnit::Hertz),
+            CssCalculation::<CssFrequency>::try_literal(
+                &value.to_string(),
+                CssFrequencyUnit::Hertz,
+            ),
             NumericFailure::Component(ComponentFailure::InvalidDimension),
         );
     }
 
     for value in [f32::MIN, -0.0, f32::MAX] {
         let percentage =
-            CssPercentageCalculation::try_literal(value).expect("finite percentage leaf");
+            CssCalculation::<CssPercentage>::try_literal(value).expect("finite percentage leaf");
         assert_eq!(percentage.result_type(), CssCalculationType::Percentage);
         assert!(matches!(
             percentage.expression(),
@@ -260,7 +263,7 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
                 if inner.representation() == value.to_string()
         ));
 
-        let length = CssLengthCalculation::try_dimension(value, CssLengthUnit::Cqw)
+        let length = CssCalculation::<CssLength>::try_dimension(value, CssLengthUnit::Cqw)
             .expect("finite length leaf");
         assert_eq!(length.result_type(), CssCalculationType::Length);
         assert!(matches!(
@@ -269,8 +272,9 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
                 if inner.representation() == value.to_string() && inner.unit() == Some("cqw")
         ));
 
-        let angle = CssAngleCalculation::try_literal(&value.to_string(), CssAngleUnit::Turns)
-            .expect("finite angle leaf");
+        let angle =
+            CssCalculation::<CssAngle>::try_literal(&value.to_string(), CssAngleUnit::Turns)
+                .expect("finite angle leaf");
         assert_eq!(angle.result_type(), CssCalculationType::Angle);
         assert!(matches!(
             angle.expression(),
@@ -278,8 +282,9 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
                 if inner.representation() == value.to_string() && inner.unit() == Some("turn")
         ));
 
-        let time = CssTimeCalculation::try_literal(&value.to_string(), CssTimeUnit::Milliseconds)
-            .expect("finite signed time leaf");
+        let time =
+            CssCalculation::<CssTime>::try_literal(&value.to_string(), CssTimeUnit::Milliseconds)
+                .expect("finite signed time leaf");
         assert_eq!(time.result_type(), CssCalculationType::Time);
         assert!(matches!(
             time.expression(),
@@ -287,9 +292,11 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
                 if inner.representation() == value.to_string() && inner.unit() == Some("ms")
         ));
 
-        let frequency =
-            CssFrequencyCalculation::try_literal(&value.to_string(), CssFrequencyUnit::Kilohertz)
-                .expect("finite frequency leaf");
+        let frequency = CssCalculation::<CssFrequency>::try_literal(
+            &value.to_string(),
+            CssFrequencyUnit::Kilohertz,
+        )
+        .expect("finite frequency leaf");
         assert_eq!(frequency.result_type(), CssCalculationType::Frequency);
         assert!(matches!(
             frequency.expression(),
@@ -298,8 +305,8 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
         ));
     }
 
-    let percentage_length =
-        CssLengthPercentageCalculation::try_percentage(-25.0).expect("finite signed percentage");
+    let percentage_length = CssCalculation::<CssLengthPercentage>::try_percentage(-25.0)
+        .expect("finite signed percentage");
     assert_eq!(
         percentage_length.result_type(),
         CssCalculationType::LengthPercentage
@@ -458,7 +465,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     else {
         panic!("expected order wrapper");
     };
-    assert!(matches!(value.value(), CssIntegerValue::Calculation(_)));
+    assert!(value.value().calculation().is_some());
 
     let CssKnownPropertyValueRef::ZIndex(value) = report.syntax()[4]
         .known()
@@ -468,10 +475,9 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     else {
         panic!("expected z-index wrapper");
     };
-    assert!(matches!(
-        value.value(),
-        CssZIndexValue::Integer(CssIntegerValue::Calculation(_))
-    ));
+    assert!(
+        matches!(value.value(), CssZIndexValue::Integer(value) if value.calculation().is_some())
+    );
 
     let CssKnownPropertyValueRef::AspectRatio(value) = report.syntax()[5]
         .known()
@@ -642,7 +648,10 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
         panic!("expected order wrapper");
     };
     assert!(
-        matches!(value.value(), CssIntegerValue::Literal(value) if value.numeric().representation() == "-2")
+        value
+            .value()
+            .literal()
+            .is_some_and(|value| value.numeric().representation() == "-2")
     );
     assert_eq!(
         value
@@ -671,7 +680,7 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
         panic!("expected aspect-ratio wrapper");
     };
     assert!(
-        matches!(value.ratio(), CssAspectRatioValue::Ratio(ratio) if ratio.denominator().is_none() && ratio.numerator().literal_component().is_some())
+        matches!(value.ratio(), CssAspectRatioValue::Ratio(ratio) if ratio.denominator().is_none() && ratio.numerator().literal().map(|literal| literal.component()).is_some())
     );
 
     let CssKnownPropertyValueRef::Flex(value) = report.syntax()[6]
@@ -758,13 +767,13 @@ fn exact_construction_preserves_mixed_origins_and_canonical_operator_mapping() {
     let original = children.items()[0].origin().clone();
     let operator = children.items()[2].origin().clone();
     let function = CssComponentValue::try_function("CALC", children).unwrap();
-    let calculation = CssLengthCalculation::try_from_components(
+    let calculation = CssCalculation::<CssLength>::try_from_components(
         CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
         Default::default(),
     )
     .unwrap();
     assert!(matches!(calculation.origin(), CssValueOrigin::Programmatic));
-    let rebuilt = CssLengthCalculation::try_from_components(
+    let rebuilt = CssCalculation::<CssLength>::try_from_components(
         calculation.components().clone(),
         Default::default(),
     )
@@ -793,8 +802,8 @@ fn exact_construction_preserves_mixed_origins_and_canonical_operator_mapping() {
 
 #[test]
 fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_distinct() {
-    use surgeist_css::{CssNumericConstant, CssResolutionCalculation, parse_component_values};
-    let integer = CssIntegerCalculation::try_from_components(
+    use surgeist_css::{CssCalculation, CssNumericConstant, CssResolution, parse_component_values};
+    let integer = CssCalculation::<CssInteger>::try_from_components(
         parse_component_values("1234567890123456789012345678901234567890").unwrap(),
         Default::default(),
     )
@@ -807,13 +816,13 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
         leaf.literal().representation(),
         "1234567890123456789012345678901234567890"
     );
-    let rounded = CssIntegerCalculation::try_from_components(
+    let rounded = CssCalculation::<CssInteger>::try_from_components(
         parse_component_values("calc(1.5)").unwrap(),
         Default::default(),
     )
     .unwrap();
     assert!(rounded.requires_rounding());
-    let finite = CssNumberCalculation::try_from_components(
+    let finite = CssCalculation::<CssNumber>::try_from_components(
         parse_component_values("calc(1e99999)").unwrap(),
         Default::default(),
     )
@@ -821,7 +830,7 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
     assert!(
         matches!(calculation_body(finite.expression()), CssCalculationExpressionRef::Value(v) if v.literal().representation() == "1e99999")
     );
-    let symbolic = CssNumberCalculation::try_from_components(
+    let symbolic = CssCalculation::<CssNumber>::try_from_components(
         parse_component_values("calc(infinity)").unwrap(),
         Default::default(),
     )
@@ -829,7 +838,7 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
     assert!(
         matches!(calculation_body(symbolic.expression()), CssCalculationExpressionRef::Constant(v) if v.value() == CssNumericConstant::Infinity)
     );
-    let zero = CssNumberCalculation::try_from_components(
+    let zero = CssCalculation::<CssNumber>::try_from_components(
         parse_component_values("-0").unwrap(),
         Default::default(),
     )
@@ -838,7 +847,7 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
         matches!(zero.expression(), CssCalculationExpressionRef::Value(v) if v.literal().representation() == "-0")
     );
     assert_eq!(
-        CssResolutionCalculation::try_from_components(
+        CssCalculation::<CssResolution>::try_from_components(
             parse_component_values("calc(-1dppx / 0)").unwrap(),
             Default::default()
         )
@@ -849,7 +858,7 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
         "calc(-1dppx / 0)"
     );
     assert!(
-        CssLengthCalculation::try_from_components(
+        CssCalculation::<CssLength>::try_from_components(
             parse_component_values("calc(1px + 2%)").unwrap(),
             Default::default()
         )
@@ -857,7 +866,7 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
         .is_root_domain_mismatch()
     );
     assert!(
-        CssLengthPercentageCalculation::try_from_components(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
             parse_component_values("calc(1px + 2%)").unwrap(),
             Default::default()
         )
@@ -874,13 +883,13 @@ fn checked_numeric_construction_reports_resource_substitution_and_recovery_failu
         CssComponentValueLimits::try_new(1, 3, 11).unwrap(),
         CssComponentValueLimits::try_new(1, 4, 9).unwrap(),
     ] {
-        let error =
-            CssNumberCalculation::try_from_components(components.clone(), limits).unwrap_err();
+        let error = CssCalculation::<CssNumber>::try_from_components(components.clone(), limits)
+            .unwrap_err();
         assert!(error.is_resource_limit(), "{error:?}");
         assert!(error.origin().is_some());
     }
     assert!(
-        CssNumberCalculation::try_from_components(
+        CssCalculation::<CssNumber>::try_from_components(
             components,
             CssComponentValueLimits::try_new(1, 4, 11).unwrap()
         )
@@ -894,7 +903,7 @@ fn checked_numeric_construction_reports_resource_substitution_and_recovery_failu
     ] {
         assert_eq!(
             numeric_failure(
-                &CssNumberCalculation::try_from_components(
+                &CssCalculation::<CssNumber>::try_from_components(
                     parse_component_values(source).unwrap(),
                     Default::default()
                 )

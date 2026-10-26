@@ -1,9 +1,9 @@
 //! Reusable Images4 one-dimensional stripes, imported by selected UI4 Outline.
 use crate::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::{
-    CssColor, CssComponentValue, CssComponentValueRef, CssImageConstructionError,
-    CssLengthPercentageCalculation, CssNumericConstructionError, CssNumericConstructionErrorKind,
-    CssSpecifiedFlex, CssSpecifiedNonNegativeLengthPercentage, CssValueOrigin, CssValueTokenRef,
+    CssCalculation, CssColor, CssComponentValue, CssComponentValueRef, CssFlex,
+    CssImageConstructionError, CssLengthPercentage, CssNonNegative, CssNumeric,
+    CssNumericConstructionError, CssNumericConstructionErrorKind, CssValueOrigin, CssValueTokenRef,
     ImageConstructionKind,
 };
 
@@ -11,7 +11,7 @@ use crate::{
 /// lengths are nonnegative. Calculations retain the shared deferred range phase.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssStripeLengthPercentage {
-    value: CssSpecifiedNonNegativeLengthPercentage,
+    value: CssNumeric<CssLengthPercentage, CssNonNegative>,
 }
 impl CssStripeLengthPercentage {
     pub fn try_from_component(
@@ -26,11 +26,11 @@ impl CssStripeLengthPercentage {
                 Some(&component),
             ));
         }
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component)
             .map(|value| Self { value })
     }
     pub fn try_from_calculation(
-        calculation: CssLengthPercentageCalculation,
+        calculation: CssCalculation<CssLengthPercentage>,
     ) -> Result<Self, CssNumericConstructionError> {
         if let Some(origin) = calculation.components().first_implicit_origin() {
             return Err(CssNumericConstructionError::at_origin(
@@ -41,16 +41,16 @@ impl CssStripeLengthPercentage {
         Self::from_parser_calculation(calculation)
     }
     pub(crate) fn from_parser_calculation(
-        calculation: CssLengthPercentageCalculation,
+        calculation: CssCalculation<CssLengthPercentage>,
     ) -> Result<Self, CssNumericConstructionError> {
         let root = crate::specified_numeric::significant_root(calculation.components())?;
         if matches!(root.view(), CssComponentValueRef::Token(_)) {
             return Self::try_from_component(root.clone());
         }
-        CssSpecifiedNonNegativeLengthPercentage::from_parser_calculation(calculation)
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::from_parser_calculation(calculation)
             .map(|value| Self { value })
     }
-    pub const fn value(&self) -> &CssSpecifiedNonNegativeLengthPercentage {
+    pub const fn value(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
         &self.value
     }
     pub fn origin(&self) -> &CssValueOrigin {
@@ -62,15 +62,15 @@ impl CssStripeLengthPercentage {
 #[non_exhaustive]
 pub enum CssStripeThickness {
     LengthPercentage(CssStripeLengthPercentage),
-    Flex(CssSpecifiedFlex),
+    Flex(CssNumeric<CssFlex>),
 }
 impl PartialEq for CssStripeThickness {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
-                left.value.structural_eq(&right.value)
+                left.value == right.value
             }
-            (Self::Flex(left), Self::Flex(right)) => left.structural_eq(right),
+            (Self::Flex(left), Self::Flex(right)) => left == right,
             _ => false,
         }
     }

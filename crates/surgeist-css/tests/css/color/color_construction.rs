@@ -448,7 +448,7 @@ fn mix_constructor_retains_order_weights_and_symbolic_calculation() {
     let tiny_weight =
         CssColorMixWeight::literal(CssColorMixPercentage::try_from_component(token(tiny)).unwrap());
     let symbolic = CssColorMixWeight::try_calculation(
-        CssPercentageCalculation::try_from_components(
+        CssCalculation::<CssPercentage>::try_from_components(
             parse_component_values("calc(25% + 10%)").unwrap(),
             Default::default(),
         )

@@ -9,7 +9,7 @@ use super::sizing::parse_size_value;
 use crate::numeric::NumericInputContext;
 use crate::{
     CssCalcSize, CssComponentValueLimits, CssFlexBasisValue, CssFlexComponents, CssFlexDirection,
-    CssFlexFlow, CssFlexValue, CssFlexWrap, CssSpecifiedNonNegativeNumber,
+    CssFlexFlow, CssFlexValue, CssFlexWrap, CssNonNegative, CssNumber, CssNumeric,
 };
 
 pub(super) fn parse_flex_direction<'i, 't>(
@@ -64,7 +64,7 @@ pub(super) fn parse_flex_wrap<'i, 't>(
 pub(super) fn parse_flex_factor<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssSpecifiedNonNegativeNumber, ParseError<'i, Error>> {
+) -> Result<CssNumeric<CssNumber, CssNonNegative>, ParseError<'i, Error>> {
     super::values::parse_nonnegative_number(input, numeric)
 }
 

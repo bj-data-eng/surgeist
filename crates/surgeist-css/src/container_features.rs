@@ -113,7 +113,7 @@ operand!(
     /// A signed exact length or a complete substitution-dependent operand.
     /// Typed calculations may contain container-context tree-counting functions;
     /// reconstruct them through the container boundary, not a pure numeric constructor.
-    CssContainerLength, CssContainerLengthRef, ContainerLengthState, Numeric, CssLengthCalculation
+    CssContainerLength, CssContainerLengthRef, ContainerLengthState, Numeric, CssCalculation<CssLength>
 );
 operand!(
     /// An exact number pair, including degenerate ratios, or a pending whole ratio.

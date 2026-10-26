@@ -2,8 +2,7 @@
 
 use crate::specified_serialization::SpecifiedSerializationContext;
 use crate::{
-    CssSerializationError, CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLengthPercentage,
-    CssValueOrigin,
+    CssLengthPercentage, CssNonNegative, CssNumeric, CssSerializationError, CssValueOrigin,
 };
 
 type SerializationResult<T> = Result<T, CssSerializationError>;
@@ -27,12 +26,12 @@ pub enum CssMarginValue {
     /// The deferred `auto` keyword.
     Auto,
     /// An exact signed length-percentage, including deferred math.
-    LengthPercentage(CssSpecifiedLengthPercentage),
+    LengthPercentage(CssNumeric<CssLengthPercentage>),
 }
 
 impl CssMarginValue {
     /// Borrows the signed length-percentage, if this is not `auto`.
-    pub fn length_percentage(&self) -> Option<&CssSpecifiedLengthPercentage> {
+    pub fn length_percentage(&self) -> Option<&CssNumeric<CssLengthPercentage>> {
         match self {
             Self::Auto => None,
             Self::LengthPercentage(value) => Some(value),
@@ -42,7 +41,7 @@ impl CssMarginValue {
     /// Returns the retained origin of a numeric value; `auto` has no stored origin.
     pub fn origin(&self) -> Option<&CssValueOrigin> {
         self.length_percentage()
-            .map(CssSpecifiedLengthPercentage::origin)
+            .map(CssNumeric::<CssLengthPercentage>::origin)
     }
 }
 impl crate::specified_rule_serialization::SpecifiedProvider for CssMarginValue {
@@ -75,9 +74,7 @@ impl PartialEq for CssMarginValue {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Auto, Self::Auto) => true,
-            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
-                left.structural_eq(right)
-            }
+            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => left == right,
             _ => false,
         }
     }
@@ -91,17 +88,17 @@ impl Eq for CssMarginValue {}
 ///
 /// Serializes the specified value without resolving layout context.
 #[derive(Clone, Debug)]
-pub struct CssPaddingValue(CssSpecifiedNonNegativeLengthPercentage);
+pub struct CssPaddingValue(CssNumeric<CssLengthPercentage, CssNonNegative>);
 
 impl CssPaddingValue {
     /// Wraps an already checked nonnegative length-percentage.
     #[must_use]
-    pub fn new(value: CssSpecifiedNonNegativeLengthPercentage) -> Self {
+    pub fn new(value: CssNumeric<CssLengthPercentage, CssNonNegative>) -> Self {
         Self(value)
     }
 
     /// Borrows the checked length-percentage.
-    pub fn length_percentage(&self) -> &CssSpecifiedNonNegativeLengthPercentage {
+    pub fn length_percentage(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
         &self.0
     }
 
@@ -133,7 +130,7 @@ impl SpacingValue for CssPaddingValue {
 
 impl PartialEq for CssPaddingValue {
     fn eq(&self, other: &Self) -> bool {
-        self.0.structural_eq(&other.0)
+        self.0 == other.0
     }
 }
 

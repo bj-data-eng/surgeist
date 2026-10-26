@@ -136,7 +136,6 @@ fn link_facts(error: &(dyn StdError + 'static)) -> Vec<String> {
                 (error.contextual_color().is_some(), "ContextualColor"),
                 (error.is_invalid_name(), "InvalidName"),
                 (error.is_missing_font_family(), "MissingFontFamily"),
-                (error.is_negative_index(), "NegativeIndex"),
             ])
         )];
     }

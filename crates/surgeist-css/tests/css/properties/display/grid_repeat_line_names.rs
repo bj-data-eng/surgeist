@@ -13,7 +13,8 @@ use surgeist_css::{
     CssCalculationValueRef, CssGridAutoRepeatKind, CssGridAutoTrackComponent,
     CssGridGeneralTrackComponent, CssGridLineNames, CssGridTrackList, CssGridTrackRepeatComponent,
     CssGridTrackSize, CssImportance, CssKnownProperty, CssKnownPropertyValueRef,
-    CssSpecifiedNonNegativeLengthPercentage, parse_style_attribute, validate_style_attribute,
+    CssLengthPercentage, CssNonNegative, CssNumeric, parse_style_attribute,
+    validate_style_attribute,
 };
 
 #[derive(Clone, Copy)]
@@ -177,7 +178,10 @@ fn ordered_repeat_content(
                 panic!("exactly one integer repeat must remain");
             };
             assert!(
-                matches!(repeat.count(), surgeist_css::CssPositiveIntegerValue::Literal(count) if count.integer().numeric().representation() == "2")
+                repeat
+                    .count()
+                    .literal()
+                    .is_some_and(|count| count.numeric().representation() == "2")
             );
             match (case, repeat.content().components()) {
                 (
@@ -234,7 +238,7 @@ fn ordered_repeat_content(
     }
 }
 
-fn assert_one_pixel_times_two(length: &CssSpecifiedNonNegativeLengthPercentage) {
+fn assert_one_pixel_times_two(length: &CssNumeric<CssLengthPercentage, CssNonNegative>) {
     let calculation = length.calculation().expect("retain typed calculation");
     assert_eq!(calculation.result_type(), CssCalculationType::Length);
     let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {

@@ -898,11 +898,13 @@ and arithmetic structure while ignoring numeric source origins. This covers
 positions, transforms, shadows,
 filters, clipping and shapes, gradients, border-image, border-spacing, and
 typography. Variants, keywords, list order, authored arity, and omission remain
-distinct. Shared scalar and raw calculation equality still compares provenance;
-their `origin()` accessors retain parsed spans or programmatic origin. Applying
-this aggregate policy to symbolic AST branches follows the checked owner model;
-the retired raw math equality also compared origins. Equality does not evaluate
-or normalize mathematically equivalent spellings.
+distinct. Shared `CssNumeric`, `CssNumericLiteral` and `CssCalculation` equality
+follows CSS Typed OM 1 "equal numeric values": the same root and unit and the
+same exact value, ignoring source origin and spelling (`2`, `2.0` and `+2` are
+equal), with calculations compared structurally in operand order. Their
+`origin()` accessors retain parsed spans or programmatic origin. Equality does
+not convert units (`96px` differs from `1in`) or evaluate and reorder
+calculations.
 
 ## Canonical ordinary number output
 
@@ -2919,9 +2921,8 @@ assert_eq!(
 ```
 
 These scalar aggregates compare exact numeric structure while ignoring numeric
-origins. Direct shared nonnegative Number equality retains provenance; direct
-shared nonnegative Percentage equality retains its established origin-insensitive
-policy, including font-width and font-face consumers. Branches, nonnumeric fields,
+origins. Direct shared nonnegative Number and Percentage equality use the same
+numeric value equality, including font-width and font-face consumers. Branches, nonnumeric fields,
 order and omission remain part of aggregate identity.
 
 `CssShadow` retains two signed offsets, optional nonnegative `blur_radius()`,
@@ -2972,7 +2973,7 @@ mutation.
 `CssFilterHueRotate::omitted()` stores an effective `0deg`; `angle()` borrows that
 effective value and `authored_angle()` returns `None` only for omission. Omission,
 unitless zero and explicit `0deg` are distinct. Its equality preserves the shared
-angle's provenance-sensitive calculation equality. `CssFilterBlur` exposes the
+angle's numeric value equality. `CssFilterBlur` exposes the
 parallel `length()` and `authored_length()` contract, with effective omitted `0px`.
 
 `CssFilter`, `CssFilterFunctionList` and `CssFilterFunction` provide
@@ -4275,8 +4276,8 @@ remain symbolic. `literal_value()` returns an optional `f64`; `calculation()`
 borrows the retained percentage calculation. Neither the percentage owner nor
 its selector is `Copy`. `offset(&self)` clones the authored domain value, with
 proved zero and hundred endpoints for `from` and `to`; it performs no evaluation.
-Calculation equality includes authored origins and does not establish resolved
-offset equivalence.
+Calculation equality compares structure and exact values, ignoring authored
+origins, and does not establish resolved offset equivalence.
 
 `CssKeyframeSelectorList::matches_normalized[_with_limits]` supplies the separate
 specified-phase comparison needed by CSSOM find/delete. It preserves sequence
@@ -4714,7 +4715,7 @@ calculation. `CssFontSize::LengthPercentage` now contains
 symbolic math. Exact negative nonzero literals fail even when their magnitude
 underflows a floating-point field; unitless zero and signed zero remain valid.
 `CssFontSize` equality compares authored structure without comparing origins;
-the shared scalar's own equality continues to include provenance.
+the shared scalar's own equality likewise ignores origin and spelling.
 Huge positive exponents remain authored without expansion during admission,
 while bounded serialization can reject output that exceeds its byte budget.
 
@@ -4741,8 +4742,8 @@ Unitless zero stays a number, while `0px` and `0%` retain their own domain.
 Ordinary negative nonzero values are rejected before floating-point narrowing;
 bare checked calculation roots reenter literal admission, while actual math
 functions remain symbolic. Line-height equality ignores source origin
-while preserving authored structure, whereas the shared number scalar's own
-equality retains provenance. Both support bounded specified serialization.
+while preserving authored structure, and the shared number scalar's own
+equality ignores origin and spelling. Both support bounded specified serialization.
 `CssLineHeightPropertyValue::line_height()` borrows the checked line height;
 numeric payloads retain exact ordinary tokens or symbolic calculations. Construct
 the number payloads with `CssSpecifiedNonNegativeNumber::try_from_component`
@@ -6166,7 +6167,7 @@ including typed nonfinite constants, retain their authored tree. Number-root
 math receives no literal exception. The private binary64 conversion decides
 raw literal eligibility only; no floating value is stored or evaluated.
 Native constructors report existing typed numeric failures at the original
-origin. Equality follows the retained providers' origin-bearing equality rather
+origin. Equality follows the retained providers' numeric value equality rather
 than computed orientation or canonical text.
 
 The fixed `parse_svg_glyph_orientation_vertical_attribute_value` and

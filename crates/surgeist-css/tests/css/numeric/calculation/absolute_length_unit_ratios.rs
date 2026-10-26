@@ -4,10 +4,7 @@
 //! different units are therefore mathematically equal inside math functions,
 //! so their ratio is exactly 1 and their difference is exactly zero.
 
-use surgeist_css::{
-    CssLengthCalculation, CssNumberCalculation, CssSpecifiedLength, CssSpecifiedNumber,
-    parse_component_values,
-};
+use surgeist_css::{CssCalculation, CssLength, CssNumber, CssNumeric, parse_component_values};
 
 /// Pairs of equal absolute lengths, each spelled in two different units.
 const EQUAL_LENGTHS: [(&str, &str); 12] = [
@@ -26,8 +23,8 @@ const EQUAL_LENGTHS: [(&str, &str); 12] = [
 ];
 
 fn number(source: &str) -> String {
-    CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(
+    CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(
             parse_component_values(source).unwrap(),
             Default::default(),
         )
@@ -39,8 +36,8 @@ fn number(source: &str) -> String {
 }
 
 fn length(source: &str) -> String {
-    CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(
+    CssNumeric::<CssLength>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(
             parse_component_values(source).unwrap(),
             Default::default(),
         )

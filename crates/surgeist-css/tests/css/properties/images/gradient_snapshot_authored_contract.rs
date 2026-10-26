@@ -522,7 +522,7 @@ fn checked_singleton_stop_list_and_image_construction_accept_one_real_stop() {
 #[test]
 fn checked_stop_list_rejects_empty_and_hint_only_or_endpoint_hints() {
     assert!(CssColorStopList::try_new(vec![]).is_none());
-    let hint = CssSpecifiedLengthPercentage::try_from_component(
+    let hint = CssNumeric::<CssLengthPercentage>::try_from_component(
         CssComponentValue::try_token("50%").unwrap(),
     )
     .unwrap();
@@ -1005,7 +1005,12 @@ fn double_stop_payload_keeps_original_first_position_hint_and_color_occurrences(
         (hint, "40%"),
         (last.position().unwrap(), "80%"),
     ] {
-        let CssValueOrigin::Parsed(origin) = value.literal_component().unwrap().origin() else {
+        let CssValueOrigin::Parsed(origin) = value
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .origin()
+        else {
             panic!("original parsed numeric occurrence")
         };
         assert_eq!(origin.source().as_str(), source);

@@ -4,114 +4,9 @@
 //! operands use the same text policy while retaining existing arithmetic and ranges.
 
 use crate::{
-    CssComponentValue, CssComponentValueRef, CssNumberCalculation, CssNumericConstructionError,
-    CssNumericConstructionErrorKind, CssSerializationError, CssValueOrigin, CssValueTokenRef,
-    numeric_formatting::format_css_number, specified_serialization::SpecifiedSerializationContext,
+    CssNonNegative, CssNumber, CssNumeric, CssSerializationError,
+    specified_serialization::SpecifiedSerializationContext,
 };
-
-/// One checked, nonnegative ratio number or deferred number-valued math root.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CssRatioOperand {
-    value: RatioOperandValue,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum RatioOperandValue {
-    Number(Box<CssComponentValue>),
-    Calculation(CssNumberCalculation),
-}
-
-impl CssRatioOperand {
-    /// Checks an exact ordinary number without rounding its authored magnitude.
-    pub fn try_from_component(
-        component: CssComponentValue,
-    ) -> Result<Self, CssNumericConstructionError> {
-        let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = component.view() else {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::RootDomainMismatch,
-                Some(&component),
-            ));
-        };
-        let lexical = crate::exact_decimal::LexicalDecimal::new(number.representation());
-        if lexical.negative {
-            return Err(CssNumericConstructionError::at(
-                CssNumericConstructionErrorKind::OutOfRange,
-                Some(&component),
-            ));
-        }
-        Ok(Self {
-            value: RatioOperandValue::Number(Box::new(component)),
-        })
-    }
-
-    /// Checks the original root of a typed number calculation. Bare ordinary
-    /// numbers take the exact literal path, while math roots remain symbolic.
-    pub fn try_from_calculation(
-        calculation: CssNumberCalculation,
-    ) -> Result<Self, CssNumericConstructionError> {
-        // This domain still retains recovered syntax from checked construction.
-        crate::specified_numeric::admit_calculation(
-            calculation,
-            CssNumberCalculation::components,
-            crate::specified_numeric::CalculationAdmission::Recovering,
-            Self::try_from_component,
-            |calculation| Self {
-                value: RatioOperandValue::Calculation(calculation),
-            },
-        )
-    }
-
-    /// Borrows the exact ordinary number, if this operand has one.
-    pub fn literal_component(&self) -> Option<&CssComponentValue> {
-        match &self.value {
-            RatioOperandValue::Number(component) => Some(component),
-            RatioOperandValue::Calculation(_) => None,
-        }
-    }
-
-    /// Borrows deferred number math, if this operand has a math root.
-    pub fn calculation(&self) -> Option<&CssNumberCalculation> {
-        match &self.value {
-            RatioOperandValue::Number(_) => None,
-            RatioOperandValue::Calculation(calculation) => Some(calculation),
-        }
-    }
-
-    /// Retains parsed or programmatic provenance of the root.
-    pub fn origin(&self) -> &CssValueOrigin {
-        match &self.value {
-            RatioOperandValue::Number(component) => component.origin(),
-            RatioOperandValue::Calculation(calculation) => calculation.origin(),
-        }
-    }
-
-    fn append_specified(
-        &self,
-        context: &mut SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> Result<(), CssSerializationError> {
-        match &self.value {
-            RatioOperandValue::Number(component) => {
-                context.charge_nodes(1)?;
-                if context.output_suppressed() {
-                    return Ok(());
-                }
-                let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) =
-                    component.view()
-                else {
-                    unreachable!("checked ratio number")
-                };
-                let text =
-                    format_css_number(number.representation(), 0, context.remaining_bytes())?;
-                context.append(output, &text)
-            }
-            RatioOperandValue::Calculation(calculation) => {
-                crate::numeric::project_specified_into(&calculation.expression, context, output)?;
-                Ok(())
-            }
-        }
-    }
-}
 
 /// An authored ratio with an optional denominator; omission means one.
 ///
@@ -120,24 +15,27 @@ impl CssRatioOperand {
 /// Serializes the specified pair; an omitted denominator is emitted as one.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSpecifiedRatio {
-    numerator: CssRatioOperand,
-    denominator: Option<CssRatioOperand>,
+    numerator: CssNumeric<CssNumber, CssNonNegative>,
+    denominator: Option<CssNumeric<CssNumber, CssNonNegative>>,
 }
 
 impl CssSpecifiedRatio {
     /// Composes already-checked operands without changing their provenance.
-    pub const fn new(numerator: CssRatioOperand, denominator: Option<CssRatioOperand>) -> Self {
+    pub const fn new(
+        numerator: CssNumeric<CssNumber, CssNonNegative>,
+        denominator: Option<CssNumeric<CssNumber, CssNonNegative>>,
+    ) -> Self {
         Self {
             numerator,
             denominator,
         }
     }
 
-    pub const fn numerator(&self) -> &CssRatioOperand {
+    pub const fn numerator(&self) -> &CssNumeric<CssNumber, CssNonNegative> {
         &self.numerator
     }
 
-    pub const fn denominator(&self) -> Option<&CssRatioOperand> {
+    pub const fn denominator(&self) -> Option<&CssNumeric<CssNumber, CssNonNegative>> {
         self.denominator.as_ref()
     }
 

@@ -886,8 +886,8 @@ mod construction {
     use super::*;
     use std::error::Error;
 
-    fn lp(text: &str) -> CssSpecifiedLengthPercentage {
-        CssSpecifiedLengthPercentage::try_from_component(
+    fn lp(text: &str) -> CssNumeric<CssLengthPercentage> {
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_token(text).unwrap(),
         )
         .unwrap()
@@ -904,11 +904,14 @@ mod construction {
             .unwrap(),
         )
     }
-    fn angle(text: &str) -> CssAngleValue {
-        CssAngleValue::from_literal(
-            CssAngleLiteral::try_from_component(CssComponentValue::try_token(text).unwrap())
-                .unwrap(),
+    fn angle(text: &str) -> CssNumeric<CssAngle> {
+        CssNumeric::<CssAngle>::try_from_literal(
+            CssNumericLiteral::<CssAngle>::try_from_component(
+                CssComponentValue::try_token(text).unwrap(),
+            )
+            .unwrap(),
         )
+        .unwrap()
     }
     fn shape(commands: Vec<CssShapeCommand>) -> CssShapeFunction {
         CssShapeFunction::new(
@@ -1043,8 +1046,8 @@ mod construction {
             })
             .cloned()
             .collect();
-        let x = CssSpecifiedLengthPercentage::try_from_component(scalars[0].clone()).unwrap();
-        let y = CssSpecifiedLengthPercentage::try_from_component(scalars[1].clone()).unwrap();
+        let x = CssNumeric::<CssLengthPercentage>::try_from_component(scalars[0].clone()).unwrap();
+        let y = CssNumeric::<CssLengthPercentage>::try_from_component(scalars[1].clone()).unwrap();
         let value = CssShapeAbsoluteControlPoint::from_coordinates(
             CssShapeCoordinatePair::new(x.clone(), y.clone()),
             None,
@@ -1084,13 +1087,13 @@ mod construction {
         }
     }
     #[test]
-    fn pair_equality_ignores_provenance_while_raw_scalars_retain_it() {
+    fn pair_and_raw_scalar_equality_ignore_provenance() {
         let components = parse_component_values("1px").unwrap();
         let parsed =
-            CssSpecifiedLengthPercentage::try_from_component(components.items()[0].clone())
+            CssNumeric::<CssLengthPercentage>::try_from_component(components.items()[0].clone())
                 .unwrap();
         let programmatic = lp("1px");
-        assert_ne!(parsed, programmatic);
+        assert_eq!(parsed, programmatic);
         let a = CssShapeCoordinatePair::new(parsed, lp("2%"));
         let b = pair();
         assert_eq!(a, b);
@@ -1161,9 +1164,9 @@ mod construction {
         // A zero number is not the required angle dimension token.
         let component = CssComponentValue::try_number("0").unwrap();
         let origin = component.origin().clone();
-        let error = CssAngleLiteral::try_from_component(component).unwrap_err();
-        assert!(error.is_invalid_token(), "{error:?}");
-        assert_eq!(error.origin(), &origin);
+        let error = CssNumericLiteral::<CssAngle>::try_from_component(component).unwrap_err();
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
+        assert_eq!(error.origin(), Some(&origin));
         for text in [
             "-1e-999deg",
             "1e400turn",
@@ -1322,8 +1325,8 @@ mod construction {
     #[test]
     fn sibling_command_math_arenas_share_budgets_and_keep_original_graphs() {
         let components = parse_component_values("calc(1px + 2%)").unwrap();
-        let scalar = CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(
+        let scalar = CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
                 components.clone(),
                 Default::default(),
             )

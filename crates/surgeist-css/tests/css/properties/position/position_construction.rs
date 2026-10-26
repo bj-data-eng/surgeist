@@ -10,7 +10,7 @@ fn generic_position_checks_edge_pairing_and_keeps_offset_origins() {
         CssPhysicalPosition::try_new(H::Offset(signed_length_percentage("15%")), V::Bottom)
             .unwrap();
     assert!(
-        matches!(ordinary.horizontal(), H::Offset(v) if exact_percentage(v.literal_component(), "15"))
+        matches!(ordinary.horizontal(), H::Offset(v) if exact_percentage(v.literal().map(|literal| literal.component()), "15"))
     );
     assert!(matches!(ordinary.vertical(), V::Bottom));
 
@@ -20,10 +20,10 @@ fn generic_position_checks_edge_pairing_and_keeps_offset_origins() {
     )
     .unwrap();
     assert!(
-        matches!(paired.horizontal(), H::RightOffset(v) if exact_dimension(v.literal_component(), "10", "px"))
+        matches!(paired.horizontal(), H::RightOffset(v) if exact_dimension(v.literal().map(|literal| literal.component()), "10", "px"))
     );
     assert!(
-        matches!(paired.vertical(), V::TopOffset(v) if exact_percentage(v.literal_component(), "20"))
+        matches!(paired.vertical(), V::TopOffset(v) if exact_percentage(v.literal().map(|literal| literal.component()), "20"))
     );
     assert!(
         CssPhysicalPosition::try_new(H::LeftOffset(signed_length_percentage("10px")), V::Top)
@@ -75,7 +75,7 @@ fn generic_position_retains_symbolic_offsets_and_nonempty_list_order() {
     assert!(matches!(list.positions()[1].vertical(), V::Top));
     assert!(CssPhysicalPositionList::try_new(Vec::new()).is_none());
     assert!(
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_ident("auto").unwrap()
         )
         .is_err()
@@ -91,7 +91,7 @@ fn background_position_adds_only_its_three_component_edge_forms() {
         CssBackgroundPosition::try_new(H::Offset(signed_length_percentage("40%")), V::Bottom)
             .unwrap();
     assert!(
-        matches!(ordinary.horizontal(), H::Offset(v) if exact_percentage(v.literal_component(), "40"))
+        matches!(ordinary.horizontal(), H::Offset(v) if exact_percentage(v.literal().map(|literal| literal.component()), "40"))
     );
     assert!(matches!(ordinary.vertical(), V::Bottom));
 
@@ -99,7 +99,7 @@ fn background_position_adds_only_its_three_component_edge_forms() {
         CssBackgroundPosition::try_new(H::LeftOffset(signed_length_percentage("12px")), V::Top)
             .unwrap();
     assert!(
-        matches!(horizontal_edge.horizontal(), H::LeftOffset(v) if exact_dimension(v.literal_component(), "12", "px"))
+        matches!(horizontal_edge.horizontal(), H::LeftOffset(v) if exact_dimension(v.literal().map(|literal| literal.component()), "12", "px"))
     );
     assert!(matches!(horizontal_edge.vertical(), V::Top));
 
@@ -108,7 +108,7 @@ fn background_position_adds_only_its_three_component_edge_forms() {
             .unwrap();
     assert!(matches!(vertical_edge.horizontal(), H::Center));
     assert!(
-        matches!(vertical_edge.vertical(), V::BottomOffset(v) if exact_percentage(v.literal_component(), "30"))
+        matches!(vertical_edge.vertical(), V::BottomOffset(v) if exact_percentage(v.literal().map(|literal| literal.component()), "30"))
     );
 
     let paired = CssBackgroundPosition::try_new(
@@ -158,7 +158,11 @@ fn transform_origin_checks_planar_grammar_and_keeps_optional_pure_length_z() {
     assert!(matches!(with_z.horizontal(), H::Center));
     assert!(matches!(with_z.vertical(), V::Top));
     assert!(exact_dimension(
-        with_z.z().unwrap().literal_component(),
+        with_z
+            .z()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component()),
         "10",
         "px"
     ));
@@ -184,11 +188,11 @@ fn transform_origin_checks_planar_grammar_and_keeps_optional_pure_length_z() {
     .unwrap();
     assert!(CssTransformOrigin::try_new(edge_pair, None).is_none());
     assert!(
-        CssSpecifiedLength::try_from_component(CssComponentValue::try_token("25%").unwrap())
+        CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token("25%").unwrap())
             .is_err()
     );
     assert!(
-        CssLengthCalculation::try_from_components(
+        CssCalculation::<CssLength>::try_from_components(
             parse_component_values("calc(2px + 3%)").unwrap(),
             Default::default()
         )
@@ -250,26 +254,11 @@ fn exact_percentage(
     matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }
 
-fn signed_length(css: &str) -> surgeist_css::CssSpecifiedLength {
+fn signed_length(css: &str) -> surgeist_css::CssNumeric<surgeist_css::CssLength> {
     let components = surgeist_css::parse_component_values(css).unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedLength::try_from_calculation(
-            surgeist_css::CssLengthCalculation::try_from_components(components, Default::default())
-                .unwrap(),
-        )
-        .unwrap()
-    } else {
-        surgeist_css::CssSpecifiedLength::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
-        )
-        .unwrap()
-    }
-}
-fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
-    let components = surgeist_css::parse_component_values(css).unwrap();
-    if css.contains('(') {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(
+        surgeist_css::CssNumeric::<surgeist_css::CssLength>::try_from_calculation(
+            surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(
                 components,
                 Default::default(),
             )
@@ -277,7 +266,27 @@ fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercen
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_component(
+        surgeist_css::CssNumeric::<surgeist_css::CssLength>::try_from_component(
+            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
+    }
+}
+fn signed_length_percentage(
+    css: &str,
+) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage> {
+    let components = surgeist_css::parse_component_values(css).unwrap();
+    if css.contains('(') {
+        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_calculation(
+            surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    } else {
+        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_component(
             surgeist_css::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()

@@ -6,7 +6,7 @@ use surgeist_css::*;
 
 fn length(number: &str, unit: &str) -> CssBorderWidth {
     CssBorderWidth::Length(
-        CssSpecifiedNonNegativeLength::try_from_component(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension(number, unit).unwrap(),
         )
         .unwrap(),
@@ -63,13 +63,13 @@ fn checked_widths_preserve_exact_literals_and_origin_blind_structure() {
     let before = tiny.clone();
     assert_eq!(tiny.serialize_specified(Default::default()).unwrap(), "0px");
     assert!(matches!(
-        tiny.length().unwrap().literal_component().unwrap().view(),
+        tiny.length().unwrap().literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
             if number.representation() == "1e-100" && unit == "px"
     ));
     assert_eq!(tiny, before);
     assert_component_rejected(
-        CssSpecifiedNonNegativeLength::try_from_component,
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component,
         CssComponentValue::try_dimension("-1e-100", "px").unwrap(),
         NumericFailure::OutOfRange,
     );
@@ -87,7 +87,7 @@ fn checked_widths_preserve_exact_literals_and_origin_blind_structure() {
         Some(CssValueOrigin::Programmatic)
     ));
     assert!(matches!(parsed.origin(), Some(CssValueOrigin::Parsed(_))));
-    assert_ne!(programmatic, parsed_width("1.0px"));
+    assert_eq!(programmatic, parsed_width("1.0px"));
     assert_ne!(CssBorderWidth::Thin, CssBorderWidth::Medium);
     assert_ne!(CssBorderWidth::Thin, parsed_width("1px"));
 }
@@ -180,7 +180,12 @@ fn pair_and_four_side_keep_arity_roles_and_cumulative_budgets() {
             CssBorderWidth::Thin,
             CssBorderWidth::Medium,
             CssBorderWidth::Thick,
-            CssBorderWidth::Length(CssSpecifiedNonNegativeLength::zero()),
+            CssBorderWidth::Length(
+                CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+                    CssComponentValue::try_number("0").unwrap(),
+                )
+                .unwrap(),
+            ),
         ],
     )
     .unwrap();

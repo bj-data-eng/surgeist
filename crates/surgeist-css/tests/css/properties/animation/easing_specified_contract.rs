@@ -8,6 +8,7 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::Responsible::At;
 use crate::css::support::property_admission::{assert_invalid_value, assert_numeric_rejected};
 use crate::css::support::serialization_limits::LimitLadder;
+use crate::css::support::value_assertions::positive_literal;
 use surgeist_css::*;
 
 fn parsed_for(property: CssKnownProperty, source: &str) -> CssEasingList {
@@ -32,22 +33,25 @@ fn parsed(source: &str) -> CssEasingList {
     parsed_for(CssKnownProperty::TransitionTimingFunction, source)
 }
 
-fn number(source: &str) -> CssSpecifiedNumber {
+fn number(source: &str) -> CssNumeric<CssNumber> {
     let components = parse_component_values(source).unwrap();
-    CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(components, Default::default()).unwrap(),
+    CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(components, Default::default()).unwrap(),
     )
     .unwrap()
 }
 
-fn count(source: &str) -> CssPositiveIntegerValue {
-    CssPositiveIntegerValue::Literal(
-        CssPositiveIntegerLiteral::try_new(
-            CssIntegerLiteral::try_from_component(CssComponentValue::try_number(source).unwrap())
-                .unwrap(),
+fn count(source: &str) -> CssNumeric<CssInteger, CssPositive> {
+    CssNumeric::<CssInteger, CssPositive>::try_from_literal(
+        positive_literal(
+            CssNumericLiteral::<CssInteger>::try_from_component(
+                CssComponentValue::try_number(source).unwrap(),
+            )
+            .unwrap(),
         )
         .unwrap(),
     )
+    .unwrap()
 }
 
 fn assert_list(source: &str, expected: &str) {
@@ -245,8 +249,14 @@ fn checked_composition_retains_original_components_and_origins() {
     .enumerate()
     {
         assert_eq!(actual.origin(), &before[index]);
-        if let Some(component) = originals[index].literal_component() {
-            assert_eq!(actual.literal_component(), Some(component));
+        if let Some(component) = originals[index]
+            .literal()
+            .map(|literal| literal.component())
+        {
+            assert_eq!(
+                actual.literal().map(|literal| literal.component()),
+                Some(component)
+            );
         } else {
             assert_eq!(
                 actual.calculation().unwrap().components(),
@@ -318,26 +328,31 @@ fn checked_ranges_and_pure_roots_share_admission_with_parsing() {
     }
     assert!(CssSteps::try_new(count("1"), Some(CssStepPosition::JumpNone)).is_none());
     for source in ["0", "-1"] {
-        let integer =
-            CssIntegerLiteral::try_from_component(CssComponentValue::try_number(source).unwrap())
-                .unwrap();
-        assert!(CssPositiveIntegerLiteral::try_new(integer).is_none());
+        let integer = CssNumericLiteral::<CssInteger>::try_from_component(
+            CssComponentValue::try_number(source).unwrap(),
+        )
+        .unwrap();
+        assert!(positive_literal(integer).is_none());
     }
     let contextual = parse_component_values("calc((1px + 1%) / 1px)").unwrap();
     assert_numeric_rejected(
-        CssNumberCalculation::try_from_components(contextual.clone(), Default::default()),
+        CssCalculation::<CssNumber>::try_from_components(contextual.clone(), Default::default()),
         NumericFailure::RootDomainMismatch,
     );
     assert_numeric_rejected(
-        CssIntegerCalculation::try_from_components(contextual, Default::default()),
+        CssCalculation::<CssInteger>::try_from_components(contextual, Default::default()),
         NumericFailure::RootDomainMismatch,
     );
-    let fraction = CssIntegerCalculation::try_from_components(
+    let fraction = CssCalculation::<CssInteger>::try_from_components(
         parse_component_values("calc(1.5)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let value = CssSteps::try_new(CssPositiveIntegerValue::Calculation(fraction), None).unwrap();
+    let value = CssSteps::try_new(
+        CssNumeric::<CssInteger, CssPositive>::try_from_calculation(fraction).unwrap(),
+        None,
+    )
+    .unwrap();
     assert_eq!(
         value.serialize_specified(Default::default()).unwrap(),
         "steps(calc(1.5))"

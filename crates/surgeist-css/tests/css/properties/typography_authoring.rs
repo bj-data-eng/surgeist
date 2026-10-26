@@ -177,7 +177,11 @@ fn parses_typography_and_text_length_families() {
     let CssTextSpacingAdjustment::LengthPercentage(length) = spacing.value() else {
         panic!("exact letter spacing")
     };
-    assert_length_literal(length.literal_component().unwrap(), "0.1", "em");
+    assert_length_literal(
+        length.literal().map(|literal| literal.component()).unwrap(),
+        "0.1",
+        "em",
+    );
     let spacing = property_payload!(
         declaration(
             ".panel { letter-spacing: 0.25em; }",
@@ -189,7 +193,11 @@ fn parses_typography_and_text_length_families() {
     let CssTextSpacingAdjustment::LengthPercentage(length) = spacing else {
         panic!("exact letter spacing")
     };
-    assert_length_literal(length.literal_component().unwrap(), "0.25", "em");
+    assert_length_literal(
+        length.literal().map(|literal| literal.component()).unwrap(),
+        "0.25",
+        "em",
+    );
     assert_eq!(
         property_payload!(
             declaration(
@@ -312,7 +320,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     ));
     assert_eq!(list.features()[1].tag().as_str(), "liga");
     assert!(
-        matches!(list.features()[1].value(), CssAuthoredFontFeatureValue::Index(index) if index.i32_value() == Some(0))
+        matches!(list.features()[1].value(), CssAuthoredFontFeatureValue::Index(index) if index.literal().and_then(|literal| literal.value()) == Some(0))
     );
 
     let font_declaration = declaration(
@@ -342,7 +350,7 @@ fn parses_font_families_and_font_shorthand_as_authored_syntax() {
     assert_eq!(
         font.size(),
         &CssFontSize::LengthPercentage(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token("16px").unwrap()
             )
             .unwrap()
@@ -429,15 +437,21 @@ fn parses_text_decoration_family() {
 fn checked_typography_constructors_reject_invalid_states() {
     assert_eq!(CssFontFamilyList::try_new(Vec::new()), None);
     assert!(
-        CssFontWeightNumber::try_from_component(CssComponentValue::try_number("0").unwrap())
-            .is_err()
+        CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
+            CssComponentValue::try_number("0").unwrap()
+        )
+        .is_err()
     );
     assert!(
-        CssFontWeightNumber::try_from_component(CssComponentValue::try_number("1001").unwrap())
-            .is_err()
+        CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
+            CssComponentValue::try_number("1001").unwrap()
+        )
+        .is_err()
     );
     assert_eq!(
-        CssFontWeightNumber::try_from_component(CssComponentValue::try_number("500").unwrap()),
+        CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
+            CssComponentValue::try_number("500").unwrap()
+        ),
         Ok(weight_number("500"))
     );
     assert_eq!(CssAuthoredFontFeatureList::try_new(Vec::new()), None);
@@ -449,7 +463,7 @@ fn checked_typography_constructors_reject_invalid_states() {
             None,
             None,
             CssFontSize::LengthPercentage(
-                CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+                CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
                     CssComponentValue::try_token("12px").unwrap()
                 )
                 .unwrap()
@@ -463,7 +477,7 @@ fn checked_typography_constructors_reject_invalid_states() {
         .is_some(),
     );
     assert!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("auto").unwrap()
         )
         .is_err()
@@ -484,19 +498,19 @@ fn checked_typography_constructors_reject_invalid_states() {
     );
     assert_eq!(feature.tag().as_str(), "kern");
     assert!(
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_token("auto").unwrap()
         )
         .is_err()
     );
     assert!(
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_token("auto").unwrap()
         )
         .is_err()
     );
     assert!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension("-1", "px").unwrap()
         )
         .is_err()

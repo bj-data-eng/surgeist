@@ -1,7 +1,7 @@
 //! Checked authored Motion Path values. Geometry and resource resolution remain symbolic.
 
-use super::{CssBasicShape, CssBoxEdgeKeyword, CssPosition, CssUrl, optional_numeric_eq};
-use crate::{CssAngleValue, CssSpecifiedLengthPercentage};
+use super::{CssBasicShape, CssBoxEdgeKeyword, CssPosition, CssUrl};
+use crate::{CssAngle, CssLengthPercentage, CssNumeric};
 use std::{error::Error, fmt};
 
 /// A rejected intrinsic Motion construction, before any contextual evaluation.
@@ -152,19 +152,18 @@ impl CssRaySize {
 /// # Specified serialization
 ///
 /// Serializes authored constituents without resolving paths, bearings or resources.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssRay {
-    angle: CssAngleValue,
+    angle: CssNumeric<CssAngle>,
     size: Option<CssRaySize>,
     contain: bool,
     position: Option<CssPosition>,
 }
-numeric_fields_eq!(CssRay, [angle], [], [size, contain, position]);
 impl CssRay {
     /// Composes checked children without inserting missing size or position defaults.
     #[must_use]
     pub const fn new(
-        angle: CssAngleValue,
+        angle: CssNumeric<CssAngle>,
         size: Option<CssRaySize>,
         contain: bool,
         position: Option<CssPosition>,
@@ -177,7 +176,7 @@ impl CssRay {
         }
     }
     #[must_use]
-    pub const fn angle(&self) -> &CssAngleValue {
+    pub const fn angle(&self) -> &CssNumeric<CssAngle> {
         &self.angle
     }
     #[must_use]
@@ -323,17 +322,16 @@ pub enum CssOffsetRotateModifier {
 /// # Specified serialization
 ///
 /// Serializes authored constituents without resolving paths, bearings or resources.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssOffsetRotate {
     modifier: Option<CssOffsetRotateModifier>,
-    angle: Option<CssAngleValue>,
+    angle: Option<CssNumeric<CssAngle>>,
 }
-numeric_fields_eq!(CssOffsetRotate, [], [angle], [modifier]);
 impl CssOffsetRotate {
     /// Rejects the absent-both state and retains every provided constituent.
     pub fn try_new(
         modifier: Option<CssOffsetRotateModifier>,
-        angle: Option<CssAngleValue>,
+        angle: Option<CssNumeric<CssAngle>>,
     ) -> Result<Self, CssMotionConstructionError> {
         if modifier.is_none() && angle.is_none() {
             return Err(CssMotionConstructionError::from(
@@ -354,7 +352,7 @@ impl CssOffsetRotate {
         self.modifier
     }
     #[must_use]
-    pub const fn angle(&self) -> Option<&CssAngleValue> {
+    pub const fn angle(&self) -> Option<&CssNumeric<CssAngle>> {
         self.angle.as_ref()
     }
 }
@@ -364,21 +362,20 @@ impl CssOffsetRotate {
 /// # Specified serialization
 ///
 /// Serializes authored constituents without resolving paths, bearings or resources.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssOffset {
     position: Option<CssOffsetPosition>,
     path: Option<CssOffsetPath>,
-    distance: Option<CssSpecifiedLengthPercentage>,
+    distance: Option<CssNumeric<CssLengthPercentage>>,
     rotate: Option<CssOffsetRotate>,
     anchor: Option<CssOffsetAnchor>,
 }
-numeric_fields_eq!(CssOffset, [], [distance], [position, path, rotate, anchor]);
 impl CssOffset {
     /// Requires position or path, and requires path for distance or rotation.
     pub fn try_new(
         position: Option<CssOffsetPosition>,
         path: Option<CssOffsetPath>,
-        distance: Option<CssSpecifiedLengthPercentage>,
+        distance: Option<CssNumeric<CssLengthPercentage>>,
         rotate: Option<CssOffsetRotate>,
         anchor: Option<CssOffsetAnchor>,
     ) -> Result<Self, CssMotionConstructionError> {
@@ -409,7 +406,7 @@ impl CssOffset {
         self.path.as_ref()
     }
     #[must_use]
-    pub const fn distance(&self) -> Option<&CssSpecifiedLengthPercentage> {
+    pub const fn distance(&self) -> Option<&CssNumeric<CssLengthPercentage>> {
         self.distance.as_ref()
     }
     #[must_use]

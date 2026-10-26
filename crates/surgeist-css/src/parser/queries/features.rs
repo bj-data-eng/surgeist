@@ -299,7 +299,7 @@ fn generic_media_value<'i, 't>(
     };
     if can_ratio && input.try_parse(|p| p.expect_delim('/')).is_ok() {
         let denominator = parse_media_numeric(source, input, numeric, CalculationRoot::Number)
-            .map(CssNumberCalculation::from_expression)?;
+            .map(CssCalculation::<CssNumber>::from_expression)?;
         if media_literal_number(denominator.components()).is_some_and(negative_literal) {
             return Err(invalid_syntax(start.source_location()));
         }
@@ -344,7 +344,7 @@ fn parse_media_feature_query<'i, 't>(
         MediaValueFamily::Length => {
             let range = parse_media_range(input, name, |p| {
                 parse_media_numeric(source, p, numeric, CalculationRoot::Length)
-                    .map(CssLengthCalculation::from_expression)
+                    .map(CssCalculation::<CssLength>::from_expression)
                     .map(CssMediaLength::new)
             })?;
             Ok(match name.id {
@@ -358,7 +358,7 @@ fn parse_media_feature_query<'i, 't>(
         MediaValueFamily::Integer => {
             let range = parse_media_range(input, name, |p| {
                 parse_media_numeric(source, p, numeric, CalculationRoot::Integer)
-                    .map(CssIntegerCalculation::from_expression)
+                    .map(CssCalculation::<CssInteger>::from_expression)
                     .map(CssMediaInteger::new)
             })?;
             Ok(match name.id {
@@ -394,7 +394,7 @@ fn parse_media_feature_query<'i, 't>(
                     .map_err(|error| media_numeric_error(source, p, numeric, error))
             } else {
                 parse_media_numeric(source, p, numeric, CalculationRoot::Resolution)
-                    .map(CssResolutionCalculation::from_expression)
+                    .map(CssCalculation::<CssResolution>::from_expression)
                     .map(CssMediaResolution::numeric)
             }
         })
@@ -519,7 +519,7 @@ fn parse_media_ratio<'i, 't>(
     numeric: &MediaInput<'_>,
 ) -> Result<CssMediaRatio, ParseError<'i, CssError>> {
     let operand = |input: &mut Parser<'i, 't>| {
-        let value = CssNumberCalculation::from_expression(parse_media_numeric(
+        let value = CssCalculation::<CssNumber>::from_expression(parse_media_numeric(
             source,
             input,
             numeric,
@@ -533,7 +533,7 @@ fn parse_media_ratio<'i, 't>(
     let numerator = operand(input)?;
     let denominator_is_omitted = input.try_parse(|p| p.expect_delim('/')).is_err();
     let denominator = if denominator_is_omitted {
-        CssNumberCalculation::try_from_components(
+        CssCalculation::<CssNumber>::try_from_components(
             crate::CssComponentValues::try_new(
                 vec![crate::CssComponentValue::try_number("1").expect("default denominator")],
                 Default::default(),
@@ -557,7 +557,7 @@ fn parse_media_grid<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
 ) -> Result<CssMediaGrid, ParseError<'i, CssError>> {
-    let calculation = CssIntegerCalculation::from_expression(parse_media_numeric(
+    let calculation = CssCalculation::<CssInteger>::from_expression(parse_media_numeric(
         source,
         input,
         numeric,

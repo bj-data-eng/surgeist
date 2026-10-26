@@ -76,7 +76,13 @@ fn page_margin_composition_keeps_exact_literals_and_math_but_rejects_logical_sid
     let CssMarginValue::LengthPercentage(left) = left.value() else {
         panic!("signed length")
     };
-    assert_eq!(left.literal_component().unwrap().origin(), left.origin());
+    assert_eq!(
+        left.literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .origin(),
+        left.origin()
+    );
     let specified = left.serialize_specified(Default::default()).unwrap();
     assert_eq!(specified.len(), 1003);
     assert!(specified.starts_with("-1") && specified.ends_with("px"));

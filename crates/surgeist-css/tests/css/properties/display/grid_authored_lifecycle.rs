@@ -134,7 +134,7 @@ fn auto() -> CssGridTrackSize {
 }
 fn size_px(text: &str) -> CssGridTrackSize {
     CssGridTrackSize::from_breadth(CssGridTrackBreadth::from_length_percentage(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension(text, "px").unwrap(),
         )
         .unwrap(),
@@ -150,14 +150,15 @@ fn fixed_content() -> CssGridFixedRepeatContent {
     )])
     .unwrap()
 }
-fn calculation(text: &str) -> CssPositiveIntegerValue {
-    CssPositiveIntegerValue::Calculation(
-        CssIntegerCalculation::try_from_components(
-            parse_component_values(text).unwrap(),
-            Default::default(),
-        )
-        .unwrap(),
+fn integer_calculation(text: &str) -> CssCalculation<CssInteger> {
+    CssCalculation::<CssInteger>::try_from_components(
+        parse_component_values(text).unwrap(),
+        Default::default(),
     )
+    .unwrap()
+}
+fn calculation(text: &str) -> CssNumeric<CssInteger, CssPositive> {
+    CssNumeric::<CssInteger, CssPositive>::try_from_calculation(integer_calculation(text)).unwrap()
 }
 fn row(cells: &[&str]) -> CssGridTemplateAreaRow {
     CssGridTemplateAreaRow::try_new(
@@ -204,8 +205,8 @@ fn find_function_optional<'a>(
     }
     None
 }
-fn original_math(value: &CssPositiveIntegerValue, components: &CssComponentValues) {
-    let CssPositiveIntegerValue::Calculation(value) = value else {
+fn original_math(value: &CssNumeric<CssInteger, CssPositive>, components: &CssComponentValues) {
+    let Some(value) = value.calculation() else {
         panic!("symbolic function count");
     };
     let root = find_function(components, "calc");
@@ -286,41 +287,44 @@ fn axis_initials_and_shorthand_members_expose_complete_typed_contracts() {
 }
 
 #[test]
-fn counted_repeat_constructors_normalize_bare_roots_without_evaluating_functions() {
+fn counted_repeat_counts_normalize_bare_roots_without_evaluating_functions() {
+    // Values 4 §10.12: a bare root is an ordinary token, so `[1,∞]` applies
+    // when the count is admitted rather than being deferred like math.
     for text in ["0", "-0", "-1", "-999999999999999999999999999999"] {
-        let count = calculation(text);
-        assert!(CssGridIntegerTrackRepeat::try_new(count.clone(), track_content()).is_none());
-        assert!(CssGridIntegerFixedRepeat::try_new(count.clone(), fixed_content()).is_none());
-        assert!(CssGridNameRepeat::try_new(count, vec![names(&[])]).is_none());
+        let original = integer_calculation(text);
+        let origin = original.components().items()[0].origin().clone();
+        let error = assert_numeric_rejected(
+            CssNumeric::<CssInteger, CssPositive>::try_from_calculation(original),
+            NumericFailure::OutOfRange,
+        );
+        assert_eq!(error.origin(), Some(&origin));
     }
     for text in ["+0007", "2147483648", "999999999999999999999999999999"] {
-        let count = calculation(text);
-        let CssPositiveIntegerValue::Calculation(original) = &count else {
-            unreachable!();
-        };
+        let original = integer_calculation(text);
         let component = original.components().items()[0].clone();
+        let count = CssNumeric::<CssInteger, CssPositive>::try_from_calculation(original).unwrap();
         let track = CssGridIntegerTrackRepeat::try_new(count.clone(), track_content()).unwrap();
         let fixed = CssGridIntegerFixedRepeat::try_new(count.clone(), fixed_content()).unwrap();
         let name = CssGridNameRepeat::try_new(count, vec![names(&[])]).unwrap();
         for value in [track.count(), fixed.count(), name.count().unwrap()] {
-            let CssPositiveIntegerValue::Literal(value) = value else {
+            let Some(value) = value.literal() else {
                 panic!("normalized ordinary positive token");
             };
             // The source of the constructor's calculation is retained, rather
             // than a new numeric token being fabricated from a machine count.
-            assert_eq!(value.integer().component(), &component);
-            let CssValueOrigin::Parsed(origin) = value.integer().origin() else {
+            assert_eq!(value.component(), &component);
+            let CssValueOrigin::Parsed(origin) = value.origin() else {
                 panic!("parsed count origin");
             };
             assert_eq!(origin.source().as_str(), text);
             assert_eq!(origin.span().start().byte_offset().value(), 0);
             assert_eq!(origin.span().end().byte_offset().value(), text.len());
-            assert_eq!(value.integer().numeric().representation(), text);
+            assert_eq!(value.numeric().representation(), text);
         }
     }
     for text in ["calc(2)", "calc(1.5)", "calc(0)", "calc(-1)"] {
         let count = calculation(text);
-        let CssPositiveIntegerValue::Calculation(original) = &count else {
+        let Some(original) = &count.calculation() else {
             unreachable!();
         };
         for value in [
@@ -339,7 +343,7 @@ fn counted_repeat_constructors_normalize_bare_roots_without_evaluating_functions
                 .clone(),
         ] {
             assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
-            let CssPositiveIntegerValue::Calculation(retained) = value else {
+            let Some(retained) = value.calculation() else {
                 panic!("function graph remains symbolic");
             };
             assert_eq!(retained.components(), original.components());
@@ -353,7 +357,7 @@ fn counted_repeat_constructors_normalize_bare_roots_without_evaluating_functions
         ("1 2", NumericFailure::MultipleValues),
     ] {
         assert_numeric_rejected(
-            CssIntegerCalculation::try_from_components(
+            CssCalculation::<CssInteger>::try_from_components(
                 parse_component_values(text).unwrap(),
                 Default::default(),
             ),
@@ -361,27 +365,28 @@ fn counted_repeat_constructors_normalize_bare_roots_without_evaluating_functions
         );
     }
     for value in [
-        CssIntegerCalculation::literal(0),
-        CssIntegerCalculation::literal(-2),
+        CssCalculation::<CssInteger>::literal(0),
+        CssCalculation::<CssInteger>::literal(-2),
     ] {
-        assert!(
-            CssGridIntegerTrackRepeat::try_new(
-                CssPositiveIntegerValue::Calculation(value),
-                track_content()
-            )
-            .is_none()
+        let error = assert_numeric_rejected(
+            CssNumeric::<CssInteger, CssPositive>::try_from_calculation(value),
+            NumericFailure::OutOfRange,
         );
+        assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
     }
-    let programmatic = CssPositiveIntegerValue::Calculation(CssIntegerCalculation::literal(2));
+    let programmatic = CssNumeric::<CssInteger, CssPositive>::try_from_calculation(
+        CssCalculation::<CssInteger>::literal(2),
+    )
+    .unwrap();
     let track = CssGridIntegerTrackRepeat::try_new(programmatic.clone(), track_content()).unwrap();
     let fixed = CssGridIntegerFixedRepeat::try_new(programmatic.clone(), fixed_content()).unwrap();
     let name = CssGridNameRepeat::try_new(programmatic, vec![names(&[])]).unwrap();
     for count in [track.count(), fixed.count(), name.count().unwrap()] {
-        let CssPositiveIntegerValue::Literal(count) = count else {
+        let Some(count) = count.literal() else {
             panic!("programmatic positive bare root");
         };
-        assert_eq!(count.integer().numeric().representation(), "2");
-        assert_eq!(count.integer().origin(), &CssValueOrigin::Programmatic);
+        assert_eq!(count.numeric().representation(), "2");
+        assert_eq!(count.origin(), &CssValueOrigin::Programmatic);
     }
 }
 
@@ -469,17 +474,17 @@ fn every_repeat_role_retains_parsed_function_children_and_exact_count_origins() 
             else {
                 panic!("ordinary repeat");
             };
-            let CssPositiveIntegerValue::Literal(count) = value.count() else {
+            let Some(count) = value.count().literal() else {
                 panic!("ordinary count");
             };
-            let CssValueOrigin::Parsed(origin) = count.integer().origin() else {
+            let CssValueOrigin::Parsed(origin) = count.origin() else {
                 panic!("parsed exact token");
             };
             let text = origin.source().as_str();
             let start = text.find("+0007").unwrap();
             assert_eq!(origin.span().start().byte_offset().value(), start);
             assert_eq!(origin.span().end().byte_offset().value(), start + 5);
-            assert_eq!(count.integer().numeric().representation(), "+0007");
+            assert_eq!(count.numeric().representation(), "+0007");
         }
     }
 }
@@ -878,12 +883,15 @@ fn recovered_numeric_children_remain_recovered_through_projection_and_typed_comp
     original_math(name.count().unwrap(), count_source.value_components());
     let fixed = CssGridIntegerFixedRepeat::try_new(count.clone(), fixed_content()).unwrap();
     original_math(fixed.count(), count_source.value_components());
-    let CssPositiveIntegerValue::Calculation(count) = count else {
+    let Some(count) = count.calculation() else {
         panic!("calculation");
     };
     assert!(
-        CssIntegerCalculation::try_from_components(count.components().clone(), Default::default())
-            .is_err()
+        CssCalculation::<CssInteger>::try_from_components(
+            count.components().clone(),
+            Default::default()
+        )
+        .is_err()
     );
 }
 

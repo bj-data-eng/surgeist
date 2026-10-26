@@ -1,9 +1,8 @@
 //! Checked authored basic shapes and clipping composition.
 
 use super::{
-    CssBoxEdgeKeyword, CssPosition, CssRadialExtent, CssSpecifiedLength,
-    CssSpecifiedLengthPercentage, CssSpecifiedNonNegativeLengthPercentage, CssUrl,
-    optional_numeric_eq,
+    CssBoxEdgeKeyword, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric, CssPosition,
+    CssRadialExtent, CssUrl,
 };
 
 /// The authored radius branch of a `circle()` value.
@@ -12,7 +11,7 @@ use super::{
 pub enum CssCircleRadius {
     Default,
     Extent(CssRadialExtent),
-    LengthPercentage(CssSpecifiedNonNegativeLengthPercentage),
+    LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>),
 }
 
 impl PartialEq for CssCircleRadius {
@@ -20,9 +19,7 @@ impl PartialEq for CssCircleRadius {
         match (self, other) {
             (Self::Default, Self::Default) => true,
             (Self::Extent(left), Self::Extent(right)) => left == right,
-            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
-                left.structural_eq(right)
-            }
+            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => left == right,
             _ => false,
         }
     }
@@ -56,16 +53,14 @@ impl CssEllipseRadii {
 #[non_exhaustive]
 pub enum CssEllipseRadius {
     Extent(CssRadialExtent),
-    LengthPercentage(CssSpecifiedNonNegativeLengthPercentage),
+    LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>),
 }
 
 impl PartialEq for CssEllipseRadius {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Extent(left), Self::Extent(right)) => left == right,
-            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
-                left.structural_eq(right)
-            }
+            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => left == right,
             _ => false,
         }
     }
@@ -124,7 +119,7 @@ impl CssEllipseShape {
 /// One-to-four authored inset `<length-percentage>` offsets.
 #[derive(Clone, Debug)]
 pub struct CssInsetShapeOffsets {
-    values: Vec<CssSpecifiedLengthPercentage>,
+    values: Vec<CssNumeric<CssLengthPercentage>>,
 }
 
 impl PartialEq for CssInsetShapeOffsets {
@@ -134,18 +129,18 @@ impl PartialEq for CssInsetShapeOffsets {
                 .values
                 .iter()
                 .zip(&other.values)
-                .all(|(left, right)| left.structural_eq(right))
+                .all(|(left, right)| left == right)
     }
 }
 
 impl CssInsetShapeOffsets {
     #[must_use]
-    pub fn try_new(values: Vec<CssSpecifiedLengthPercentage>) -> Option<Self> {
+    pub fn try_new(values: Vec<CssNumeric<CssLengthPercentage>>) -> Option<Self> {
         (1..=4).contains(&values.len()).then_some(Self { values })
     }
 
     #[must_use]
-    pub fn values(&self) -> &[CssSpecifiedLengthPercentage] {
+    pub fn values(&self) -> &[CssNumeric<CssLengthPercentage>] {
         &self.values
     }
 }
@@ -186,22 +181,24 @@ pub enum CssFillRule {
 }
 
 /// One checked authored point in a `polygon()` value.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssPolygonPoint {
-    x: CssSpecifiedLengthPercentage,
-    y: CssSpecifiedLengthPercentage,
+    x: CssNumeric<CssLengthPercentage>,
+    y: CssNumeric<CssLengthPercentage>,
 }
-numeric_fields_eq!(CssPolygonPoint, [x, y], [], []);
 
 impl CssPolygonPoint {
     /// Composes a checked signed point without resolving its percentage bases.
-    pub const fn new(x: CssSpecifiedLengthPercentage, y: CssSpecifiedLengthPercentage) -> Self {
+    pub const fn new(
+        x: CssNumeric<CssLengthPercentage>,
+        y: CssNumeric<CssLengthPercentage>,
+    ) -> Self {
         Self { x, y }
     }
-    pub const fn x(&self) -> &CssSpecifiedLengthPercentage {
+    pub const fn x(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.x
     }
-    pub const fn y(&self) -> &CssSpecifiedLengthPercentage {
+    pub const fn y(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.y
     }
 }
@@ -225,19 +222,18 @@ impl CssPolygonPointList {
 }
 
 /// An authored `polygon()` value.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssPolygonShape {
     fill_rule: Option<CssFillRule>,
-    round: Option<CssSpecifiedLength>,
+    round: Option<CssNumeric<CssLength>>,
     points: CssPolygonPointList,
 }
-numeric_fields_eq!(CssPolygonShape, [], [round], [fill_rule, points]);
 
 impl CssPolygonShape {
     #[must_use]
     pub const fn new(
         fill_rule: Option<CssFillRule>,
-        round: Option<CssSpecifiedLength>,
+        round: Option<CssNumeric<CssLength>>,
         points: CssPolygonPointList,
     ) -> Self {
         Self {
@@ -253,7 +249,7 @@ impl CssPolygonShape {
     }
 
     #[must_use]
-    pub const fn round(&self) -> Option<&CssSpecifiedLength> {
+    pub const fn round(&self) -> Option<&CssNumeric<CssLength>> {
         self.round.as_ref()
     }
 
@@ -268,16 +264,14 @@ impl CssPolygonShape {
 #[non_exhaustive]
 pub enum CssRectShapeEdge {
     Auto,
-    LengthPercentage(CssSpecifiedLengthPercentage),
+    LengthPercentage(CssNumeric<CssLengthPercentage>),
 }
 
 impl PartialEq for CssRectShapeEdge {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Auto, Self::Auto) => true,
-            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => {
-                left.structural_eq(right)
-            }
+            (Self::LengthPercentage(left), Self::LengthPercentage(right)) => left == right,
             _ => false,
         }
     }
@@ -334,24 +328,23 @@ impl CssRectShape {
 }
 
 /// Authored signed coordinates, checked nonnegative dimensions, and optional rounding.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssXywhShape {
-    x: CssSpecifiedLengthPercentage,
-    y: CssSpecifiedLengthPercentage,
-    width: CssSpecifiedNonNegativeLengthPercentage,
-    height: CssSpecifiedNonNegativeLengthPercentage,
+    x: CssNumeric<CssLengthPercentage>,
+    y: CssNumeric<CssLengthPercentage>,
+    width: CssNumeric<CssLengthPercentage, CssNonNegative>,
+    height: CssNumeric<CssLengthPercentage, CssNonNegative>,
     round: Option<crate::CssBorderRadiusShorthand>,
 }
-numeric_fields_eq!(CssXywhShape, [x, y, width, height], [], [round]);
 
 impl CssXywhShape {
     /// Composes checked inputs without resolving coordinates or clamping dimensions.
     #[must_use]
     pub const fn new(
-        x: CssSpecifiedLengthPercentage,
-        y: CssSpecifiedLengthPercentage,
-        width: CssSpecifiedNonNegativeLengthPercentage,
-        height: CssSpecifiedNonNegativeLengthPercentage,
+        x: CssNumeric<CssLengthPercentage>,
+        y: CssNumeric<CssLengthPercentage>,
+        width: CssNumeric<CssLengthPercentage, CssNonNegative>,
+        height: CssNumeric<CssLengthPercentage, CssNonNegative>,
         round: Option<crate::CssBorderRadiusShorthand>,
     ) -> Self {
         Self {
@@ -363,19 +356,19 @@ impl CssXywhShape {
         }
     }
     #[must_use]
-    pub const fn x(&self) -> &CssSpecifiedLengthPercentage {
+    pub const fn x(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.x
     }
     #[must_use]
-    pub const fn y(&self) -> &CssSpecifiedLengthPercentage {
+    pub const fn y(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.y
     }
     #[must_use]
-    pub const fn width(&self) -> &CssSpecifiedNonNegativeLengthPercentage {
+    pub const fn width(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
         &self.width
     }
     #[must_use]
-    pub const fn height(&self) -> &CssSpecifiedNonNegativeLengthPercentage {
+    pub const fn height(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
         &self.height
     }
     #[must_use]

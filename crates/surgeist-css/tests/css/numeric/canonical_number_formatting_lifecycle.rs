@@ -6,6 +6,7 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_numeric_kind;
+use crate::css::support::value_assertions::literal_specified;
 use surgeist_css::*;
 
 fn component(source: &str) -> CssComponentValue {
@@ -16,8 +17,8 @@ fn component(source: &str) -> CssComponentValue {
     value.clone()
 }
 
-fn number(source: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_component(component(source)).unwrap()
+fn number(source: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_component(component(source)).unwrap()
 }
 
 #[test]
@@ -33,7 +34,7 @@ fn ordinary_fraction_is_rounded_and_shortened_without_changing_authored_identity
             component(source),
             CssComponentValue::try_number(source).unwrap(),
         ] {
-            let value = CssSpecifiedNumber::try_from_component(original.clone()).unwrap();
+            let value = CssNumeric::<CssNumber>::try_from_component(original.clone()).unwrap();
             let before = value.clone();
             assert_eq!(
                 value.serialize_specified(Default::default()).unwrap(),
@@ -41,7 +42,10 @@ fn ordinary_fraction_is_rounded_and_shortened_without_changing_authored_identity
                 "{source}"
             );
             assert_eq!(value, before);
-            assert_eq!(value.literal_component(), Some(&original));
+            assert_eq!(
+                value.literal().map(|literal| literal.component()),
+                Some(&original)
+            );
             assert_eq!(value.origin(), original.origin());
             assert_eq!(
                 CssComponentValues::try_new(vec![original.clone()], Default::default())
@@ -181,7 +185,10 @@ fn budgets_charge_actual_rounded_output_and_preserve_input_on_every_failure() {
                 kind
             );
             assert_eq!(value, before);
-            assert_eq!(value.literal_component(), before.literal_component());
+            assert_eq!(
+                value.literal().map(|literal| literal.component()),
+                before.literal().map(|literal| literal.component())
+            );
             assert_eq!(value.origin(), before.origin());
         }
     }
@@ -195,7 +202,7 @@ fn suffix_bytes_follow_rounded_length_without_changing_the_raw_component() {
         ("0.9999996px", "1px", 3),
     ] {
         let raw = component(source);
-        let value = CssSpecifiedLength::try_from_component(raw.clone()).unwrap();
+        let value = CssNumeric::<CssLength>::try_from_component(raw.clone()).unwrap();
         let before = value.clone();
         assert_eq!(
             value.serialize_specified(L::new(1, 1, bytes)).unwrap(),
@@ -209,7 +216,10 @@ fn suffix_bytes_follow_rounded_length_without_changing_the_raw_component() {
                 .is_byte_limit()
         );
         assert_eq!(value, before);
-        assert_eq!(value.literal_component(), Some(&raw));
+        assert_eq!(
+            value.literal().map(|literal| literal.component()),
+            Some(&raw)
+        );
         assert_eq!(value.origin(), raw.origin());
         assert_eq!(
             CssComponentValues::try_new(vec![raw.clone()], Default::default())
@@ -244,20 +254,17 @@ fn rounded_carry_fits_one_byte_without_budgeting_unrounded_text() {
 
 #[test]
 fn tiny_milliseconds_round_to_seconds_zero_with_its_two_byte_suffix_budget() {
-    let value = CssTimeLiteral::try_new("0.0001", CssTimeUnit::Milliseconds).unwrap();
+    let value = CssNumericLiteral::<CssTime>::try_new("0.0001", CssTimeUnit::Milliseconds).unwrap();
     let before = value.clone();
     assert_eq!(
-        value
-            .serialize_specified(CssSerializationLimits::new(1, 1, 2))
-            .unwrap(),
+        literal_specified(&value, CssSerializationLimits::new(1, 1, 2)).unwrap(),
         "0s"
     );
     assert_eq!(value, before);
     assert_eq!(value.numeric().representation(), "0.0001");
     assert_eq!(value.unit(), CssTimeUnit::Milliseconds);
     assert!(
-        value
-            .serialize_specified(CssSerializationLimits::new(1, 1, 1))
+        literal_specified(&value, CssSerializationLimits::new(1, 1, 1))
             .unwrap_err()
             .is_byte_limit()
     );
@@ -272,12 +279,11 @@ fn unit_normalization_precedes_rounding_and_keeps_authored_coefficients_and_unit
         ("0.0001", "0s"),
         ("0.0005", "0.000001s"),
     ] {
-        let value = CssTimeLiteral::try_new(coefficient, CssTimeUnit::Milliseconds).unwrap();
+        let value =
+            CssNumericLiteral::<CssTime>::try_new(coefficient, CssTimeUnit::Milliseconds).unwrap();
         let before = value.clone();
         assert_eq!(
-            value
-                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len()))
-                .unwrap(),
+            literal_specified(&value, CssSerializationLimits::new(1, 1, expected.len())).unwrap(),
             expected
         );
         assert_eq!(value, before);
@@ -285,10 +291,12 @@ fn unit_normalization_precedes_rounding_and_keeps_authored_coefficients_and_unit
         assert_eq!(value.unit(), CssTimeUnit::Milliseconds);
         assert_eq!(value.origin(), before.origin());
         assert!(
-            value
-                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len() - 1))
-                .unwrap_err()
-                .is_byte_limit()
+            literal_specified(
+                &value,
+                CssSerializationLimits::new(1, 1, expected.len() - 1)
+            )
+            .unwrap_err()
+            .is_byte_limit()
         );
         assert_eq!(value, before);
     }
@@ -318,15 +326,16 @@ fn exact_admission_precedes_lossy_text_and_huge_positive_output_fails_atomically
         let raw = component(source);
         let before = raw.clone();
         let error =
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(raw.clone()).unwrap_err();
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(raw.clone())
+                .unwrap_err();
         assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(raw.origin()));
         assert_eq!(raw, before);
     }
     assert_numeric_kind(
-        CssDuration::try_new(CssTimeValue::from_literal(
-            CssTimeLiteral::try_new("-1e-999", CssTimeUnit::Seconds).unwrap(),
-        )),
+        CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+            CssNumericLiteral::<CssTime>::try_new("-1e-999", CssTimeUnit::Seconds).unwrap(),
+        ),
         NumericFailure::OutOfRange,
     );
     for source in ["1e999", "1e999999999999999999999999999999999999999999"] {
@@ -346,13 +355,13 @@ fn exact_admission_precedes_lossy_text_and_huge_positive_output_fails_atomically
 fn calculation_text_keeps_its_node_and_byte_budgets() {
     use crate::css::support::failure_classes::SerializationFailure as K;
     use CssSerializationLimits as L;
-    let calculation = CssFrequencyCalculation::try_from_components(
+    let calculation = CssCalculation::<CssFrequency>::try_from_components(
         parse_component_values("calc(1hz + 2hz)").unwrap(),
         Default::default(),
     )
     .unwrap();
     let raw = calculation.serialize_tokens(Default::default()).unwrap();
-    let value = CssFrequencyValue::try_from_calculation(calculation).unwrap();
+    let value = CssNumeric::<CssFrequency>::try_from_calculation(calculation).unwrap();
     let before = value.clone();
     assert_eq!(
         value.serialize_specified(L::new(4, 3, 9)).unwrap(),
@@ -378,8 +387,8 @@ fn calculation_text_keeps_its_node_and_byte_budgets() {
             raw.as_css()
         );
     }
-    let math = CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(
+    let math = CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(
             parse_component_values("calc(1 / 3)").unwrap(),
             Default::default(),
         )
@@ -580,8 +589,12 @@ mod composed_ordinary_values {
     #[test]
     fn ratio_and_filter_count_present_child_visits_and_actual_rounded_bytes() {
         let ratio = CssSpecifiedRatio::new(
-            CssRatioOperand::try_from_component(component(".12345649")).unwrap(),
-            Some(CssRatioOperand::try_from_component(component(".1234565")).unwrap()),
+            CssNumeric::<CssNumber, CssNonNegative>::try_from_component(component(".12345649"))
+                .unwrap(),
+            Some(
+                CssNumeric::<CssNumber, CssNonNegative>::try_from_component(component(".1234565"))
+                    .unwrap(),
+            ),
         );
         let expected = "0.123456 / 0.123457";
         // No aggregate visit: the existing pair writer visits two scalars.
@@ -663,7 +676,6 @@ mod composed_ordinary_values {
         );
         assert_eq!(
             values.values()[0]
-                .time()
                 .literal()
                 .unwrap()
                 .numeric()

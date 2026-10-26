@@ -149,8 +149,11 @@ fn origin_clone(actual: &CssValueOrigin, expected: &CssValueOrigin) {
         assert_eq!(actual.span(), expected.span());
     }
 }
-fn time_clone(actual: &CssTimeValue, expected: &CssTimeValue) {
-    assert_eq!(actual, expected); // Raw equality includes every component origin.
+fn time_clone<R: CssRange<CssTime>>(
+    actual: &CssNumeric<CssTime, R>,
+    expected: &CssNumeric<CssTime, R>,
+) {
+    assert_eq!(actual, expected); // Value equality ignores origins; checked below.
     origin_clone(actual.origin(), expected.origin());
     if let Some(actual) = actual.calculation() {
         assert_eq!(
@@ -166,9 +169,12 @@ fn count_clone(actual: &CssAnimationIterationCount, expected: &CssAnimationItera
         CssAnimationIterationCount::Number(expected),
     ) = (actual, expected)
     {
-        assert_eq!(actual, expected); // Numeric owner includes original components.
+        assert_eq!(actual, expected); // Numeric value equality ignores origins.
         origin_clone(actual.origin(), expected.origin());
-        assert_eq!(actual.literal_component(), expected.literal_component());
+        assert_eq!(
+            actual.literal().map(|literal| literal.component()),
+            expected.literal().map(|literal| literal.component())
+        );
         if let Some(actual) = actual.calculation() {
             assert_eq!(
                 actual.components(),
@@ -189,21 +195,24 @@ fn easing_clone(actual: &CssEasing, expected: &CssEasing) {
             ] {
                 assert_eq!(a, b);
                 origin_clone(a.origin(), b.origin());
-                assert_eq!(a.literal_component(), b.literal_component());
+                assert_eq!(
+                    a.literal().map(|literal| literal.component()),
+                    b.literal().map(|literal| literal.component())
+                );
                 if let Some(a) = a.calculation() {
                     assert_eq!(a.components(), b.calculation().unwrap().components());
                 }
             }
         }
-        (CssEasing::Steps(a), CssEasing::Steps(b)) => match (a.count(), b.count()) {
-            (CssPositiveIntegerValue::Literal(a), CssPositiveIntegerValue::Literal(b)) => {
-                assert_eq!(a.integer().component(), b.integer().component());
-                origin_clone(
-                    a.integer().component().origin(),
-                    b.integer().component().origin(),
-                );
+        (CssEasing::Steps(a), CssEasing::Steps(b)) => match (
+            (a.count().literal(), a.count().calculation()),
+            (b.count().literal(), b.count().calculation()),
+        ) {
+            ((Some(a), _), (Some(b), _)) => {
+                assert_eq!(a.component(), b.component());
+                origin_clone(a.component().origin(), b.component().origin());
             }
-            (CssPositiveIntegerValue::Calculation(a), CssPositiveIntegerValue::Calculation(b)) => {
+            ((_, Some(a)), (_, Some(b))) => {
                 assert_eq!(a.components(), b.components());
                 origin_clone(a.origin(), b.origin());
             }
@@ -224,7 +233,7 @@ fn animation(source: &CssDeclaration) -> &CssAnimationList {
 fn explicit_children(actual: &Lists<'_>, original: &CssAnimationList) {
     for (index, item) in original.values().iter().enumerate() {
         if let Some(value) = item.duration() {
-            time_clone(actual.durations.values()[index].time(), value.time());
+            time_clone(&actual.durations.values()[index], value);
         }
         if let Some(value) = item.delay() {
             time_clone(&actual.delays.values()[index], value);
@@ -270,7 +279,7 @@ fn eight_borrowed_initial_variants_have_exact_programmatic_scalar_contents() {
         );
         match value.view() {
             CssLonghandValueRef::AnimationDuration(v) => {
-                let time = v.values()[0].time();
+                let time = &v.values()[0];
                 assert_eq!(time.origin(), &CssValueOrigin::Programmatic);
                 assert_eq!(time.literal().unwrap().numeric().representation(), "0");
                 assert_eq!(time.literal().unwrap().unit(), CssTimeUnit::Seconds);
@@ -288,7 +297,7 @@ fn eight_borrowed_initial_variants_have_exact_programmatic_scalar_contents() {
                 };
                 assert_eq!(v.origin(), &CssValueOrigin::Programmatic);
                 assert_eq!(
-                    v.literal_component(),
+                    v.literal().map(|literal| literal.component()),
                     Some(&CssComponentValue::try_number("1").unwrap())
                 );
             }
@@ -352,7 +361,7 @@ fn direct_children(values: &CssLonghandContributions, source: &CssDeclaration) {
             CssKnownPropertyValueRef::AnimationDuration(b),
         ) => {
             for (a, b) in a.values().iter().zip(b.durations().values()) {
-                time_clone(a.time(), b.time());
+                time_clone(a, b);
             }
         }
         (CssLonghandValueRef::AnimationDelay(a), CssKnownPropertyValueRef::AnimationDelay(b)) => {
@@ -487,7 +496,7 @@ fn sparse_items_use_scalar_defaults_and_preserve_explicit_child_origins() {
         };
         assert_eq!(count.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(
-            count.literal_component(),
+            count.literal().map(|literal| literal.component()),
             Some(&CssComponentValue::try_number("1").unwrap())
         );
     }
@@ -528,14 +537,17 @@ fn explicit_initial_slots_retain_parsed_origins_while_omitted_defaults_are_progr
     }
     for times in [
         [
-            actual.durations.values()[0].time(),
-            actual.durations.values()[1].time(),
+            actual.durations.values()[0].clone().into_any_range(),
+            actual.durations.values()[1].clone().into_any_range(),
         ],
-        [&actual.delays.values()[0], &actual.delays.values()[1]],
+        [
+            actual.delays.values()[0].clone(),
+            actual.delays.values()[1].clone(),
+        ],
     ] {
         assert!(matches!(times[0].origin(), CssValueOrigin::Parsed(_)));
         assert_eq!(times[1].origin(), &CssValueOrigin::Programmatic);
-        assert_ne!(times[0], times[1]);
+        assert_eq!(times[0], times[1]);
     }
     let [
         CssAnimationIterationCount::Number(explicit),
@@ -546,7 +558,7 @@ fn explicit_initial_slots_retain_parsed_origins_while_omitted_defaults_are_progr
     };
     assert!(matches!(explicit.origin(), CssValueOrigin::Parsed(_)));
     assert_eq!(default.origin(), &CssValueOrigin::Programmatic);
-    assert_ne!(explicit, default);
+    assert_eq!(explicit, default);
     assert_eq!(actual.counts.values()[0], actual.counts.values()[1]);
 }
 
@@ -585,7 +597,7 @@ fn symbolic_count_and_easing_children_retain_original_graphs_and_numeric_precisi
                 .unwrap(),
             "calc(2.5)"
         );
-        assert!(actual.durations.values()[0].time().calculation().is_some());
+        assert!(actual.durations.values()[0].calculation().is_some());
         let CssAnimationIterationCount::Number(count) = &actual.counts.values()[0] else {
             panic!("count")
         };
@@ -644,11 +656,7 @@ fn mixed_programmatic_and_parsed_children_survive_checked_projection_and_reentry
     let actual = lists(&values);
     explicit_children(&actual, animation(&source));
     assert_eq!(
-        actual.durations.values()[0]
-            .time()
-            .literal()
-            .unwrap()
-            .component(),
+        actual.durations.values()[0].literal().unwrap().component(),
         &dimension
     );
     assert_eq!(
@@ -658,7 +666,10 @@ fn mixed_programmatic_and_parsed_children_survive_checked_projection_and_reentry
     let CssAnimationIterationCount::Number(count) = &actual.counts.values()[0] else {
         panic!("count")
     };
-    assert_eq!(count.literal_component(), Some(&number));
+    assert_eq!(
+        count.literal().map(|literal| literal.component()),
+        Some(&number)
+    );
     assert_eq!(count.origin(), &CssValueOrigin::Programmatic);
     assert!(matches!(
         actual.delays.values()[0].origin(),
@@ -719,10 +730,10 @@ fn late_recovered_time_projections_keep_implicit_graphs_through_output_and_norma
         explicit_children(&actual, original);
         let time = if duration {
             assert!(CssDurationList::try_new(actual.durations.values().to_vec()).is_none());
-            actual.durations.values()[1].time()
+            actual.durations.values()[1].clone().into_any_range()
         } else {
             assert!(CssDelayList::try_new(actual.delays.values().to_vec()).is_none());
-            &actual.delays.values()[1]
+            actual.delays.values()[1].clone()
         };
         let raw = time.calculation().unwrap().components().clone();
         implicit_origin(&raw, css);

@@ -60,7 +60,8 @@ fn parses_spacing_inset_and_z_index_values() {
         right
             .length_percentage()
             .unwrap()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "10",
         "px",
@@ -69,14 +70,16 @@ fn parses_spacing_inset_and_z_index_values() {
         bottom
             .length_percentage()
             .unwrap()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "5",
     );
     assert_length_literal(
         left.length_percentage()
             .unwrap()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "10",
         "px",
@@ -150,7 +153,11 @@ fn parses_spacing_longhands_with_existing_component_rules() {
     let CssBorderWidth::Length(length) = width else {
         panic!("exact border width")
     };
-    assert_length_literal(length.literal_component().unwrap(), "2", "px");
+    assert_length_literal(
+        length.literal().map(|literal| literal.component()).unwrap(),
+        "2",
+        "px",
+    );
 }
 
 #[test]
@@ -233,16 +240,32 @@ fn parses_border_radius_shorthand_and_longhands() {
         BorderTopLeftRadius,
         value
     );
-    assert_length_literal(corner.horizontal().literal_component().unwrap(), "4", "px");
+    assert_length_literal(
+        corner
+            .horizontal()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
+        "4",
+        "px",
+    );
     assert_percentage_literal(
         corner
             .authored_vertical()
             .unwrap()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "10",
     );
-    assert_percentage_literal(corner.vertical().literal_component().unwrap(), "10");
+    assert_percentage_literal(
+        corner
+            .vertical()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
+        "10",
+    );
     let radii = property_payload!(
         declaration(
             ".panel { border-radius: 1px 2px 3px / 4px 5px; }",
@@ -260,7 +283,11 @@ fn parses_border_radius_shorthand_and_longhands() {
         (radii.bottom_left(), "2", "5"),
     ] {
         assert_length_literal(
-            corner.horizontal().literal_component().unwrap(),
+            corner
+                .horizontal()
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap(),
             horizontal,
             "px",
         );
@@ -268,13 +295,18 @@ fn parses_border_radius_shorthand_and_longhands() {
             corner
                 .authored_vertical()
                 .unwrap()
-                .literal_component()
+                .literal()
+                .map(|literal| literal.component())
                 .unwrap(),
             vertical,
             "px",
         );
         assert_length_literal(
-            corner.vertical().literal_component().unwrap(),
+            corner
+                .vertical()
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap(),
             vertical,
             "px",
         );
@@ -346,14 +378,14 @@ fn checked_border_constructor_rejects_empty_shorthands() {
 fn checked_border_width_rejects_negative_and_percentage_values() {
     for invalid in ["-1px", "10%", "auto", "min-content"] {
         assert!(
-            CssSpecifiedNonNegativeLength::try_from_component(
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token(invalid).unwrap()
             )
             .is_err(),
             "{invalid}"
         );
     }
-    let width = CssSpecifiedNonNegativeLength::try_from_component(
+    let width = CssNumeric::<CssLength, CssNonNegative>::try_from_component(
         CssComponentValue::try_token("1px").unwrap(),
     )
     .unwrap();
@@ -385,7 +417,7 @@ fn checked_corner_radius_constructor_rejects_parser_invalid_values() {
         "-1%",
     ] {
         assert!(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token(css).unwrap()
             )
             .is_err(),
@@ -393,13 +425,14 @@ fn checked_corner_radius_constructor_rejects_parser_invalid_values() {
         );
     }
     for css in ["-1px", "-1%"] {
-        let calculation = CssLengthPercentageCalculation::try_from_components(
+        let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
             parse_component_values(css).unwrap(),
             Default::default(),
         )
         .unwrap();
         assert!(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation).is_err()
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(calculation)
+                .is_err()
         );
     }
     let radius = CssCornerRadiusValue::new(
@@ -407,12 +440,18 @@ fn checked_corner_radius_constructor_rejects_parser_invalid_values() {
         Some(nonnegative_length_percentage("25%")),
     );
     assert!(exact_dimension(
-        radius.horizontal().literal_component(),
+        radius
+            .horizontal()
+            .literal()
+            .map(|literal| literal.component()),
         "1",
         "px"
     ));
     assert!(exact_percentage(
-        radius.vertical().literal_component(),
+        radius
+            .vertical()
+            .literal()
+            .map(|literal| literal.component()),
         "25"
     ));
 }
@@ -420,11 +459,11 @@ fn checked_corner_radius_constructor_rejects_parser_invalid_values() {
 #[test]
 fn checked_shadow_constructor_rejects_invalid_pairings_and_lengths() {
     assert!(
-        CssSpecifiedLength::try_from_component(CssComponentValue::try_token("auto").unwrap())
+        CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token("auto").unwrap())
             .is_err()
     );
     assert!(
-        CssSpecifiedNonNegativeLength::try_from_component(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension("-3", "px").unwrap()
         )
         .is_err()
@@ -450,22 +489,36 @@ fn checked_shadow_constructor_rejects_invalid_pairings_and_lengths() {
     )
     .unwrap();
     assert!(exact_dimension(
-        shadow.offset_x().literal_component(),
+        shadow
+            .offset_x()
+            .literal()
+            .map(|literal| literal.component()),
         "-1",
         "px"
     ));
     assert!(exact_dimension(
-        shadow.offset_y().literal_component(),
+        shadow
+            .offset_y()
+            .literal()
+            .map(|literal| literal.component()),
         "2",
         "px"
     ));
     assert!(exact_dimension(
-        shadow.blur_radius().unwrap().literal_component(),
+        shadow
+            .blur_radius()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component()),
         "3",
         "px"
     ));
     assert!(exact_dimension(
-        shadow.spread_radius().unwrap().literal_component(),
+        shadow
+            .spread_radius()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component()),
         "-4",
         "px"
     ));

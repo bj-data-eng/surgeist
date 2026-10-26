@@ -1128,7 +1128,10 @@ fn signed_thickness(observed: &Observed<'_>) {
     let surgeist_css::CssTextDecorationThickness::Length(length) = value.value() else {
         panic!("signed length branch")
     };
-    let component = length.literal_component().expect("exact literal");
+    let component = length
+        .literal()
+        .map(|literal| literal.component())
+        .expect("exact literal");
     assert!(matches!(
         component.view(),
         surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension {

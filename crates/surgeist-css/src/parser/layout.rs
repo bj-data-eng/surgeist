@@ -125,15 +125,19 @@ pub(super) fn parse_empty_cells<'i, 't>(
 pub(super) fn parse_page_line_minimum<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssPageLineMinimum, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssInteger, CssPositive>, ParseError<'i, Error>> {
     /// Fragmentation 3 `<integer [1,∞]>`.
-    const PAGE_LINE_MINIMUM: NumericType<CssPageLineMinimum> = NumericType {
+    const PAGE_LINE_MINIMUM: NumericType<CssNumeric<CssInteger, CssPositive>> = NumericType {
         root: CalculationRoot::Integer,
         tokens: LiteralTokens::Number,
-        literal: |component, _| CssPageLineMinimum::try_from_component(component),
+        literal: |component, _| {
+            CssNumeric::<CssInteger, CssPositive>::try_from_component(component)
+        },
         calculation: |expression| {
-            CssPageLineMinimum::try_from_calculation(CssIntegerCalculation::from_expression(
-                expression,
+            CssNumeric::<CssInteger, CssPositive>::from_parser_calculation(CssCalculation::<
+                CssInteger,
+            >::from_expression(
+                expression
             ))
         },
     };
@@ -465,14 +469,16 @@ pub(super) fn parse_opacity<'i, 't>(
                     if calculation.as_ref().numeric_type().percent_hint().is_some() =>
                 {
                     CssOpacityValue::HintedNumberCalculation(
-                        CssHintedNumberCalculation::from_expression(calculation),
+                        CssCalculation::<CssHintedNumber>::from_expression(calculation),
                     )
                 }
-                CssCalculationType::Number => CssOpacityValue::NumberCalculation(
-                    CssNumberCalculation::from_expression(calculation),
-                ),
+                CssCalculationType::Number => {
+                    CssOpacityValue::NumberCalculation(
+                        CssCalculation::<CssNumber>::from_expression(calculation),
+                    )
+                }
                 CssCalculationType::Percentage => CssOpacityValue::PercentageCalculation(
-                    CssPercentageCalculation::from_expression(calculation),
+                    CssCalculation::<CssPercentage>::from_expression(calculation),
                 ),
                 _ => unreachable!("checked opacity Number or Percentage"),
             })
@@ -512,18 +518,26 @@ pub(super) fn parse_aspect_ratio<'i, 't>(
 fn parse_ratio_operand<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<crate::CssRatioOperand, ParseError<'i, Error>> {
+) -> std::result::Result<
+    crate::CssNumeric<crate::CssNumber, crate::CssNonNegative>,
+    ParseError<'i, Error>,
+> {
     /// Values 4 `<ratio>` operand: `<number [0,∞]>`.
-    const RATIO_OPERAND: NumericType<crate::CssRatioOperand> = NumericType {
-        root: CalculationRoot::Number,
-        tokens: LiteralTokens::Number,
-        literal: |component, _| crate::CssRatioOperand::try_from_component(component),
-        calculation: |expression| {
-            crate::CssRatioOperand::try_from_calculation(CssNumberCalculation::from_expression(
+    const RATIO_OPERAND: NumericType<crate::CssNumeric<crate::CssNumber, crate::CssNonNegative>> =
+        NumericType {
+            root: CalculationRoot::Number,
+            tokens: LiteralTokens::Number,
+            literal: |component, _| {
+                crate::CssNumeric::<crate::CssNumber, crate::CssNonNegative>::try_from_component(
+                    component,
+                )
+            },
+            calculation: |expression| {
+                crate::CssNumeric::<crate::CssNumber, crate::CssNonNegative>::from_parser_calculation(CssCalculation::<CssNumber>::from_expression(
                 expression,
             ))
-        },
-    };
+            },
+        };
     parse_numeric_type(input, numeric, &RATIO_OPERAND)
 }
 
@@ -545,7 +559,7 @@ pub(super) fn parse_scrollbar_width<'i, 't>(
 pub(super) fn parse_order<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssIntegerValue, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssInteger>, ParseError<'i, Error>> {
     parse_integer_value(input, numeric)
 }
 
@@ -561,15 +575,16 @@ pub(super) fn parse_z_index<'i, 't>(
         Token::Number { .. } => {
             input.reset(&numeric_start);
             parse_integer_literal(input, numeric)
-                .map(CssIntegerValue::Literal)
+                .map(CssNumeric::from_literal)
                 .map(CssZIndexValue::Integer)
         }
         Token::Dimension { .. } => Err(unexpected_at(location)),
         Token::Function(name) if crate::numeric::is_math_function(name) => {
-            parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)
-                .map(CssIntegerCalculation::from_expression)
-                .map(CssIntegerValue::Calculation)
+            let expression =
+                parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)?;
+            CssNumeric::from_parser_calculation(CssCalculation::from_expression(expression))
                 .map(CssZIndexValue::Integer)
+                .map_err(|_| unexpected_at(location))
         }
         token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }

@@ -456,7 +456,7 @@ mod suppression_tests {
     #[test]
     fn failing_suppressed_literal_preserves_nodes_and_resumes_final_emission() {
         let mut writer = SpecifiedRuleWriter::new(CssSerializationLimits::new(1, 0, 1));
-        let zero = crate::CssSpecifiedLengthPercentage::zero();
+        let zero = crate::CssNumeric::<crate::CssLengthPercentage>::exact_zero();
         let error = writer
             .without_output(|writer| zero.append_specified(&mut writer.context, &mut writer.css))
             .unwrap_err();

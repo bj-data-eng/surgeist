@@ -8,11 +8,10 @@ use surgeist_css::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
     CssErrorCode, CssFontPaletteBase, CssFontPaletteDescriptor,
     CssFontPaletteDescriptorKind as Kind, CssFontPaletteDescriptorValue,
-    CssFontPaletteDescriptorValueRef, CssFontPaletteIndex, CssFontPaletteName,
-    CssFontPaletteValuesRule, CssIntegerValue, CssNamespaceContext, CssNormalizedItem,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSerializationLimits, CssValueOrigin,
-    normalize_sheet, parse_component_values, parse_font_palette_descriptor_value, parse_rule,
-    parse_sheet,
+    CssFontPaletteDescriptorValueRef, CssFontPaletteName, CssFontPaletteValuesRule, CssInteger,
+    CssNamespaceContext, CssNonNegative, CssNormalizedItem, CssNumeric, CssRecoveryAction, CssRule,
+    CssRuleContextKindRef, CssSerializationLimits, CssValueOrigin, normalize_sheet,
+    parse_component_values, parse_font_palette_descriptor_value, parse_rule, parse_sheet,
 };
 
 #[test]
@@ -23,11 +22,11 @@ fn checked_construction_rejects_missing_family_negative_index_and_tight_componen
             .is_invalid_name()
     );
     assert!(
-        CssFontPaletteIndex::try_new(CssIntegerValue::Literal(
-            surgeist_css::CssIntegerLiteral::from_i32(-1)
-        ))
+        CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(
+            surgeist_css::CssNumericLiteral::<surgeist_css::CssInteger>::from_i32(-1)
+        )
         .unwrap_err()
-        .is_negative_index()
+        .is_out_of_range()
     );
     assert!(
         CssFontPaletteValuesRule::try_new(CssFontPaletteName::try_new("--brand").unwrap(), vec![])
@@ -347,7 +346,6 @@ fn descriptors_keep_occurrences_and_repeated_override_pairs() {
     assert_eq!(
         overrides[0]
             .index()
-            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         "0"
@@ -355,7 +353,6 @@ fn descriptors_keep_occurrences_and_repeated_override_pairs() {
     assert_eq!(
         overrides[1]
             .index()
-            .value()
             .serialize_specified(Default::default())
             .unwrap(),
         "0"
@@ -366,13 +363,7 @@ fn descriptors_keep_occurrences_and_repeated_override_pairs() {
     else {
         panic!("expected exact base index");
     };
-    assert_eq!(
-        index
-            .value()
-            .serialize_specified(Default::default())
-            .unwrap(),
-        "7"
-    );
+    assert_eq!(index.serialize_specified(Default::default()).unwrap(), "7");
 }
 
 #[test]
@@ -693,13 +684,7 @@ fn strict_reentry_rejects_residual_functions_before_grammar() {
     else {
         panic!("canonical replacement must remain an index");
     };
-    assert_eq!(
-        index
-            .value()
-            .serialize_specified(Default::default())
-            .unwrap(),
-        "12"
-    );
+    assert_eq!(index.serialize_specified(Default::default()).unwrap(), "12");
     assert!(
         checked
             .reparse_after_substitution(parse_component_values("13").unwrap(), Default::default())

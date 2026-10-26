@@ -829,7 +829,7 @@ fn number(value: &str, programmatic: bool) -> CssColorComponent {
     };
     CssColorComponent::Number(CssColorNumberLiteral::try_from_component(token).unwrap())
 }
-fn number_calc(value: &str, programmatic: bool) -> CssNumberCalculation {
+fn number_calc(value: &str, programmatic: bool) -> CssCalculation<CssNumber> {
     let raw = if programmatic {
         let leaf = CssComponentValue::try_number(value).unwrap();
         let args = CssComponentValues::try_new(vec![leaf], Default::default()).unwrap();
@@ -838,7 +838,7 @@ fn number_calc(value: &str, programmatic: bool) -> CssNumberCalculation {
     } else {
         components(&format!("calc({value})"))
     };
-    CssNumberCalculation::try_from_components(raw, Default::default()).unwrap()
+    CssCalculation::<CssNumber>::try_from_components(raw, Default::default()).unwrap()
 }
 /// All-zero limits fail on input nodes first, a zero projection limit fails
 /// on projection nodes, and a one-byte limit fails on bytes.

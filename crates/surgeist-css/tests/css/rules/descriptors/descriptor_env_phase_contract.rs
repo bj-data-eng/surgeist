@@ -352,7 +352,7 @@ fn programmatic_ordinary_values_and_mixed_index_replacements_do_not_fabricate_ra
     let CounterView::Pad(pad) = value.view() else {
         panic!("checked pad")
     };
-    let surgeist_css::CssIntegerValue::Literal(minimum) = pad.minimum_length() else {
+    let Some(minimum) = pad.minimum_length().literal() else {
         panic!("ordinary literal pad length")
     };
     let CssValueOrigin::Parsed(number) = minimum.origin() else {

@@ -1,8 +1,8 @@
 //! Borrowed intrinsic parsed alpha alongside the unchanged authored color graph.
 
 use crate::{
-    CssColorComponent, CssHintedNumberCalculation, CssNumberCalculation, CssPercentageCalculation,
-    CssValueOrigin, exact_decimal::LexicalDecimal,
+    CssCalculation, CssColorComponent, CssHintedNumber, CssNumber, CssPercentage, CssValueOrigin,
+    exact_decimal::LexicalDecimal,
 };
 
 /// A borrowed ordinary color alpha at the intrinsic parsed-value phase.
@@ -58,11 +58,11 @@ pub enum CssParsedColorAlphaRef<'a> {
     /// A direct number or percentage with exact bounded endpoint classification.
     Scalar(CssColorAlphaScalarRef<'a>),
     /// An authored number calculation awaiting its applicable range/evaluation phase.
-    NumberCalculation(&'a CssNumberCalculation),
+    NumberCalculation(&'a CssCalculation<CssNumber>),
     /// A Number calculation whose percentage basis remains contextual.
-    HintedNumberCalculation(&'a CssHintedNumberCalculation),
+    HintedNumberCalculation(&'a CssCalculation<CssHintedNumber>),
     /// An authored percentage calculation awaiting its applicable range/evaluation phase.
-    PercentageCalculation(&'a CssPercentageCalculation),
+    PercentageCalculation(&'a CssCalculation<CssPercentage>),
 }
 
 #[derive(Clone, Copy, Debug)]

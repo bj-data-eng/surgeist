@@ -1,9 +1,8 @@
 //! Exact CSS `<length>` and nonnegative `<length-percentage>` contracts.
 
 use surgeist_css::{
-    CssComponentValue, CssLengthCalculation, CssLengthPercentageCalculation,
-    CssSerializationLimits, CssSpecifiedLength, CssSpecifiedNonNegativeLengthPercentage,
-    CssValueOrigin, parse_component_values,
+    CssCalculation, CssComponentValue, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric,
+    CssSerializationLimits, CssValueOrigin, parse_component_values,
 };
 
 fn component(text: &str) -> CssComponentValue {
@@ -24,8 +23,11 @@ fn signed_length_accepts_only_exact_length_literals_and_unitless_zero() {
         ("-0", "0"),
         ("-0.000e999", "0"),
     ] {
-        let value = CssSpecifiedLength::try_from_component(component(text)).unwrap();
-        assert!(value.literal_component().is_some(), "{text}");
+        let value = CssNumeric::<CssLength>::try_from_component(component(text)).unwrap();
+        assert!(
+            value.literal().map(|literal| literal.component()).is_some(),
+            "{text}"
+        );
         assert!(value.calculation().is_none(), "{text}");
         assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
         assert_eq!(
@@ -35,10 +37,10 @@ fn signed_length_accepts_only_exact_length_literals_and_unitless_zero() {
         );
     }
     for text in ["1", "1e-999", "10%", "auto", "2deg", "2future"] {
-        let error = CssSpecifiedLength::try_from_component(component(text)).unwrap_err();
+        let error = CssNumeric::<CssLength>::try_from_component(component(text)).unwrap_err();
         assert!(error.is_root_domain_mismatch(), "{text}");
     }
-    let initial = CssSpecifiedLength::zero();
+    let initial = CssNumeric::<CssLength>::zero();
     assert!(matches!(initial.origin(), CssValueOrigin::Programmatic));
     assert_eq!(
         initial.serialize_specified(Default::default()).unwrap(),
@@ -57,9 +59,13 @@ fn nonnegative_length_percentage_checks_exact_ordinary_sign_and_domain() {
         ("2\\50 X", "2px"),
         ("12.5%", "12.5%"),
     ] {
-        let value = CssSpecifiedNonNegativeLengthPercentage::try_from_component(component(text))
-            .unwrap_or_else(|error| panic!("{text}: {error:?}"));
-        assert!(value.literal_component().is_some(), "{text}");
+        let value =
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component(text))
+                .unwrap_or_else(|error| panic!("{text}: {error:?}"));
+        assert!(
+            value.literal().map(|literal| literal.component()).is_some(),
+            "{text}"
+        );
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
             expected,
@@ -67,28 +73,30 @@ fn nonnegative_length_percentage_checks_exact_ordinary_sign_and_domain() {
         );
     }
     for text in ["-1px", "-1e-999px", "-1e-999%"] {
-        let error = CssSpecifiedNonNegativeLengthPercentage::try_from_component(component(text))
-            .unwrap_err();
+        let error =
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component(text))
+                .unwrap_err();
         assert!(error.is_out_of_range(), "{text}");
         assert_eq!(error.origin(), Some(component(text).origin()));
     }
     for text in ["1", "1e-999", "auto", "2deg", "2future"] {
-        let error = CssSpecifiedNonNegativeLengthPercentage::try_from_component(component(text))
-            .unwrap_err();
+        let error =
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component(text))
+                .unwrap_err();
         assert!(error.is_root_domain_mismatch(), "{text}");
     }
 }
 
 #[test]
 fn extreme_ordinary_magnitudes_keep_exact_digits_and_bounded_serialization() {
-    let huge = CssSpecifiedLength::try_from_component(component("1e999px")).unwrap();
+    let huge = CssNumeric::<CssLength>::try_from_component(component("1e999px")).unwrap();
     let expected_huge = format!("1{}px", "0".repeat(999));
     assert_eq!(
         huge.serialize_specified(Default::default()).unwrap(),
         expected_huge
     );
 
-    let tiny = CssSpecifiedLength::try_from_component(component("1e-999px")).unwrap();
+    let tiny = CssNumeric::<CssLength>::try_from_component(component("1e-999px")).unwrap();
     let expected_tiny = "0px";
     assert_eq!(
         tiny.serialize_specified(Default::default()).unwrap(),
@@ -96,7 +104,8 @@ fn extreme_ordinary_magnitudes_keep_exact_digits_and_bounded_serialization() {
     );
 
     let huge_percent =
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component("1e999%")).unwrap();
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component("1e999%"))
+            .unwrap();
     assert_eq!(
         huge_percent
             .serialize_specified(Default::default())
@@ -122,46 +131,62 @@ fn extreme_ordinary_magnitudes_keep_exact_digits_and_bounded_serialization() {
 
 #[test]
 fn checked_calculation_entry_rechecks_bare_roots_and_defers_function_math() {
-    let signed_bare = CssLengthCalculation::try_from_components(
+    let signed_bare = CssCalculation::<CssLength>::try_from_components(
         parse_component_values("-4px").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let signed = CssSpecifiedLength::try_from_calculation(signed_bare).unwrap();
-    assert!(signed.literal_component().is_some());
+    let signed = CssNumeric::<CssLength>::try_from_calculation(signed_bare).unwrap();
+    assert!(
+        signed
+            .literal()
+            .map(|literal| literal.component())
+            .is_some()
+    );
     assert!(signed.calculation().is_none());
     assert_eq!(
         signed.serialize_specified(Default::default()).unwrap(),
         "-4px"
     );
 
-    let forbidden_bare = CssLengthPercentageCalculation::try_from_components(
+    let forbidden_bare = CssCalculation::<CssLengthPercentage>::try_from_components(
         parse_component_values("-1e-999px").unwrap(),
         Default::default(),
     )
     .unwrap();
     assert!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(forbidden_bare)
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(forbidden_bare)
             .unwrap_err()
             .is_out_of_range()
     );
-    let allowed_bare = CssLengthPercentageCalculation::try_from_components(
+    let allowed_bare = CssCalculation::<CssLengthPercentage>::try_from_components(
         parse_component_values("1e999%").unwrap(),
         Default::default(),
     )
     .unwrap();
     let allowed =
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(allowed_bare).unwrap();
-    assert!(allowed.literal_component().is_some());
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(allowed_bare)
+            .unwrap();
+    assert!(
+        allowed
+            .literal()
+            .map(|literal| literal.component())
+            .is_some()
+    );
     assert!(allowed.calculation().is_none());
 
-    let margin_math = CssLengthCalculation::try_from_components(
+    let margin_math = CssCalculation::<CssLength>::try_from_components(
         parse_component_values("calc(-2px)").unwrap(),
         Default::default(),
     )
     .unwrap();
-    let margin = CssSpecifiedLength::try_from_calculation(margin_math).unwrap();
-    assert!(margin.literal_component().is_none());
+    let margin = CssNumeric::<CssLength>::try_from_calculation(margin_math).unwrap();
+    assert!(
+        margin
+            .literal()
+            .map(|literal| literal.component())
+            .is_none()
+    );
     assert!(margin.calculation().is_some());
     assert!(matches!(margin.origin(), CssValueOrigin::Parsed(_)));
     assert!(
@@ -171,14 +196,20 @@ fn checked_calculation_entry_rechecks_bare_roots_and_defers_function_math() {
             .is_empty()
     );
 
-    let padding_math = CssLengthPercentageCalculation::try_from_components(
+    let padding_math = CssCalculation::<CssLengthPercentage>::try_from_components(
         parse_component_values("calc(2px + 3%)").unwrap(),
         Default::default(),
     )
     .unwrap();
     let padding =
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(padding_math).unwrap();
-    assert!(padding.literal_component().is_none());
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(padding_math)
+            .unwrap();
+    assert!(
+        padding
+            .literal()
+            .map(|literal| literal.component())
+            .is_none()
+    );
     assert!(padding.calculation().is_some());
     assert!(
         !padding
@@ -187,7 +218,7 @@ fn checked_calculation_entry_rechecks_bare_roots_and_defers_function_math() {
             .is_empty()
     );
     assert!(
-        CssLengthCalculation::try_from_components(
+        CssCalculation::<CssLength>::try_from_components(
             parse_component_values("calc(2px + 3%)").unwrap(),
             Default::default()
         )
@@ -198,13 +229,13 @@ fn checked_calculation_entry_rechecks_bare_roots_and_defers_function_math() {
 #[test]
 fn programmatic_literals_retain_programmatic_origin_and_exact_value() {
     let component = CssComponentValue::try_dimension("1e999", "Px").unwrap();
-    let length = CssSpecifiedLength::try_from_component(component).unwrap();
+    let length = CssNumeric::<CssLength>::try_from_component(component).unwrap();
     assert!(matches!(length.origin(), CssValueOrigin::Programmatic));
     assert_eq!(
         length.serialize_specified(Default::default()).unwrap(),
         format!("1{}px", "0".repeat(999))
     );
-    let percent = CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+    let percent = CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token("1e-999%").unwrap(),
     )
     .unwrap();

@@ -42,7 +42,12 @@ fn assert_edges(actual: &CssMarginShorthand, expected: [f32; 4]) {
         let CssMarginValue::LengthPercentage(length) = value else {
             panic!("expected authored margin length")
         };
-        assert!(length.literal_component().is_some());
+        assert!(
+            length
+                .literal()
+                .map(|literal| literal.component())
+                .is_some()
+        );
         assert_eq!(
             length.serialize_specified(Default::default()).unwrap(),
             format!("{expected}px")

@@ -174,7 +174,7 @@ fn append_vertical(value: &CssVerticalPosition, writer: &mut SpecifiedRuleWriter
 }
 
 fn append_offset(
-    offset: &crate::CssSpecifiedLengthPercentage,
+    offset: &crate::CssNumeric<crate::CssLengthPercentage>,
     writer: &mut SpecifiedRuleWriter,
 ) -> Result<()> {
     offset.append_specified(&mut writer.context, &mut writer.css)

@@ -32,7 +32,7 @@ fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
     declaration.clone()
 }
 
-fn retained_integer(declaration: &CssDeclaration) -> &CssIntegerLiteral {
+fn retained_integer(declaration: &CssDeclaration) -> &CssNumericLiteral<CssInteger> {
     let value = match declaration.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::Order(value) => value.value(),
         CssKnownPropertyValueRef::ZIndex(value) => match value.value() {
@@ -41,7 +41,7 @@ fn retained_integer(declaration: &CssDeclaration) -> &CssIntegerLiteral {
         },
         _ => panic!("selected integer wrapper"),
     };
-    let CssIntegerValue::Literal(literal) = value else {
+    let Some(literal) = value.literal() else {
         panic!("ordinary integer")
     };
     literal
@@ -176,7 +176,8 @@ fn exact_i32_boundaries_signs_and_leading_zeros_retain_tokens() {
                 text
             );
             assert_eq!(
-                CssIntegerValue::Literal(retained_integer(&declaration).clone())
+                CssNumeric::<CssInteger>::try_from_literal(retained_integer(&declaration).clone())
+                    .unwrap()
                     .serialize_specified(Default::default())
                     .unwrap(),
                 expected.to_string()
@@ -229,12 +230,14 @@ fn z_index_auto_and_integer_math_keep_their_typed_boundaries() {
         for text in ["calc(1.5)", "calc(-1.5)", "calc(2px / 1px)"] {
             let declaration = parsed(property, text);
             let calculation = match declaration.known().unwrap().property_value().unwrap() {
-                CssKnownPropertyValueRef::Order(value) => match value.value() {
-                    CssIntegerValue::Calculation(value) => value,
-                    _ => panic!("unrounded integer calculation"),
-                },
+                CssKnownPropertyValueRef::Order(value) => value
+                    .value()
+                    .calculation()
+                    .expect("unrounded integer calculation"),
                 CssKnownPropertyValueRef::ZIndex(value) => match value.value() {
-                    CssZIndexValue::Integer(CssIntegerValue::Calculation(value)) => value,
+                    CssZIndexValue::Integer(value) => {
+                        value.calculation().expect("unrounded integer calculation")
+                    }
                     _ => panic!("unrounded integer calculation"),
                 },
                 _ => panic!("integer property"),

@@ -1,5 +1,5 @@
 use super::CssGridLineName;
-use crate::{CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLengthPercentage};
+use crate::{CssFlex, CssLengthPercentage, CssNonNegative, CssNumeric};
 
 pub(crate) fn adjacent_line_names<T>(
     previous: Option<&T>,
@@ -131,20 +131,20 @@ pub struct CssGridTrackBreadth {
 
 #[derive(Clone, Debug, PartialEq)]
 enum CssGridTrackBreadthRepresentation {
-    Length(CssSpecifiedNonNegativeLengthPercentage),
-    Fraction(CssSpecifiedNonNegativeFlex),
+    Length(CssNumeric<CssLengthPercentage, CssNonNegative>),
+    Fraction(CssNumeric<CssFlex, CssNonNegative>),
     MinContent,
     MaxContent,
     Auto,
 }
 
 impl CssGridTrackBreadth {
-    pub fn from_length_percentage(value: CssSpecifiedNonNegativeLengthPercentage) -> Self {
+    pub fn from_length_percentage(value: CssNumeric<CssLengthPercentage, CssNonNegative>) -> Self {
         Self {
             representation: CssGridTrackBreadthRepresentation::Length(value),
         }
     }
-    pub fn from_flex(value: CssSpecifiedNonNegativeFlex) -> Self {
+    pub fn from_flex(value: CssNumeric<CssFlex, CssNonNegative>) -> Self {
         Self {
             representation: CssGridTrackBreadthRepresentation::Fraction(value),
         }
@@ -179,14 +179,14 @@ impl CssGridTrackBreadth {
         }
     }
 
-    pub fn length_percentage(&self) -> Option<&CssSpecifiedNonNegativeLengthPercentage> {
+    pub fn length_percentage(&self) -> Option<&CssNumeric<CssLengthPercentage, CssNonNegative>> {
         match &self.representation {
             CssGridTrackBreadthRepresentation::Length(specified) => Some(specified),
             _ => None,
         }
     }
 
-    pub fn flex(&self) -> Option<&CssSpecifiedNonNegativeFlex> {
+    pub fn flex(&self) -> Option<&CssNumeric<CssFlex, CssNonNegative>> {
         match &self.representation {
             CssGridTrackBreadthRepresentation::Fraction(specified) => Some(specified),
             _ => None,
@@ -231,7 +231,7 @@ enum CssGridTrackSizeRepresentation {
         min: CssGridTrackBreadth,
         max: CssGridTrackBreadth,
     },
-    FitContent(CssSpecifiedNonNegativeLengthPercentage),
+    FitContent(CssNumeric<CssLengthPercentage, CssNonNegative>),
 }
 
 impl CssGridTrackSize {
@@ -255,7 +255,7 @@ impl CssGridTrackSize {
         }
     }
 
-    pub fn from_fit_content(value: CssSpecifiedNonNegativeLengthPercentage) -> Self {
+    pub fn from_fit_content(value: CssNumeric<CssLengthPercentage, CssNonNegative>) -> Self {
         Self {
             representation: CssGridTrackSizeRepresentation::FitContent(value),
         }
@@ -288,7 +288,7 @@ impl CssGridTrackSize {
         }
     }
 
-    pub fn fit_content(&self) -> Option<&CssSpecifiedNonNegativeLengthPercentage> {
+    pub fn fit_content(&self) -> Option<&CssNumeric<CssLengthPercentage, CssNonNegative>> {
         match &self.representation {
             CssGridTrackSizeRepresentation::FitContent(specified) => Some(specified),
             _ => None,
@@ -412,25 +412,22 @@ impl CssGridFixedRepeatContent {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct CssGridIntegerTrackRepeat {
-    count: crate::CssPositiveIntegerValue,
+    count: crate::CssNumeric<crate::CssInteger, crate::CssPositive>,
     content: CssGridTrackRepeatContent,
 }
 
 impl CssGridIntegerTrackRepeat {
-    /// Checks ordinary positive counts while retaining function math symbolically.
+    /// Retains a positive count; function math keeps its graph symbolically.
     /// Typed child recovery remains observable; this does not certify original CSS.
     pub fn try_new(
-        count: crate::CssPositiveIntegerValue,
+        count: crate::CssNumeric<crate::CssInteger, crate::CssPositive>,
         content: CssGridTrackRepeatContent,
     ) -> Option<Self> {
-        Some(Self {
-            count: count.normalized_positive_root()?,
-            content,
-        })
+        Some(Self { count, content })
     }
 
     #[must_use]
-    pub const fn count(&self) -> &crate::CssPositiveIntegerValue {
+    pub const fn count(&self) -> &crate::CssNumeric<crate::CssInteger, crate::CssPositive> {
         &self.count
     }
 
@@ -444,24 +441,21 @@ impl CssGridIntegerTrackRepeat {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct CssGridIntegerFixedRepeat {
-    count: crate::CssPositiveIntegerValue,
+    count: crate::CssNumeric<crate::CssInteger, crate::CssPositive>,
     content: CssGridFixedRepeatContent,
 }
 
 impl CssGridIntegerFixedRepeat {
-    /// Checks ordinary positive counts while retaining function math symbolically.
+    /// Retains a positive count; function math keeps its graph symbolically.
     pub fn try_new(
-        count: crate::CssPositiveIntegerValue,
+        count: crate::CssNumeric<crate::CssInteger, crate::CssPositive>,
         content: CssGridFixedRepeatContent,
     ) -> Option<Self> {
-        Some(Self {
-            count: count.normalized_positive_root()?,
-            content,
-        })
+        Some(Self { count, content })
     }
 
     #[must_use]
-    pub const fn count(&self) -> &crate::CssPositiveIntegerValue {
+    pub const fn count(&self) -> &crate::CssNumeric<crate::CssInteger, crate::CssPositive> {
         &self.count
     }
 
@@ -678,7 +672,7 @@ pub enum CssGridSubgridComponent {
 
 #[derive(Clone, Debug, PartialEq)]
 enum CssGridNameRepeatCount {
-    Counted(crate::CssPositiveIntegerValue),
+    Counted(crate::CssNumeric<crate::CssInteger, crate::CssPositive>),
     AutoFill,
 }
 
@@ -691,13 +685,12 @@ pub struct CssGridNameRepeat {
 }
 
 impl CssGridNameRepeat {
-    /// Checks a positive ordinary count and at least one group, including `[]`.
+    /// Checks at least one group, including `[]`, for a positive count.
     /// Function math retains its exact graph and deferred count range/rounding.
     pub fn try_new(
-        count: crate::CssPositiveIntegerValue,
+        count: crate::CssNumeric<crate::CssInteger, crate::CssPositive>,
         groups: Vec<CssGridLineNames>,
     ) -> Option<Self> {
-        let count = count.normalized_positive_root()?;
         (!groups.is_empty()).then_some(Self {
             count: CssGridNameRepeatCount::Counted(count),
             groups,
@@ -713,7 +706,7 @@ impl CssGridNameRepeat {
     }
 
     #[must_use]
-    pub const fn count(&self) -> Option<&crate::CssPositiveIntegerValue> {
+    pub const fn count(&self) -> Option<&crate::CssNumeric<crate::CssInteger, crate::CssPositive>> {
         match &self.count {
             CssGridNameRepeatCount::Counted(count) => Some(count),
             CssGridNameRepeatCount::AutoFill => None,
@@ -1188,7 +1181,7 @@ impl GridSpecified for CssGridIntegerTrackRepeat {
         writer.node()?;
         writer.append("repeat(")?;
         self.count
-            .serialize_specified_into(&mut writer.context, &mut writer.css)?;
+            .append_specified(&mut writer.context, &mut writer.css)?;
         writer.append(", ")?;
         grid_items(&self.content.components, writer)?;
         writer.append(")")
@@ -1203,7 +1196,7 @@ impl GridSpecified for CssGridIntegerFixedRepeat {
         writer.node()?;
         writer.append("repeat(")?;
         self.count
-            .serialize_specified_into(&mut writer.context, &mut writer.css)?;
+            .append_specified(&mut writer.context, &mut writer.css)?;
         writer.append(", ")?;
         grid_items(&self.content.components, writer)?;
         writer.append(")")
@@ -1287,7 +1280,7 @@ impl GridSpecified for CssGridSubgridComponent {
                 writer.append("repeat(")?;
                 match &value.count {
                     CssGridNameRepeatCount::Counted(count) => {
-                        count.serialize_specified_into(&mut writer.context, &mut writer.css)?
+                        count.append_specified(&mut writer.context, &mut writer.css)?
                     }
                     CssGridNameRepeatCount::AutoFill => writer.append("auto-fill")?,
                 }

@@ -66,9 +66,9 @@ pub(super) fn parse_authored_mix_weight<'i>(
     if matches!(input.next(), Ok(Token::Function(_))) {
         let expression =
             parse_numeric_function(input, &state, numeric, CalculationRoot::Percentage)?;
-        return CssColorMixWeight::try_calculation(CssPercentageCalculation::from_expression(
-            expression,
-        ))
+        return CssColorMixWeight::try_calculation(
+            CssCalculation::<CssPercentage>::from_expression(expression),
+        )
         .map_err(|error| crate::error::property::invalid_component_value(location, error));
     }
     input.reset(&state);

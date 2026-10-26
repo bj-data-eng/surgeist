@@ -16,8 +16,9 @@ use crate::numeric::NumericInputContext;
 use crate::{
     CssAuthoredDeclarationValue, CssComponentValues, CssFontFaceFamily, CssFontPaletteBase,
     CssFontPaletteDescriptor, CssFontPaletteDescriptorKind, CssFontPaletteDescriptorValue,
-    CssFontPaletteIndex, CssFontPaletteName, CssFontPaletteOverride, CssFontPaletteValuesRule,
-    CssRecoveryDiagnostic, CssSerializedValue, CssSourcePosition, CssSubstitutionDependentValue,
+    CssFontPaletteName, CssFontPaletteOverride, CssFontPaletteValuesRule, CssInteger,
+    CssNonNegative, CssNumeric, CssRecoveryDiagnostic, CssSerializedValue, CssSourcePosition,
+    CssSubstitutionDependentValue,
 };
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
@@ -297,7 +298,7 @@ fn parse_overrides<'i>(
 fn parse_index<'i>(
     input: &mut Parser<'i, '_>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssFontPaletteIndex, ParseError<'i, CssError>> {
+) -> Result<CssNumeric<CssInteger, CssNonNegative>, ParseError<'i, CssError>> {
     let location = input.current_source_location();
     let value = adapt_native(
         input,
@@ -305,5 +306,7 @@ fn parse_index<'i>(
         NativeValueRange::Component,
         super::values::parse_integer_value,
     )?;
-    CssFontPaletteIndex::try_new(value).map_err(|_| unexpected_at(location))
+    value
+        .try_narrow::<CssNonNegative>()
+        .map_err(|_| unexpected_at(location))
 }

@@ -61,7 +61,9 @@ fn initial_and_ordinary_longhand_payloads_expose_exact_z_index_values() {
         )
         .unwrap();
         assert_eq!(expanded(&checked), expanded(&source));
-        if let CssZIndexValue::Integer(CssIntegerValue::Literal(literal)) = expanded(&source) {
+        if let CssZIndexValue::Integer(value) = expanded(&source)
+            && let Some(literal) = value.literal()
+        {
             assert_eq!(literal.component(), &source.value_components().items()[0]);
             assert_eq!(
                 literal.origin(),
@@ -158,7 +160,12 @@ fn each_z_index_branch_obeys_atomic_input_projection_and_byte_limits() {
     for (value, expected) in [
         (CssZIndexValue::Auto, "auto"),
         (
-            CssZIndexValue::Integer(CssIntegerValue::Literal(CssIntegerLiteral::from_i32(-2))),
+            CssZIndexValue::Integer(
+                CssNumeric::<CssInteger>::try_from_literal(
+                    CssNumericLiteral::<CssInteger>::from_i32(-2),
+                )
+                .unwrap(),
+            ),
             "-2",
         ),
     ] {
@@ -196,9 +203,10 @@ fn reentered_z_index_longhand_retains_parsed_and_programmatic_integer_origins() 
         assert!(item.source().same_occurrence(&source));
         assert_eq!(item.source().importance(), CssImportance::Important);
         assert_eq!(item.replacement_components(), Some(&replacement));
-        let CssLonghandValueRef::ZIndex(CssZIndexValue::Integer(CssIntegerValue::Literal(literal))) =
-            item.ordinary_value().unwrap().view()
-        else {
+        let Some(literal) = (match item.ordinary_value().unwrap().view() {
+            CssLonghandValueRef::ZIndex(CssZIndexValue::Integer(value)) => value.literal(),
+            _ => None,
+        }) else {
             panic!("exact integer payload")
         };
         assert_eq!(literal.component(), &replacement.items()[0]);
@@ -234,9 +242,10 @@ fn reentered_z_index_longhand_retains_parsed_and_programmatic_integer_origins() 
     let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("longhand")
     };
-    let CssLonghandValueRef::ZIndex(CssZIndexValue::Integer(CssIntegerValue::Calculation(math))) =
-        values.items()[0].ordinary_value().unwrap().view()
-    else {
+    let Some(math) = (match values.items()[0].ordinary_value().unwrap().view() {
+        CssLonghandValueRef::ZIndex(CssZIndexValue::Integer(value)) => value.calculation(),
+        _ => None,
+    }) else {
         panic!("unrounded math")
     };
     assert_eq!(math.components(), &replacement);
@@ -255,7 +264,10 @@ fn parsed_symbolic_math_keeps_origins_after_late_projection_and_byte_failure() {
     let source = important_declaration("z-index", "sign(1em - 1px)");
     let value = value(&source);
     let before = value.clone();
-    let CssZIndexValue::Integer(CssIntegerValue::Calculation(math)) = value else {
+    let Some(math) = (match value {
+        CssZIndexValue::Integer(value) => value.calculation(),
+        _ => None,
+    }) else {
         panic!("symbolic Number math")
     };
     let original = math.components().clone();

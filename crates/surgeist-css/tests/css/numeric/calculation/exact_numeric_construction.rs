@@ -1,7 +1,7 @@
 //! Checked construction preserves exact tokens and bounded public operations.
 use surgeist_css::{
-    CssCalculationExpressionRef, CssComponentValue, CssComponentValues, CssNumberCalculation,
-    parse_component_values,
+    CssCalculation, CssCalculationExpressionRef, CssComponentValue, CssComponentValues, CssLength,
+    CssNumber, parse_component_values,
 };
 
 #[test]
@@ -14,14 +14,14 @@ fn adjacent_programmatic_tokens_do_not_turn_into_an_exponent() {
         Default::default(),
     )
     .unwrap();
-    let error =
-        CssNumberCalculation::try_from_components(components, Default::default()).unwrap_err();
+    let error = CssCalculation::<CssNumber>::try_from_components(components, Default::default())
+        .unwrap_err();
     assert!(error.is_multiple_values(), "{error:?}");
 }
 
 #[test]
 fn empty_and_trailing_values_report_the_responsible_origin() {
-    let empty = CssNumberCalculation::try_from_components(
+    let empty = CssCalculation::<CssNumber>::try_from_components(
         parse_component_values(" ").unwrap(),
         Default::default(),
     )
@@ -30,7 +30,8 @@ fn empty_and_trailing_values_report_the_responsible_origin() {
     assert_eq!(empty.origin(), None);
     let values = parse_component_values("1 2").unwrap();
     let extra = values.items()[2].origin().clone();
-    let error = CssNumberCalculation::try_from_components(values, Default::default()).unwrap_err();
+    let error =
+        CssCalculation::<CssNumber>::try_from_components(values, Default::default()).unwrap_err();
     assert!(error.is_multiple_values(), "{error:?}");
     assert_eq!(error.origin(), Some(&extra));
 }
@@ -44,7 +45,7 @@ fn exact_numeric_depth_limit_fits_an_ordinary_stack() {
             .stack_size(2 * 1024 * 1024)
             .spawn(|| {
                 let source = format!("{}1{}", "calc(".repeat(256), ")".repeat(256));
-                let calculation = CssNumberCalculation::try_from_components(
+                let calculation = CssCalculation::<CssNumber>::try_from_components(
                     parse_component_values(&source).unwrap(),
                     Default::default(),
                 )
@@ -201,7 +202,7 @@ fn supports_math_keeps_full_stylesheet_coordinates_after_unicode_prefix() {
 #[test]
 fn textual_numeric_eof_recovery_retains_the_value_but_checked_construction_rejects_it() {
     use surgeist_css::{
-        CssErrorCode, CssKnownPropertyValueRef, CssLengthCalculation, CssRecoveryAction,
+        CssCalculation, CssErrorCode, CssKnownPropertyValueRef, CssLength, CssRecoveryAction,
         parse_style_attribute,
     };
     let report = parse_style_attribute("width:calc(1px");
@@ -242,7 +243,7 @@ fn textual_numeric_eof_recovery_retains_the_value_but_checked_construction_rejec
             .as_css(),
         "calc(1px)"
     );
-    let error = CssLengthCalculation::try_from_components(
+    let error = CssCalculation::<CssLength>::try_from_components(
         calculation.components().clone(),
         Default::default(),
     )
@@ -253,8 +254,8 @@ fn textual_numeric_eof_recovery_retains_the_value_but_checked_construction_rejec
 #[test]
 fn incompatible_sum_reports_the_original_right_operand() {
     use surgeist_css::{
-        CssImportance, CssKnownProperty, CssLengthCalculation, CssPropertyNameRef,
-        CssSerializedOrigin, parse_property_value,
+        CssImportance, CssKnownProperty, CssPropertyNameRef, CssSerializedOrigin,
+        parse_property_value,
     };
     let children = parse_component_values("1px + 1s").unwrap();
     let right = children.items()[4].origin().clone();
@@ -264,7 +265,8 @@ fn incompatible_sum_reports_the_original_right_operand() {
     )
     .unwrap();
     let direct =
-        CssLengthCalculation::try_from_components(values.clone(), Default::default()).unwrap_err();
+        CssCalculation::<CssLength>::try_from_components(values.clone(), Default::default())
+            .unwrap_err();
     assert!(direct.is_incompatible_types(), "{direct:?}");
     assert_eq!(direct.origin(), Some(&right));
     let property = parse_property_value(
@@ -283,7 +285,7 @@ fn empty_function_opening_counts_toward_the_nesting_limit_before_grammar() {
     assert_eq!(values.nesting_depth(), 1);
     let origin = values.items()[0].origin().clone();
     let limits = CssComponentValueLimits::try_new(0, 8, 64).unwrap();
-    let error = CssNumberCalculation::try_from_components(values, limits).unwrap_err();
+    let error = CssCalculation::<CssNumber>::try_from_components(values, limits).unwrap_err();
     assert!(error.is_resource_limit(), "{error:?}");
     assert_eq!(error.origin(), Some(&origin));
 }

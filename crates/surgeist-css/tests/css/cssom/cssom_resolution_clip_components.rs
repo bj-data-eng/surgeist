@@ -8,12 +8,13 @@
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::value_assertions::literal_specified;
 use surgeist_css::*;
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;
 
-fn literal(text: &str) -> CssResolutionLiteral {
+fn literal(text: &str) -> CssNumericLiteral<CssResolution> {
     let values = parse_component_values(text).unwrap();
     let component = values
         .items()
@@ -25,12 +26,12 @@ fn literal(text: &str) -> CssResolutionLiteral {
             )
         })
         .unwrap();
-    CssResolutionLiteral::try_from_component(component.clone()).unwrap()
+    CssNumericLiteral::<CssResolution>::try_from_component(component.clone()).unwrap()
 }
 
-fn resolution(text: &str) -> CssResolutionValue {
-    CssResolutionValue::try_from_calculation(
-        CssResolutionCalculation::try_from_components(
+fn resolution(text: &str) -> CssNumeric<CssResolution, CssNonNegative> {
+    CssNumeric::<CssResolution, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssResolution>::try_from_components(
             parse_component_values(text).unwrap(),
             Default::default(),
         )
@@ -57,7 +58,7 @@ fn ordinary_resolution_converts_exact_units_before_six_place_rounding() {
         let value = literal(text);
         let original = value.clone();
         assert_eq!(
-            value.serialize_specified(Default::default()).unwrap(),
+            literal_specified(&value, Default::default()).unwrap(),
             expected,
             "{text}"
         );
@@ -66,20 +67,21 @@ fn ordinary_resolution_converts_exact_units_before_six_place_rounding() {
         let reparsed = literal(expected);
         assert_eq!(reparsed.unit(), CssResolutionUnit::Dppx);
         assert_eq!(
-            reparsed.serialize_specified(Default::default()).unwrap(),
+            literal_specified(&reparsed, Default::default()).unwrap(),
             expected
         );
-        let value = CssResolutionValue::from_literal(value);
+        let value = CssNumeric::<CssResolution, CssNonNegative>::try_from_literal(value).unwrap();
         assert_eq!(
             value.serialize_specified(Default::default()).unwrap(),
             expected
         );
         assert_eq!(value.literal(), Some(&original));
     }
-    let constructed = CssResolutionLiteral::try_new("192", CssResolutionUnit::Dpi).unwrap();
+    let constructed =
+        CssNumericLiteral::<CssResolution>::try_new("192", CssResolutionUnit::Dpi).unwrap();
     let before = constructed.clone();
     assert_eq!(
-        constructed.serialize_specified(Default::default()).unwrap(),
+        literal_specified(&constructed, Default::default()).unwrap(),
         "2dppx"
     );
     assert_eq!(constructed, before);
@@ -96,7 +98,7 @@ fn resolution_zero_tiny_and_huge_coefficients_remain_exact_authored_values() {
         let value = literal(text);
         let original = value.clone();
         assert_eq!(
-            value.serialize_specified(Limits::new(1, 100, 5)).unwrap(),
+            literal_specified(&value, Limits::new(1, 100, 5)).unwrap(),
             "0dppx"
         );
         assert_eq!(value, original);
@@ -104,7 +106,7 @@ fn resolution_zero_tiny_and_huge_coefficients_remain_exact_authored_values() {
     let huge = literal("1e30dpi");
     let expected = "10416666666666666666666666666.666667dppx";
     assert_eq!(
-        huge.serialize_specified(Default::default()).unwrap(),
+        literal_specified(&huge, Default::default()).unwrap(),
         expected
     );
     assert_eq!(huge.numeric().representation(), "1e30");
@@ -115,18 +117,17 @@ fn resolution_zero_tiny_and_huge_coefficients_remain_exact_authored_values() {
         let value = literal(text);
         let original = value.clone();
         assert!(
-            value
-                .serialize_specified(Limits::new(1, 100, 16))
+            literal_specified(&value, Limits::new(1, 100, 16))
                 .unwrap_err()
                 .is_byte_limit()
         );
         assert_eq!(value, original);
     }
-    // Adding emission does not weaken ordinary negative-range admission.
+    // Adding emission does not weaken the ordinary nonnegative range.
     for text in ["-1dpi", "-1e-999999dpcm"] {
         let component = parse_component_values(text).unwrap().items()[0].clone();
         assert!(
-            CssResolutionLiteral::try_from_component(component)
+            CssNumeric::<CssResolution, CssNonNegative>::try_from_component(component)
                 .unwrap_err()
                 .is_out_of_range()
         );
@@ -150,33 +151,28 @@ fn converted_resolution_bytes_and_shared_work_limits_fail_atomically() {
         ),
     ] {
         assert_eq!(
-            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
+            serialization_failure(&literal_specified(&value, limits).unwrap_err()),
             kind
         );
         assert_eq!(value, before);
     }
     assert_eq!(
-        value
-            .serialize_specified(Limits::new(1, usize::MAX, expected.len()))
-            .unwrap(),
+        literal_specified(&value, Limits::new(1, usize::MAX, expected.len())).unwrap(),
         expected
     );
     let carry = literal("0.000048dpi");
     assert!(
-        carry
-            .serialize_specified(Limits::new(1, usize::MAX, 11))
+        literal_specified(&carry, Limits::new(1, usize::MAX, 11))
             .unwrap_err()
             .is_byte_limit()
     );
     assert_eq!(
-        carry
-            .serialize_specified(Limits::new(1, usize::MAX, 12))
-            .unwrap(),
+        literal_specified(&carry, Limits::new(1, usize::MAX, 12)).unwrap(),
         "0.000001dppx"
     );
     let zero = literal("-0dppx");
     assert_eq!(
-        zero.serialize_specified(Limits::new(1, 1, 5)).unwrap(),
+        literal_specified(&zero, Limits::new(1, 1, 5)).unwrap(),
         "0dppx"
     );
 }
@@ -199,7 +195,7 @@ fn escaped_resolution_units_and_crlf_non_bmp_provenance_survive_emission() {
     assert_eq!(value.numeric().representation(), "+0192");
     assert_eq!(value.unit(), CssResolutionUnit::Dpi);
     assert_eq!(
-        value.serialize_specified(Default::default()).unwrap(),
+        literal_specified(&value, Default::default()).unwrap(),
         "2dppx"
     );
     assert_eq!(value.component(), &component);

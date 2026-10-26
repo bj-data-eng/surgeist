@@ -123,11 +123,11 @@ pub fn checked_feature_value(
 
 /// Assert that an ordinary-integer regression still retains its exact literal variant.
 pub trait LiteralIntegerValue {
-    fn literal(&self) -> &CssIntegerLiteral;
+    fn expect_literal(&self) -> &CssNumericLiteral<CssInteger>;
 }
-impl LiteralIntegerValue for CssIntegerValue {
-    fn literal(&self) -> &CssIntegerLiteral {
-        let CssIntegerValue::Literal(value) = self else {
+impl<R: CssRange<CssInteger>> LiteralIntegerValue for CssNumeric<CssInteger, R> {
+    fn expect_literal(&self) -> &CssNumericLiteral<CssInteger> {
+        let Some(value) = self.literal() else {
             panic!("exact ordinary integer literal expected")
         };
         value

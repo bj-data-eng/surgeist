@@ -50,22 +50,27 @@ fn parsed_origin(origin: &CssValueOrigin, source: &str, token: &str) {
     );
 }
 
-fn length(token: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_component(CssComponentValue::try_token(token).unwrap()).unwrap()
-}
-
-fn nonnegative_length(token: &str) -> CssSpecifiedNonNegativeLength {
-    CssSpecifiedNonNegativeLength::try_from_component(CssComponentValue::try_token(token).unwrap())
+fn length(token: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(token).unwrap())
         .unwrap()
 }
 
-fn length_percentage(token: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(token).unwrap())
-        .unwrap()
+fn nonnegative_length(token: &str) -> CssNumeric<CssLength, CssNonNegative> {
+    CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+        CssComponentValue::try_token(token).unwrap(),
+    )
+    .unwrap()
 }
 
-fn nonnegative_length_percentage(token: &str) -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+fn length_percentage(token: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
+        CssComponentValue::try_token(token).unwrap(),
+    )
+    .unwrap()
+}
+
+fn nonnegative_length_percentage(token: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token(token).unwrap(),
     )
     .unwrap()
@@ -74,8 +79,12 @@ fn nonnegative_length_percentage(token: &str) -> CssSpecifiedNonNegativeLengthPe
 #[test]
 fn signed_pure_length_properties_retain_extreme_literals_and_original_spans() {
     let source = "outline-offset:-1e999px";
-    let offset: CssSpecifiedLength = value!(source, OutlineOffset, offset);
-    literal(offset.literal_component().unwrap(), "-1e999", Some("px"));
+    let offset: CssNumeric<CssLength> = value!(source, OutlineOffset, offset);
+    literal(
+        offset.literal().map(|literal| literal.component()).unwrap(),
+        "-1e999",
+        Some("px"),
+    );
     parsed_origin(offset.origin(), source, "-1e999px");
 
     let source = "clip:rect(-1e-999px, auto, 1e999em, -0.000e999px)";
@@ -85,17 +94,29 @@ fn signed_pure_length_properties_retain_extreme_literals_and_original_spans() {
     let CssClipEdge::Length(top) = rect.top() else {
         panic!("signed top")
     };
-    literal(top.literal_component().unwrap(), "-1e-999", Some("px"));
+    literal(
+        top.literal().map(|literal| literal.component()).unwrap(),
+        "-1e-999",
+        Some("px"),
+    );
     parsed_origin(top.origin(), source, "-1e-999px");
     assert_eq!(rect.right(), &CssClipEdge::Auto);
     let CssClipEdge::Length(bottom) = rect.bottom() else {
         panic!("signed bottom")
     };
-    literal(bottom.literal_component().unwrap(), "1e999", Some("em"));
+    literal(
+        bottom.literal().map(|literal| literal.component()).unwrap(),
+        "1e999",
+        Some("em"),
+    );
     let CssClipEdge::Length(left) = rect.left() else {
         panic!("signed left")
     };
-    literal(left.literal_component().unwrap(), "-0.000e999", Some("px"));
+    literal(
+        left.literal().map(|literal| literal.component()).unwrap(),
+        "-0.000e999",
+        Some("px"),
+    );
 }
 
 #[test]
@@ -109,22 +130,40 @@ fn shadow_offsets_spread_and_blur_keep_distinct_checked_domains() {
     };
     assert!(shadow.inset());
     literal(
-        shadow.offset_x().literal_component().unwrap(),
+        shadow
+            .offset_x()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1e-999",
         Some("px"),
     );
     literal(
-        shadow.offset_y().literal_component().unwrap(),
+        shadow
+            .offset_y()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1e999",
         Some("em"),
     );
     literal(
-        shadow.blur_radius().unwrap().literal_component().unwrap(),
+        shadow
+            .blur_radius()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "0",
         Some("px"),
     );
     literal(
-        shadow.spread_radius().unwrap().literal_component().unwrap(),
+        shadow
+            .spread_radius()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-2",
         Some("px"),
     );
@@ -167,7 +206,11 @@ fn filter_blur_retains_authored_omission_and_effective_zero_pixels() {
     };
     assert!(default.authored_length().is_none());
     literal(
-        default.length().literal_component().unwrap(),
+        default
+            .length()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "0",
         Some("px"),
     );
@@ -176,7 +219,8 @@ fn filter_blur_retains_authored_omission_and_effective_zero_pixels() {
         explicit
             .authored_length()
             .unwrap()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "-0",
         Some("px"),
@@ -186,7 +230,11 @@ fn filter_blur_retains_authored_omission_and_effective_zero_pixels() {
         CssValueOrigin::Parsed(_)
     ));
     literal(
-        shadow.offset_x().literal_component().unwrap(),
+        shadow
+            .offset_x()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1e-999",
         Some("px"),
     );
@@ -204,8 +252,16 @@ fn positions_and_background_sizes_use_their_signed_and_nonnegative_domains() {
     let CssVerticalPosition::BottomOffset(y) = position.vertical() else {
         panic!("bottom offset")
     };
-    literal(x.literal_component().unwrap(), "-1e999", Some("px"));
-    literal(y.literal_component().unwrap(), "-1e-999", Some("%"));
+    literal(
+        x.literal().map(|literal| literal.component()).unwrap(),
+        "-1e999",
+        Some("px"),
+    );
+    literal(
+        y.literal().map(|literal| literal.component()).unwrap(),
+        "-1e-999",
+        Some("%"),
+    );
     parsed_origin(y.origin(), source, "-1e-999%");
 
     let sizes = value!("background-size:1e999px auto", BackgroundSize, sizes);
@@ -218,7 +274,11 @@ fn positions_and_background_sizes_use_their_signed_and_nonnegative_domains() {
     else {
         panic!("ordered size pair")
     };
-    literal(width.literal_component().unwrap(), "1e999", Some("px"));
+    literal(
+        width.literal().map(|literal| literal.component()).unwrap(),
+        "1e999",
+        Some("px"),
+    );
 }
 
 #[test]
@@ -245,12 +305,20 @@ fn gradient_stops_and_radial_sizes_retain_exact_kind_and_order() {
     assert_eq!(red.color().named().unwrap().name(), "red");
     assert_eq!(blue.color().named().unwrap().name(), "blue");
     literal(
-        red.position().unwrap().literal_component().unwrap(),
+        red.position()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1e-999",
         Some("px"),
     );
     literal(
-        blue.position().unwrap().literal_component().unwrap(),
+        blue.position()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1e999",
         Some("%"),
     );
@@ -258,12 +326,18 @@ fn gradient_stops_and_radial_sizes_retain_exact_kind_and_order() {
         panic!("ellipse radii")
     };
     literal(
-        size.horizontal().literal_component().unwrap(),
+        size.horizontal()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1e999",
         Some("px"),
     );
     literal(
-        size.vertical().literal_component().unwrap(),
+        size.vertical()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "25",
         Some("%"),
     );
@@ -274,7 +348,12 @@ fn transform_z_is_pure_length_and_translate_arity_is_retained() {
     let source = "transform-origin:25% top -1e999px";
     let origin = value!(source, TransformOrigin, origin);
     literal(
-        origin.z().unwrap().literal_component().unwrap(),
+        origin
+            .z()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1e999",
         Some("px"),
     );
@@ -283,19 +362,36 @@ fn transform_z_is_pure_length_and_translate_arity_is_retained() {
     let CssTranslate::Values(one) = value!("translate:25%", Translate, value) else {
         panic!("translate value")
     };
-    literal(one.x().literal_component().unwrap(), "25", Some("%"));
+    literal(
+        one.x()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
+        "25",
+        Some("%"),
+    );
     assert!(one.y().is_none());
     assert!(one.z().is_none());
     let CssTranslate::Values(three) = value!("translate:25% -1px 1e999px", Translate, value) else {
         panic!("translate triple")
     };
     literal(
-        three.y().unwrap().literal_component().unwrap(),
+        three
+            .y()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1",
         Some("px"),
     );
     literal(
-        three.z().unwrap().literal_component().unwrap(),
+        three
+            .z()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1e999",
         Some("px"),
     );
@@ -315,7 +411,10 @@ fn basic_shape_round_retains_radii_arity_vertical_omission_and_assignment() {
     };
     assert_eq!(inset.offsets().values().len(), 3);
     literal(
-        inset.offsets().values()[0].literal_component().unwrap(),
+        inset.offsets().values()[0]
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1e-999",
         Some("px"),
     );
@@ -333,12 +432,22 @@ fn basic_shape_round_retains_radii_arity_vertical_omission_and_assignment() {
         assert_eq!(corner.horizontal().origin(), corner.vertical().origin());
     }
     literal(
-        round.top_left().horizontal().literal_component().unwrap(),
+        round
+            .top_left()
+            .horizontal()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1",
         Some("px"),
     );
     literal(
-        round.top_right().horizontal().literal_component().unwrap(),
+        round
+            .top_right()
+            .horizontal()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "2",
         Some("%"),
     );
@@ -346,7 +455,8 @@ fn basic_shape_round_retains_radii_arity_vertical_omission_and_assignment() {
         round
             .bottom_right()
             .horizontal()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "3",
         Some("px"),
@@ -355,7 +465,8 @@ fn basic_shape_round_retains_radii_arity_vertical_omission_and_assignment() {
         round
             .bottom_left()
             .horizontal()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "2",
         Some("%"),
@@ -379,7 +490,8 @@ fn basic_shape_round_retains_radii_arity_vertical_omission_and_assignment() {
             .bottom_left()
             .authored_vertical()
             .unwrap()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap(),
         "4",
         Some("%"),
@@ -425,7 +537,11 @@ fn nonnegative_consumers_reject_tiny_negative_literals_and_pure_context_percenta
 fn checked_programmatic_owners_preserve_origins_and_composite_resource_limits() {
     let spacing = CssBorderSpacing::new(nonnegative_length("1e999px"), nonnegative_length("2px"));
     literal(
-        spacing.horizontal().literal_component().unwrap(),
+        spacing
+            .horizontal()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1e999",
         Some("px"),
     );
@@ -444,7 +560,11 @@ fn checked_programmatic_owners_preserve_origins_and_composite_resource_limits() 
         assert!(spacing.serialize_specified(limits).is_err());
     }
     literal(
-        spacing.horizontal().literal_component().unwrap(),
+        spacing
+            .horizontal()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1e999",
         Some("px"),
     );
@@ -471,7 +591,11 @@ fn typography_and_flow_keep_signed_percentages_and_keyword_branches() {
     assert!(indent.hanging());
     assert!(indent.each_line());
     literal(
-        indent.length().literal_component().unwrap(),
+        indent
+            .length()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-1e-999",
         Some("%"),
     );
@@ -485,7 +609,11 @@ fn typography_and_flow_keep_signed_percentages_and_keyword_branches() {
     else {
         panic!("signed percentage alignment")
     };
-    literal(align.literal_component().unwrap(), "-1e999", Some("%"));
+    literal(
+        align.literal().map(|literal| literal.component()).unwrap(),
+        "-1e999",
+        Some("%"),
+    );
     assert_eq!(
         value!("vertical-align:baseline", VerticalAlign, value),
         CssVerticalAlign::Baseline
@@ -498,7 +626,10 @@ fn typography_and_flow_keep_signed_percentages_and_keyword_branches() {
         panic!("nonnegative lexical zero thickness")
     };
     literal(
-        thickness.literal_component().unwrap(),
+        thickness
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "-0.000e999",
         Some("%"),
     );
@@ -516,7 +647,14 @@ fn typography_and_flow_keep_signed_percentages_and_keyword_branches() {
     let CssFlowToleranceRef::LengthPercentage(tolerance) = flow.as_ref() else {
         panic!("signed flow length")
     };
-    literal(tolerance.literal_component().unwrap(), "-1e999", Some("px"));
+    literal(
+        tolerance
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
+        "-1e999",
+        Some("px"),
+    );
     parsed_origin(tolerance.origin(), source, "-1e999px");
     assert_eq!(
         value!("flow-tolerance:infinite", FlowTolerance, value).as_ref(),
@@ -537,9 +675,21 @@ fn border_image_width_and_outset_keep_distinct_domains_and_edge_assignment() {
     else {
         panic!("three-value edge assignment")
     };
-    literal(top.literal_component().unwrap(), "1e999", Some("px"));
-    literal(right.literal_component().unwrap(), "25", Some("%"));
-    literal(left.literal_component().unwrap(), "25", Some("%"));
+    literal(
+        top.literal().map(|literal| literal.component()).unwrap(),
+        "1e999",
+        Some("px"),
+    );
+    literal(
+        right.literal().map(|literal| literal.component()).unwrap(),
+        "25",
+        Some("%"),
+    );
+    literal(
+        left.literal().map(|literal| literal.component()).unwrap(),
+        "25",
+        Some("%"),
+    );
     assert_eq!(right.origin(), left.origin());
     parsed_origin(top.origin(), source, "1e999px");
 
@@ -557,31 +707,49 @@ fn border_image_width_and_outset_keep_distinct_domains_and_edge_assignment() {
     else {
         panic!("two-value edge assignment")
     };
-    literal(top.literal_component().unwrap(), "-0.000e999", Some("px"));
     literal(
-        bottom.literal_component().unwrap(),
+        top.literal().map(|literal| literal.component()).unwrap(),
         "-0.000e999",
         Some("px"),
     );
-    literal(right.literal_component().unwrap(), "2", Some("px"));
-    literal(left.literal_component().unwrap(), "2", Some("px"));
+    literal(
+        bottom.literal().map(|literal| literal.component()).unwrap(),
+        "-0.000e999",
+        Some("px"),
+    );
+    literal(
+        right.literal().map(|literal| literal.component()).unwrap(),
+        "2",
+        Some("px"),
+    );
+    literal(
+        left.literal().map(|literal| literal.component()).unwrap(),
+        "2",
+        Some("px"),
+    );
     assert_eq!(top.origin(), bottom.origin());
     assert_eq!(right.origin(), left.origin());
 }
 
 #[test]
-fn aggregate_equality_ignores_only_origins_and_retains_exact_structure() {
+fn aggregate_equality_ignores_origins_and_spelling_and_retains_structure() {
     let parsed_spacing = value!("border-spacing:0", BorderSpacing, spacing);
     let programmatic_spacing = CssBorderSpacing::new(
-        CssSpecifiedNonNegativeLength::zero(),
-        CssSpecifiedNonNegativeLength::zero(),
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+            CssComponentValue::try_number("0").unwrap(),
+        )
+        .unwrap(),
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+            CssComponentValue::try_number("0").unwrap(),
+        )
+        .unwrap(),
     );
     assert_eq!(parsed_spacing, programmatic_spacing);
-    assert_ne!(
+    assert_eq!(
         parsed_spacing.horizontal(),
         programmatic_spacing.horizontal()
     );
-    assert_ne!(
+    assert_eq!(
         parsed_spacing,
         CssBorderSpacing::new(nonnegative_length("0px"), nonnegative_length("0px"))
     );
@@ -594,10 +762,10 @@ fn aggregate_equality_ignores_only_origins_and_retains_exact_structure() {
     let CssFlowToleranceRef::LengthPercentage(programmatic_scalar) = programmatic.as_ref() else {
         panic!("percentage")
     };
-    assert_ne!(parsed_scalar, programmatic_scalar);
+    assert_eq!(parsed_scalar, programmatic_scalar);
     assert!(matches!(parsed_scalar.origin(), CssValueOrigin::Parsed(_)));
     assert_eq!(programmatic_scalar.origin(), &CssValueOrigin::Programmatic);
-    assert_ne!(
+    assert_eq!(
         parsed,
         CssFlowTolerance::length_percentage(length_percentage("25.0%"))
     );
@@ -621,7 +789,7 @@ fn aggregate_equality_ignores_only_origins_and_retains_exact_structure() {
     )
     .unwrap();
     assert_eq!(position, constructed);
-    assert_ne!(
+    assert_eq!(
         position,
         CssPhysicalPosition::try_new(
             CssHorizontalPosition::Offset(length_percentage("1.0px")),
@@ -671,7 +839,7 @@ fn clip_and_transform_aggregate_equality_keeps_axes_and_omission() {
         panic!("top")
     };
     assert!(matches!(top.origin(), CssValueOrigin::Parsed(_)));
-    assert_ne!(rect.top(), &CssClipEdge::Length(length("1.0px")));
+    assert_eq!(rect.top(), &CssClipEdge::Length(length("1.0px")));
 
     let planar = || {
         CssPhysicalPosition::try_new(
@@ -871,7 +1039,7 @@ fn image_and_border_image_aggregate_equality_retains_exact_branches() {
         ])
         .unwrap()
     );
-    assert_ne!(
+    assert_eq!(
         widths,
         CssBorderImageWidth::try_new(vec![
             CssBorderImageWidthComponent::LengthPercentage(nonnegative_length_percentage("3.0%")),
@@ -915,7 +1083,11 @@ fn gradient_serialization_omits_only_exact_zero_hundred_and_center_values() {
         panic!("first stop")
     };
     literal(
-        red.position().unwrap().literal_component().unwrap(),
+        red.position()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component())
+            .unwrap(),
         "1e-999",
         Some("px"),
     );

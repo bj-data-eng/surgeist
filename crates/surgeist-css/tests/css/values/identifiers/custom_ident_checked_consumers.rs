@@ -162,9 +162,9 @@ fn checked_grid_groups_accept_only_checked_line_names_and_preserve_duplicates() 
 #[test]
 fn checked_transition_none_cannot_mix_with_an_omitted_property() {
     let none = CssTransition::try_new(Some(CssTransitionProperty::None), None, None, None).unwrap();
-    let duration = CssDuration::try_new(CssTimeValue::from_literal(
-        CssTimeLiteral::try_new("1", CssTimeUnit::Seconds).unwrap(),
-    ))
+    let duration = CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+        CssNumericLiteral::<CssTime>::try_new("1", CssTimeUnit::Seconds).unwrap(),
+    )
     .unwrap();
     let omitted = CssTransition::try_new(None, Some(duration), None, None).unwrap();
     assert!(CssTransitionList::try_new(vec![none.clone(), omitted.clone()]).is_none());

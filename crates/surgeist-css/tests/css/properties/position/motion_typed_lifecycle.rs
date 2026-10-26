@@ -16,8 +16,11 @@ use crate::css::support::serialization_limits::assert_node_limits as budget;
 use CssSerializationLimits as L;
 use surgeist_css::*;
 
-fn angle(number: &str, unit: CssAngleUnit) -> CssAngleValue {
-    CssAngleValue::from_literal(CssAngleLiteral::try_new(number, unit).unwrap())
+fn angle(number: &str, unit: CssAngleUnit) -> CssNumeric<CssAngle> {
+    CssNumeric::<CssAngle>::try_from_literal(
+        CssNumericLiteral::<CssAngle>::try_new(number, unit).unwrap(),
+    )
+    .unwrap()
 }
 fn position() -> CssPosition {
     CssPhysicalPosition::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Top)
@@ -215,14 +218,15 @@ fn rotation_rejects_empty_and_preserves_modifier_angle_omissions() {
 fn motion_angle_construction_uses_strict_angle_owner_errors_and_origins() {
     let component = parse_component_values("0").unwrap().items()[0].clone();
     let origin = component.origin().clone();
-    let error = CssAngleLiteral::try_from_component(component).unwrap_err();
-    assert!(error.is_invalid_token(), "{error:?}");
-    assert_eq!(error.origin(), &origin);
+    let error = CssNumericLiteral::<CssAngle>::try_from_component(component).unwrap_err();
+    assert!(error.is_root_domain_mismatch(), "{error:?}");
+    assert_eq!(error.origin(), Some(&origin));
     let source = declaration("offset-path", "ray(calc(1turn - 90deg))");
     let bearing = ray(&source).angle();
     let components = bearing.calculation().unwrap().components().clone();
-    let constructed = CssAngleValue::try_from_calculation(
-        CssAngleCalculation::try_from_components(components.clone(), Default::default()).unwrap(),
+    let constructed = CssNumeric::<CssAngle>::try_from_calculation(
+        CssCalculation::<CssAngle>::try_from_components(components.clone(), Default::default())
+            .unwrap(),
     )
     .unwrap();
     assert_eq!(constructed.calculation().unwrap().components(), &components);
@@ -252,14 +256,14 @@ fn recovered_bearing_graph_cannot_reenter_a_checked_motion_constructor() {
         panic!("calc root")
     };
     let before = calculation.components().clone();
-    let error = CssAngleValue::try_from_calculation(calculation.clone()).unwrap_err();
+    let error = CssNumeric::<CssAngle>::try_from_calculation(calculation.clone()).unwrap_err();
     assert!(error.is_recovered_component(), "{error:?}");
     assert_eq!(error.origin(), Some(function.closing_origin()));
     assert!(error.path().is_none());
     assert!(std::error::Error::source(&error).is_none());
     assert_eq!(calculation.components(), &before);
     assert_eq!(
-        CssAngleValue::try_from_calculation(calculation.clone()).unwrap_err(),
+        CssNumeric::<CssAngle>::try_from_calculation(calculation.clone()).unwrap_err(),
         error
     );
 }
@@ -374,7 +378,7 @@ fn path_url_view_retains_src_target_modifier_order_and_never_becomes_image() {
 
 #[test]
 fn physical_position_anchor_and_position_branches_retain_checked_axes_and_origins() {
-    let scalar = CssSpecifiedLengthPercentage::try_from_component(
+    let scalar = CssNumeric::<CssLengthPercentage>::try_from_component(
         CssComponentValue::try_token("-25%").unwrap(),
     )
     .unwrap();
@@ -439,7 +443,12 @@ fn shorthand_constructor_rejects_anchor_only_and_pathless_distance_or_rotation()
         CssOffset::try_new(
             Some(CssOffsetPosition::Normal),
             None,
-            Some(CssSpecifiedLengthPercentage::zero()),
+            Some(
+                CssNumeric::<CssLengthPercentage>::try_from_component(
+                    CssComponentValue::try_number("0").unwrap()
+                )
+                .unwrap()
+            ),
             None,
             None
         )
@@ -474,7 +483,12 @@ fn shorthand_constructor_rejects_anchor_only_and_pathless_distance_or_rotation()
     let full = CssOffset::try_new(
         Some(CssOffsetPosition::Normal),
         Some(CssOffsetPath::none()),
-        Some(CssSpecifiedLengthPercentage::zero()),
+        Some(
+            CssNumeric::<CssLengthPercentage>::try_from_component(
+                CssComponentValue::try_number("0").unwrap(),
+            )
+            .unwrap(),
+        ),
         Some(CssOffsetRotate::auto()),
         Some(CssOffsetAnchor::Auto),
     )
@@ -502,7 +516,7 @@ fn assert_initial(value: CssLonghandValueRef<'_>) {
             assert!(value.calculation().is_none());
             assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
             assert!(
-                matches!(value.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation() == "0")
+                matches!(value.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation() == "0")
             );
         }
         CssLonghandValueRef::OffsetRotate(value) => {
@@ -634,12 +648,13 @@ fn typed_extraction_preserves_parsed_programmatic_and_replacement_numeric_proven
 #[test]
 fn typed_checked_construction_preserves_supplied_angle_and_distance_component_identity() {
     let bearing_component = CssComponentValue::try_dimension("+450.00", "GRAD").unwrap();
-    let bearing = CssAngleValue::from_literal(
-        CssAngleLiteral::try_from_component(bearing_component.clone()).unwrap(),
-    );
+    let bearing = CssNumeric::<CssAngle>::try_from_literal(
+        CssNumericLiteral::<CssAngle>::try_from_component(bearing_component.clone()).unwrap(),
+    )
+    .unwrap();
     let distance_component = CssComponentValue::try_token("-25.00%").unwrap();
     let distance =
-        CssSpecifiedLengthPercentage::try_from_component(distance_component.clone()).unwrap();
+        CssNumeric::<CssLengthPercentage>::try_from_component(distance_component.clone()).unwrap();
     let ray = CssRay::new(bearing, None, false, None);
     let model = CssOffset::try_new(
         None,
@@ -663,7 +678,11 @@ fn typed_checked_construction_preserves_supplied_angle_and_distance_component_id
         &bearing_component
     );
     assert_eq!(
-        model.distance().unwrap().literal_component(),
+        model
+            .distance()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component()),
         Some(&distance_component)
     );
     let before = model.clone();
@@ -676,7 +695,11 @@ fn typed_checked_construction_preserves_supplied_angle_and_distance_component_id
         &bearing_component
     );
     assert_eq!(
-        model.distance().unwrap().literal_component(),
+        model
+            .distance()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component()),
         Some(&distance_component)
     );
 }

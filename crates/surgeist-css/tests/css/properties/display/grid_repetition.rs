@@ -63,7 +63,10 @@ fn grid_repeat_models_accept_each_structural_language() {
         panic!("integer repeat")
     };
     assert!(
-        matches!(repeat.count(), surgeist_css::CssPositiveIntegerValue::Literal(count) if count.integer().numeric().representation() == "2")
+        repeat
+            .count()
+            .literal()
+            .is_some_and(|count| count.numeric().representation() == "2")
     );
 
     let CssKnownPropertyValueRef::GridTemplateRows(rows) = report.syntax()[1]

@@ -141,13 +141,15 @@ pub fn parse_single_declaration(property_name: &str, authored_value: &str) -> Cs
     single_declaration(&declaration_sheet(property_name, authored_value))
 }
 
-pub fn weight_number(spelling: &str) -> CssFontWeightNumber {
-    CssFontWeightNumber::try_from_component(CssComponentValue::try_number(spelling).unwrap())
-        .expect("valid exact font weight")
+pub fn weight_number(spelling: &str) -> CssNumeric<CssNumber, CssFontWeightRange> {
+    CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
+        CssComponentValue::try_number(spelling).unwrap(),
+    )
+    .expect("valid exact font weight")
 }
 
-pub fn nonnegative_number(spelling: &str) -> CssSpecifiedNonNegativeNumber {
-    CssSpecifiedNonNegativeNumber::try_from_component(
+pub fn nonnegative_number(spelling: &str) -> CssNumeric<CssNumber, CssNonNegative> {
+    CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
         CssComponentValue::try_number(spelling).unwrap(),
     )
     .unwrap()
@@ -174,8 +176,8 @@ pub fn assert_length_literal(
     assert_eq!(unit, expected_unit);
 }
 
-pub fn assert_integer_literal(value: &CssIntegerValue, expected: &str) {
-    let CssIntegerValue::Literal(integer) = value else {
+pub fn assert_integer_literal(value: &CssNumeric<CssInteger>, expected: &str) {
+    let Some(integer) = value.literal() else {
         panic!("expected exact integer literal")
     };
     assert_eq!(integer.numeric().representation(), expected);
@@ -220,57 +222,68 @@ pub fn exact_percentage(component: Option<&CssComponentValue>, representation: &
     )
 }
 
-pub fn signed_length(css: &str) -> CssSpecifiedLength {
+pub fn signed_length(css: &str) -> CssNumeric<CssLength> {
     let components = parse_component_values(css).unwrap();
     if css.contains('(') {
-        CssSpecifiedLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(components, Default::default()).unwrap(),
+        CssNumeric::<CssLength>::try_from_calculation(
+            CssCalculation::<CssLength>::try_from_components(components, Default::default())
+                .unwrap(),
         )
         .unwrap()
     } else {
-        CssSpecifiedLength::try_from_component(CssComponentValue::try_token(css).unwrap()).unwrap()
+        CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(css).unwrap())
+            .unwrap()
     }
 }
 
-pub fn nonnegative_length(css: &str) -> CssSpecifiedNonNegativeLength {
+pub fn nonnegative_length(css: &str) -> CssNumeric<CssLength, CssNonNegative> {
     let components = parse_component_values(css).unwrap();
     if css.contains('(') {
-        CssSpecifiedNonNegativeLength::try_from_calculation(
-            CssLengthCalculation::try_from_components(components, Default::default()).unwrap(),
+        CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLength>::try_from_components(components, Default::default())
+                .unwrap(),
         )
         .unwrap()
     } else {
-        CssSpecifiedNonNegativeLength::try_from_component(
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
             CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
     }
 }
 
-pub fn signed_length_percentage(css: &str) -> CssSpecifiedLengthPercentage {
+pub fn signed_length_percentage(css: &str) -> CssNumeric<CssLengthPercentage> {
     let components = parse_component_values(css).unwrap();
     if css.contains('(') {
-        CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(components, Default::default())
-                .unwrap(),
+        CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
-        CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(css).unwrap())
-            .unwrap()
+        CssNumeric::<CssLengthPercentage>::try_from_component(
+            CssComponentValue::try_token(css).unwrap(),
+        )
+        .unwrap()
     }
 }
 
-pub fn nonnegative_length_percentage(css: &str) -> CssSpecifiedNonNegativeLengthPercentage {
+pub fn nonnegative_length_percentage(css: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
     let components = parse_component_values(css).unwrap();
     if css.contains('(') {
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(components, Default::default())
-                .unwrap(),
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()

@@ -3,7 +3,7 @@ use crate::{
     CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
     CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssLengthUnit,
     CssNumericTokenKind, CssNumericTokenRef, CssRelativeColorChannel, CssSerializedValue,
-    CssSourcePosition, CssValueOrigin, CssValueTokenRef,
+    CssValueOrigin, CssValueTokenRef,
 };
 use std::{borrow::Cow, fmt};
 
@@ -21,12 +21,20 @@ mod controlled_check;
 mod ordinary_expression;
 pub(crate) mod projection;
 pub(crate) mod units;
+mod value;
 pub(crate) use projection::{
     DeferredNumericProjection, NumericComparisonCapture, NumericProjectionOutcome,
     NumericProjectionScale, capture_specified, capture_specified_for_comparison,
     capture_specified_scaled, prepare_keyframe_matching, prepare_specified,
     project_calc_size_sum_into, project_specified_into,
 };
+pub use value::{
+    CssAngle, CssAnglePercentage, CssAnyRange, CssCalculation, CssDimensionRoot, CssFlex,
+    CssFrequency, CssFrequencyPercentage, CssHintedNumber, CssInteger, CssLength,
+    CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric, CssNumericLiteral, CssNumericRoot,
+    CssPercentage, CssPositive, CssRange, CssResolution, CssTime,
+};
+pub(crate) use value::{RootKind, root_kind};
 
 /// Component storage is acquired only for a completed calculation result.
 #[derive(Debug)]
@@ -1219,20 +1227,38 @@ impl CssCalculationExpression {
         self.admits_pure_context
     }
 
-    /// The bare ordinary root, when this root is a leaf rather than math.
-    pub(crate) fn literal_root(&self) -> Option<&CssComponentValue> {
-        match &self.kind {
-            NodeKind::Value(component) => Some(component),
-            _ => None,
-        }
+    /// CSS Typed OM 1 "equal numeric values" over the checked tree: the same
+    /// operations and functions with pairwise equal operands in order. Leaves
+    /// compare by unit and exact value; source origins, spelling and the raw
+    /// component graph are ignored. Parenthesised blocks and nested `calc()`
+    /// functions leave no node (Values 4 "parse a calculation"), so they are
+    /// seen through; every other math function is compared as a node.
+    pub(crate) fn value_eq(&self, other: &Self) -> bool {
+        Self::structural_eq_with(
+            false,
+            true,
+            vec![(self, other)],
+            |_, _| true,
+            |a, b| {
+                Ok::<_, std::convert::Infallible>(crate::specified_numeric::ordinary_literal_equal(
+                    a, b,
+                ))
+            },
+            |pending, value| {
+                pending.push(value);
+                Ok(())
+            },
+        )
+        .unwrap_or_else(|never| match never {})
     }
 
-    /// Compares checked numeric structure while excluding diagnostic source
-    /// coordinates and the redundant raw root graph. This is deliberately
-    /// separate from the provenance-sensitive raw calculation `PartialEq`.
+    /// Compares checked numeric structure and authored spelling while
+    /// excluding diagnostic source coordinates and the redundant raw root
+    /// graph: the specified serializer's shortening identity.
     pub(crate) fn structural_eq(&self, other: &Self) -> bool {
         Self::structural_eq_with(
             true,
+            false,
             vec![(self, other)],
             |a, b| a.structural_eq_ignoring_origin(b),
             |a, b| Ok::<_, std::convert::Infallible>(a.structural_eq_ignoring_origin(b)),
@@ -1252,6 +1278,7 @@ impl CssCalculationExpression {
         context: &mut crate::specified_serialization::SpecifiedSerializationContext,
     ) -> std::result::Result<bool, crate::CssSerializationError> {
         Self::structural_eq_with(
+            false,
             false,
             vec![(self, other)],
             |a, b| a.structural_eq_ignoring_origin(b),
@@ -1281,6 +1308,7 @@ impl CssCalculationExpression {
         pending.push((self, other));
         Self::structural_eq_with(
             true,
+            false,
             pending,
             |a, b| {
                 a.token_structural_eq_ignoring_origin(b)
@@ -1301,8 +1329,30 @@ impl CssCalculationExpression {
         )
     }
 
+    /// The node a value comparison continues with: Values 4 "parse a
+    /// calculation" leaves no node for a parenthesised block or a nested
+    /// `calc()`, so both are seen through. Every other math function is kept.
+    fn without_grouping(&self) -> &Self {
+        let mut node = self;
+        loop {
+            node = match &node.kind {
+                NodeKind::Group(inner) => inner,
+                NodeKind::Function {
+                    function: CssMathFunction::Calc,
+                    args,
+                    ..
+                } => match args.as_slice() {
+                    [Some(inner)] => inner,
+                    _ => return node,
+                },
+                _ => return node,
+            };
+        }
+    }
+
     fn structural_eq_with<'a, E>(
         compare_raw_syntax: bool,
+        see_through_grouping: bool,
         mut pending: Vec<(&'a Self, &'a Self)>,
         mut syntax_eq: impl FnMut(&CssComponentValue, &CssComponentValue) -> bool,
         mut value_eq: impl FnMut(&CssComponentValue, &CssComponentValue) -> std::result::Result<bool, E>,
@@ -1311,6 +1361,13 @@ impl CssCalculationExpression {
             (&'a Self, &'a Self),
         ) -> std::result::Result<(), E>,
     ) -> std::result::Result<bool, E> {
+        let child = |node: &'a Self| {
+            if see_through_grouping {
+                node.without_grouping()
+            } else {
+                node
+            }
+        };
         while let Some((left, right)) = pending.pop() {
             if left.ty != right.ty
                 || (compare_raw_syntax
@@ -1340,7 +1397,7 @@ impl CssCalculationExpression {
                         if a_operator != b_operator {
                             return Ok(false);
                         }
-                        push(&mut pending, (a_child, b_child))?;
+                        push(&mut pending, (child(a_child), child(b_child)))?;
                     }
                 }
                 (NodeKind::Product(a), NodeKind::Product(b)) if a.len() == b.len() => {
@@ -1348,10 +1405,12 @@ impl CssCalculationExpression {
                         if a_operator != b_operator {
                             return Ok(false);
                         }
-                        push(&mut pending, (a_child, b_child))?;
+                        push(&mut pending, (child(a_child), child(b_child)))?;
                     }
                 }
-                (NodeKind::Group(a), NodeKind::Group(b)) => push(&mut pending, (a, b))?,
+                (NodeKind::Group(a), NodeKind::Group(b)) => {
+                    push(&mut pending, (child(a), child(b)))?
+                }
                 (
                     NodeKind::Function {
                         function: a_function,
@@ -1369,7 +1428,7 @@ impl CssCalculationExpression {
                 {
                     for (a, b) in a_args.iter().zip(b_args).rev() {
                         match (a, b) {
-                            (Some(a), Some(b)) => push(&mut pending, (a, b))?,
+                            (Some(a), Some(b)) => push(&mut pending, (child(a), child(b)))?,
                             (None, None) => {}
                             _ => return Ok(false),
                         }
@@ -2809,247 +2868,6 @@ fn construct_grid_track_math<'input>(
     Ok(selected)
 }
 
-macro_rules! root {
-    ($(#[$meta:meta])* $name:ident,$kind:ident) => {
-        $(#[$meta])*
-        #[derive(Clone, Debug, Eq, PartialEq)]
-        pub struct $name {
-            pub(crate) expression: Box<CssCalculationExpression>,
-        }
-        impl $name {
-            pub fn try_from_components(
-                values: CssComponentValues,
-                limits: CssComponentValueLimits,
-            ) -> Result<Self> {
-                construct(values, CalculationRoot::$kind, limits).map(Self::from_expression)
-            }
-            pub(crate) fn from_expression(expression: CssCalculationExpression) -> Self {
-                Self {
-                    expression: Box::new(expression),
-                }
-            }
-            pub fn expression(&self) -> CssCalculationExpressionRef<'_> {
-                self.expression.as_ref().as_ref()
-            }
-            pub fn result_type(&self) -> CssCalculationType {
-                self.expression.result_type()
-            }
-            pub fn numeric_type(&self) -> CssNumericType {
-                self.expression.ty
-            }
-            pub fn components(&self) -> &CssComponentValues {
-                self.expression
-                    .components
-                    .as_ref()
-                    .expect("checked root component graph")
-            }
-            pub fn position(&self) -> Option<CssSourcePosition> {
-                match &self.expression.origin {
-                    CssValueOrigin::Parsed(v) => Some(v.span().start()),
-                    _ => None,
-                }
-            }
-            pub fn origin(&self) -> &CssValueOrigin {
-                &self.expression.origin
-            }
-            /// Serializes the retained calculation as canonical tokens with their
-            /// origins. `limits.max_css_bytes()` caps the output; the other
-            /// component limits do not apply.
-            ///
-            /// # Errors
-            ///
-            /// Returns [`CssComponentValueError`] when the output exceeds the byte
-            /// limit; no partial output is returned.
-            pub fn serialize_tokens(
-                &self,
-                limits: crate::CssComponentValueLimits,
-            ) -> std::result::Result<CssSerializedValue, CssComponentValueError> {
-                let mut tokens = Vec::new();
-                self.expression.canonical_tokens(&mut tokens);
-                let value = CssSerializedValue::from_numeric_tokens(tokens)?;
-                if value.as_css().len() > limits.max_css_bytes() {
-                    return Err(CssComponentValueError::new(
-                        crate::CssComponentValueErrorKind::ByteLimit,
-                        self.origin().clone(),
-                    ));
-                }
-                Ok(value)
-            }
-        }
-    };
-}
-root!(CssNumberCalculation, Number);
-root!(
-    /// A Number-result calculation retaining a non-null dimensional percentage hint.
-    ///
-    /// Only percentage-permitting consumers admit this payload. The hint names
-    /// a dimension without resolving its percentage basis. Pure Number roots
-    /// remain a separate checked domain.
-    ///
-    /// ```compile_fail
-    /// use surgeist_css::{CssHintedNumberCalculation, CssSpecifiedNumber};
-    /// fn pure(value: CssHintedNumberCalculation) {
-    ///     let _ = CssSpecifiedNumber::try_from_calculation(value);
-    /// }
-    /// ```
-    CssHintedNumberCalculation, HintedNumber
-);
-root!(CssIntegerCalculation, Integer);
-root!(CssPercentageCalculation, Percentage);
-root!(CssLengthCalculation, Length);
-root!(CssLengthPercentageCalculation, LengthPercentage);
-root!(CssFlexCalculation, Flex);
-root!(CssAngleCalculation, Angle);
-// Images 4 angular positions retain an unresolved angle percentage basis.
-root!(CssAnglePercentageCalculation, AnglePercentage);
-root!(CssTimeCalculation, Time);
-root!(CssFrequencyCalculation, Frequency);
-// Values 4 §5.6: percentages use the host's unresolved frequency basis.
-root!(CssFrequencyPercentageCalculation, FrequencyPercentage);
-root!(CssResolutionCalculation, Resolution);
-
-macro_rules! dimension_calculation {
-    ($($name:ident),*) => {$(
-        impl crate::dimension::DimensionCalculation for $name {
-            fn components(&self) -> &CssComponentValues {
-                self.components()
-            }
-            fn origin(&self) -> &CssValueOrigin {
-                self.origin()
-            }
-            fn expression(&self) -> &CssCalculationExpression {
-                &self.expression
-            }
-        }
-    )*};
-}
-dimension_calculation!(
-    CssAngleCalculation,
-    CssTimeCalculation,
-    CssFrequencyCalculation,
-    CssResolutionCalculation
-);
-
-impl CssHintedNumberCalculation {
-    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
-        self.expression.structural_eq(&other.expression)
-    }
-
-    pub(crate) fn append_specified(
-        &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        project_specified_into(&self.expression, context, output).map(|_| ())
-    }
-
-    pub(crate) fn capture_specified(
-        &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    ) -> std::result::Result<String, crate::CssSerializationError> {
-        capture_specified(&self.expression, context).map(|(text, _)| text)
-    }
-}
-
-impl CssLengthCalculation {
-    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
-        self.expression.structural_eq(&other.expression)
-    }
-}
-
-impl CssLengthPercentageCalculation {
-    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
-        self.expression.structural_eq(&other.expression)
-    }
-}
-
-impl CssIntegerCalculation {
-    pub(crate) fn structural_eq(&self, other: &Self) -> bool {
-        self.expression.structural_eq(&other.expression)
-    }
-
-    pub(crate) fn serialize_specified_into(
-        &self,
-        context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-        output: &mut String,
-    ) -> std::result::Result<(), crate::CssSerializationError> {
-        project_specified_into(&self.expression, context, output).map(|_| ())
-    }
-}
-
-impl CssIntegerCalculation {
-    pub fn requires_rounding(&self) -> bool {
-        matches!(self.expression.kind, NodeKind::Function { .. })
-    }
-    pub fn literal(value: i32) -> Self {
-        Self::try_from_components(
-            CssComponentValues::try_new(
-                vec![CssComponentValue::try_number(&value.to_string()).expect("integer spelling")],
-                Default::default(),
-            )
-            .expect("single component"),
-            Default::default(),
-        )
-        .expect("integer literal")
-    }
-}
-fn programmatic_number(value: f32) -> Option<CssComponentValues> {
-    if !value.is_finite() {
-        return None;
-    }
-    CssComponentValues::try_new(
-        vec![CssComponentValue::try_number(&value.to_string()).ok()?],
-        Default::default(),
-    )
-    .ok()
-}
-impl CssNumberCalculation {
-    pub fn try_literal(value: f32) -> Option<Self> {
-        Self::try_from_components(programmatic_number(value)?, Default::default()).ok()
-    }
-}
-impl CssPercentageCalculation {
-    pub fn try_literal(value: f32) -> Option<Self> {
-        if !value.is_finite() {
-            return None;
-        }
-        Self::try_from_components(
-            CssComponentValues::try_new(
-                vec![CssComponentValue::try_token(&format!("{value}%")).ok()?],
-                Default::default(),
-            )
-            .ok()?,
-            Default::default(),
-        )
-        .ok()
-    }
-}
-impl CssLengthCalculation {
-    pub fn try_dimension(value: f32, unit: CssLengthUnit) -> Option<Self> {
-        if !value.is_finite() {
-            return None;
-        }
-        Self::try_from_components(
-            CssComponentValues::try_new(
-                vec![CssComponentValue::try_dimension(&value.to_string(), unit.as_css_str()).ok()?],
-                Default::default(),
-            )
-            .ok()?,
-            Default::default(),
-        )
-        .ok()
-    }
-}
-fn programmatic_dimension(value: f32, unit: &str) -> Option<CssComponentValues> {
-    if !value.is_finite() {
-        return None;
-    }
-    CssComponentValues::try_new(
-        vec![CssComponentValue::try_dimension(&value.to_string(), unit).ok()?],
-        Default::default(),
-    )
-    .ok()
-}
 /// Resource accounting for assembling already admitted roots. No child graph is
 /// cloned until the complete iterator has passed these aggregate checks.
 struct SumAssemblyBudget {
@@ -3166,7 +2984,7 @@ impl SumAssemblyBudget {
             )
             .map_err(CssNumericConstructionError::component)
     }
-    fn operand(&mut self, value: &CssLengthPercentageCalculation) -> Result<()> {
+    fn operand(&mut self, value: &CssCalculation<CssLengthPercentage>) -> Result<()> {
         // Iterator frames keep traversal storage proportional to nesting depth.
         let mut pending = vec![(value.components().items().iter(), 1u32)];
         while let Some((items, depth)) = pending.last_mut() {
@@ -3208,7 +3026,7 @@ impl SumAssemblyBudget {
     }
 }
 
-impl CssLengthPercentageCalculation {
+impl CssCalculation<CssLengthPercentage> {
     /// Assembles a symbolic sum while preserving every operand's original components.
     ///
     /// The first operand has no binary operator. Even a single operand receives
@@ -3269,56 +3087,6 @@ impl CssLengthPercentageCalculation {
         )
         .map(Self::from_expression)
     }
-
-    pub fn try_dimension(value: f32, unit: CssLengthUnit) -> Option<Self> {
-        Self::try_from_components(
-            programmatic_dimension(value, unit.as_css_str())?,
-            Default::default(),
-        )
-        .ok()
-    }
-    pub fn try_percentage(value: f32) -> Option<Self> {
-        Self::try_from_components(
-            CssPercentageCalculation::try_literal(value)?
-                .components()
-                .clone(),
-            Default::default(),
-        )
-        .ok()
-    }
-}
-impl CssAngleCalculation {
-    /// Constructs an exact ordinary dimension root with a canonical angle unit.
-    pub fn try_literal(number: &str, unit: crate::CssAngleUnit) -> Result<Self> {
-        let component = CssComponentValue::try_dimension(number, crate::angle::suffix(unit))
-            .map_err(CssNumericConstructionError::component)?;
-        let values = CssComponentValues::try_new(vec![component], Default::default())
-            .map_err(CssNumericConstructionError::component)?;
-        Self::try_from_components(values, Default::default())
-    }
-}
-
-impl CssTimeCalculation {
-    /// Constructs an exact ordinary time dimension root, retaining the selected unit.
-    pub fn try_literal(number: &str, unit: crate::CssTimeUnit) -> Result<Self> {
-        let literal = crate::CssTimeLiteral::try_new(number, unit)
-            .map_err(CssNumericConstructionError::component)?;
-        let values =
-            CssComponentValues::try_new(vec![literal.component().clone()], Default::default())
-                .map_err(CssNumericConstructionError::component)?;
-        Self::try_from_components(values, Default::default())
-    }
-}
-impl CssFrequencyCalculation {
-    /// Constructs an exact ordinary frequency root, retaining the selected unit.
-    pub fn try_literal(number: &str, unit: crate::CssFrequencyUnit) -> Result<Self> {
-        let literal = crate::CssFrequencyLiteral::try_new(number, unit)
-            .map_err(CssNumericConstructionError::component)?;
-        let values =
-            CssComponentValues::try_new(vec![literal.component().clone()], Default::default())
-                .map_err(CssNumericConstructionError::component)?;
-        Self::try_from_components(values, Default::default())
-    }
 }
 
 fn escaped_profile_name(name: &crate::CssColorProfileComponentName) -> String {
@@ -3348,50 +3116,20 @@ impl<'a> CssCalculationProfileChannelRef<'a> {
     }
 }
 
-#[derive(Clone, Copy)]
-pub(crate) enum SpecifiedCalculationRef<'a> {
-    Number(&'a CssNumberCalculation),
-    Angle(&'a CssAngleCalculation),
-    Time(&'a CssTimeCalculation),
-    Frequency(&'a CssFrequencyCalculation),
-}
-
-/// Streams a checked numeric child directly when the owning serializer has
-/// already selected its branch and does not need captured text for dispatch.
-#[allow(dead_code)]
-pub(crate) fn project_calculation_specified_into(
-    calculation: SpecifiedCalculationRef<'_>,
-    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-    output: &mut String,
-) -> std::result::Result<NumericProjectionOutcome, crate::CssSerializationError> {
-    project_specified_into(calculation.expression(), context, output)
-}
-
-impl<'a> SpecifiedCalculationRef<'a> {
-    fn expression(&self) -> &'a CssCalculationExpression {
-        match *self {
-            Self::Number(value) => &value.expression,
-            Self::Angle(value) => &value.expression,
-            Self::Time(value) => &value.expression,
-            Self::Frequency(value) => &value.expression,
-        }
-    }
-}
-
 /// Builds once in the caller's cumulative context and defers numeric emission.
-pub(crate) fn prepare_calculation_specified<'a>(
-    calculation: SpecifiedCalculationRef<'a>,
+pub(crate) fn prepare_calculation_specified<'a, T: CssNumericRoot>(
+    calculation: &'a CssCalculation<T>,
     context: &mut crate::specified_serialization::SpecifiedSerializationContext,
 ) -> std::result::Result<DeferredNumericProjection<'a>, crate::CssSerializationError> {
-    prepare_specified(calculation.expression(), context)
+    prepare_specified(&calculation.expression, context)
 }
 
 #[derive(Clone, Copy)]
 pub(crate) enum ColorCalculationRef<'a> {
-    Number(&'a CssNumberCalculation),
-    HintedNumber(&'a CssHintedNumberCalculation),
-    Percentage(&'a CssPercentageCalculation),
-    Angle(&'a CssAngleCalculation),
+    Number(&'a CssCalculation<CssNumber>),
+    HintedNumber(&'a CssCalculation<CssHintedNumber>),
+    Percentage(&'a CssCalculation<CssPercentage>),
+    Angle(&'a CssCalculation<CssAngle>),
 }
 impl ColorCalculationRef<'_> {
     fn expression(&self) -> &CssCalculationExpression {
@@ -3564,9 +3302,11 @@ mod color_component_calculation_tests {
                 None,
             ),
         ] {
-            let value =
-                CssNumberCalculation::try_from_components(components(source), Default::default())
-                    .unwrap();
+            let value = CssCalculation::<CssNumber>::try_from_components(
+                components(source),
+                Default::default(),
+            )
+            .unwrap();
             let before = value.clone();
             let outcome = assert_capture(
                 ColorCalculationRef::Number(&value),
@@ -3577,7 +3317,7 @@ mod color_component_calculation_tests {
             assert_eq!(outcome.scalar_value.map(f64::to_bits), scalar);
             assert_eq!(value, before);
         }
-        let value = CssNumberCalculation::try_from_components(
+        let value = CssCalculation::<CssNumber>::try_from_components(
             components("calc(NaN + 1em / 1px)"),
             Default::default(),
         )
@@ -3593,7 +3333,7 @@ mod color_component_calculation_tests {
 
     #[test]
     fn component_capture_retains_scale_dimensions_and_canonical_angles() {
-        let number = CssNumberCalculation::try_from_components(
+        let number = CssCalculation::<CssNumber>::try_from_components(
             components("calc(.0078125 * 1em / 1px)"),
             Default::default(),
         )
@@ -3607,7 +3347,7 @@ mod color_component_calculation_tests {
             "calc(0.007813 * 1% * 1em / 1px)",
             true,
         );
-        let percentage = CssPercentageCalculation::try_from_components(
+        let percentage = CssCalculation::<CssPercentage>::try_from_components(
             components("calc(.0078125% * 1em / 1px)"),
             Default::default(),
         )
@@ -3621,7 +3361,7 @@ mod color_component_calculation_tests {
             "calc(0.007813% * 1em / 1px / 100%)",
             true,
         );
-        let angle = CssAngleCalculation::try_from_components(
+        let angle = CssCalculation::<CssAngle>::try_from_components(
             components("calc(.0000001turn + 1deg * 1em / 1px)"),
             Default::default(),
         )
@@ -3636,7 +3376,7 @@ mod color_component_calculation_tests {
 
     #[test]
     fn component_capture_uses_rounded_contextual_scratch_and_shared_work() {
-        let value = CssNumberCalculation::try_from_components(
+        let value = CssCalculation::<CssNumber>::try_from_components(
             components("calc(5e-324 * 1em / 1px)"),
             Default::default(),
         )
@@ -3733,14 +3473,16 @@ mod origin_color_calculation_tests {
             ("calc(1 / (0 * -1))", "calc(-infinity)"),
             ("calc(0 * -1 + 1em / 1px)", "calc((0 * -1) + (1em / 1px))"),
         ] {
-            let value =
-                CssNumberCalculation::try_from_components(components(source), Default::default())
-                    .unwrap();
+            let value = CssCalculation::<CssNumber>::try_from_components(
+                components(source),
+                Default::default(),
+            )
+            .unwrap();
             let before = value.clone();
             assert_capture(ColorCalculationRef::Number(&value), text);
             assert_eq!(value, before);
         }
-        let percentage = CssPercentageCalculation::try_from_components(
+        let percentage = CssCalculation::<CssPercentage>::try_from_components(
             components("calc(.78125%)"),
             Default::default(),
         )
@@ -3749,7 +3491,7 @@ mod origin_color_calculation_tests {
             ColorCalculationRef::Percentage(&percentage),
             "calc(0.78125%)",
         );
-        let angle = CssAngleCalculation::try_from_components(
+        let angle = CssCalculation::<CssAngle>::try_from_components(
             components("calc(.0000001turn)"),
             Default::default(),
         )
@@ -3759,7 +3501,7 @@ mod origin_color_calculation_tests {
 
     #[test]
     fn origin_capture_uses_rounded_scratch_without_changing_standalone_scratch() {
-        let value = CssNumberCalculation::try_from_components(
+        let value = CssCalculation::<CssNumber>::try_from_components(
             components("calc(1 / 128)"),
             Default::default(),
         )
@@ -3809,7 +3551,7 @@ mod origin_color_calculation_tests {
 
     #[test]
     fn origin_capture_spends_the_callers_cumulative_work_and_remaining_bytes() {
-        let value = CssNumberCalculation::try_from_components(
+        let value = CssCalculation::<CssNumber>::try_from_components(
             components("calc(1 / 128)"),
             Default::default(),
         )
@@ -3924,7 +3666,7 @@ mod retained_color_calculation_tests {
                 None,
             ),
         ] {
-            let value = CssPercentageCalculation::try_from_components(
+            let value = CssCalculation::<CssPercentage>::try_from_components(
                 crate::parse_component_values(source).unwrap(),
                 Default::default(),
             )
@@ -3953,7 +3695,7 @@ mod retained_color_calculation_tests {
 
     #[test]
     fn retained_scaled_alpha_uses_shared_work_and_remaining_scratch() {
-        let value = CssPercentageCalculation::try_from_components(
+        let value = CssCalculation::<CssPercentage>::try_from_components(
             crate::parse_component_values("calc(.78125%)").unwrap(),
             Default::default(),
         )
@@ -4005,8 +3747,8 @@ mod retained_color_calculation_tests {
 mod structural_comparison_tests {
     use super::*;
 
-    fn checked(source: &str) -> CssLengthPercentageCalculation {
-        CssLengthPercentageCalculation::try_from_components(
+    fn checked(source: &str) -> CssCalculation<CssLengthPercentage> {
+        CssCalculation::<CssLengthPercentage>::try_from_components(
             crate::parse_component_values(source).unwrap(),
             Default::default(),
         )
@@ -4014,20 +3756,40 @@ mod structural_comparison_tests {
     }
 
     #[test]
-    fn numeric_structure_ignores_source_coordinates_without_ignoring_syntax() {
+    fn numeric_equality_ignores_source_coordinates_and_spelling_but_not_structure() {
         let value = checked("calc(1px + 2%)");
         let shifted = checked("  calc(1px + 2%)");
-        assert_ne!(value, shifted, "raw numeric equality retains provenance");
-        assert!(value.structural_eq(&shifted));
-        assert!(value.structural_eq(&checked("CALC(1px + 2%)")));
+        assert_eq!(value, shifted, "numeric equality ignores provenance");
+        assert_eq!(value, checked("CALC(1.0px + +2%)"));
+        assert_eq!(
+            value,
+            checked("calc((1px + 2%))"),
+            "redundant grouping is not a node (Values 4 parse a calculation)"
+        );
+        assert!(
+            !value
+                .expression
+                .structural_eq(&checked("calc((1px + 2%))").expression),
+            "the specified shortening identity keeps the grouping"
+        );
+        assert!(
+            value.expression.structural_eq(&shifted.expression),
+            "the specified shortening identity ignores provenance"
+        );
+        assert!(
+            !value
+                .expression
+                .structural_eq(&checked("calc(1.0px + 2%)").expression),
+            "the specified shortening identity keeps authored spelling"
+        );
 
         for different in [
-            "calc(1px + 2px)",  // numeric type and unit
-            "calc(1px - 2%)",   // operator
-            "calc((1px + 2%))", // group nesting
-            "calc(2px + 2%)",   // exact numeric token
+            "calc(1px + 2px)", // numeric type and unit
+            "calc(1px - 2%)",  // operator
+            "calc(2px + 2%)",  // exact numeric value
+            "calc(2% + 1px)",  // operand order
         ] {
-            assert!(!value.structural_eq(&checked(different)), "{different}");
+            assert_ne!(value, checked(different), "{different}");
         }
     }
 }
@@ -4187,7 +3949,7 @@ mod container_context_tests {
             assert_eq!(view.origin(), components.items()[0].origin());
             let cloned = expression.clone();
             assert_eq!(expression, cloned);
-            let number = CssNumberCalculation::from_expression(cloned);
+            let number = CssCalculation::<CssNumber>::from_expression(cloned);
             let serialized = number.serialize_tokens(Default::default()).unwrap();
             assert_eq!(serialized.as_css(), canonical);
             assert_eq!(
@@ -4209,14 +3971,14 @@ mod container_context_tests {
             )
             .unwrap();
             assert_eq!(
-                CssNumberCalculation::from_expression(roundtrip)
+                CssCalculation::<CssNumber>::from_expression(roundtrip)
                     .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 canonical
             );
             assert_eq!(
-                CssNumberCalculation::try_from_components(components, Default::default())
+                CssCalculation::<CssNumber>::try_from_components(components, Default::default())
                     .unwrap_err()
                     .kind(),
                 &CssNumericConstructionErrorKind::UnknownFunction
@@ -4239,14 +4001,14 @@ mod container_context_tests {
             .unwrap();
             assert_eq!(expression.result_type(), CssCalculationType::Length);
             assert_eq!(
-                CssLengthCalculation::from_expression(expression)
+                CssCalculation::<CssLength>::from_expression(expression)
                     .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 source
             );
             assert_eq!(
-                CssLengthCalculation::try_from_components(components, Default::default())
+                CssCalculation::<CssLength>::try_from_components(components, Default::default())
                     .unwrap_err()
                     .kind(),
                 &CssNumericConstructionErrorKind::UnknownFunction
@@ -4301,7 +4063,7 @@ mod container_context_tests {
         let CssComponentValueRef::Function(original) = values.items()[0].view() else {
             panic!("function")
         };
-        let serialized = CssNumberCalculation::from_expression(expression)
+        let serialized = CssCalculation::<CssNumber>::from_expression(expression)
             .serialize_tokens(Default::default())
             .unwrap();
         assert_eq!(

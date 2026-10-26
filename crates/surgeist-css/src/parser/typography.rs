@@ -12,11 +12,11 @@ use super::values::{
 use crate::font_variant::CssFontVariant;
 use crate::syntax::*;
 use crate::{
-    CssAbsoluteFontWeight, CssFontObliqueAngle, CssFontSize, CssFontStyle, CssFontStyleKeyword,
+    CssAbsoluteFontWeight, CssAngle, CssFontSize, CssFontStyle, CssFontStyleKeyword,
     CssFontSynthesis, CssFontSynthesisPosition, CssFontSynthesisSmallCaps, CssFontSynthesisStyle,
-    CssFontSynthesisValues, CssFontSynthesisWeight, CssFontWeight, CssFontWeightNumber,
-    CssFontWidth, CssFontWidthKeyword, CssLineHeight, CssSpecifiedLengthPercentage,
-    CssSpecifiedNonNegativeNumber, CssTextSpacingAdjustment,
+    CssFontSynthesisValues, CssFontSynthesisWeight, CssFontWeight, CssFontWeightRange,
+    CssFontWidth, CssFontWidthKeyword, CssLengthPercentage, CssLineHeight, CssNonNegative,
+    CssNumber, CssNumeric, CssObliqueAngleRange, CssTextSpacingAdjustment,
 };
 
 pub(super) static IMPLEMENTED_PROPERTY_EXTENSIONS: &[CssFeatureId] =
@@ -95,7 +95,7 @@ pub(super) fn parse_line_height<'i, 't>(
 fn parse_line_height_number<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssSpecifiedNonNegativeNumber, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssNumber, CssNonNegative>, ParseError<'i, Error>> {
     super::values::parse_nonnegative_number(input, numeric)
 }
 
@@ -139,7 +139,7 @@ pub(super) fn parse_text_combine_upright<'i, 't>(
                 }
                 Token::Function(name) if crate::numeric::is_math_function(name) => {
                     let expression = parse_numeric_function(input, &start, numeric, CalculationRoot::Integer)?;
-                    CssTextCombineDigitCount::from_calculation(CssIntegerCalculation::from_expression(expression))
+                    CssTextCombineDigitCount::from_calculation(CssCalculation::<CssInteger>::from_expression(expression))
                 }
                 token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
             };
@@ -478,16 +478,19 @@ pub(super) fn parse_absolute_font_weight<'i, 't>(
     numeric: &crate::numeric::NumericInputContext<'_>,
 ) -> std::result::Result<CssAbsoluteFontWeight, ParseError<'i, Error>> {
     /// Fonts 4 `<number [1,1000]>`.
-    const FONT_WEIGHT_NUMBER: NumericType<CssFontWeightNumber> = NumericType {
-        root: CalculationRoot::Number,
-        tokens: LiteralTokens::Numeric,
-        literal: |component, _| CssFontWeightNumber::try_from_component(component),
-        calculation: |expression| {
-            CssFontWeightNumber::try_from_calculation(crate::CssNumberCalculation::from_expression(
-                expression,
-            ))
-        },
-    };
+    const FONT_WEIGHT_NUMBER: NumericType<CssNumeric<CssNumber, CssFontWeightRange>> =
+        NumericType {
+            root: CalculationRoot::Number,
+            tokens: LiteralTokens::Numeric,
+            literal: |component, _| {
+                CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(component)
+            },
+            calculation: |expression| {
+                CssNumeric::<CssNumber, CssFontWeightRange>::from_parser_calculation(
+                    crate::CssCalculation::<crate::CssNumber>::from_expression(expression),
+                )
+            },
+        };
     input.skip_whitespace();
     let location = input.current_source_location();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
@@ -534,16 +537,18 @@ pub(super) fn common_font_style_keyword(name: &str) -> Option<CssFontStyleKeywor
 pub(super) fn parse_font_oblique_angle<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssFontObliqueAngle, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssAngle, CssObliqueAngleRange>, ParseError<'i, Error>> {
     /// Fonts 4 `<angle [-90deg,90deg]>`.
-    const OBLIQUE_ANGLE: NumericType<CssFontObliqueAngle> = NumericType {
+    const OBLIQUE_ANGLE: NumericType<CssNumeric<CssAngle, CssObliqueAngleRange>> = NumericType {
         root: CalculationRoot::Angle,
         tokens: LiteralTokens::Dimension,
-        literal: |component, _| CssFontObliqueAngle::try_from_component(component),
+        literal: |component, _| {
+            CssNumeric::<CssAngle, CssObliqueAngleRange>::try_from_component(component)
+        },
         calculation: |expression| {
-            CssFontObliqueAngle::try_from_calculation(crate::CssAngleCalculation::from_expression(
-                expression,
-            ))
+            CssNumeric::<CssAngle, CssObliqueAngleRange>::from_parser_calculation(
+                crate::CssCalculation::<crate::CssAngle>::from_expression(expression),
+            )
         },
     };
     parse_numeric_type(input, numeric, &OBLIQUE_ANGLE)
@@ -576,11 +581,12 @@ pub(super) fn parse_font_width<'i, 't>(
         return Ok(CssFontWidth::Keyword(keyword));
     }
     /// Fonts 4 `<percentage [0,∞]>`; other numeric tokens fail its literal check.
-    const FONT_WIDTH_PERCENTAGE: NumericType<crate::CssSpecifiedNonNegativePercentage> =
-        NumericType {
-            tokens: LiteralTokens::Numeric,
-            ..super::values::NONNEGATIVE_PERCENTAGE
-        };
+    const FONT_WIDTH_PERCENTAGE: NumericType<
+        crate::CssNumeric<crate::CssPercentage, crate::CssNonNegative>,
+    > = NumericType {
+        tokens: LiteralTokens::Numeric,
+        ..super::values::NONNEGATIVE_PERCENTAGE
+    };
     parse_numeric_type(input, numeric, &FONT_WIDTH_PERCENTAGE).map(CssFontWidth::Percentage)
 }
 
@@ -978,10 +984,12 @@ pub(super) fn parse_hyphenate_character<'i, 't>(
 fn parse_hyphenate_integer<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssHyphenateLimitInteger, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssInteger, CssNonNegative>, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let integer = super::values::parse_integer_value(input, numeric)?;
-    CssHyphenateLimitInteger::try_new(integer).ok_or_else(|| unexpected_at(location))
+    integer
+        .try_narrow::<CssNonNegative>()
+        .map_err(|_| unexpected_at(location))
 }
 fn parse_hyphenate_chars_component<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -1027,13 +1035,13 @@ pub(super) fn parse_hyphenate_limit_lines<'i, 't>(
 pub(super) fn parse_hyphenate_limit_zone<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssSpecifiedLengthPercentage, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssLengthPercentage>, ParseError<'i, Error>> {
     parse_length_percentage(input, numeric)
 }
 pub(super) fn parse_line_padding<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssSpecifiedLength, ParseError<'i, Error>> {
+) -> std::result::Result<CssNumeric<CssLength>, ParseError<'i, Error>> {
     super::values::parse_length(input, numeric)
 }
 pub(super) fn parse_text_justify<'i, 't>(

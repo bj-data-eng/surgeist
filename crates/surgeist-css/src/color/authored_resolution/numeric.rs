@@ -1012,7 +1012,7 @@ mod tests {
             };
             let calculation = if recovered.is_none() {
                 Some(
-                    crate::CssNumberCalculation::try_from_components(
+                    crate::CssCalculation::<crate::CssNumber>::try_from_components(
                         crate::parse_component_values(source).unwrap(),
                         Default::default(),
                     )

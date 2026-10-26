@@ -1,5 +1,6 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
+use crate::css::support::value_assertions::positive_literal;
 use surgeist_css::*;
 
 #[test]
@@ -24,7 +25,7 @@ fn multicolumn_properties_retain_typed_structure() {
     };
     assert!(matches!(
         count.count(),
-        CssColumnCount::Count(CssPositiveIntegerValue::Literal(value)) if value.integer().numeric().representation() == "3"
+        CssColumnCount::Count(value) if value.literal().is_some_and(|value| value.numeric().representation() == "3")
     ));
 
     let CssKnownPropertyValueRef::ColumnFill(fill) = ordinary(&report.syntax()[1]) else {
@@ -63,7 +64,7 @@ fn multicolumn_properties_retain_typed_structure() {
         CssLineWidth::Length(value)
             if value.calculation().is_none()
                 && matches!(
-                    value.literal_component().map(CssComponentValue::view),
+                    value.literal().map(|literal| literal.component()).map(CssComponentValue::view),
                     Some(CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }))
                         if number.representation() == "2" && unit == "px"
                 )
@@ -88,7 +89,7 @@ fn multicolumn_properties_retain_typed_structure() {
     };
     assert!(matches!(
         columns.columns().count(),
-        CssColumnCount::Count(CssPositiveIntegerValue::Literal(value)) if value.integer().numeric().representation() == "4"
+        CssColumnCount::Count(value) if value.literal().is_some_and(|value| value.numeric().representation() == "4")
     ));
     assert!(matches!(
         columns.columns().width(),
@@ -166,10 +167,7 @@ fn multicolumn_calculations_remain_symbolic_and_checked_constructors_reject_lite
     let CssKnownPropertyValueRef::ColumnCount(count) = ordinary(&report.syntax()[0]) else {
         panic!("expected column-count");
     };
-    assert!(matches!(
-        count.count(),
-        CssColumnCount::Count(CssPositiveIntegerValue::Calculation(_))
-    ));
+    assert!(matches!(count.count(), CssColumnCount::Count(value) if value.calculation().is_some()));
     let CssKnownPropertyValueRef::ColumnWidth(width) = ordinary(&report.syntax()[1]) else {
         panic!("expected column-width");
     };
@@ -187,23 +185,19 @@ fn multicolumn_calculations_remain_symbolic_and_checked_constructors_reject_lite
     ));
 
     assert!(
-        surgeist_css::CssPositiveIntegerLiteral::try_new(
-            surgeist_css::CssIntegerLiteral::from_i32(0)
-        )
-        .is_none()
+        positive_literal(surgeist_css::CssNumericLiteral::<surgeist_css::CssInteger>::from_i32(0))
+            .is_none()
     );
     assert!(
-        surgeist_css::CssPositiveIntegerLiteral::try_new(
-            surgeist_css::CssIntegerLiteral::from_i32(-1)
-        )
-        .is_none()
+        positive_literal(surgeist_css::CssNumericLiteral::<surgeist_css::CssInteger>::from_i32(-1))
+            .is_none()
     );
     for (css, kind) in [
         ("-1px", NumericFailure::OutOfRange),
         ("auto", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            surgeist_css::CssSpecifiedNonNegativeLength::try_from_component,
+            surgeist_css::CssNumeric::<surgeist_css::CssLength, surgeist_css::CssNonNegative>::try_from_component,
             surgeist_css::CssComponentValue::try_token(css).unwrap(),
             kind,
         );

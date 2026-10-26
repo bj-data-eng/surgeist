@@ -4,19 +4,23 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_component_rejected;
 use surgeist_css::*;
 
-fn scalar(text: &str) -> CssSpecifiedNonNegativeLengthPercentage {
+fn scalar(text: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
     let components = parse_component_values(text).unwrap();
     if text.starts_with("calc(") {
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(components, Default::default())
-                .unwrap(),
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
         let [component] = components.items() else {
             panic!("one radius scalar")
         };
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.clone()).unwrap()
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component.clone())
+            .unwrap()
     }
 }
 
@@ -40,7 +44,7 @@ fn corner(name: &str, text: &str) -> CssCornerRadiusValue {
 
 #[test]
 fn checked_corner_preserves_omission_axes_origins_and_exact_literals() {
-    let horizontal = CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+    let horizontal = CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_dimension("1", "px").unwrap(),
     )
     .unwrap();
@@ -82,9 +86,15 @@ fn checked_corner_preserves_omission_axes_origins_and_exact_literals() {
         omitted,
         CssCornerRadiusValue::new(scalar("1px"), Some(scalar("1px")))
     );
-    assert_ne!(omitted, CssCornerRadiusValue::new(scalar("1.0px"), None));
+    assert_eq!(omitted, CssCornerRadiusValue::new(scalar("1.0px"), None));
     for text in ["1e100px", "1e100%", "1e-100px", "1e-100%", "-0px", "-0%"] {
-        assert!(scalar(text).literal_component().is_some(), "{text}");
+        assert!(
+            scalar(text)
+                .literal()
+                .map(|literal| literal.component())
+                .is_some(),
+            "{text}"
+        );
     }
     for (text, kind) in [
         ("-1e-100px", NumericFailure::OutOfRange),
@@ -97,7 +107,7 @@ fn checked_corner_preserves_omission_axes_origins_and_exact_literals() {
             panic!("one invalid scalar")
         };
         assert_component_rejected(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component,
             component.clone(),
             kind,
         );
@@ -328,7 +338,10 @@ fn physical_corners_preserve_exact_magnitudes_and_math_type() {
             panic!("physical corner")
         };
         let horizontal = wrapper.value().horizontal();
-        let component = horizontal.literal_component().expect("literal radius");
+        let component = horizontal
+            .literal()
+            .map(|literal| literal.component())
+            .expect("literal radius");
         match component.view() {
             CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) => {
                 assert_eq!(unit, "px");

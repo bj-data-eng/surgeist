@@ -489,6 +489,6 @@ pub(super) fn parse_outline_width<'i, 't>(
 pub(super) fn parse_outline_offset<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssSpecifiedLength, ParseError<'i, Error>> {
+) -> Result<CssNumeric<CssLength>, ParseError<'i, Error>> {
     parse_length(input, numeric)
 }

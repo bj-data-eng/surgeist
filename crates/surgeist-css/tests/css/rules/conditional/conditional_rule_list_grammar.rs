@@ -68,8 +68,10 @@ fn nested_page_retains_selector_typed_margin_and_importance() {
         let CssMarginValue::LengthPercentage(value) = edge else {
             panic!("exact page margin length")
         };
-        let Some(CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })) =
-            value.literal_component().map(CssComponentValue::view)
+        let Some(CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })) = value
+            .literal()
+            .map(|literal| literal.component())
+            .map(CssComponentValue::view)
         else {
             panic!("exact pixel token")
         };
