@@ -20,10 +20,15 @@ side_pair_entry!(CssSizeValue, CssMaxSizeValue);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFrameSizing {
+    /// `auto`: the element's internal layout intrinsic size is ignored.
     Auto,
+    /// `content-width`: the intrinsic width is taken from the element's internal layout intrinsic size, if it has one.
     ContentWidth,
+    /// `content-height`: the intrinsic height is taken from the element's internal layout intrinsic size, if it has one.
     ContentHeight,
+    /// `content-block-size`: the intrinsic block size is taken from the internal layout intrinsic size, resolved in the element's writing mode.
     ContentBlockSize,
+    /// `content-inline-size`: the intrinsic inline size is taken from the internal layout intrinsic size, resolved in the element's writing mode.
     ContentInlineSize,
 }
 
@@ -52,9 +57,13 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssMinIntrinsicSizing {
+    /// `legacy`: the min-content contribution is handled normally.
     Legacy,
+    /// `zero-if-scroll`: the min-content contribution is compressed when the box is a scroll container in that axis.
     ZeroIfScroll,
+    /// `zero-if-extrinsic`: the min-content contribution is compressed when the box has an extrinsic preferred or maximum size.
     ZeroIfExtrinsic,
+    /// `zero-if-scroll zero-if-extrinsic`: the min-content contribution is compressed under either condition.
     ZeroIfScrollAndExtrinsic,
 }
 

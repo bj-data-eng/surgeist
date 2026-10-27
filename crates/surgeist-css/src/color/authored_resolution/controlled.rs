@@ -136,13 +136,19 @@ pub(crate) struct CssAuthoredColorCleanupLayout {
 /// Standard invalidity owns its actual path allocation exactly once.
 #[derive(Debug, Eq, PartialEq)]
 pub struct CssAuthoredColorStandardFailure {
+    /// The canonical reason the authored color is standard-invalid.
     pub kind: CssColorStandardFailureKind,
+    /// The path from the authored root color to the component that failed.
     pub path: CssColorComponentPath,
+    /// The origin of the failing component, when it has one.
     pub origin: Option<CssValueOrigin>,
 }
+/// The result of resolving an authored color: a used color or a standard failure.
 #[derive(Debug, PartialEq)]
 pub enum CssAuthoredColorOutcome {
+    /// The authored color resolved to this used color.
     Used(surgeist_color::Color),
+    /// The authored color is standard-invalid; the failure owns its component path.
     StandardFailure(CssAuthoredColorStandardFailure),
 }
 /// A completed controlled result; it borrows neither the anchor nor the path.

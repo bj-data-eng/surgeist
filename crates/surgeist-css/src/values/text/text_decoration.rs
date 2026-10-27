@@ -12,10 +12,11 @@ use crate::values::effects::CssShadow;
 type Result<T> = std::result::Result<T, CssSerializationError>;
 
 macro_rules! keyword {
-    ($ty:ident, $($variant:ident => $text:literal),+ $(,)?) => {
+    ($(#[$meta:meta])* $ty:ident, $($(#[$variant_meta:meta])* $variant:ident => $text:literal),+ $(,)?) => {
+        $(#[$meta])*
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
         #[non_exhaustive]
-        pub enum $ty { $($variant),+ }
+        pub enum $ty { $($(#[$variant_meta])* $variant),+ }
         provider!($ty, value, writer => writer.keyword(match value { $(Self::$variant => $text),+ }));
     };
 }
@@ -30,8 +31,22 @@ macro_rules! provider {
         crate::serialization::specified_rule_serialization::specified_serialization!($ty);
     };
 }
-keyword!(CssUnderlinePositionVertical, FromFont => "from-font", Under => "under");
-keyword!(CssTextSide, Left => "left", Right => "right");
+keyword!(
+    /// The `from-font` or `under` keyword of `text-underline-position`.
+    CssUnderlinePositionVertical,
+    /// `from-font`: use the underline offset from the first available font's metrics, otherwise as `auto`.
+    FromFont => "from-font",
+    /// `under`: place the underline under the element's text content, usually clear of descenders.
+    Under => "under"
+);
+keyword!(
+    /// A `left` or `right` side keyword of `text-underline-position` and `text-emphasis-position`.
+    CssTextSide,
+    /// `left`: the left side in vertical typographic modes.
+    Left => "left",
+    /// `right`: the right side in vertical typographic modes.
+    Right => "right"
+);
 /// A nonempty pair of independently optional vertical and side choices.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssUnderlinePosition {
@@ -39,6 +54,9 @@ pub struct CssUnderlinePosition {
     side: Option<CssTextSide>,
 }
 impl CssUnderlinePosition {
+    /// Checks a `text-underline-position` combination.
+    ///
+    /// Returns `None` when both the vertical keyword and the side are omitted.
     pub const fn try_new(
         vertical: Option<CssUnderlinePositionVertical>,
         side: Option<CssTextSide>,
@@ -49,23 +67,31 @@ impl CssUnderlinePosition {
             Some(Self { vertical, side })
         }
     }
+    /// Returns the `from-font` or `under` keyword, or `None` when it was omitted.
     pub const fn vertical(&self) -> Option<CssUnderlinePositionVertical> {
         self.vertical
     }
+    /// Returns the `left` or `right` side, or `None` when it was omitted.
     pub const fn side(&self) -> Option<CssTextSide> {
         self.side
     }
 }
+/// The value of `text-underline-position`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextUnderlinePosition {
+    /// `auto`: the user agent places the underline at or under the alphabetic baseline.
     Auto,
+    /// An explicit position: a `from-font` or `under` keyword and/or a `left` or `right` side.
     Position(CssUnderlinePosition),
 }
+/// The value of `text-underline-offset`.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextUnderlineOffset {
+    /// `auto`: the user agent chooses the underline offset.
     Auto,
+    /// An explicit `<length-percentage>` offset.
     Length(CssTextUnderlineOffsetLength),
 }
 /// A signed offset with strictly closed original numeric components.
@@ -80,51 +106,103 @@ impl PartialEq for CssTextUnderlineOffsetLength {
     }
 }
 impl CssTextUnderlineOffsetLength {
+    /// Checks an underline offset.
+    ///
+    /// Returns `None` when the value is a calculation that was closed by browser recovery rather than by an explicit closing parenthesis.
     pub fn try_new(value: CssNumeric<CssLengthPercentage>) -> Option<Self> {
         length_percentage_closed(&value).then_some(Self { value })
     }
     pub(crate) fn from_parsed(value: CssNumeric<CssLengthPercentage>) -> Self {
         Self { value }
     }
+    /// Returns the authored signed `<length-percentage>` offset; a percentage is relative to 1em.
     pub const fn value(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.value
     }
 }
 provider!(CssTextUnderlineOffsetLength, value, writer => value.value.append_to_rule_writer(writer));
-keyword!(CssTextDecorationSkip, None => "none", Auto => "auto");
-keyword!(CssTextDecorationSkipSelf, None => "none", Objects => "objects");
-keyword!(CssTextDecorationSkipBox, None => "none", All => "all");
-keyword!(CssTextDecorationSkipInset, None => "none", Auto => "auto");
+keyword!(
+    /// The value of the `text-decoration-skip` shorthand.
+    CssTextDecorationSkip,
+    /// `none`: sets all sub-properties to `none`.
+    None => "none",
+    /// `auto`: sets all sub-properties to their initial values.
+    Auto => "auto"
+);
+keyword!(
+    /// The value of `text-decoration-skip-self`.
+    CssTextDecorationSkipSelf,
+    /// `none`: skip nothing; line decorations from ancestor decorating boxes are propagated to or drawn across this box.
+    None => "none",
+    /// `objects`: skip this element's entire margin box if it is an atomic inline, such as an image or inline-block.
+    Objects => "objects"
+);
+keyword!(
+    /// The value of `text-decoration-skip-box`.
+    CssTextDecorationSkipBox,
+    /// `none`: skip nothing; line decorations from ancestor decorating boxes are drawn from margin edge to margin edge.
+    None => "none",
+    /// `all`: when drawing decoration lines of an ancestor decorating box, skips the box's own margin, border and padding areas and draws only within its content area.
+    All => "all"
+);
+keyword!(
+    /// The value of `text-decoration-skip-inset`.
+    CssTextDecorationSkipInset,
+    /// `none`: skip nothing; text decoration is drawn from box edge to box edge.
+    None => "none",
+    /// `auto`: the start and end of the line are placed slightly inwards from the content edge of the decorating box, by an amount that is user-agent defined but not zero.
+    Auto => "auto"
+);
+/// The value of `text-decoration-skip-spaces`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextDecorationSkipSpaces {
+    /// `none`: spacers are not skipped; they are decorated like any other character.
     None,
+    /// `all`: all spacers, plus any adjacent letter-spacing or word-spacing, are skipped.
     All,
+    /// `start`: spacers at the start of the line, plus any adjacent letter-spacing or word-spacing, are skipped.
     Start,
+    /// `end`: spacers at the end of the line, plus any adjacent letter-spacing or word-spacing, are skipped.
     End,
+    /// `start end`: the `start` and `end` behaviors combined, as the grammar `[ start || end ]` allows; the initial value.
     StartEnd,
 }
 provider!(CssTextDecorationSkipSpaces, value, writer => match value { Self::StartEnd => { writer.keyword("start")?; writer.append(" ")?; writer.keyword("end") }, Self::None => writer.keyword("none"), Self::All => writer.keyword("all"), Self::Start => writer.keyword("start"), Self::End => writer.keyword("end") });
-keyword!(CssTextDecorationSkipInk, Auto => "auto", None => "none", All => "all");
+keyword!(
+    /// The value of `text-decoration-skip-ink`.
+    CssTextDecorationSkipInk,
+    /// `auto`: the user agent may interrupt underlines and overlines where the line would cross glyph ink, and should consider the script of the text.
+    Auto => "auto",
+    /// `none`: the user agent must draw continuous underlines and overlines, without interruptions where they cross a glyph.
+    None => "none",
+    /// `all`: the user agent must interrupt underlines and overlines where the line would cross glyph ink.
+    All => "all"
+);
 impl CssTextDecorationSkip {
+    /// Returns the `text-decoration-skip-self` value the shorthand sets: `none` for `none`, `objects` for `auto`.
     pub const fn expanded_self(self) -> CssTextDecorationSkipSelf {
         match self {
             Self::None => CssTextDecorationSkipSelf::None,
             Self::Auto => CssTextDecorationSkipSelf::Objects,
         }
     }
+    /// Returns the `text-decoration-skip-box` value the shorthand sets, which is always `none`.
     pub const fn expanded_box(self) -> CssTextDecorationSkipBox {
         CssTextDecorationSkipBox::None
     }
+    /// Returns the `text-decoration-skip-inset` value the shorthand sets, which is always `none`.
     pub const fn expanded_inset(self) -> CssTextDecorationSkipInset {
         CssTextDecorationSkipInset::None
     }
+    /// Returns the `text-decoration-skip-spaces` value the shorthand sets: `none` for `none`, `start end` for `auto`.
     pub const fn expanded_spaces(self) -> CssTextDecorationSkipSpaces {
         match self {
             Self::None => CssTextDecorationSkipSpaces::None,
             Self::Auto => CssTextDecorationSkipSpaces::StartEnd,
         }
     }
+    /// Returns the `text-decoration-skip-ink` value the shorthand sets: `none` for `none`, `auto` for `auto`.
     pub const fn expanded_ink(self) -> CssTextDecorationSkipInk {
         match self {
             Self::None => CssTextDecorationSkipInk::None,
@@ -132,8 +210,28 @@ impl CssTextDecorationSkip {
         }
     }
 }
-keyword!(CssTextEmphasisFill, Filled => "filled", Open => "open");
-keyword!(CssTextEmphasisShape, Dot => "dot", Circle => "circle", DoubleCircle => "double-circle", Triangle => "triangle", Sesame => "sesame");
+keyword!(
+    /// The `filled` or `open` fill keyword of `text-emphasis-style`.
+    CssTextEmphasisFill,
+    /// `filled`: the mark shape is filled with solid color.
+    Filled => "filled",
+    /// `open`: the mark shape is hollow.
+    Open => "open"
+);
+keyword!(
+    /// The mark shape keyword of `text-emphasis-style`.
+    CssTextEmphasisShape,
+    /// `dot`: small circles as marks (U+2022 filled, U+25E6 open).
+    Dot => "dot",
+    /// `circle`: large circles as marks (U+25CF filled, U+25CB open).
+    Circle => "circle",
+    /// `double-circle`: double circles as marks (U+25C9 filled, U+25CE open).
+    DoubleCircle => "double-circle",
+    /// `triangle`: triangles as marks (U+25B2 filled, U+25B3 open).
+    Triangle => "triangle",
+    /// `sesame`: sesames as marks (U+FE45 filled, U+FE46 open).
+    Sesame => "sesame"
+);
 /// Authored fill and shape slots; omitted shape remains contextual and unresolved.
 /// Equality compares authored slots independently of their occurrence origins.
 #[derive(Clone, Debug)]
@@ -150,6 +248,9 @@ impl PartialEq for CssTextEmphasisMark {
 }
 impl Eq for CssTextEmphasisMark {}
 impl CssTextEmphasisMark {
+    /// Checks a `text-emphasis-style` mark combination.
+    ///
+    /// Returns `None` when both the fill and the shape are omitted. The retained origins are programmatic.
     pub fn try_new(
         fill: Option<CssTextEmphasisFill>,
         shape: Option<CssTextEmphasisShape>,
@@ -184,18 +285,23 @@ impl CssTextEmphasisMark {
         value.shape_origin = shape_origin;
         Some(value)
     }
+    /// Returns the origin of the fill keyword, or `None` when the fill was omitted.
     pub const fn fill_origin(&self) -> Option<&CssValueOrigin> {
         self.fill_origin.as_ref()
     }
+    /// Returns the origin of the shape keyword, or `None` when the shape was omitted.
     pub const fn shape_origin(&self) -> Option<&CssValueOrigin> {
         self.shape_origin.as_ref()
     }
+    /// Returns the authored `filled` or `open` keyword, or `None` when it was omitted.
     pub const fn fill(&self) -> Option<CssTextEmphasisFill> {
         self.fill
     }
+    /// Returns the authored shape keyword, or `None` when it was omitted; an omitted shape is contextual and stays unresolved.
     pub const fn shape(&self) -> Option<CssTextEmphasisShape> {
         self.shape
     }
+    /// Returns the authored fill, or `filled` when it was omitted.
     pub const fn effective_fill(&self) -> CssTextEmphasisFill {
         match self.fill {
             Some(value) => value,
@@ -210,6 +316,9 @@ pub struct CssTextEmphasisString {
     component: Box<CssComponentValue>,
 }
 impl CssTextEmphasisString {
+    /// Wraps a string-token component as an emphasis string.
+    ///
+    /// Returns `None` when the component is not a string token or its string was closed by browser recovery at the end of input.
     pub fn try_from_component(component: CssComponentValue) -> Option<Self> {
         let value = Self::from_parsed(component)?;
         value.is_closed().then_some(value)
@@ -229,17 +338,25 @@ impl CssTextEmphasisString {
             Some(CssValueOrigin::ImplicitClosure { .. })
         )
     }
+    /// Creates an emphasis string from decoded text.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `InvalidString` error when `value` contains U+0000 or does not tokenize back to the same text.
     pub fn try_new(value: impl Into<String>) -> std::result::Result<Self, CssComponentValueError> {
         Ok(Self {
             component: Box::new(CssComponentValue::try_string(value)?),
         })
     }
+    /// Returns the retained string component, which keeps the original token spelling and provenance.
     pub const fn component(&self) -> &CssComponentValue {
         &self.component
     }
+    /// Returns the origin of the string component.
     pub const fn origin(&self) -> &CssValueOrigin {
         self.component.origin()
     }
+    /// Returns the decoded string text.
     pub fn as_str(&self) -> &str {
         match self.component.view() {
             CssComponentValueRef::Token(CssValueTokenRef::String(value)) => value,
@@ -247,11 +364,15 @@ impl CssTextEmphasisString {
         }
     }
 }
+/// The style part of `text-emphasis`.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssTextEmphasisStyle {
+    /// `none`: no emphasis marks.
     None,
+    /// An emphasis mark given by a fill and/or a shape keyword.
     Mark(CssTextEmphasisMark),
+    /// An authored `<string>` used as the emphasis mark.
     String(CssTextEmphasisString),
 }
 impl PartialEq for CssTextEmphasisStyle {
@@ -264,12 +385,16 @@ impl PartialEq for CssTextEmphasisStyle {
         }
     }
 }
+/// The `text-emphasis` shorthand: an optional style and an optional color.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssTextEmphasis {
     style: Option<CssTextEmphasisStyle>,
     color: Option<Box<CssColor>>,
 }
 impl CssTextEmphasis {
+    /// Checks a `text-emphasis` combination.
+    ///
+    /// Returns `None` when both parts are omitted, or when the color or the emphasis string was closed by browser recovery.
     pub fn try_new(style: Option<CssTextEmphasisStyle>, color: Option<CssColor>) -> Option<Self> {
         if style.is_none() && color.is_none()
             || color.as_ref().is_some_and(|v| !v.is_closed())
@@ -285,14 +410,23 @@ impl CssTextEmphasis {
             color: color.map(Box::new),
         }
     }
+    /// Returns the authored style, or `None` when it was omitted.
     pub const fn style(&self) -> Option<&CssTextEmphasisStyle> {
         self.style.as_ref()
     }
+    /// Returns the authored color, or `None` when it was omitted.
     pub fn color(&self) -> Option<&CssColor> {
         self.color.as_deref()
     }
 }
-keyword!(CssTextEmphasisVertical, Over => "over", Under => "under");
+keyword!(
+    /// The `over` or `under` keyword of `text-emphasis-position`.
+    CssTextEmphasisVertical,
+    /// `over`: marks are drawn over the text in horizontal typographic modes.
+    Over => "over",
+    /// `under`: marks are drawn under the text in horizontal typographic modes.
+    Under => "under"
+);
 /// Authored vertical and optional side slots, with separately retained occurrence origins.
 /// Equality retains the distinction between an omitted and explicit side.
 #[derive(Clone, Debug)]
@@ -309,6 +443,7 @@ impl PartialEq for CssTextEmphasisPosition {
 }
 impl Eq for CssTextEmphasisPosition {}
 impl CssTextEmphasisPosition {
+    /// Creates a position from a vertical keyword and an optional side; both origins are programmatic.
     pub fn new(vertical: CssTextEmphasisVertical, side: Option<CssTextSide>) -> Self {
         Self {
             vertical,
@@ -334,18 +469,23 @@ impl CssTextEmphasisPosition {
             side_origin,
         }
     }
+    /// Returns the origin of the vertical keyword.
     pub const fn vertical_origin(&self) -> &CssValueOrigin {
         &self.vertical_origin
     }
+    /// Returns the origin of the side keyword, or `None` when the side was omitted.
     pub const fn side_origin(&self) -> Option<&CssValueOrigin> {
         self.side_origin.as_ref()
     }
+    /// Returns the `over` or `under` keyword.
     pub const fn vertical(&self) -> CssTextEmphasisVertical {
         self.vertical
     }
+    /// Returns the `left` or `right` side, or `None` when it was omitted.
     pub const fn side(&self) -> Option<CssTextSide> {
         self.side
     }
+    /// Returns the authored side, or `right` when it was omitted.
     pub const fn effective_side(&self) -> CssTextSide {
         match self.side {
             Some(value) => value,
@@ -362,6 +502,9 @@ pub struct CssTextEmphasisSkip {
     narrow: bool,
 }
 impl CssTextEmphasisSkip {
+    /// Checks a set of emphasis skip roles.
+    ///
+    /// Returns `None` when no role is selected.
     pub const fn try_new(
         spaces: bool,
         punctuation: bool,
@@ -379,6 +522,7 @@ impl CssTextEmphasisSkip {
             None
         }
     }
+    /// Returns the initial value: `spaces` and `punctuation` are skipped.
     pub const fn initial() -> Self {
         Self {
             spaces: true,
@@ -387,15 +531,19 @@ impl CssTextEmphasisSkip {
             narrow: false,
         }
     }
+    /// Returns whether `spaces` is selected: word separators and other Unicode separator characters are skipped.
     pub const fn spaces(&self) -> bool {
         self.spaces
     }
+    /// Returns whether `punctuation` is selected: punctuation characters that are not symbols are skipped.
     pub const fn punctuation(&self) -> bool {
         self.punctuation
     }
+    /// Returns whether `symbols` is selected: symbol characters are skipped.
     pub const fn symbols(&self) -> bool {
         self.symbols
     }
+    /// Returns whether `narrow` is selected: characters that are not fullwidth or wide are skipped.
     pub const fn narrow(&self) -> bool {
         self.narrow
     }
@@ -406,6 +554,9 @@ pub struct CssTextShadowLayer {
     shadow: CssShadow,
 }
 impl CssTextShadowLayer {
+    /// Checks the parts of a text shadow layer.
+    ///
+    /// Returns `None` when a spread radius is given without a blur radius, or when a part contains a calculation or color closed by browser recovery.
     pub fn try_new(
         inset: bool,
         offset_x: CssNumeric<CssLength>,
@@ -424,6 +575,9 @@ impl CssTextShadowLayer {
             color,
         )?)
     }
+    /// Wraps a shadow as a text shadow layer.
+    ///
+    /// Returns `None` when the spread radius is negative or when a part contains a calculation or color closed by browser recovery.
     pub fn try_from_shadow(shadow: CssShadow) -> Option<Self> {
         let layer = Self::from_parsed(shadow)?;
         layer.is_closed().then_some(layer)
@@ -445,6 +599,7 @@ impl CssTextShadowLayer {
         }
         Some(Self { shadow })
     }
+    /// Returns the underlying shadow.
     pub const fn shadow(&self) -> &CssShadow {
         &self.shadow
     }
@@ -459,11 +614,15 @@ pub(crate) fn length_percentage_closed(value: &CssNumeric<CssLengthPercentage>) 
         .calculation()
         .is_none_or(|c| c.components().first_implicit_origin().is_none())
 }
+/// A nonempty comma-separated list of text shadow layers.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssTextShadowList {
     shadows: Vec<CssTextShadowLayer>,
 }
 impl CssTextShadowList {
+    /// Checks a list of text shadow layers.
+    ///
+    /// Returns `None` when `shadows` is empty or any layer contains a part closed by browser recovery.
     pub fn try_new(shadows: Vec<CssTextShadowLayer>) -> Option<Self> {
         if !shadows.iter().all(CssTextShadowLayer::is_closed) {
             return None;
@@ -477,14 +636,18 @@ impl CssTextShadowList {
             Some(Self { shadows })
         }
     }
+    /// Returns the layers in authored order; the slice is never empty.
     pub fn shadows(&self) -> &[CssTextShadowLayer] {
         &self.shadows
     }
 }
+/// The value of `text-shadow`.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextShadow {
+    /// `none`: no shadow.
     None,
+    /// One or more shadow layers.
     Shadows(CssTextShadowList),
 }
 

@@ -14,10 +14,12 @@ impl CssParseSource {
     pub(crate) fn new(source: CssSourceSnapshot, context: CssParserContext) -> Self {
         Self { source, context }
     }
+    /// Returns the normalized source snapshot.
     #[must_use]
     pub const fn source(&self) -> &CssSourceSnapshot {
         &self.source
     }
+    /// Returns the parser context the input was prepared under.
     #[must_use]
     pub const fn context(&self) -> CssParserContext {
         self.context

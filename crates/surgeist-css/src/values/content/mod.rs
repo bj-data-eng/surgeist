@@ -1,4 +1,8 @@
 //! Generated content, quotes, counters and list values.
+//!
+//! Generated-content values: `content` items (strings, counters, `target-*()` references, named
+//! strings and leaders), `quotes`, the counter properties, list styles and markers, `string-set` and
+//! bookmark properties. Counters and quotes are retained symbolically; none is evaluated.
 
 pub(crate) mod content_serialization;
 pub(crate) mod content_values;

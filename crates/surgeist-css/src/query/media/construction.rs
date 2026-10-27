@@ -128,17 +128,24 @@ impl From<CssComponentValueError> for MediaSerializationFailure {
     }
 }
 
+/// Why a structurally valid media feature has unknown truth instead of being a recognized feature.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssUnknownMediaFeatureReason {
+    /// The feature name is not a recognized media feature.
     UnknownName,
+    /// The name is recognized but the value does not match that feature's grammar.
     InvalidValue,
+    /// The name is recognized but the operation is not allowed for it, such as a range comparison on a discrete feature.
     InvalidOperation,
 }
+/// Borrowed view of the authored shape of a [`CssUnknownMediaFeature`].
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssUnknownMediaFeatureRef<'a> {
+    /// The feature was written as a name alone.
     Boolean,
+    /// The feature was written with a value or range; the operands are kept as authored component values.
     Range(&'a CssMediaRange<CssComponentValues>),
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -168,27 +175,34 @@ impl CssUnknownMediaFeature {
             reason,
         }
     }
+    /// Returns the authored feature name text.
     pub fn name(&self) -> &str {
         &self.syntax.name_text
     }
+    /// Returns the original parenthesized feature component.
     pub fn component(&self) -> &CssComponentValue {
         &self.syntax.component
     }
+    /// Returns the origin of the feature component.
     pub fn origin(&self) -> &CssValueOrigin {
         self.component().origin()
     }
+    /// Returns the source position of the feature, or `None` when its origin was not parsed from source.
     pub fn position(&self) -> Option<CssSourcePosition> {
         parsed_position(self.origin())
     }
+    /// Returns the feature's original source text, or `None` when it was not parsed from source.
     pub fn authored(&self) -> Option<&str> {
         let origin = self.component().parsed_origin()?;
         origin.source().as_str().get(
             origin.span().start().byte_offset().value()..origin.span().end().byte_offset().value(),
         )
     }
+    /// Returns why the feature has unknown truth.
     pub const fn reason(&self) -> CssUnknownMediaFeatureReason {
         self.reason
     }
+    /// Returns whether the feature was a bare name or a range, with its authored operands.
     pub fn view(&self) -> CssUnknownMediaFeatureRef<'_> {
         match &self.syntax.shape {
             MediaFeatureShape::Boolean => CssUnknownMediaFeatureRef::Boolean,
@@ -239,6 +253,11 @@ pub(crate) const fn parsed_position(origin: &CssValueOrigin) -> Option<CssSource
 }
 
 impl CssMediaQuery {
+    /// Constructs a media query from authored component values.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssMediaConstructionError`] when the components do not form one media query, contain an implicitly closed component, or violate `limits`.
     pub fn try_from_components(
         values: CssComponentValues,
         limits: CssComponentValueLimits,
@@ -323,6 +342,11 @@ impl CssMediaQuery {
     }
 }
 impl CssCondition<CssMediaLeaf> {
+    /// Constructs a media condition from authored component values.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssMediaConstructionError`] when the components do not form one media condition, contain an implicitly closed component, or violate `limits`.
     pub fn try_from_components(
         values: CssComponentValues,
         limits: CssComponentValueLimits,

@@ -11,7 +11,9 @@ use super::operation as core;
 /// Encoding of the original immutable input. UTF8 reads are bytes, not chars.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssColorInputKind {
+    /// The input is a sequence of bytes holding UTF-8 text; offsets and lengths count bytes.
     Utf8,
+    /// The input is a sequence of UTF-16 code units; offsets and lengths count code units.
     Utf16,
 }
 impl CssColorInputKind {
@@ -31,7 +33,9 @@ impl CssColorInputKind {
 /// Whether the actual parent requires one color or the entire declared input.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssColorGrammarRequest {
+    /// One color is parsed from the start of the input; the consumed range may end before the input does.
     PrefixColor,
+    /// The entire declared input must be exactly one color.
     WholeColor,
 }
 impl CssColorGrammarRequest {
@@ -45,7 +49,9 @@ impl CssColorGrammarRequest {
 /// Original unit coordinates retained by the producer, never decoded offsets.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssColorInputRange {
+    /// Offset of the first original input unit in the range.
     pub start: usize,
+    /// Offset one past the last original input unit in the range.
     pub end: usize,
 }
 /// A reached unavailable fact differs from a standard-invalid color.
@@ -237,25 +243,38 @@ impl std::error::Error for CssColorError {}
 /// The canonical reason and original input range for standard failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssColorStandardFailureKind {
+    /// The input is not a valid `<color>`; no color function or other color syntax matched.
     ColorGrammar,
+    /// A color function's component, hue or relative channel is not valid at its position.
     ComponentGrammar,
+    /// A calculation inside a color component is invalid, for example through a malformed expression, a wrong argument count or type, or incompatible types.
     NumericGrammar,
+    /// A custom color profile name or component reference is invalid, or its conversion rejected the color.
     InvalidProfile,
+    /// Resolution found the components invalid, for example a channel outside its grammar or an invalid `color-mix()` weight.
     InvalidComponents,
 }
+/// The standard-invalid outcome of one color parse: the failure reason and where in the input it was found.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssColorStandardFailure {
+    /// The canonical reason the input is standard-invalid.
     pub kind: CssColorStandardFailureKind,
+    /// The original input range at which the failure was found.
     pub source: CssColorInputRange,
 }
 
 /// The fixed original input metadata. It never proves an HTML/DOM issuer.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssColorSourceDescriptor {
+    /// Encoding of the original input.
     pub kind: CssColorInputKind,
+    /// Length of the original input, in units of its encoding.
     pub length: usize,
+    /// Whether one color or the entire input was requested.
     pub request: CssColorGrammarRequest,
+    /// Original input range consumed by the color. It starts at 0 and, for a whole-color request or a standard failure, ends at the input length.
     pub consumed: CssColorInputRange,
+    /// Identity and revision of the fact set the parse expected.
     pub facts: CssColorFactIdentity,
 }
 pub(crate) fn source(context: &core::CheckpointContext<'_>) -> CssColorSourceDescriptor {

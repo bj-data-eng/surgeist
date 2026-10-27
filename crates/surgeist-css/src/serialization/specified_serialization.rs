@@ -28,14 +28,17 @@ impl CssSerializationLimits {
             max_css_bytes,
         }
     }
+    /// Returns the allowance of input nodes: structural nodes of the value being serialized.
     #[must_use]
     pub const fn max_input_nodes(self) -> usize {
         self.max_input_nodes
     }
+    /// Returns the allowance of projection nodes: structural nodes of the serialized output.
     #[must_use]
     pub const fn max_projection_nodes(self) -> usize {
         self.max_projection_nodes
     }
+    /// Returns the allowance of UTF-8 bytes of CSS text the operation may emit.
     #[must_use]
     pub const fn max_css_bytes(self) -> usize {
         self.max_css_bytes

@@ -3,7 +3,8 @@
 This reference defines the CSS → Color boundary for
 [#1184](https://github.com/bj-data-eng/surgeist/issues/1184), under
 [#1183](https://github.com/bj-data-eng/surgeist/issues/1183). It is an implementation
-contract, not a claim that extraction has shipped. Its source basis is
+contract; `surgeist-color` now exists and `surgeist-css` consumes it. Its
+source basis is
 `11fea87cca1674b93dc2bef57bb138ff55570cfe`; the implementation and its focused
 regressions remain authoritative for existing numerical results, standards pins,
 rounding and unsupported capabilities. The intended readers implement and review
@@ -18,44 +19,50 @@ profile capability, render representation or external dependency is introduced.
 
 ## Owners and source crossings
 
-All source paths in this section are relative to
-[`crates/surgeist-css/src/`](../../crates/surgeist-css/src).
+CSS source paths in this section are relative to
+[`crates/surgeist-css/src/`](../../crates/surgeist-css/src); Color source paths
+are relative to [`crates/surgeist-color/src/`](../../crates/surgeist-color/src).
+Public CSS items are named with their module, as in the
+[CSS audit](../../api/crates/surgeist-css.txt).
 
-| Current owner/path and actual caller | Destination and contract |
+| Owner/path and actual caller | Owner and contract |
 | --- | --- |
-| `syntax/color.rs`: `CssPredefinedColorSpace`, `CssColorInterpolationSpace`, `CssHueInterpolationMethod`; used by grammar, channels, relative bindings, conversion, facts and serialization | Color owns numerical `PredefinedColorSpace`, `ColorSpace`, `HueInterpolation`. CSS reads authored names and retains authored omission; there is one numerical identity per space, not a CSS mirror enum. |
-| `rectangular_color_conversion.rs` and its `colorimetry`, `transfer`, `wide` modules; called by `color/used.rs` | Color owns `RectangularSpace`, `RectangularCoordinates`, `RectangularConversionError` and the existing finite conversion implementation, including wide intermediate handling and missing-coordinate rules. |
-| `hsl_color_conversion.rs`, `lab_color_conversion.rs`, `naive_color_conversion.rs`; called by `used.rs`, `device.rs` and specified color serialization | Color owns the checked coordinate carriers and pure conversions. CSS keeps the decision to invoke a conversion and its authored range/serialization phase. |
-| `color/used.rs`; called by channels, relative, interpolation, resolution, device/profile conversion, serialization and HTML | Color owns `Color`, `ColorError`, numerical transformations, representation identity, alpha replacement and the existing black/white contrast calculation. |
+| Color `spaces.rs`: `PredefinedColorSpace`, `ColorSpace`, `HueInterpolation`; used by CSS grammar, channels, relative bindings, conversion, facts and serialization | Color owns the numerical `PredefinedColorSpace`, `ColorSpace`, `HueInterpolation`. CSS reads authored names and retains authored omission; there is one numerical identity per space and no CSS mirror enum. |
+| Color `rectangular_color_conversion.rs` and its `colorimetry`, `transfer`, `wide` modules; reached from CSS through `Color::converted` in `color/resolution.rs` and `color/syntax/serialization.rs` | Color owns `RectangularSpace`, `RectangularCoordinates` and the finite conversion implementation, including wide intermediate handling and missing-coordinate rules. |
+| Color `hsl_color_conversion.rs`, `lab_color_conversion.rs`, `naive_color_conversion.rs`; CSS calls the naive CMYK conversions from `color/device.rs` | Color owns the checked coordinate carriers and pure conversions. CSS keeps the decision to invoke a conversion and its authored range/serialization phase. |
+| Color `value.rs`: `Color`; used by CSS `color/channels.rs`, `relative.rs`, `interpolate.rs`, `resolution.rs`, `device.rs`, `profile_conversion.rs`, the `color/controlled/` checkpoints and HTML | Color owns `Color`, numerical transformations, representation identity, alpha replacement and the black/white contrast calculation. |
 | `color/channels.rs`: `Component`, `Domain`, `legacy_rgb_domains`, `scalar`, `hue`, `alpha`, `absolute_coordinates`; reached from `component_value.rs` and `resolution.rs` | CSS owns Number/Percentage/Degrees/Missing grammar, unit scaling, calculation-root NaN/infinity handling, range clamping and absolute/relative policy. Only checked finite coordinates cross to Color. `Component` does not become a Color type. |
-| `color/interpolate.rs`: `prepare`, `interpolate`; used by `relative::Binding::new`, `resolution::MixTask` and folds | Color owns numerical preparation and two-color interpolation. CSS owns mix traversal, exact weight evaluation, omitted-weight normalization and source-ordered fold scheduling. |
-| `color/interpolate.rs`: `WeightSummary`, `Weights`, `MixFold` | Keep the CSS mix recipe state in CSS. Its fold calls Color's two-color operation once per reached operand; do not export a variadic CSS mix interpreter from Color. |
+| `color/interpolate.rs`: calls to `Color::prepared_for_interpolation` and `Color::interpolated`; used by `relative::Binding::new`, `resolution.rs` and folds | Color owns numerical preparation and two-color interpolation. CSS owns mix traversal, exact weight evaluation, omitted-weight normalization and source-ordered fold scheduling. |
+| `color/interpolate.rs`: `WeightSummary`, `Weights`, `MixFold` | The CSS mix recipe state stays in CSS. Its fold calls Color's two-color operation once per reached operand; Color exports no variadic mix interpreter. |
 | `color/relative.rs`: `Binding`, `channel`, `coordinates`, `alpha_only`; `expression.rs` variable evaluation and `resolution.rs` frames | CSS owns environment/channel-name bindings, RGB ×255 expression units, missing-to-zero inside calculations, expression execution, inherited/overridden alpha, source-selected family and reached branching. It calls Color's preparation/conversion/alpha/family methods. |
-| `color/device.rs`: `ComputedCmyk::new`, `DeviceResolution`; `profile_conversion.rs`: input collection, reverse checks and conversion-record lookup | CSS owns syntax, resource identity, channel names/order, fact matching, capability/fallback selection and the unsupported reverse/custom branches. Color owns only the already-present context-free naive CMYK numerical conversion and replacement of resolved alpha on a supplied numerical result. No ICC engine is added. |
-| `color/facts.rs`, `palette.rs`, `profile.rs`; `resolution.rs` callers | Stay CSS: current/system color, scheme, profile/device facts, identities, duplicate/foreign checks and reached-only lookup. Fact payloads use `Color` directly. |
-| `color/authored.rs`: `Events`, `Builder`; called by `parser/color.rs` | Stay CSS: canonical checked-authored construction, exact component tokens, original origins and closure recovery. Add a borrowed authored-to-recipe feeder for resolution; never serialize the authored value and parse it again. |
-| `color/grammar.rs`, `tokens.rs`, `literal.rs`, `decimal.rs`, `syntax_pass.rs`, `component.rs`, `component_value.rs`, `expression.rs`, `operation.rs`, `resolution.rs` | Stay CSS: original source decoding, tokens, grammar, exact numeric admission/evaluation, resolver state and errors. Numerical requests contain fixed resolved operands, not any of these records. |
-| `color/protocol.rs`: mixed `Data`, owner/phase/bank/index qualification; `bounded.rs` public actions and checkpoints | Stay CSS. Remove numerical algorithms and the format-digit variant from these records. Color digit slots occupy a distinct caller-owned numerical bank and borrow a separately lent Color owner. CSS retains its three parse-bank identities; no CSS-private union becomes Color's public protocol. |
-| `color/serialize.rs`: `Plan`, `UsedSerializer`; called by `bounded.rs` and `ordinary.rs` | Color owns the resolved serialization plan, finite digit work and byte emission. CSS wrappers retain source/fact checkpoints and delegate numerical actions. Native serialization uses Color directly. |
-| `numeric_formatting/bounded.rs` and finite portions of `numeric_formatting.rs`; used by resolved/ordinary color and non-color projection | Color owns the single finite-bit formatter, digit continuation, rounded-millionths operation and finite zero classification. Exact decimal parsing, representation and specified-value policy stay CSS. |
-| `exact_decimal.rs::DecimalRounding`; used by exact rationals and finite formatting | Color owns a small `RoundingMode` with the shared tie decision. CSS exact-decimal arithmetic imports that policy; its arbitrary-precision storage and digit scans stay CSS. |
-| `syntax/color/serialization.rs::legacy_byte_alpha` and `color/serialize.rs::legacy_byte_alpha` | One Color `byte_alpha_for_serialization(u8) -> f64` supplies both paths; #1186 consolidates it before or during extraction. Floating alpha never gains byte provenance by numerical equality. |
+| `color/device.rs`: `ComputedCmyk::new`, `DeviceResolution`; `profile_conversion.rs`: input collection, reverse checks and conversion-record lookup | CSS owns syntax, resource identity, channel names/order, fact matching, capability/fallback selection and the unsupported reverse/custom branches. Color owns only the context-free naive CMYK numerical conversion and replacement of resolved alpha on a supplied numerical result. No ICC engine exists. |
+| `color/facts.rs`, `palette.rs`, `profile.rs`; `resolution.rs` callers | CSS owns current/system color, scheme, profile/device facts, identities, duplicate/foreign checks and reached-only lookup. Fact payloads use `Color` directly. |
+| `color/authored.rs`: `Events`, `Builder`; called by `parser/color.rs` | CSS owns canonical checked-authored construction, exact component tokens, original origins and closure recovery. `color/authored_resolution/` feeds the borrowed authored graph to resolution (`color::CssColor::resolve`); the authored value is never serialized and parsed again. |
+| `color/grammar.rs`, `tokens.rs`, `literal.rs`, `decimal.rs`, `syntax_pass.rs`, `component.rs`, `component_value.rs`, `expression.rs`, `operation.rs`, `resolution.rs` | CSS owns original source decoding, tokens, grammar, exact numeric admission/evaluation, resolver state and errors. Numerical requests contain fixed resolved operands, not any of these records. |
+| `color/controlled/protocol.rs`: the mixed `Data` record, owner/phase/bank/index qualification (`color::controlled::CssColorOperationOwner`, `CssColorBank`, `CssColorSlot`); `color/controlled/bounded.rs`: the typestate `color::controlled::CssColorParse`, its action guards and the `CssUsedColorCheckpoint` | CSS owns these records. They hold no numerical algorithm and no format-digit variant. Color digit slots occupy a distinct caller-owned numerical bank and borrow a separately lent Color owner. CSS has three parse-bank identities (`CssColorBank::{Algorithm, Arithmetic, Evaluation}`); no CSS-private union is Color's public protocol. |
+| Serialization of a used color (CSS holds none); `color::controlled::CssUsedColorCheckpoint::value()` yields the `Color` | Color owns the resolved serialization plan, finite digit work and byte emission. A consumer drives `surgeist_color::Serialization` on that value with its own digit and output storage; CSS defines no serialization wrapper. `color::parse_used_color` and `color::CssColor::resolve` return a `Color` (inside `CssColorOrdinaryOutcome::Used` or `CssAuthoredColorOutcome::Used`) that `surgeist_color::serialize` accepts directly. |
+| `serialization/numeric_formatting.rs` (finite portion); used by resolved/ordinary color and non-color projection | Color owns the single finite-bit formatter, digit continuation, rounded-millionths operation and finite zero classification (`format::format_finite`, `format::rounds_to_zero`). Exact decimal parsing, representation and specified-value policy stay CSS. |
+| `serialization/exact_decimal.rs`; used by exact rationals and finite formatting | Color owns the small `RoundingMode` with the shared tie decision. CSS exact-decimal arithmetic calls `RoundingMode::rounds_up`; its arbitrary-precision storage and digit scans stay CSS. |
+| `color/syntax/serialization.rs`, which calls Color's `byte_alpha_for_serialization` | One Color `byte_alpha_for_serialization(u8) -> f64` supplies the byte-alpha path. Floating alpha never gains byte provenance by numerical equality. |
 
 This table includes the private crossings requiring a public seam. Internal
 matrix arithmetic, transfer functions, exact decimal registers, lexical tables,
 tokenizer states and resolver frames remain private to their selected owner.
-CSS keeps `CssColor`, every authored function/profile/expression carrier,
-`CssColorSyntax`, relative-channel names and authored interpolation wrappers.
-`CssColorInterpolationMethod` retains authored hue omission and holds Color's
-space/hue identities; it lowers to the checked numerical `InterpolationMethod`.
-Its parsing error stays CSS, while invalid native numerical method construction
-belongs to Color.
+CSS keeps `color::CssColor`, every authored function/profile/expression
+carrier, `color::CssColorSyntax`, relative-channel names and authored
+interpolation wrappers. `color::CssColorInterpolationMethod` retains authored
+hue omission (`hue()` is the authored hue, `effective_hue()` the effective one)
+and holds Color's space/hue identities; it lowers to the checked numerical
+`InterpolationMethod`. Its construction error is `color::CssColorConstructionError`,
+while invalid native numerical method construction belongs to Color.
 
 ## Native numerical front door
 
-The following is the selected public API shape. Signatures describe the future
-API; current source has the corresponding `Css*` implementations where the table
-identifies them. Fields of invariant-bearing structs are private.
+The following is the selected public API shape. Signatures describe that
+shape; the shipped signatures are those of the `surgeist-color` audit,
+[`api/crates/surgeist-color.txt`](../../api/crates/surgeist-color.txt), and win
+where they differ. `surgeist-css` holds no mirror implementation of any of
+it. Fields of invariant-bearing structs are private.
 
 ```rust
 // surgeist_color
@@ -143,21 +150,16 @@ into ColorError at their own front doors.
 
 The numerical `Color` carrier admits finite signed polar coordinates required
 by resolved relative colors. Dedicated `HslCoordinates`, `HwbCoordinates` and
-`PolarCoordinates` retain their current stricter constructors; they do not
-silently accept states their current mathematical contracts reject. Their
-renamed APIs, accessors and errors move directly from the existing HSL/HWB/Lab
-modules by removing `Css` and the redundant `Color` qualifier. Thus
-`CssHslColorCoordinates` becomes `HslCoordinates`, `CssHwbColorCoordinates`
-becomes `HwbCoordinates`, `CssPolarColorCoordinates` becomes `PolarCoordinates`,
-and `CssHslHwbConversionError`/`CssPolarColorConversionError` become
-`HslHwbConversionError`/`PolarConversionError`. `RectangularCoordinates` retains
-`try_new`, `space`, `channels`, and `convert_to`. The public functions
+`PolarCoordinates` are Color's carriers for the HSL, HWB and Lab/Oklab
+conversions. They hold `Finite` coordinates, so their constructors and the
+conversion functions are total and define no conversion error types.
+`RectangularCoordinates` has `new`, `space`, `channels`, and `convert_to`. The
+public functions
 `convert_hsl_to_srgb`, `convert_srgb_to_hsl`, `convert_hwb_to_srgb`,
 `convert_srgb_to_hwb`, `convert_lab_to_lch`, `convert_lch_to_lab`,
 `convert_oklab_to_oklch`, `convert_oklch_to_oklab`,
-`naively_convert_cmyk_to_srgba` and `naively_convert_srgba_to_cmyk` keep their
-existing checked parameter/result semantics under Color. `NaiveConversionError`
-replaces `CssNaiveColorConversionError`.
+`naively_convert_cmyk_to_srgba` and `naively_convert_srgba_to_cmyk` take and
+return `Finite` coordinates.
 
 Same-space conversion returns the original value bit-for-bit. Cross-space
 conversion preserves extended finite coordinates and alpha byte backing,
@@ -360,7 +362,8 @@ to at most six fractional places, strips trailing zeros, emits positive zero,
 expands finite integers exactly, and preflights final output rather than a
 temporary shortest-decimal spelling. No shortest-string conversion or float
 rounding replacement is allowed. CSS's `format_projected_number` and
-`format_ordinary_color_number` become error-mapping calls, not retained math.
+`format_ordinary_color_number` in `serialization/numeric_formatting.rs` are
+error-mapping calls, not retained math.
 
 CSS retains `LexicalDecimal`, arbitrary-length coefficient/exponent handling,
 exact rationals, specified shifts/sign inversion, projection work and the exact
@@ -369,647 +372,245 @@ digits; it is not a second finite-bit formatter. It never feeds an authored
 coefficient through f64 merely to reuse Color. The existing authored endpoints,
 coefficients beyond finite f64 and discarded-exponent behavior remain exact.
 
-| Current finite consumer | Required owner/policy and regression consequence |
+| Finite consumer | Owner/policy and regression consequence |
 | --- | --- |
-| `color/serialize.rs` controlled used output | Color serializer, ties toward positive infinity, caller-owned digit/write actions; preserve one-short and pending-byte behavior. |
-| `syntax/color/serialization.rs::format_binary64` | CSS specified color policy calls Color finite formatting with positive-infinity ties on the existing post-scale binary result; exact color calculations retain their own rational phase. |
+| Used-color output of `color::controlled::CssUsedColorCheckpoint` and `color::CssColorOrdinaryOutcome::Used` | Color serializer (`surgeist_color::Serialization`), ties toward positive infinity, caller-owned digit/write actions; preserve one-short and pending-byte behavior. |
+| `serialization/specified_serialization.rs::format_binary64`, called by `color/syntax/serialization.rs` | CSS specified color policy keeps its own nearest-decimal selection, taking the numerically greater candidate at an exact decimal midpoint, on the post-scale binary result; exact color calculations retain their own rational phase. |
 | `numeric/projection.rs` finite coefficient serialization | Color finite formatting with away-from-zero ties; CSS retains unit/suffix limits, expression visits and projection charges. |
-| `page_keyframe_serialization.rs` computed selector percentages | Same projected formatter and away-from-zero ties; preserve rounded selector collisions, occurrence order, suppressed output and shared writer budgets. Page rules themselves retain their existing nonnumeric writer behavior. |
-| `rotate.rs` projected axis zero classification, via `projected_number_rounds_to_zero` | Color `rounds_to_zero(_, AwayFromZero)`; CSS retains axis/identity decisions, exact authored sign inversion, traversal and suppression. No rendering-to-string probe is introduced. Actual projected output goes through the existing numeric projection path. |
-| `numeric_formatting.rs` ordinary projected/ordinary-color wrappers and tests | Move finite tests with kernel; retain CSS error translation, exact decimal tests and policy selection. |
+| `rule/keyframes/page_keyframe_serialization.rs` computed selector percentages | Same projected formatter and away-from-zero ties; preserve rounded selector collisions, occurrence order, suppressed output and shared writer budgets. Page rules themselves retain their existing nonnumeric writer behavior. |
+| `values/transform/rotate.rs` projected axis zero classification, via `projected_number_rounds_to_zero` in `serialization/numeric_formatting.rs` | Color `rounds_to_zero(_, AwayFromZero)`; CSS retains axis/identity decisions, exact authored sign inversion, traversal and suppression. No rendering-to-string probe is introduced. Actual projected output goes through the existing numeric projection path. |
+| `serialization/numeric_formatting.rs` ordinary projected/ordinary-color wrappers and tests | Finite tests live with the kernel in Color; CSS retains error translation, exact decimal tests and policy selection. |
 
 The exact authored decimal kernel remains CSS: `format_css_number` and
-`format_css_number_with_sign` serve `specified_serialization.rs`,
-`specified_numeric.rs`, `aspect_ratio.rs`, `font_style.rs`,
-`transform_value_serialization.rs` and exact-number branches of `rotate.rs`.
-`exact_decimal.rs` and `specified_serialization.rs` also use the already-rounded
-exact decimal emitter. These paths do not move their storage or specified-value
-policy to Color. `image_serialization.rs` consumes authored/numerical space
-identities through CSS image policy; update its import without moving image
-serialization into Color.
+`format_css_number_with_sign` (both in `serialization/numeric_formatting.rs`)
+serve `serialization/specified_serialization.rs`, `numeric/specified_numeric.rs`,
+`numeric/value.rs`, `numeric/projection.rs`, `color/syntax/serialization.rs`,
+`values/transform/transform_value_serialization.rs` and exact-number branches of
+`values/transform/rotate.rs`. `serialization/exact_decimal.rs` and
+`serialization/specified_serialization.rs` also use the already-rounded exact
+decimal emitter. These paths keep their storage and specified-value policy in
+CSS. `values/image/image_serialization.rs` consumes numerical space identities
+through CSS image policy, importing `surgeist_color::ColorSpace`; image
+serialization stays in CSS.
 
 `byte_alpha_for_serialization` uses the existing integer two/three-decimal
 Color 4 algorithm for every byte: try nearest hundredth and retain it if its
-round trip recovers the byte, otherwise nearest thousandth. Both specified and
-used serializers feed this result into the shared positive-tie finite formatter.
+round trip recovers the byte, otherwise nearest thousandth. Color's serializer
+feeds this result into the shared positive-tie finite formatter; the specified
+serializer feeds it to CSS's `format_binary64`, which takes the greater candidate
+at an exact decimal midpoint.
 Bytes 236 and 237 produce 0.925 and 0.93 respectively. Actual floating alpha is
 formatted from its own bits; it is not reclassified as byte alpha. Pinned source
 edition/prose discrepancies stay documented with their existing selected policy.
 
 ## CSS resolution and provenance
 
-The existing `parse_used_color(input, grammar_request, facts, expected_identity,
-limits)` remains CSS and returns a source-qualified result whose Used payload
-is Color. UTF-8 bytes and UTF-16 units remain borrowed original input; consumed
-ranges are original units. Prefix parsing retains its actual end boundary.
-Syntax validation visits complete unselected branches, while facts and numeric
-evaluation occur only on reached branches. Source decoding, source-derived
-failures and semantic numerical failures are separate.
+CSS resolves color through three public fronts in
+[`surgeist_css::color`](../../crates/surgeist-css/src/color/): the ordinary
+source front `parse_used_color`, the ordinary authored front `CssColor::resolve`
+and the caller-serviced source protocol `controlled::CssColorParse`. Every
+numerical step they take is a total `surgeist-color` operation over finite
+proof types, so none of them reports a numerical failure. The controlled
+authored-color protocol that `CssColor::resolve` drives is crate-private; no
+consumer services it.
 
-There is currently no public checked-authored-to-used operation: `authored.rs`
-constructs authored values but does not supply that front door. Add
-`resolve_authored_color(&CssColor, &CssColorFacts, expected_identity,
-CssAuthoredColorOrdinaryLimits) -> Result<CssAuthoredColorResult,
-CssColorOrdinaryError>`.
-The result borrows the actual authored root and facts, exposes `authored()`,
-`facts()` and `outcome() -> &CssAuthoredColorOutcome`, where that enum contains
+### Source resolution
+
+`color::parse_used_color(input: CssColorInput, request: CssColorGrammarRequest,
+facts: &CssColorFacts, expected: CssColorFactIdentity, limits:
+CssColorOrdinaryLimits) -> Result<CssColorOrdinaryResult, CssColorResolveError>`
+returns a source-qualified result whose Used payload is Color.
+`CssColorInput::Utf8` bytes and `CssColorInput::Utf16` units remain borrowed
+original input, and the result borrows that input and the facts through
+`input()` and `facts()`. `source()` returns the `CssColorSourceDescriptor`
+(input kind and length, grammar request, fact identity and consumed range) and
+`outcome()` returns `CssColorOrdinaryOutcome`: `Used(Color)` or
+`StandardFailure(CssColorStandardFailure)`, whose `kind` is a
+`CssColorStandardFailureKind` and whose `source` is the original
+`CssColorInputRange`. Consumed ranges are original units, and
+`CssColorGrammarRequest::PrefixColor` retains its actual end boundary.
+Syntax validation visits complete unselected branches, while facts and numeric
+evaluation occur only on reached branches. Source decoding
+(`CssColorError::malformed_input_offset`), source-derived standard failures and
+reached fact or capability failures are separate.
+
+`CssColorOrdinaryLimits` names `input_units`, `algorithm_records`,
+`arithmetic_records`, `evaluation_records` and `actions`; every ceiling is
+explicit and the type has no default. The ordinary driver admits the input
+length, counts each serviced action once, admits each bank's required length
+before an append and reports a refused allocation. It creates no hidden
+controller and retires its banks before it returns.
+
+### Authored resolution
+
+`CssColor::resolve(&self, facts: &CssColorFacts, expected: CssColorFactIdentity,
+limits: CssAuthoredColorOrdinaryLimits) -> Result<CssAuthoredColorResult,
+CssColorResolveError>` resolves a checked authored color to a used color
+without serialization, source reconstruction or a source string. The result
+borrows the actual authored root and facts and exposes `authored()`, `facts()`
+and `outcome() -> &CssAuthoredColorOutcome`, where that enum contains
 `Used(Color)` or `StandardFailure(CssAuthoredColorStandardFailure)`.
-`CssAuthoredColorStandardFailure` contains the existing standard-failure kind
-plus a checked component path and `Option<CssValueOrigin>`. A scalar/component
-with an origin retains it; a programmatic hex/name/root that has no origin
-returns None rather than inventing one. No input bytes, source offsets or
-source/fact identity are invented. The actual `CssValueOrigin::Programmatic`
-variant remains Programmatic; Parsed and ImplicitClosure origins retain their
-actual source owners. There is no Components origin variant.
+`CssAuthoredColorStandardFailure` has public fields `kind`
+(`CssColorStandardFailureKind`), `path` (`CssColorComponentPath`) and `origin`
+(`Option<CssValueOrigin>`). A scalar or component that retains an origin
+reports it; a programmatic hex, name or root without one reports `None` rather
+than an invented origin. No input bytes, source offsets or source or fact
+identity are invented: an authored failure carries a component path, not a
+source range.
 
 `CssColorComponentPath` owns a checked sequence of `CssColorPathStep` values,
-with `steps() -> &[CssColorPathStep]` for inspection. The closed steps are
-`Source`, `Channel(usize)`, `Alpha`, `First`, `Second`, `MixColor(usize)`,
-`MixWeight(usize)` and `ExpressionOperand(usize)`: source denotes a relative,
-alpha-wrapper or contrast origin; first/second denote light/dark respectively;
-indices use the current branch's original child/channel/operand order. Only
-the CSS feeder constructs paths and checks each step against its actual root.
-Path backing is accumulated under the actual controller before the numerical
-action/error publication. It moves into a failure without allocation or a path
-clone. Neither this path nor an error containing it is Copy or implicitly
-cloneable. The authored outcome borrows its failure payload for this reason.
-
-Its controlled equivalent is
-`CssAuthoredColorOperation::resolve_authored(&mut CssColorOperationOwner,
-&CssColor, &CssColorFacts, expected_identity, &mut CssColorPathBuffer)`. The
-following authored-only protocol makes its storage, actions and failure order
-explicit. It is selected design for implementation and independent review,
-not an implemented capability. Source/native front doors and their accepted
-behavior remain unchanged.
-
-### Authored operands, banks and path qualification
-
-`CssColorPathBuffer` owns a private `Vec<CssColorPathStep>` and fixed epoch and
-reservation-observation metadata. It retains no owner, root, facts or lifetime
-parameter. `new()` creates an empty, allocation-free header. The operation
-exclusively borrows that buffer; owner, authored root and facts are separate
-borrows:
-
-```rust,ignore
-pub struct CssAuthoredColorOperation<'path, 'css, 'authored: 'css, 'facts> {
-    // Private fields; these show the selected borrow relationships only.
-    owner: &'css CssColorOperationOwner,
-    root: &'authored CssColor,
-    facts: &'facts CssColorFacts<'facts>,
-    path: &'path mut CssColorPathBuffer,
-    // Fixed continuation/phase/revision state; variable frames are bank records.
-}
-```
-
-Initialization admits these actual fixed layouts and input/fact header reads,
-then preflights the expected fact identity, empty path length, no outstanding
-reservation observation, next CSS phase and next buffer epoch with checked
-addition. Failure changes neither phase nor buffer. Successful commit increments
-both counters and begins at revision zero and the actual root. Existing retained
-capacity may be reused, but is observed and admitted before initialization.
-No constructor counts the tree, creates paths or allocates.
-
-The feeder uses exactly the existing Algorithm, Arithmetic and Evaluation banks
-of `CssColorSlot<'css>`. Its private `Data<'css>` adds authored traversal/site
-payloads whose actual AST references are shortened to `'css`; the operation
-separately retains the original longer root reference. The ordinary helper owns
-three local vectors of that same slot type. No fourth algorithm bank or hidden
-`authored::Events` vectors are introduced. Static layout getters report the
-actual newly compiled slot, continuation, guard and path-header sizes for all
-callers; existing source adapters also admit the actual slot size after this
-private representation change.
-
-An authored `CssColorPathHandle<'css>` is a fixed Copy observation containing a
-borrow of the actual CSS anchor and private phase, buffer epoch, revision and
-length. It owns no steps. `ReadAuthored { path, observation }` carries this
-handle and a closed descriptor for one node/header, child edge, numeric header,
-name/scalar unit, exact digit or expression item. The pending guard's
-`path_view(handle)` checks anchor identity/current phase, epoch, revision and
-length against its operation before lending the actual step slice. The view
-borrows the guard, so it cannot survive consuming that guard or a path mutation.
-Before inspection, the guard's checked inspection layout reports the actual
-handle/header bytes and `length * size_of::<CssColorPathStep>()` read extent;
-the caller admits that extent before `path_view` lends the slice. Merely
-describing an action does not inspect every path step or charge a guessed depth.
-Stale/foreign handles return a typed protocol refusal without traversing the
-root. A handle cannot manufacture a `CssColorComponentPath` or a resolution site.
-The guard's `read_authored()` performs only its pending observation from its
-retained actual operand; callers cannot reply with an unrelated node.
-
-`AppendPath(step)` derives and checks its next edge from the retained typed
-parent and original ordinal. After separate capacity admission, its completion
-checks available capacity and checked next revision before a single push.
-`TruncatePath(length)` takes only the saved depth of the actual returning frame;
-it checks that depth and next revision before changing length. Their layouts
-include the actual header/step observations and writes; neither allocates.
-Reserve, append, truncate and ownership transfer are separate admitted events.
-Each mutation invalidates earlier handles. Original parent/child references
-come from admitted frame reads, never a replay from the root using a path.
-
-### Authored path reservation and retirement
-
-`ReservePath { required_len }` requests the pending one-step extension. The
-guard checks `len + 1`, required capacity and byte multiplication by
-`size_of::<CssColorPathStep>()` before allocation. Its layout exposes actual
-header reads, requested growth and actual record size; the caller checks its
-existing path/resource/byte policy and polls before executing the reservation.
-The guard operates only on this buffer's private vector and uses
-`try_reserve_exact(required_len - len)` when capacity is insufficient. It cannot
-reserve an arbitrary additional count or expose a mutable vector/slice.
-
-Reservation has two explicit completion checkpoints. `reserve_path(&mut self)`
-performs at most one actual attempt and stores a fixed receipt containing old
-and actual length/capacity, requested length and success/allocation-failure
-status. It returns that actual receipt even if the allocator fails; an
-existing-capacity completion also produces a receipt without allocating.
-The fixed receipt-read/accounting layout is admitted with this reservation
-action before the attempt; acknowledging it adds no second fallible work charge.
-The caller must observe and account the actual capacity delta and checked byte
-delta before `capacity_observed(self)` acknowledges the receipt. This includes
-allocator overshoot and any consumer limit or cancellation discovered after
-the attempt. A failed attempt never enables append. No subsequent useful action
-is available until this observation has been acknowledged; a callback cannot
-assert a capacity for another vector or replace the stored outcome.
-
-Failure precedence is fixed at the attempt boundary. Pre-attempt arithmetic,
-resource or cancellation refusal prevents the attempt and wins. An allocator
-failure is then the first failure, after recording its actual-capacity receipt;
-cleanup observation cannot replace it with a later limit/cancellation error.
-After allocator success, record actual growth before the existing controller's
-post-allocation resource/byte checks and final poll. Preserve the first failure
-from that existing order. The ordinary driver checks actual PathSteps before
-its next action; it reports `Allocation { resource: PathSteps }` for a failed
-attempt and `Limit { resource: PathSteps, .. }` for successful allocator
-overshoot, never silently proceeding.
-
-If post-attempt admission fails, the caller preserves its original first stop
-and abandons the operation. Actual enlarged backing remains retained. Dropping
-a pending guard also abandons the authored operation and never executes or
-retries an action. An unacknowledged receipt survives in that abandoned state;
-recovery returns it for mandatory cleanup accounting before storage release.
-The cleanup observation only reports already-completed allocator effects: it
-cannot resume computation, append a step, allocate or replace the first stop.
-
-`abandon()` is idempotent and allocation-free. Guarded
-`recover(&mut Option<Self>)` removes an abandoned operation and returns its
-original root/facts plus any outstanding reservation receipt. It restores any
-privately prepared path backing to the lent buffer by a fixed header move,
-releasing the exclusive buffer borrow. EmptySlot or recovery of a live operation
-refuses without consuming it. The consumer then admits cleanup of actual path
-length/capacity, clears or drops it and retires all three actual CSS banks.
-The buffer's cleanup method clears length without reallocating, retaining its
-epoch; a later start increments it. Recovery owns no CSS-anchor borrow. Owner
-reuse still requires every actual CSS bank record/checkpoint/handle borrowing
-that anchor to be dropped. The buffer can then be reused with the same or a
-different owner. Retaining an `Option<&Owner>` inside it is rejected: clearing
-that field does not make repeated exclusive owner borrowing legal in Rust.
-
-### Typed authored traversal and canonical lowering
-
-The feeder performs a real iterative DFS of the checked `CssColor` and numeric
-AST. Its Algorithm-bank frames retain an actual typed node reference, original
-parent/edge ordinal, next child or operand index, saved path depth and the
-private continuation stage. A frame append/read/update is an ordinary qualified
-slot action with its actual layout. Return reads the retained frame and
-explicitly truncates the path. No recursive helper, root lookup, prefix replay,
-whole-subtree clone, serialization/reparse or unadmitted side vector performs
-this work.
-
-Color child/channel access is O(1): use the retained representation, fixed
-channel fields/arrays and actual mix-component slice. Numeric traversal uses
-the private typed `NodeKind` vectors/boxes directly for sum terms, product
-factors, unary operands and function arguments, preserving operators, optional
-arguments and strategy. It must not call public `term()`/`factor()` per child:
-their current operator-origin lookup uses `filter(...).nth(...)`. A separate
-one-pass cursor over each node's actual retained syntax admits each inspected
-item and obtains operator/strategy origins in original order without repeated
-prefix scans. This is a narrow private numeric-owner adapter, not a new public
-AST service. Leaves read original exact numeric tokens and admitted
-representation/digit units, retaining the authored spelling and coefficients
-beyond finite f64; typed values are not formatted then parsed again. An
-authored zero (`0`, `+0` or `-0`) resolves as the unsigned zero, as Values 4
-requires; a nonzero coefficient that underflows keeps its sign.
-
-Canonical lowering has these ordered stages:
-
-1. Read the actual color branch/header and each required local field under
-   `ReadAuthored`. Descend through Source, First/Second, original MixColor and
-   MixWeight edges, then channel/alpha/expression operands in their original
-   ordinal order. Complete all branches' intrinsic closure/type validation
-   before any reached-only fact or numerical evaluation. Inspect each retained
-   local closure flag/origin at its own action; do not invoke the recursively
-   scanning `CssColor::is_closed` or whole-tree eligibility helpers.
-2. Lower literal/expression payloads using the existing exact decimal and
-   `numeric::bounded_expression` record/kernel machinery. Append actual
-   NumericLeaf/Expression records in their existing banks, with original typed
-   environment and origins; every read, compute and record write is admitted.
-   A private authored frame/site record retains the typed operand and parent
-   edge needed by later reached resolution. It stores no allocated path copy.
-3. Stage a function's payloads before its final component run. For fixed-channel
-   functions the frame holds fixed pending component metadata inline; custom
-   profile channels use actual admitted Algorithm-bank staging records with
-   forward next links. Then append final `ComponentRecord`s consecutively in
-   original channel order, setting `previous`, `component_start`, `count` and
-   alpha separately. Payload or frame records cannot interrupt that run:
-   `FunctionRecipe::component_index` really uses `component_start + ordinal`.
-   Mix entries retain original ordinals and the existing MixRecord linkage.
-4. Finish canonical recipes and checked components, then enter the existing
-   reached resolver and numeric evaluator. Their suspended frames retain the
-   actual authored site/edge and saved path depth; path push/pop actions follow
-   actual child/operand traversal, including only the influencing light/dark,
-   relative, mix and fallback paths. Facts remain reached-only and identity
-   qualified. No second source parse or traversal to reconstruct an error path
-   is permitted.
-
-The private common table qualification separates anchor/phase/record extent
-from provenance. Source tables retain their real LexicalTable and original
-input spans. Authored tables retain typed site/edge records instead; logical
-bank indices are never cast into source Span/Token offsets or exposed as source
-locations. Existing exact component, expression, conversion and resolution
-kernels consume that common qualified content; the feeder does not copy their
-algorithms. `authored::Events`, with its slots/originals/paths/closing vectors,
-remains an ordinary construction adapter and is not invoked by this resolver.
-
-Checked color construction must enforce its actual pure-color numeric context
-at every constructor, including calculations imported from another context.
-#1190 must close that checked-construction hole; the feeder does not add an
-`AuthoredUnsupportedTreeCounting` branch or a new authored dialect for a tree
-that the selected pure-color constructors must reject.
-
-### Prepared sites, failure publication and ordinary driving
-
-Traversal maintains the full contiguous current path before any semantic action
-or numerical computation that can report a CSS failure, including a reached
-fact read. Origin observations copy
-only an admitted `Option<&CssValueOrigin>`. `PrepareSite` is a distinct action
-before that action: it checks the next path revision, moves the existing
-Vec header into a private prepared `CssColorComponentPath`, and performs the
-admitted fixed/Arc-owned clone of the actual origin, if any. The buffer becomes
-empty while the operation retains that same allocation; no capacity is freed,
-allocated, duplicated or charged twice. The prepared site names the actual
-reached recipe/scalar/expression operand, not an unrelated root origin.
-
-The subsequent admitted action includes its actual fixed success/error result
-and, where applicable, ownership-transfer layout. Completion follows the
-existing typed failure class; it does not add diagnostic fields to site-less
-errors:
-
-| Completion | Prepared-site ownership and next state |
-| --- | --- |
-| `Numerical { error, site }` | Move the prepared path/origin into this owned error before returning it. The operation is stopped; it no longer owns that backing. The recipient accounts and retires it. |
-| Standard grammar failure | Move the prepared path/origin into `CssAuthoredColorStandardFailure` in the completed outcome. Guarded take moves it once with that outcome; this is a completed standard failure, not a controller stop. |
-| `Unavailable(kind)`, `Unsupported(kind)` or reached `Facts(kind)` | Return the existing typed variant without a site. The stopped operation retains the entire prepared Vec/origin privately until abandon/recover returns the Vec to the lent buffer and retires the owned origin under admitted cleanup. |
-| `Protocol(kind)` after site preparation | Return the existing site-less protocol error without transferring the prepared site. The caller abandons immediately; any preflight refusal leaves the retained backing unchanged until recovery. No further resolver work is permitted. |
-| Success | An explicit admitted `RestoreSite` moves the same path backing back to the buffer before traversal resumes. |
-
-For example, an unavailable scheme read for a checked `light-dark()` remains
-`Unavailable(Scheme)`; it is neither Numerical nor StandardFailure. A foreign
-expected fact identity rejected during initialization remains `Facts(Foreign)`
-before PrepareSite, phase commit or any path mutation. Reached malformed-fact
-errors use the retained-prepared-site row instead.
-
-After a producer failure there is no useful restore, poll, origin clone, path
-extension or allocation. Numerical ownership transfer is part of the already
-admitted failing action; site-less failures return their fixed payload while
-retaining backing. The caller latches the original typed error before cleanup.
-Only abandon/recover may then move privately retained backing back to the
-buffer; that fixed cleanup move is not a `RestoreSite` action or a resumption.
-Its cleanup layout also covers dropping the retained owned origin; no origin
-is inserted into the path buffer or returned error for a site-less failure.
-A prepared site cannot be cloned or exposed as a second owning error. The
-guard qualifies the prepared revision; a view of its path still borrows it.
-
-If admission/cancellation refuses before PrepareSite or the later semantic
-action/compute, the refused action does not run: preserve that original consumer
-failure, abandon and recover the actual backing, including any already prepared
-Vec/origin. A dropped guard cannot resume useful work. If a semantic action or
-compute returns a CSS error, its class-specific transfer or retention above is
-already complete before another consumer poll, so later cancellation cannot
-replace it.
-Wrong action/index/slot/handle refusals are typed protocol errors before the
-requested observation or mutation, with no fabricated authored site; they do
-not replace a latched consumer failure. Cleanup performs no resolver work.
-
-`take(&mut Option<Self>)` preserves not-ready/stopped owners; only a completed
-Used or StandardFailure outcome can leave Some. Successful authored checkpoints
-retain their actual root/facts and CSS phase, with a distinct authored
-provenance context. They retain no mutable path-buffer borrow. Standard-failure
-path ownership moves once with its outcome/checkpoint; an external owned error
-is retired by its recipient after accounting its actual backing. Neither take
-nor recovery clones a path. Transformation/serialization keep the separate
-numerical anchor protocol below and do not fabricate a source descriptor.
+with `steps() -> &[CssColorPathStep]` for inspection and `capacity()` and
+`capacity_bytes()` for the allocation it owns. The closed steps are `Source`,
+`Channel(usize)`, `Alpha`, `First`, `Second`, `MixColor(usize)`,
+`MixWeight(usize)` and `ExpressionOperand(usize)`: `Source` denotes the source
+color of a relative or `alpha()` color or the operand of `contrast-color()`;
+`First` and `Second` denote the light and dark branches of `light-dark()`;
+indices use the current branch's original child, channel or operand order. Only
+the CSS resolver constructs paths, and it checks each step against its actual
+root. The path allocation moves into a failure without a clone. Neither the
+path nor a failure that contains it is `Clone`, so the outcome is borrowed from
+the result.
 
 `CssAuthoredColorOrdinaryLimits` contains `algorithm_records`,
 `arithmetic_records`, `evaluation_records`, `path_steps` and `actions`.
-`path_steps` limits this Vec's required and actual capacity, independently of
-active depth/length; checked capacity bytes are capacity times the actual typed
-step size. The three bank ceilings also observe their actual retained capacity.
-Add `PathSteps` to `CssColorOrdinaryResource`; authored paths never consume
-InputUnits or AlgorithmRecords. Source `CssColorOrdinaryLimits` stays unchanged.
-The ordinary driver services this exact protocol, counts each actual action
-once, checks requested and observed capacity even on allocation failure or
-overshoot, and maps the same resource/allocation refusals. It creates no second
-controller or hidden tree-size budget. It retires its banks and buffer before
-returning a result, moving any published failure path into that result/error.
+`path_steps` limits the path allocation's required and actual capacity,
+independently of active depth; the three bank ceilings likewise observe actual
+retained capacity. `CssColorOrdinaryResource::PathSteps` names the path
+resource, and authored paths never consume `InputUnits`. The driver counts each
+action once and checks requested and observed capacity even after an
+allocation failure or overshoot. It creates no second controller or hidden
+tree-size budget, and it retires its banks and path buffer before it returns,
+moving any published failure path into the result.
 
-The decisive source couplings are the actual
-[slot/anchor model](../../crates/surgeist-css/src/color/protocol.rs),
-[bounded action layouts](../../crates/surgeist-css/src/color/bounded.rs),
-[component contiguity](../../crates/surgeist-css/src/color/grammar.rs),
-[typed numeric AST](../../crates/surgeist-css/src/numeric.rs),
-[canonical numeric adapter](../../crates/surgeist-css/src/color/expression.rs),
-[reached frames](../../crates/surgeist-css/src/color/resolution.rs) and
-[ordinary construction Events](../../crates/surgeist-css/src/color/authored.rs).
-The local Rust probes demonstrate guard-borrowed views, explicit backing
-transfer/recovery and owner/buffer reuse, and reject retained buffer-owner
-lifetimes and mutation while a view survives. They are lifetime evidence only;
-the new feeder, its actual accounting and numerical behavior still require
-implementation and focused public regression evidence. That evidence includes
-absent scheme/current color, unsupported conversion, malformed reached facts,
-initial foreign identity, and admission refusal while a site is prepared, as
-well as numerical/standard-failure path transfer; each checks the actual backing
-owner, cleanup and unchanged first error. Fuzz scope is unchanged.
+### Errors
 
-The revised `CssColorOperationError::Numerical { error: ColorError,
-site: CssColorResolutionSite }` attaches Color failures to the actual reached
-CSS recipe. `CssColorResolutionSite` is `Source(CssColorInputRange)` or
-`Authored { path: CssColorComponentPath, origin: Option<CssValueOrigin> }`;
-it distinguishes original input units from authored component paths. Controlled
-and ordinary Numerical errors retain this site even when no success checkpoint
-exists; Unavailable, Unsupported, Facts and Protocol retain their existing
-site-less payloads and the cleanup ownership defined above.
-CSS owns
-grammar, invalid/foreign fact, unavailable/unsupported, exact-expression,
-source and protocol errors. Color owns numerical construction, interpolation,
-conversion, formatting and numerical protocol errors. CSS wraps nested Color
-protocol failures as `CssColorProtocolError::NumericalProtocol(ProtocolError)`;
-it does not turn them into standard failure. Public errors implement Display
-and Error, preserve their typed source, and do not reduce kinds to strings.
-The owning operation/ordinary error carriers become non-Copy and non-Clone
-when they can contain an authored path. Existing fixed source-only projections
-retain their source fields and Copy semantics; HTML's source adapter does not
-start retaining an owning authored path on its stopped controller.
-Standard grammar failure alone can mint the existing fallback checkpoint.
-Missing facts, unsupported conversion, resource refusal and cancellation cannot.
+`CssColorError` is the reached semantic failure of one color parse. Exactly
+one accessor returns a value: `unavailable()` (`CssColorUnavailable`, for
+example `Scheme` for an absent scheme fact under `light-dark()`),
+`unsupported()` (`CssColorUnsupported`), `fact_defect()`
+(`CssColorFactDefect`, including `Foreign` for a fact envelope that is not the
+expected identity) and `malformed_input_offset()`. `CssColorResolveError` is
+the ordinary fronts' error: it wraps a `CssColorError` (`color_error()`) or
+reports an exhausted ordinary resource (`exhausted_limit()`) or a refused
+allocation (`failed_allocation()`), both naming a `CssColorOrdinaryResource`.
+Both implement `Display` and `Error` and keep their typed cause.
 
-CSS's `CssUsedColorCheckpoint`, `CssColorTransformation`,
-`CssColorSerialization`, source descriptor and serialization receipt remain
-meaningful source-qualified wrappers. They delegate actual numerical work and
-digit handling to Color, retain source/fact ownership, and map numerical actions
-into `CssColorActionDescription` before work. They are not no-op adapters:
-they preserve consumed original units, chosen fallback, facts, owner/phase,
-bank emptiness and recovery. Native callers bypass these wrappers. Remove
-ordinary `serialize_used_color` and the native-only
-`CssColorSerialization::from_used` constructor from CSS when Color's `serialize`
-lands; a
-source-qualified controlled wrapper remains because it carries real provenance.
+CSS owns grammar, invalid and foreign fact, unavailable, unsupported,
+exact-expression and source errors. Color owns numerical construction,
+interpolation, conversion and formatting, and those operations are total, so
+no numerical failure exists to wrap. A mismatched slot, index or digit is a
+defect in the driving code: it panics with a documented message and has no
+error variant. A standard grammar failure is a successful outcome, not an
+error; it alone can mint the fallback checkpoint described below. Missing
+facts, unsupported conversion, resource refusal and cancellation cannot.
 
-### Separate anchors and checkpoint transitions
+### Controlled source parse
 
-The caller owns two separate stack anchors. The existing
-`CssColorOperationOwner` retains its nonzero marker and private `Cell<usize>`
-CSS phase. The separate Color `OperationOwner` has a marker and plain usize
-numerical phase. CSS never embeds the numerical owner beneath its shared
-checkpoint reference. Neither a continuation nor its caller banks owns an
-anchor it also references. The selected private borrow shape is:
+`color::controlled::CssColorParse<'owner, 'facts>` is the pending source
+parse. The caller owns the exclusive `CssColorOperationOwner` anchor, the three
+banks (`CssColorBank::{Algorithm, Arithmetic, Evaluation}`) of
+`CssColorSlot` records and their admission:
 
-```rust
-struct CssContext<'css, 'facts> {
-    owner: &'css CssColorOperationOwner,
-    phase: usize,
-    facts: &'facts CssColorFacts<'facts>,
-    source: CssColorSourceDescriptor,
-    standard_failure: Option<CssColorStandardFailure>,
-}
-pub struct CssUsedColorCheckpoint<'css, 'facts> {
-    context: CssContext<'css, 'facts>,
-    value: Color,
-}
-pub struct CssColorTransformation<'css, 'num, 'facts> {
-    context: CssContext<'css, 'facts>,
-    original: Color,
-    numerical: Option<surgeist_color::Computation<'num>>,
-}
-pub struct CssColorSerialization<'css, 'num, 'facts> {
-    context: CssContext<'css, 'facts>,
-    original: Color,
-    numerical: Option<surgeist_color::Serialization<'num>>,
-}
+```rust,ignore
+let mut parse = CssColorParse::start(
+    &mut owner, kind, length, request, &facts, expected,
+)?; // Err(CssColorError): fact_defect() == Some(CssColorFactDefect::Foreign)
+let outcome = loop {
+    match parse.step() {
+        CssColorParseStep::Complete(outcome) => break outcome,
+        CssColorParseStep::Pending(action) => {
+            // admit action.layout(); a refusal drops the action and abandons the parse
+            parse = service(action)?; // each action has one completion method
+        }
+    }
+};
 ```
 
-The source operation and its three banks retain only `'css`:
-`CssColorOperation<'css, 'facts>` and `[Vec<CssColorSlot<'css>>; 3]` in the ordinary
-owner, or the existing three admitted OwnedVec banks in the parser owner.
-Color's separate `[DigitSlot<'num>]` storage is not placed inside those CSS
-slots. `Data::FormatDigit` and its CSS slot kind are removed. The actual parser
-uses a fourth, separately admitted `OwnedVec<DigitSlot<'num>>` header during
-serialization, with the existing AuxiliaryEntries resource category and actual
-numerical-record capacity bytes. The source banks are released before that
-header and its digits are created. This changes record layout and action shape,
-not the controlling ledger or resource policy.
+`step(self)` consumes the parse and yields either `CssColorParseStep::Pending`
+with exactly one `CssColorParseAction` guard or `Complete` with a
+`CssColorParseOutcome`. The guards are `ReadInput` (`offset()`, `read(unit)`),
+`ReadSlot` (`bank()`, `index()`, `read(&CssColorSlot)`), `AppendSlot` and
+`UpdateSlot` (`CssColorWriteSlot`: `record()` mints a `CssColorSlot` and a
+`CssColorSlotReceipt`; `stored(&slot)` acknowledges storage and `into_parse()`
+reports refused storage), `ReadFact` (`fact()`, `read()`) and `Compute`
+(`kernel()`, `compute()`). Each guard exposes only its own completion, so a
+wrong completion is a compile error. A semantic failure consumes the parse with
+a `CssColorError`; dropping a parse or a guard abandons it, and
+`CssColorParseAction::into_parse` declines an action without effect and leaves
+the parse pending. Nothing executes abandoned work or refunds storage.
 
-The public transition signatures are:
+`CssColorSlot` is an opaque record only CSS can mint. It borrows the owner, so
+the owner serves a new parse only after the caller drops the earlier parse's
+slots; the outcome borrows only the facts. Reading or storing a record of
+another parse, bank or index panics, as slice indexing does. The compile-fail
+doctests on `CssColorParse` pin the rejected misuse (use after `step`, a second
+`record`, a second parse while a slot lives, a slot outliving its owner).
 
-```rust
-impl<'css, 'facts> CssUsedColorCheckpoint<'css, 'facts> {
-    pub fn transform<'num>(
-        slot: &mut Option<Self>,
-        numerical_owner: &'num mut surgeist_color::OperationOwner,
-        effect: surgeist_color::Transformation,
-        banks: CssColorBankLengths,
-    ) -> Result<CssColorTransformation<'css, 'num, 'facts>, CssColorOperationError>;
-    pub fn serialize<'num>(
-        slot: &mut Option<Self>,
-        numerical_owner: &'num mut surgeist_color::OperationOwner,
-        request: surgeist_color::SerializationRequest,
-        banks: CssColorBankLengths,
-        numerical_digits: usize,
-    ) -> Result<CssColorSerialization<'css, 'num, 'facts>, CssColorOperationError>;
-}
-impl<'css, 'num, 'facts> CssColorTransformation<'css, 'num, 'facts> {
-    pub fn take(slot: &mut Option<Self>)
-        -> Result<CssUsedColorCheckpoint<'css, 'facts>, CssColorOperationError>;
-    pub fn recover(slot: &mut Option<Self>)
-        -> Result<CssUsedColorCheckpoint<'css, 'facts>, CssColorProtocolError>;
-}
-impl<'css, 'num, 'facts> CssColorSerialization<'css, 'num, 'facts> {
-    pub fn take(slot: &mut Option<Self>)
-        -> Result<CssColorSerializationReceipt<'css, 'facts>, CssColorOperationError>;
-    pub fn recover(slot: &mut Option<Self>)
-        -> Result<CssUsedColorCheckpoint<'css, 'facts>, CssColorProtocolError>;
-}
-```
+Admission stays with the consumer. `CssColorParse::initialization_layout()`,
+`register_bytes()` and `action_bytes()` report the static fixed layouts,
+`bank_length(bank)` the current bank length, and `CssColorParseAction::layout()`
+a `CssColorActionLayout` of the input, slot, fact-record and numerical payload
+extents plus the `CssColorKernel` the action runs. The consumer admits these
+and its own vector capacity, allocation and copy events; CSS never converts a
+layout into a guessed weight. Numerical digit storage belongs to Color's
+serialization, not to the CSS slots.
 
-`banks` and `numerical_digits` report the caller's actual admitted bank headers,
-not a proposed allowance; serialize requires both CSS banks and the numerical
-bank to be empty. Transformation requires the CSS banks empty and borrows no
-digit bank. Both transition functions perform this fixed sequence:
+### Checkpoints, transformation and serialization
 
-1. The caller admits static CSS wrapper/numerical continuation layouts, actual
-   checkpoint/header reads, phase transition work and writes before the call.
-2. A shared slot borrow checks Some, actual bank emptiness, CSS anchor/phase and
-   computes the next CSS phase with checked addition. No mutation occurs.
-3. Color's `Computation::new(numerical_owner, request)` or
-   `Serialization::new(numerical_owner, value, request)` checks numerical phase
-   overflow before changing it. Refusal leaves both the CSS checkpoint slot and
-   both phases unchanged. It neither reads a bank nor allocates.
-4. After Color succeeds, CSS's private infallible commit sets its already checked
-   next phase through Cell, removes the checkpoint with `slot.take()`, moves its
-   context/value into the wrapper and stores the external-owner-borrowing
-   numerical continuation. There is no fallible work after Color's phase change.
-   Only CSS's exclusive non-Clone checkpoint owns this transition capability;
-   slots cannot advance a phase, and Cell makes the anchor non-Sync. A shared
-   CSS borrow therefore suffices for this controlled private phase commit.
+A completed parse is `CssColorParseOutcome::Used(CssUsedColorCheckpoint)` or
+`StandardFailure(CssColorFailureCheckpoint)`, both borrowing only `'facts`. A
+used checkpoint exposes `value()`, `consumed()`, `source()`, `fact_identity()`,
+`facts()` and `standard_failure()`, which returns the failure an explicit
+fallback replaced or `None` when the color parsed directly. A failure
+checkpoint exposes `failure()` and `fallback(self, Color) ->
+CssUsedColorCheckpoint`, the only way to turn a standard failure into a used
+checkpoint; it takes a Color the consumer chose.
 
-All public layout getters remain associated static functions. A wrapper's
-register size includes its inline context, original Color and nested numerical
-continuation once; callers do not add that nested size again. Action layout
-adds only actual externally read/written DigitSlot and output units. The
-separate numerical owner and caller's vector headers/capacities are charged
-separately. No old mixed-record size is used as numerical capacity accounting.
+`CssUsedColorCheckpoint::transform(self, owner: &mut
+surgeist_color::OperationOwner, transformation: Transformation) ->
+CssColorTransform` starts one numerical transformation. `CssColorTransform`
+wraps `surgeist_color::Computation`, so it has no error: `kernel()`,
+`layout()` and the static `register_bytes()` support admission,
+`compute(self)` returns a `CssUsedColorCheckpoint` whose value is the
+transformed Color, and `into_checkpoint(self)` declines it. The checkpoint's
+value can therefore come only from CSS resolution, an explicit fallback on a
+standard failure or a CSS-issued transformation, which keeps the provenance
+guarantee. Only a used checkpoint transforms. Transformation order and the
+choice of fallback belong to the consumer.
 
-CSS parse-time ColorConversion, Interpolation and Contrast actions invoke fixed
-Color numerical methods after their existing action admission; those kernels
-allocate no digit storage and need no numerical anchor. After parsing,
-transformation/serialization wrappers use the externally lent anchor above.
-Serialization maps Color actions into
-`CssColorActionDescription::{ReadNumericalDigit, AppendNumericalDigit,
-UpdateNumericalDigit}` with an index, `Compute(CssColorKernel::Numerical(Kernel))`,
-or the existing EmitUnit/Serialized/Stopped states. Its guard methods are
-`read_numerical_digit(self, index, &DigitSlot<'num>)`,
-`numerical_record(&mut self) -> Result<DigitSlot<'num>, CssColorOperationError>`
-and `numerical_written(self, index, &DigitSlot<'num>)`. They qualify CSS context
-and invoke the current nested Color action, which qualifies the numerical
-anchor/phase/index/digit. The Color record borrows the external numerical anchor,
-never the short guard or wrapper. Ordinary CSS slots retain their original
-read/write guard methods; callers cannot interchange those two record types.
+CSS does not wrap serialization. The consumer serializes `checkpoint.value()`
+with `surgeist_color::Serialization::new(&mut OperationOwner, value,
+SerializationRequest)`, drives its `step()` and `SerializationAction` guards
+with its own caller-owned `DigitSlot` bank, and keeps `standard_failure()`,
+`source()` and `consumed()` from the checkpoint for publication. The ordinary
+`surgeist_color::serialize(value, request, limits)` serves callers without a
+controller. The two anchors are separate: `CssColorOperationOwner` serves the
+source parse, and a Color `OperationOwner` serves transformation and
+serialization. Digit records borrow the numerical owner, so a new numerical
+operation cannot start while old digits live.
 
-`take(&mut slot)` for each CSS source/authored operation, transformation and
-serialization follows the same borrowed-slot preflight rule as Color: only a
-completed success removes Some; not-ready, numerical failure, protocol error
-and abandonment preserve the entire original wrapper. A completed standard
-failure from a source/authored operation is also a valid completed outcome and
-can be removed. Source and authored operation take methods use the borrowed
-`&mut Option<Self>` form. Successful transformation take and serialization take
-return a source checkpoint/receipt retaining `'css, 'facts`, or an authored
-checkpoint/receipt additionally retaining the independent original root's
-`'authored` lifetime. Neither return retains the numerical-owner borrow.
-Wrapper `recover(&mut slot)` removes any Some wrapper, explicitly recovers and
-drops its nested numerical operation, and returns its original committed Color
-with unchanged source/authored root and facts at the wrapper's already committed CSS
-phase. Only EmptySlot refuses recovery. A computed-but-not-taken value is not
-committed; recovery returns the previous checkpoint. This permits cleanup and
-retains provenance without restarting a stopped controller.
+The real caller sequence is:
 
-The real caller sequence is therefore:
+1. Create the CSS and numerical owners as separate stack locals. Start
+   `CssColorParse::start(&mut css_owner, ...)` and service its three banks
+   through the consumer's controller. Drop a refused action to abandon the
+   parse, or call `into_parse` to decline it and leave the parse pending.
+2. On `Complete(Used(checkpoint))`, drop the source banks. On
+   `Complete(StandardFailure(failure))`, either report the failure or call
+   `failure.fallback(color)` to continue with a used checkpoint.
+3. For each transformation, pass `&mut numerical_owner` to
+   `checkpoint.transform(..)`, admit `layout()`, call `compute()` and keep the
+   returned checkpoint. The numerical borrow ends with the call to `compute()`.
+4. Serialize `checkpoint.value()` with Color's `Serialization` over the
+   numerical owner and a caller-owned digit bank. Drop the digit bank before
+   the numerical owner serves another operation.
+5. Reusing the CSS owner for a new parse requires dropping every old CSS slot.
 
-1. Create CSS and numerical owners as separate admitted stack locals. Start
-   `CssColorOperation::parse_used(&mut css_owner, ...)` and service its actual
-   three banks through the original controller. Drop a refused action and
-   retry it unchanged, or stop and abandon without useful work on Drop.
-2. Use `CssColorOperation::take(&mut operation)` to obtain a checkpoint. Release
-   all three actual source banks through the controller; a premature transition
-   with a nonempty bank refuses without consuming that checkpoint.
-3. In a short lexical scope, pass `&mut numerical_owner` to checkpoint transform,
-   service its compute action, and use take to recover a new CSS checkpoint.
-   Drop the now-empty wrapper Option before ending this scope. The CSS
-   checkpoint remains alive while the numerical owner's borrow ends.
-4. In another scope, create an admitted empty numerical-bank header and lend
-   that numerical owner again to checkpoint serialize, passing the header's
-   actual zero length. An empty header contains no borrowed record. Service reads,
-   writes and output using actual headers and records, and take the receipt.
-   Then release and drop the digit bank and the empty wrapper Option. A receipt
-   alone does not end live digit-record borrows. Numerical owner reuse is legal
-   only after those actual records/banks have been dropped; Rust enforces it.
-5. On a stop, preserve the first stop, abandon, recover the original checkpoint
-   if its provenance is needed, then release every owned digit/output bank.
-   Refused take never forces recovery. After all numerical borrows end, the
-   same owner can start a new phase while a CSS checkpoint still exists. Reuse
-   of the CSS owner for a new parse additionally requires all old CSS slots,
-   checkpoints and source-qualified receipts to be dropped.
-
-No operation stores a mutable reference to an owner beneath a shared CSS
-reference, and no struct stores both an owned anchor and a borrow of itself.
-This arrangement deliberately uses an extra external anchor and typed numerical
-bank instead of coupling two mutable phase protocols through shared records.
-
-The same external-anchor rule applies to the controlled authored feeder and
-its authored-qualified checkpoint wrappers, with authored path/origin context
-instead of CssContext's source descriptor. It does not acquire a fake source
-descriptor to reuse the source wrapper.
-
-The implemented authored transitions preserve the resolution checkpoint and
-its `CssAuthoredColorOutcome`. Both projections use a borrowed Option slot:
-`CssAuthoredColorCheckpoint::take_used(&mut slot)` accepts only Used, while
-`CssAuthoredColorCheckpoint::fallback(&mut slot, checked_color)` accepts only
-StandardFailure. They return `CssAuthoredUsedColorCheckpoint`, move the actual
-root/facts and optional original failure exactly once, and perform no phase
-advance. A wrong outcome, empty slot or foreign phase leaves the original slot
-and cause unchanged. Its `standard_failure()` lends the owning original cause;
-it never clones the path or substitutes it for a later error site.
-
-`CssAuthoredUsedColorCheckpoint::{transform, serialize}` use the same borrowed
-slot, separate numerical owner, `CssColorBankLengths`, transformation/request
-and (for serialize) actual numerical-digit length as the source APIs above.
-Their shared preflight checks emptiness and current CSS phase, and computes the
-next phase before constructing the native Color continuation. Only after Color
-initialization succeeds does the infallible CSS commit remove the original
-slot and move its context. The concrete wrappers are
-`CssAuthoredColorTransformation` and `CssAuthoredColorSerialization`; both expose
-`take(&mut slot)`, `recover(&mut slot)`, finite native-backed action guards and
-actual static register/action layouts. Successful transformation take commits
-the computed Color and returns an authored Used checkpoint. Serialization take
-returns `CssAuthoredColorSerializationReceipt` retaining the actual root, facts,
-serialization input Color, original fallback cause and emitted length. Neither successful
-return retains the numerical-owner borrow. Live `DigitSlot` records still do.
-Recovery removes any Some wrapper and returns the original committed Color and
-its unchanged cause/root/facts at the already committed CSS phase; computation
-or partial output alone never commits a replacement checkpoint.
-
-Later transformation/serialization errors concern the whole checked root. That
-root has no aggregate `CssValueOrigin`, so their Numerical site is the truthful
-`Authored { path: [], origin: None }`, qualified by the wrapper's actual retained
-root. The wrapper prepares one empty owning path header before numerical work,
-under its real initialization layout; creating the header allocates nothing.
-It retains that prepared header independently of any original fallback cause.
-A numerical failure moves it once into the returned owned error, then stops
-useful work. Repeated compute/take returns a typed terminal/not-ready protocol
-refusal while preserving the wrapper and original checkpoint for recovery; it
-does not mint another owning site, clone a cause or allocate after failure.
-Protocol refusals remain site-less and do not transfer the prepared header.
-The original StandardFailure path/origin remains independently owned by the
-Used context through transform, serialize, successful receipt and recovery.
-
-The authored numerical guards lend actual Color `ComputationAction` or
-`StreamAction` guards and use the same numerical action/error mapping. Their
-layouts contain zero source-input, CSS-bank and fact-array work, actual native
-digit/output payload extents, and the admitted prepared-root-header/error-result
-work. The numerical owner and actual caller-owned digit/output capacities remain
-separately admitted. Dropping an uncompleted native numerical guard performs no
-useful work; a caller stopping after refusal explicitly abandons and recovers,
-then retires its partial output and actual digits. This is the native numerical
-phase protocol, distinct from the authored feeder's pending-guard abandonment.
-
-Ordinary source/authored resolution owns its actual CSS anchor, banks and
-(for authored resolution) path buffer locally. Color's ordinary serialization
-owns its numerical anchor and digit bank locally. Controlled authored numerical
-wrappers retain real CSS context and require the separate external numerical
-owner and caller-owned digit bank described above. The HTML parser does not
-invoke these ordinary helpers. Its existing source adapter starts `CssColorOperation::parse_used`
-and services that operation with the original ParseControl. The controlled
-authored operation is available for real authored callers; current input-color
-construction does not need it.
-
-Design validation compiled and ran a dependency-free safe Rust witness of this
-exact two-anchor/context/continuation/digit-slot borrow shape with installed
-Rust 1.97. The witness covered a live source bank refusing transition, numerical
-phase overflow preserving the CSS checkpoint, dropped guards, refused early and
-failed takes, explicit recovery, successful take, numerical-owner reuse while
-a CSS receipt survives, and CSS-owner reuse after CSS borrows end. An additional
-negative compilation kept a digit record live after removing its serializer;
-the attempted new mutable numerical-owner borrow was rejected with E0499.
-These checks establish the selected lifetime/transfer shape, not the future
-public implementation's numerical correctness or actual parser accounting.
+The HTML parser does not invoke the ordinary helpers. Its source adapter
+(`construction/css_color.rs`) starts `CssColorParse::start` and services the
+parse with its own ParseControl; `construction/input_color.rs` then
+transforms and serializes through the Color types above. Authored callers use
+`CssColor::resolve`; current input-color construction does not need it.
 
 ## Public use and HTML adapter
 
@@ -1041,14 +642,15 @@ still owns missing-channel handling, clipping, f64→f32 lowering and its checke
 Animation remains unchanged unless a concrete numerical consumer is separately
 authorized. Neither crate becomes a mandatory path through the facade.
 
-This future CSS example uses both public source and checked-authored paths:
+This CSS example uses both public source and checked-authored paths. All items
+are in `surgeist_css::color`:
 
 ```rust
-use surgeist_css::{CssColor, CssHexColor, CssColorFactIdentity, CssColorFacts,
+use surgeist_css::color::{CssColor, CssHexColor, CssColorFactIdentity, CssColorFacts,
     CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
     CssColorInput, CssColorGrammarRequest, CssColorOrdinaryLimits,
     CssColorOrdinaryOutcome, CssAuthoredColorOutcome, CssAuthoredColorOrdinaryLimits,
-    parse_used_color, resolve_authored_color};
+    parse_used_color};
 
 let facts = CssColorFacts::new(
     CssColorFactIdentity::new(7, 3), CssColorPropertyFacts::Unavailable,
@@ -1066,7 +668,7 @@ let authored_limits = CssAuthoredColorOrdinaryLimits {
     algorithm_records: 16_384, arithmetic_records: 4_096,
     evaluation_records: 4_096, path_steps: 1_024, actions: 4_000_000,
 };
-let resolved = resolve_authored_color(&authored, &facts, facts.identity(), authored_limits).unwrap();
+let resolved = authored.resolve(&facts, facts.identity(), authored_limits).unwrap();
 let CssColorOrdinaryOutcome::Used(from_source) = parsed.outcome() else { panic!("red") };
 let CssAuthoredColorOutcome::Used(from_authored) = resolved.outcome() else { panic!("hex") };
 assert!(from_source.identical(*from_authored));
@@ -1076,12 +678,14 @@ assert!(std::ptr::eq(resolved.authored(), &authored));
 These explicit fixture ceilings match the existing standalone color test's
 logical allowances. The fact identity qualifies the supplied CSS envelope;
 the native example requires none. Exact authored component construction uses
-`CssComponentValue::try_number` and the existing checked scalar/function
+`component::CssComponentValue::try_number` and the existing checked scalar/function
 constructors before this resolution call, retaining original tokens. The
 authored path builds no source string.
 
 The actual controlled HTML consumer is currently
-[`construction/input_color.rs`](../../crates/surgeist-html-parser/src/construction/input_color.rs).
+[`construction/input_color.rs`](../../crates/surgeist-html-parser/src/construction/input_color.rs),
+which drives the CSS parse through the shared action servicing in
+[`construction/css_color.rs`](../../crates/surgeist-html-parser/src/construction/css_color.rs).
 It belongs to `surgeist-html-parser`, which directly depends on CSS and Color.
 The `surgeist-html` shared-value
 crate does not own a second adapter. Original-source, resource, lexical and
@@ -1091,25 +695,38 @@ in
 Stored numerical payloads use Color directly; CSS environment identities and
 standard failures remain CSS types.
 
-The public controlled path is `CssColorOperation::parse_used` with the actual
-original UTF-16 buffer, actual CSS facts and existing ParseControl. Each action
-is described, admitted through that ParseControl and then executed/read/written.
-For a numerical transformation, the source-qualified CSS checkpoint delegates
-to `Computation`; for serialization it delegates to `Serialization` and wraps
-the numerical receipt with actual CSS provenance. The parser imports
-`ColorSpace`, `PredefinedColorSpace`, `Transformation`, `SerializationRequest`
-and Color from Color, and parsing/checkpoint types from CSS. This makes both
-dependencies real while preserving the original control and source identity.
+The public controlled path is `color::controlled::CssColorParse`. The parser
+starts it with `CssColorParse::start(&mut owner, kind, length, request, facts,
+expected)` over an exclusive `CssColorOperationOwner`, the length of the actual
+original UTF-16 buffer and actual CSS facts, and drives it with its existing
+ParseControl. `step()` consumes the parse and yields either one pending
+`CssColorParseAction` guard or the `CssColorParseOutcome`. Each action is
+described by its layout, admitted through that ParseControl and then executed,
+read or written by the guard's single completion method, which returns the
+parse; dropping a guard or the parse abandons it. The parser owns the three slot
+banks. A used color is a `CssUsedColorCheckpoint`; a standard failure is a
+`CssColorFailureCheckpoint` whose `fallback(value)` supplies the consumer's used
+color. For a numerical transformation,
+`CssUsedColorCheckpoint::transform(&mut OperationOwner, Transformation)` yields
+a total `CssColorTransform` that wraps `Computation`, and `compute()` returns the
+next checkpoint. CSS does not wrap serialization: the parser drives
+`surgeist_color::Serialization` directly over the checkpoint's `value()` with
+its own `DigitSlot` bank and keeps the checkpoint's source descriptor and
+`standard_failure()` as provenance. The parser imports `ColorSpace`,
+`PredefinedColorSpace`, `Transformation`, `SerializationRequest`, `Serialization`
+and Color from Color, and the parse and checkpoint types from
+`surgeist_css::color::controlled`. This makes both dependencies real while
+preserving the original control and source identity.
 
 Preserve HTML's current dirty/default/current selection and standard-failure-only
 opaque-black fallback. Preserve transformation order: force opaque when alpha
 is disabled, convert to selected sRGB or Display-P3, quantize when the sRGB
-branch requires bytes, then select the required modern family. The CSS numerical
-action maps to actual kernel/layout admission before the operation. Serialized
+branch requires bytes, then select the required modern family. The CSS action
+layout maps to actual kernel/layout admission before the action. Serialized
 ASCII units append to the parser's admitted UTF-16 output buffer. The parser
 installs value/output/provenance only after complete receipt and all required
-storage cleanup. ParseStop retains CSS operation errors and, where a direct
-numerical operation is used, the typed Color error; cancellation/limits retain
+storage cleanup. ParseStop retains `CssColorError` and, where serialization
+is driven directly, the typed Color `SerializationError`; cancellation/limits retain
 their original stop. The fixed unavailable-environment identity in the existing
 adapter qualifies that explicit environment policy, not an invented native
 numerical source issuer.
@@ -1220,8 +837,10 @@ The focused acceptance evidence must cover:
 - CSS source and checked-authored resolution, all native authored branches,
   exact coefficients beyond finite f64, Parsed/Programmatic origins, complete
   unselected syntax validation, reached-only facts, prefix consumption and
-  original UTF-16 coordinates. Check foreign/retired/incorrect slots, invalid
-  replies, dropped actions and empty-bank checkpoint preconditions.
+  original UTF-16 coordinates. The typestate rejects repeated steps,
+  completions of the wrong action kind and use of an abandoned parse at compile
+  time (the `compile_fail` rustdoc cases on `color::controlled::CssColorParse`);
+  the same rustdoc shows the owner reused once the records are dropped.
 - General numeric projection and page/keyframe collision/suppression/shared
   budget tests, plus rotate shared budgets, no second traversal, zero-axis,
   negative-axis and restored-suppression regressions. Exact authored formatter

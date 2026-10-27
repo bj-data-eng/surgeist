@@ -10,7 +10,9 @@ use crate::source::CssParsedOrigin;
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFeatureDisplayValueRef<'a> {
+    /// A checked `font-display` keyword value.
     Ordinary(CssFontDisplay),
+    /// A value whose grammar depends on later `env()` substitution and is still symbolic.
     Pending(&'a CssSubstitutionDependentValue),
 }
 
@@ -43,6 +45,7 @@ impl CssFontFeatureDisplayValue {
             origin: Some(origin),
         }
     }
+    /// Returns the checked value as a borrowed view.
     #[must_use]
     pub const fn view(&self) -> CssFontFeatureDisplayValueRef<'_> {
         match &self.data {
@@ -52,6 +55,7 @@ impl CssFontFeatureDisplayValue {
             FontFeatureDisplayData::Pending(value) => CssFontFeatureDisplayValueRef::Pending(value),
         }
     }
+    /// Returns the component values the descriptor was admitted from, with their original provenance.
     #[must_use]
     pub const fn components(&self) -> &CssComponentValues {
         &self.components
@@ -67,7 +71,9 @@ impl CssFontFeatureDisplayValue {
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFeatureValueRef<'a> {
+    /// The normalized indexes in authored order.
     Indexes(&'a [CssFontFeatureValueIndex]),
+    /// A value whose grammar depends on later `env()` substitution; no index count has been completed.
     Pending(&'a CssSubstitutionDependentValue),
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -104,10 +110,12 @@ impl CssFontFeatureValue {
             origin: Some(origin),
         }
     }
+    /// Returns which feature-value block grammar this value was checked against.
     #[must_use]
     pub const fn kind(&self) -> CssFontFeatureValueKind {
         self.kind
     }
+    /// Returns the checked value as a borrowed view.
     #[must_use]
     pub fn view(&self) -> CssFontFeatureValueRef<'_> {
         match &self.data {
@@ -115,6 +123,7 @@ impl CssFontFeatureValue {
             FontFeatureValueData::Pending(value) => CssFontFeatureValueRef::Pending(value),
         }
     }
+    /// Returns the component values the value was admitted from, with their original provenance.
     #[must_use]
     pub const fn components(&self) -> &CssComponentValues {
         &self.components

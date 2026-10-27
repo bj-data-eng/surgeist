@@ -123,6 +123,11 @@ pub struct CssShapeCommandList {
     commands: Vec<CssShapeCommand>,
 }
 impl CssShapeCommandList {
+    /// Creates a command list.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for which `CssShapeConstructionError::is_empty_commands` holds when `commands` is empty.
     pub fn try_new(commands: Vec<CssShapeCommand>) -> Result<Self, CssShapeConstructionError> {
         if commands.is_empty() {
             Err(CssShapeConstructionError::from(
@@ -132,6 +137,7 @@ impl CssShapeCommandList {
             Ok(Self { commands })
         }
     }
+    /// Returns the commands in authored order.
     pub fn commands(&self) -> &[CssShapeCommand] {
         &self.commands
     }
@@ -143,15 +149,18 @@ pub struct CssShapeCoordinatePair {
     y: CssNumeric<CssLengthPercentage>,
 }
 impl CssShapeCoordinatePair {
+    /// Creates a pair from a horizontal and a vertical offset, in that order, each a signed `<length-percentage>`.
     pub const fn new(
         x: CssNumeric<CssLengthPercentage>,
         y: CssNumeric<CssLengthPercentage>,
     ) -> Self {
         Self { x, y }
     }
+    /// Returns the rightward offset.
     pub const fn x(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.x
     }
+    /// Returns the downward offset.
     pub const fn y(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.y
     }
@@ -165,28 +174,41 @@ impl PartialEq for CssShapeCoordinatePair {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssShapeEndpoint {
+    /// `to <position>`: an absolute endpoint, relative to the reference box.
     To(CssPosition),
+    /// `by <coordinate-pair>`: an endpoint offset from the command's starting point.
     By(CssShapeCoordinatePair),
 }
 /// One authored command, without implicit moves or geometric defaults.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssShapeCommand {
+    /// `move`: adds a `moveto` command that draws nothing and starts a new subpath.
     Move(CssShapeEndpoint),
+    /// `line`: draws a straight line to the endpoint.
     Line(CssShapeEndpoint),
+    /// `hline`: a horizontal `lineto`, equivalent to `line` with the given horizontal component.
     HorizontalLine(CssShapeHorizontalLine),
+    /// `vline`: a vertical `lineto`, equivalent to `line` with the given vertical component.
     VerticalLine(CssShapeVerticalLine),
+    /// `curve`: draws a quadratic or cubic Bezier curve.
     Curve(CssShapeCurve),
+    /// `smooth`: draws a smooth quadratic or cubic Bezier curve continuing from the previous command.
     Smooth(CssShapeSmooth),
+    /// `arc`: draws an elliptical arc.
     Arc(CssShapeArc),
+    /// `close`: adds a `closepath` command, similar to a `line` to the subpath's starting point.
     Close,
 }
 /// A checked horizontal line affinity and operand.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssShapeHorizontalLine {
+    /// `to <length-percentage>`: an absolute horizontal offset in the reference box.
     ToOffset(CssNumeric<CssLengthPercentage>),
+    /// `to` followed by a horizontal position keyword.
     ToKeyword(CssHorizontalPositionKeyword),
+    /// `by <length-percentage>`: a horizontal offset from the starting point.
     By(CssNumeric<CssLengthPercentage>),
 }
 impl PartialEq for CssShapeHorizontalLine {
@@ -202,8 +224,11 @@ impl PartialEq for CssShapeHorizontalLine {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssShapeVerticalLine {
+    /// `to <length-percentage>`: an absolute vertical offset in the reference box.
     ToOffset(CssNumeric<CssLengthPercentage>),
+    /// `to` followed by a vertical position keyword.
     ToKeyword(CssVerticalPositionKeyword),
+    /// `by <length-percentage>`: a vertical offset from the starting point.
     By(CssNumeric<CssLengthPercentage>),
 }
 impl PartialEq for CssShapeVerticalLine {
@@ -219,22 +244,29 @@ impl PartialEq for CssShapeVerticalLine {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssShapeControlAnchor {
+    /// `start`: the offset is relative to the command's starting point.
     Start,
+    /// `end`: the offset is relative to the command's end point.
     End,
+    /// `origin`: the offset is relative to the reference box.
     Origin,
 }
 /// An explicitly authored shape arc sweep keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssShapeArcSweep {
+    /// `cw`: the arc is drawn in the clockwise direction.
     Cw,
+    /// `ccw`: the arc is drawn in the counterclockwise direction.
     Ccw,
 }
 /// An explicitly authored shape arc size keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssShapeArcSize {
+    /// `large`: the larger of the two candidate arcs is drawn.
     Large,
+    /// `small`: the smaller of the two candidate arcs is drawn.
     Small,
 }
 /// An absolute position or an explicitly anchored numeric control pair.
@@ -254,18 +286,25 @@ enum AbsoluteControl {
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssShapeAbsoluteControlPointRef<'a> {
+    /// An absolute `<position>` control point.
     Position(&'a CssPosition),
+    /// A coordinate pair control point with an explicit anchor.
     Coordinates {
+        /// The authored coordinate pair.
         offset: &'a CssShapeCoordinatePair,
+        /// The authored anchor the pair is relative to.
         anchor: CssShapeControlAnchor,
     },
 }
 impl CssShapeAbsoluteControlPoint {
+    /// Creates a control point from an absolute `<position>`.
     pub const fn from_position(position: CssPosition) -> Self {
         Self {
             value: AbsoluteControl::Position(position),
         }
     }
+    /// Creates a control point from a coordinate pair.
+    /// With an anchor the pair stays anchored; without one it is stored as an absolute `<position>` of two free offsets.
     pub fn from_coordinates(
         offset: CssShapeCoordinatePair,
         anchor: Option<CssShapeControlAnchor>,
@@ -283,6 +322,7 @@ impl CssShapeAbsoluteControlPoint {
         };
         Self { value }
     }
+    /// Returns a borrowed view of the stored control point.
     pub const fn view(&self) -> CssShapeAbsoluteControlPointRef<'_> {
         match &self.value {
             AbsoluteControl::Position(p) => CssShapeAbsoluteControlPointRef::Position(p),
@@ -302,15 +342,18 @@ pub struct CssShapeRelativeControlPoint {
     anchor: Option<CssShapeControlAnchor>,
 }
 impl CssShapeRelativeControlPoint {
+    /// Creates a control point from a coordinate pair and an optional anchor; omission is retained.
     pub const fn new(
         offset: CssShapeCoordinatePair,
         anchor: Option<CssShapeControlAnchor>,
     ) -> Self {
         Self { offset, anchor }
     }
+    /// Returns the authored coordinate pair.
     pub const fn offset(&self) -> &CssShapeCoordinatePair {
         &self.offset
     }
+    /// Returns the authored anchor, or `None` when `from` was omitted and the pair is relative to the segment's start.
     pub const fn anchor(&self) -> Option<CssShapeControlAnchor> {
         self.anchor
     }
@@ -337,18 +380,27 @@ enum Curve {
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssShapeCurveRef<'a> {
+    /// A curve to an absolute endpoint.
     To {
+        /// The absolute endpoint.
         end: &'a CssPosition,
+        /// The first control point.
         first: &'a CssShapeAbsoluteControlPoint,
+        /// The second control point, or `None` for a quadratic curve.
         second: Option<&'a CssShapeAbsoluteControlPoint>,
     },
+    /// A curve to an endpoint offset from the starting point.
     By {
+        /// The endpoint offset.
         end: &'a CssShapeCoordinatePair,
+        /// The first relative control point.
         first: &'a CssShapeRelativeControlPoint,
+        /// The second relative control point, or `None` for a quadratic curve.
         second: Option<&'a CssShapeRelativeControlPoint>,
     },
 }
 impl CssShapeCurve {
+    /// Creates a curve to an absolute endpoint with one control point for a quadratic curve or two for a cubic curve.
     pub const fn to(
         end: CssPosition,
         first: CssShapeAbsoluteControlPoint,
@@ -358,6 +410,7 @@ impl CssShapeCurve {
             value: Curve::To { end, first, second },
         }
     }
+    /// Creates a curve to an endpoint offset from the starting point with one relative control point for a quadratic curve or two for a cubic curve.
     pub const fn by(
         end: CssShapeCoordinatePair,
         first: CssShapeRelativeControlPoint,
@@ -367,6 +420,7 @@ impl CssShapeCurve {
             value: Curve::By { end, first, second },
         }
     }
+    /// Returns a borrowed view of the endpoint and control points.
     pub const fn view(&self) -> CssShapeCurveRef<'_> {
         match &self.value {
             Curve::To { end, first, second } => CssShapeCurveRef::To {
@@ -402,21 +456,29 @@ enum Smooth {
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssShapeSmoothRef<'a> {
+    /// A smooth curve to an absolute endpoint.
     To {
+        /// The absolute endpoint.
         end: &'a CssPosition,
+        /// The control point, or `None` for a smooth quadratic curve.
         control: Option<&'a CssShapeAbsoluteControlPoint>,
     },
+    /// A smooth curve to an endpoint offset from the starting point.
     By {
+        /// The endpoint offset.
         end: &'a CssShapeCoordinatePair,
+        /// The relative control point, or `None` for a smooth quadratic curve.
         control: Option<&'a CssShapeRelativeControlPoint>,
     },
 }
 impl CssShapeSmooth {
+    /// Creates a smooth curve to an absolute endpoint; an omitted control point makes it a smooth quadratic curve.
     pub const fn to(end: CssPosition, control: Option<CssShapeAbsoluteControlPoint>) -> Self {
         Self {
             value: Smooth::To { end, control },
         }
     }
+    /// Creates a smooth curve to an endpoint offset from the starting point; an omitted control point makes it a smooth quadratic curve.
     pub const fn by(
         end: CssShapeCoordinatePair,
         control: Option<CssShapeRelativeControlPoint>,
@@ -425,6 +487,7 @@ impl CssShapeSmooth {
             value: Smooth::By { end, control },
         }
     }
+    /// Returns a borrowed view of the endpoint and control point.
     pub const fn view(&self) -> CssShapeSmoothRef<'_> {
         match &self.value {
             Smooth::To { end, control } => CssShapeSmoothRef::To {
@@ -442,9 +505,13 @@ impl CssShapeSmooth {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssShapeArcRadii {
+    /// A single radius used for both axes.
     One(CssNumeric<CssLengthPercentage>),
+    /// Separate horizontal and vertical radii.
     Two {
+        /// The horizontal radius.
         horizontal: CssNumeric<CssLengthPercentage>,
+        /// The vertical radius.
         vertical: CssNumeric<CssLengthPercentage>,
     },
 }
@@ -476,6 +543,8 @@ pub struct CssShapeArc {
     rotation: Option<CssNumeric<CssAngle>>,
 }
 impl CssShapeArc {
+    /// Creates an arc.
+    /// Only the endpoint and radii are required; the sweep, size and rotation options may each be omitted.
     pub const fn new(
         endpoint: CssShapeEndpoint,
         radii: CssShapeArcRadii,
@@ -491,18 +560,23 @@ impl CssShapeArc {
             rotation,
         }
     }
+    /// Returns the arc's endpoint.
     pub const fn endpoint(&self) -> &CssShapeEndpoint {
         &self.endpoint
     }
+    /// Returns the authored radii.
     pub const fn radii(&self) -> &CssShapeArcRadii {
         &self.radii
     }
+    /// Returns the authored sweep direction, or `None` when omitted.
     pub const fn sweep(&self) -> Option<CssShapeArcSweep> {
         self.sweep
     }
+    /// Returns the authored arc size, or `None` when omitted.
     pub const fn size(&self) -> Option<CssShapeArcSize> {
         self.size
     }
+    /// Returns the authored ellipse rotation, or `None` when omitted.
     pub const fn rotation(&self) -> Option<&CssNumeric<CssAngle>> {
         self.rotation.as_ref()
     }

@@ -18,7 +18,9 @@ use crate::serialization::{CssRuleSerializationError, CssSerializationError};
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssSpecifiedPageDeclarationEntry {
+    /// A selected ordinary property terminal, retaining its source occurrence.
     Property(CssSpecifiedDeclarationEntry),
+    /// A selected page descriptor.
     Descriptor(CssPageDescriptor),
 }
 /// Exact ordered selected Page state. It never expands a retained shorthand again.
@@ -122,6 +124,11 @@ fn reserve<T>(items: &mut Vec<T>, count: usize) -> Result<(), CssSerializationEr
     })
 }
 impl CssSpecifiedPageDeclarationBlock {
+    /// Creates a selected state from entries, retained in the given order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the property entries cannot form a selected property block, when two descriptor entries have the same kind, or when `limits` are exceeded.
     pub fn try_from_entries(
         entries: &[CssSpecifiedPageDeclarationEntry],
         limits: Limits,
@@ -162,10 +169,18 @@ impl CssSpecifiedPageDeclarationBlock {
             properties,
         })
     }
+    /// Returns the selected entries in their supplied order.
     #[must_use]
     pub fn entries(&self) -> &[CssSpecifiedPageDeclarationEntry] {
         &self.entries
     }
+    /// Serializes the selected state as CSSOM text, without braces.
+    ///
+    /// Failure publishes no partial text.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `limits` are exceeded or an entry cannot be serialized.
     pub fn serialize_cssom(&self, limits: Limits) -> Result<String, CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer
@@ -175,6 +190,11 @@ impl CssSpecifiedPageDeclarationBlock {
     }
 }
 impl CssPageDeclarationBlock {
+    /// Projects the block into its selected state: ordinary properties in their selected form and, for each descriptor kind, only the winning occurrence.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the properties cannot be selected or `limits` are exceeded.
     pub fn try_specified(
         &self,
         limits: Limits,
@@ -232,6 +252,9 @@ pub struct CssMarginRuleView<'a> {
     declarations: &'a CssSpecifiedDeclarationBlock,
 }
 impl<'a> CssMarginRuleView<'a> {
+    /// Creates a view of a margin rule from its box name and an already selected property block.
+    ///
+    /// Returns `None` when `declarations` is not a margin-context block.
     pub fn try_new(
         name: CssMarginBox,
         declarations: &'a CssSpecifiedDeclarationBlock,
@@ -240,14 +263,23 @@ impl<'a> CssMarginRuleView<'a> {
             .is_margin()
             .then_some(Self { name, declarations })
     }
+    /// Returns which margin box the rule styles.
     #[must_use]
     pub const fn name(self) -> CssMarginBox {
         self.name
     }
+    /// Returns the borrowed selected property block.
     #[must_use]
     pub const fn declarations(self) -> &'a CssSpecifiedDeclarationBlock {
         self.declarations
     }
+    /// Serializes the margin rule as CSSOM text.
+    ///
+    /// Failure publishes no partial text.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `limits` are exceeded or the rule cannot be serialized.
     pub fn serialize_cssom(self, limits: Limits) -> Result<String, CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer
@@ -264,6 +296,7 @@ pub struct CssPageRuleView<'a> {
     margins: &'a [CssMarginRuleView<'a>],
 }
 impl<'a> CssPageRuleView<'a> {
+    /// Creates a view from a selector prelude, selected declaration state and margin rule views, all borrowed.
     #[must_use]
     pub const fn new(
         selectors: &'a CssPageSelectorList,
@@ -276,18 +309,28 @@ impl<'a> CssPageRuleView<'a> {
             margins,
         }
     }
+    /// Returns the borrowed selector prelude.
     #[must_use]
     pub const fn selectors(self) -> &'a CssPageSelectorList {
         self.selectors
     }
+    /// Returns the borrowed selected declaration state.
     #[must_use]
     pub const fn declarations(self) -> &'a CssSpecifiedPageDeclarationBlock {
         self.declarations
     }
+    /// Returns the borrowed margin rule views in their supplied order.
     #[must_use]
     pub const fn margin_rules(self) -> &'a [CssMarginRuleView<'a>] {
         self.margins
     }
+    /// Serializes the page rule as CSSOM text.
+    ///
+    /// Failure publishes no partial text.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `limits` are exceeded or a child cannot be serialized.
     pub fn serialize_cssom(self, limits: Limits) -> Result<String, CssRuleSerializationError> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         let mut child = None;

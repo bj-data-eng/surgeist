@@ -1,4 +1,13 @@
 //! Display, sizing, spacing, overflow, float, containment and break values.
+//!
+//! Box-model values: display, box sizing (including `calc-size()` and intrinsic-size keywords),
+//! margins, padding and inset, overflow, float and clear, visibility, containment, z-index and
+//! fragmentation breaks. They retain authored syntax; no box is laid out.
+//!
+//! # Overflow
+//!
+//! The `overflow` value is a [`CssOverflowValue`], retaining the authored one- or two-axis
+//! form.
 
 pub(crate) mod box_spacing;
 pub(crate) mod break_controls;

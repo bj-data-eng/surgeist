@@ -18,13 +18,21 @@ type SerializationResult<T> = Result<T, CssSerializationError>;
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssBoxSize {
+    /// A non-negative `<length-percentage>` size.
     LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>),
+    /// `stretch`: stretch-fit sizing, which matches the box's margin box to the size of its containing block.
     Stretch,
+    /// `contain`: contain-fit sizing when the box has a preferred aspect ratio, otherwise stretch-fit sizing.
     Contain,
+    /// `min-content`: the box's min-content size.
     MinContent,
+    /// `max-content`: the box's max-content size.
     MaxContent,
+    /// `fit-content`: the box's fit-content size, `min(max-content, max(min-content, stretch))`.
     FitContent,
+    /// The `fit-content(<length-percentage>)` function with its non-negative limit argument.
     FitContentFunction(CssNumeric<CssLengthPercentage, CssNonNegative>),
+    /// A `calc-size()` function checked for box-sizing use.
     CalcSize(CssBoxCalcSize),
 }
 
@@ -92,11 +100,14 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssSizeValue {
+    /// `auto`: the box's automatic size, which the relevant layout module determines (for minimum sizes, an automatic minimum size).
     Auto,
+    /// A shared box size.
     BoxSize(CssBoxSize),
 }
 
 impl CssSizeValue {
+    /// Returns the shared box size, or `None` for `auto`.
     pub fn box_size(&self) -> Option<&CssBoxSize> {
         match self {
             Self::Auto => None,
@@ -139,8 +150,14 @@ enum CssMaxSizeKind {
 }
 
 impl CssMaxSizeValue {
+    /// The `none` maximum size, which imposes no limit.
     pub const NONE: Self = Self(CssMaxSizeKind::None);
 
+    /// Wraps a shared box size as a maximum size.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the value is a `calc-size()` whose basis chain contains `auto`, which a maximum size rejects.
     pub fn try_box_size(value: CssBoxSize) -> Result<Self, CssNumericConstructionError> {
         if let CssBoxSize::CalcSize(calc) = &value {
             calc.validate_maximum_context()?;
@@ -148,6 +165,7 @@ impl CssMaxSizeValue {
         Ok(Self(CssMaxSizeKind::BoxSize(value)))
     }
 
+    /// Returns the shared box size, or `None` for the `none` maximum size.
     pub fn box_size(&self) -> Option<&CssBoxSize> {
         match &self.0 {
             CssMaxSizeKind::None => None,
@@ -155,6 +173,7 @@ impl CssMaxSizeValue {
         }
     }
 
+    /// Returns whether this is the `none` maximum size.
     pub fn is_none(&self) -> bool {
         matches!(self.0, CssMaxSizeKind::None)
     }

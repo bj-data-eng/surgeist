@@ -15,19 +15,25 @@ type Result<T> = std::result::Result<T, CssSerializationError>;
 #[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum CssLineWidth {
+    /// `thin`: equivalent to `1px`.
     Thin,
+    /// `medium`: equivalent to `3px`.
     Medium,
+    /// `thick`: equivalent to `5px`.
     Thick,
+    /// A non-negative `<length>`.
     Length(CssNumeric<CssLength, CssNonNegative>),
 }
 
 impl CssLineWidth {
+    /// Returns the authored length, or `None` for the `thin`, `medium` and `thick` keywords.
     pub fn length(&self) -> Option<&CssNumeric<CssLength, CssNonNegative>> {
         match self {
             Self::Length(value) => Some(value),
             _ => None,
         }
     }
+    /// Returns the value origin of the authored length, or `None` for the keywords.
     pub fn origin(&self) -> Option<&CssValueOrigin> {
         self.length()
             .map(CssNumeric::<CssLength, CssNonNegative>::origin)
@@ -88,6 +94,7 @@ pub struct CssBorder {
     color: Option<CssColor>,
 }
 impl CssBorder {
+    /// Returns the components, or `None` when width, style and color are all omitted.
     #[must_use]
     pub fn try_new(
         width: Option<CssLineWidth>,
@@ -100,9 +107,11 @@ impl CssBorder {
             color,
         })
     }
+    /// Returns the authored width, or `None` when omitted.
     pub const fn width(&self) -> Option<&CssLineWidth> {
         self.width.as_ref()
     }
+    /// Returns the authored line style, or `None` when omitted.
     pub const fn style(&self) -> Option<CssLineStyle> {
         self.style
     }

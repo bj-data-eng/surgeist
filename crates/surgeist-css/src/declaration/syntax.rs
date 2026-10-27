@@ -596,6 +596,8 @@ impl CssCustomPropertyName {
     }
 }
 
+/// A non-blank authored declaration value, retained as the exact CSS text before any
+/// substitution or grammar interpretation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssAuthoredDeclarationValue {
     css: String,
@@ -605,6 +607,7 @@ impl CssAuthoredDeclarationValue {
     pub(crate) fn retained_backing_bytes(&self) -> usize {
         self.css.capacity()
     }
+    /// Returns `None` when `css` is empty or only whitespace.
     #[must_use]
     pub fn try_new(css: impl Into<String>) -> Option<Self> {
         let css = css.into();
@@ -620,12 +623,15 @@ impl CssAuthoredDeclarationValue {
         Self { css: css.into() }
     }
 
+    /// Returns the retained authored text exactly as written.
     #[must_use]
     pub fn as_css(&self) -> &str {
         &self.css
     }
 }
 
+/// A retained `var()` reference: the referenced custom property name and its optional
+/// fallback.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssVariableReference {
     name: CssCustomPropertyName,
@@ -639,17 +645,20 @@ impl CssVariableReference {
         Self { name, fallback }
     }
 
+    /// Returns the referenced custom property name.
     #[must_use]
     pub const fn name(&self) -> &CssCustomPropertyName {
         &self.name
     }
 
+    /// Returns the fallback argument, or `None` when the reference has none.
     #[must_use]
     pub const fn fallback(&self) -> Option<&CssVariableFallback> {
         self.fallback.as_ref()
     }
 }
 
+/// The fallback argument of a `var()` reference, with the references nested inside it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssVariableFallback {
     authored: CssAuthoredDeclarationValue,
@@ -669,11 +678,13 @@ impl CssVariableFallback {
         }
     }
 
+    /// Returns the retained authored fallback text.
     #[must_use]
     pub fn as_css(&self) -> &str {
         self.authored.as_css()
     }
 
+    /// Returns the `var()` references nested in the fallback, in source order.
     #[must_use]
     pub fn references(&self) -> &[CssVariableReference] {
         &self.references
@@ -826,6 +837,8 @@ pub(crate) enum CssDeclaredValue<T> {
     SubstitutionDependent(CssSubstitutionDependentValue),
 }
 
+/// The authored text of a functional notation's arguments, serialized from the retained
+/// tokens.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssAuthoredFunctionArguments {
     css: String,
@@ -837,6 +850,7 @@ impl CssAuthoredFunctionArguments {
         Self { css: css.into() }
     }
 
+    /// Returns the argument text.
     #[must_use]
     pub fn as_css(&self) -> &str {
         &self.css

@@ -257,15 +257,19 @@ impl CssCustomMediaRule {
             }),
         }
     }
+    /// Returns the custom media name the rule defines.
     pub const fn name(&self) -> &CssCustomMediaName {
         &self.data.name
     }
+    /// Returns the definition body: `true`, `false` or a media query list.
     pub const fn body(&self) -> &CssCustomMediaBody {
         &self.data.body
     }
+    /// Returns the origin of the whole rule.
     pub const fn origin(&self) -> &CssValueOrigin {
         &self.data.origin
     }
+    /// Returns the source position of the rule, or `None` when its origin was not parsed from source.
     pub const fn position(&self) -> Option<CssSourcePosition> {
         crate::query::media::construction::parsed_position(&self.data.origin)
     }

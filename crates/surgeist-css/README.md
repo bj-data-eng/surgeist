@@ -8,6 +8,70 @@ unsupported productions; consult the [support reference](docs/reference.md#confo
 for exact boundaries. Cascade, substitution, matching, resource loading, and
 layout belong to downstream consumers.
 
+## Start
+
+Everything a task needs starts at the crate root: `CssParser` (the configured front
+door), `CssParserContext`, `CssParserMode`, `CssParseReport` and
+`CssValidationFailure`. Every other item has exactly one path, in the module that owns
+its domain: `source`, `diagnostic`, `component`, `numeric`, `color`, `selector`,
+`query`, `rule`, `declaration`, `property`, `values`, `serialization`, `normalize` and
+`conformance`. The crate-level [rustdoc](src/lib.rs) lists them with the compiled
+examples these three tasks come from.
+
+### 1. Parse a stylesheet
+
+```rust
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::CssParser;
+
+let parser = CssParser::default();
+let report = parser.parse_sheet(".a { color: red } @unknown x; .b {}");
+assert_eq!(report.syntax().rules().len(), 2);
+assert_eq!(report.diagnostics()[0].action(), CssRecoveryAction::DropAtRule);
+```
+
+The two style rules survive, and the unknown at-rule produces one diagnostic.
+Bytes enter through `source::CssDecodedStylesheetInput::decode` and
+`CssParser::parse_sheet_bytes`; original UTF-16 enters through
+`CssParser::parse_sheet_utf16` under `source::CssUtf16InputLimits`.
+
+### 2. Parse declarations
+
+```rust
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::CssParser;
+
+let report = CssParser::default().parse_block_contents("color: red; width: 2px !important");
+let width = &report.syntax()[1];
+assert_eq!(width.importance(), CssImportance::Important);
+```
+
+A style attribute or a `cssText` value is a declaration list; it shares the ordinary
+declaration grammar of style-rule blocks.
+
+### 3. Parse and validate a property value
+
+```rust
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTextTarget};
+use surgeist_css::CssParser;
+
+let parser = CssParser::default();
+let target = CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width));
+let report = parser.parse_property_value("calc(100% - 12px)", target, CssImportance::Normal);
+let declaration = report.into_validation_result().expect("a clean report").expect("a declaration");
+```
+
+`CssParseReport::into_validation_result` accepts exactly a clean report and otherwise
+returns every diagnostic in a `CssValidationFailure`. Checked components (substitution,
+programmatic construction) use `CssDeclaration::try_from_components`. See
+[getting started](docs/getting-started.md) for local setup and verification and the
+[how-to](docs/how-to.md) for recovery reports, declaration inspection, clean-input
+validation, support metadata and literal selector output. The crate-level rustdoc adds
+serialization and expansion, color resolution and diagnostics.
+
+## Contracts
+
 `CssParserContext::with_svg_glyph_orientation_vertical()` explicitly selects
 the independent frozen SVG authored definition while ordinary fronts retain
 the finite Writing Modes shorthand. The SVG body preserves Auto, Angle-root
@@ -41,8 +105,8 @@ Failure returns no partial report.
 `CssMediaQueryList::parse_utf16` uses the same private
 prepared-source owner and ordinary media-query grammar. `CssUtf16InputLimits`
 and `CssUtf16InputError` apply to both real UTF16 grammar frontends; the UTF8
-media-query function remains its actual input format, with a context method for
-an explicit complete parser context. Parsed media lists retain a complete
+front, `CssMediaQueryList::parse(&parser, text)`, remains its actual input format and
+takes the complete parser context from the `CssParser`. Parsed media lists retain a complete
 `CssParseSource`, including empty/comment-only inputs and recovered members;
 constructed lists remain unqualified. Diagnostics share the actual immutable
 source and normalized coordinates. Media semantic equality excludes the added
@@ -291,7 +355,7 @@ providers; palette lookup and color mixing remain downstream. See the
 
 ## Standalone used colors
 
-Use `parse_used_color` to resolve a standalone color over an original borrowed
+Use `color::parse_used_color` to resolve a standalone color over an original borrowed
 UTF-8 or UTF-16 input and explicit immutable `CssColorFacts`. Select
 `CssColorGrammarRequest::WholeColor` for a complete value or `PrefixColor` for a
 color prefix; the result retains the actual input, fact envelope and consumed
@@ -314,7 +378,7 @@ or around Color's numerical operations. The ordinary authored parser also uses
 this grammar through its actual Parsed and Components inputs, preserving
 symbolic `CssColor` values and origins.
 
-For an existing checked `CssColor`, use `resolve_authored_color` with the same
+For an existing checked `CssColor`, use `CssColor::resolve` with the same
 explicit facts. Its `CssAuthoredColorResult` borrows the original value and facts;
 the outcome contains a numerical color or the actual standard-failure cause.
 `CssAuthoredColorOrdinaryLimits` bounds the three logical record banks, path
@@ -415,20 +479,6 @@ relative to the selected color field, while the original HTML source binding
 remains separate. This does not establish a complete contextual CSSOM/style
 consumer or close [#805](https://github.com/bj-data-eng/surgeist/issues/805)'s
 contextual and quirky-color/CSS.supports scope.
-
-## Start
-
-```rust
-use surgeist_css::{CssRecoveryAction, CssParser};
-
-let report = CssParser::default().parse_sheet(".before { color: red; } @unknown value; .after { color: blue; }");
-assert_eq!(report.syntax().rules().len(), 2);
-assert_eq!(report.diagnostics().len(), 1);
-assert_eq!(report.diagnostics()[0].action(), CssRecoveryAction::DropAtRule);
-```
-
-The two style rules survive, and the unknown at-rule produces one diagnostic.
-See [getting started](docs/getting-started.md) for local setup and verification.
 
 ## Documentation
 

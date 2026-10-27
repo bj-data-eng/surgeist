@@ -7,7 +7,9 @@ use crate::declaration::CssAuthoredFunctionArguments;
 /// The two authored function identities in the selected Values 4 `<url>` grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssUrlFunction {
+    /// `url()`: the authored `url()` function.
     Url,
+    /// `src()`: the authored `src()` function.
     Src,
 }
 
@@ -45,11 +47,13 @@ impl CssUrl {
         }
     }
 
+    /// Returns which function, `url()` or `src()`, the value was authored with.
     #[must_use]
     pub const fn function(&self) -> CssUrlFunction {
         self.function
     }
 
+    /// Returns the decoded authored target, without resolving it.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.value
@@ -82,7 +86,9 @@ impl CssUrl {
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CssUrlModifier {
+    /// A bare identifier modifier, retained as generic extension syntax.
     Ident(CssIdent),
+    /// A functional modifier such as `crossorigin()`, with retained authored arguments.
     Function(CssUrlModifierFunction),
 }
 
@@ -185,22 +191,34 @@ impl CssUrlModifierFunction {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssUrlCrossOrigin {
+    /// `anonymous`: sets the request's mode to "cors".
     Anonymous,
+    /// `use-credentials`: sets the request's mode to "cors" and its credentials mode to
+    /// "include".
     UseCredentials,
 }
 
-/// The eight authored `referrerpolicy()` choices in Values 5 §4.1.1.
-/// This value does not select or execute a network request policy.
+/// The eight authored `referrerpolicy()` choices in Values 5 §4.1.1, each naming a keyword of the
+/// Referrer Policy `ReferrerPolicy` enumeration. This value does not select or execute a
+/// network request policy.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssUrlReferrerPolicy {
+    /// `no-referrer`: the `no-referrer` referrer policy.
     NoReferrer,
+    /// `no-referrer-when-downgrade`: the `no-referrer-when-downgrade` referrer policy.
     NoReferrerWhenDowngrade,
+    /// `same-origin`: the `same-origin` referrer policy.
     SameOrigin,
+    /// `origin`: the `origin` referrer policy.
     Origin,
+    /// `strict-origin`: the `strict-origin` referrer policy.
     StrictOrigin,
+    /// `origin-when-cross-origin`: the `origin-when-cross-origin` referrer policy.
     OriginWhenCrossOrigin,
+    /// `strict-origin-when-cross-origin`: the `strict-origin-when-cross-origin` referrer policy.
     StrictOriginWhenCrossOrigin,
+    /// `unsafe-url`: the `unsafe-url` referrer policy.
     UnsafeUrl,
 }
 
@@ -210,8 +228,11 @@ pub enum CssUrlReferrerPolicy {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssRequestUrlModifierRef<'a> {
+    /// A `crossorigin()` modifier and its checked keyword.
     CrossOrigin(CssUrlCrossOrigin),
+    /// An `integrity()` modifier and its decoded string, which may be empty.
     Integrity(&'a str),
+    /// A `referrerpolicy()` modifier and its checked keyword.
     ReferrerPolicy(CssUrlReferrerPolicy),
 }
 

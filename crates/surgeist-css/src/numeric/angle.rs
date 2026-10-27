@@ -71,7 +71,9 @@ impl CssZeroLiteral {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAngleOrZero {
+    /// A checked `<angle>`.
     Angle(CssNumeric<CssAngle>),
+    /// The unitless number zero, standing in for an angle where the consumer's grammar allows it.
     Zero(CssZeroLiteral),
 }
 impl CssAngleOrZero {

@@ -8,11 +8,15 @@ pub(crate) fn is_css_wide_keyword(value: &str) -> bool {
         .any(|keyword| value.eq_ignore_ascii_case(keyword))
 }
 
+/// How a `<family-name>` was authored.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFamilyNameKind {
+    /// A quoted `<string>` name.
     Quoted,
+    /// An unquoted sequence of one or more identifiers.
     IdentSequence,
+    /// A CSS-defined generic family keyword or `generic()` function.
     Generic,
 }
 
@@ -20,20 +24,35 @@ pub enum CssFontFamilyNameKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssGenericFontFamily {
+    /// `serif`: faces whose glyphs have finishing strokes, flared or tapering ends, or serifed endings (including slab serifs).
     Serif,
+    /// `sans-serif`: faces whose glyphs are generally low contrast and have plain stroke endings, without flaring, cross strokes or other ornamentation.
     SansSerif,
+    /// `cursive`: faces whose glyphs generally use a script style that looks more like handwritten pen or brush writing than printed letterwork.
     Cursive,
+    /// `fantasy`: primarily decorative or expressive faces.
     Fantasy,
+    /// `monospace`: faces whose glyphs all have the same fixed width.
     Monospace,
+    /// `system-ui`: the default user interface font of the platform on which the user agent is running.
     SystemUi,
+    /// `math`: a face intended for mathematical expressions.
     Math,
+    /// `ui-serif`: the serif variant of the system's user interface font.
     UiSerif,
+    /// `ui-sans-serif`: the sans-serif variant of the system's user interface font.
     UiSansSerif,
+    /// `ui-monospace`: the monospaced variant of the system's user interface font.
     UiMonospace,
+    /// `ui-rounded`: the rounded variant of the system's user interface font.
     UiRounded,
+    /// `generic(fangsong)`: Fang Song typefaces for Chinese, a relaxed intermediate form between Song (serif) and Kai.
     Fangsong,
+    /// `generic(kai)`: Kai typefaces for Simplified and Traditional Chinese, a calligraphic style with notable handwriting features.
     Kai,
+    /// `generic(khmer-mul)`: the Khmer style used for titles and headings, characterized by heavier, more rounded letter shapes.
     KhmerMul,
+    /// `generic(nastaliq)`: the Nastaliq style, the standard way of writing Urdu and Kashmiri and often a preferred style for Persian and other languages.
     Nastaliq,
 }
 
@@ -174,6 +193,7 @@ impl CssFontFamilyName {
         }
     }
 
+    /// Returns how the name was authored.
     #[must_use]
     pub const fn kind(&self) -> CssFontFamilyNameKind {
         match &self.representation {
@@ -207,6 +227,7 @@ impl CssFontFamilyName {
         }
     }
 
+    /// Returns the generic family, or `None` for a quoted or identifier-sequence name.
     #[must_use]
     pub const fn generic_family(&self) -> Option<CssGenericFontFamily> {
         match &self.representation {
@@ -226,6 +247,9 @@ pub struct CssFontFamilyList {
 }
 
 impl CssFontFamilyList {
+    /// Checks a family list.
+    ///
+    /// Returns `None` when `families` is empty.
     #[must_use]
     pub fn try_new(families: Vec<CssFontFamilyName>) -> Option<Self> {
         if families.is_empty() {
@@ -240,20 +264,28 @@ impl CssFontFamilyList {
         Self { families }
     }
 
+    /// Returns the family names in authored order; the slice is never empty.
     #[must_use]
     pub fn families(&self) -> &[CssFontFamilyName] {
         &self.families
     }
 }
 
+/// A system font keyword accepted by the `font` shorthand.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssSystemFont {
+    /// `caption`: the font used for captioned controls such as buttons and drop-downs.
     Caption,
+    /// `icon`: the font used to label icons.
     Icon,
+    /// `menu`: the font used in menus.
     Menu,
+    /// `message-box`: the font used in dialog boxes.
     MessageBox,
+    /// `small-caption`: the font used for labeling small controls.
     SmallCaption,
+    /// `status-bar`: the font used in window status bars.
     StatusBar,
 }
 
@@ -273,6 +305,9 @@ pub struct CssExplicitFont {
 }
 
 impl CssExplicitFont {
+    /// Checks the components of an explicit `font` shorthand value.
+    ///
+    /// Returns `None` when `families` is empty. The size and family list are required; the other components are `None` when omitted.
     #[must_use]
     pub fn try_new(
         style: Option<CssFontStyle>,
@@ -294,36 +329,43 @@ impl CssExplicitFont {
         })
     }
 
+    /// Returns the authored `font-style` component, or `None` when it was omitted.
     #[must_use]
     pub const fn style(&self) -> Option<&CssFontStyle> {
         self.style.as_ref()
     }
 
+    /// Returns the authored `font-variant` keyword, or `None` when it was omitted.
     #[must_use]
     pub const fn variant(&self) -> Option<CssFontVariant> {
         self.variant
     }
 
+    /// Returns the authored `font-weight` component, or `None` when it was omitted.
     #[must_use]
     pub const fn weight(&self) -> Option<&CssFontWeight> {
         self.weight.as_ref()
     }
 
+    /// Returns the authored width keyword (the `font-stretch` component), or `None` when it was omitted.
     #[must_use]
     pub const fn stretch(&self) -> Option<CssFontWidthKeyword> {
         self.stretch
     }
 
+    /// Returns the required `font-size` component.
     #[must_use]
     pub const fn size(&self) -> &CssFontSize {
         &self.size
     }
 
+    /// Returns the authored line height written after `/`, or `None` when it was omitted.
     #[must_use]
     pub const fn line_height(&self) -> Option<&CssLineHeight> {
         self.line_height.as_ref()
     }
 
+    /// Returns the required `font-family` list.
     #[must_use]
     pub const fn families(&self) -> &CssFontFamilyList {
         &self.families
@@ -336,6 +378,8 @@ impl CssExplicitFont {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontValue {
+    /// An explicit `[ <font-style> || <font-variant-css2> || <font-weight> || <font-width-css3> ]? <font-size> [ / <'line-height'> ]? <font-family>#` value.
     Explicit(CssExplicitFont),
+    /// A system font keyword.
     System(CssSystemFont),
 }

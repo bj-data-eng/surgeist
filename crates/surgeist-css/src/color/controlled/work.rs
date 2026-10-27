@@ -9,6 +9,7 @@ use crate::numeric::CssMathFunction;
 /// A finite operation whose variable operands have already been lent by actions.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssColorKernel {
+    /// One numerical color kernel of `surgeist_color`.
     Numerical(surgeist_color::Kernel),
     /// One bounded UTF decoding/preprocessing transition.
     Preprocess,

@@ -1,4 +1,9 @@
 //! Container queries and container properties.
+//!
+//! The authored container-query grammar: the `@container` prelude with its optional name and
+//! size, `style()` and `scroll-state()` queries, and the container properties (`container-name`,
+//! `container-type` and the `container` shorthand). These types retain authored syntax;
+//! no container is selected or queried.
 
 pub(crate) mod construction;
 pub(crate) mod container_features;

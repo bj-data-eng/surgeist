@@ -180,15 +180,22 @@ impl CssRetainedSources for CssPseudoClass {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssSelector {
+    /// A type selector, carrying the decoded tag name.
     Tag(String),
+    /// An ID selector (`#key`), carrying the decoded identifier without the `#`.
     Key(String),
+    /// A class selector (`.class`), carrying the decoded identifier without the `.`.
     Class(String),
+    /// A lone pseudo-class selector.
     PseudoClass(CssPseudoClass),
+    /// A compound selector.
     Compound(CssCompoundSelector),
+    /// A complex selector: compound selectors joined by combinators.
     Complex(CssComplexSelector),
 }
 
 impl CssSelector {
+    /// Returns whether the selector contains a pseudo-element, including inside the arguments of functional pseudo-classes.
     #[must_use]
     pub fn has_pseudo_elements(&self) -> bool {
         match self {
@@ -221,6 +228,9 @@ impl CssSelector {
     }
 }
 
+/// A complex selector: a first compound selector followed by one or more combinator-and-compound parts.
+///
+/// A pseudo-element may appear only in the last compound selector.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssComplexSelector {
     first: CssCompoundSelector,
@@ -264,16 +274,19 @@ impl CssComplexSelector {
         Self { first, rest }
     }
 
+    /// Returns the first compound selector.
     #[must_use]
     pub const fn first(&self) -> &CssCompoundSelector {
         &self.first
     }
 
+    /// Returns the combinator-and-compound parts that follow the first compound selector; the slice is never empty.
     #[must_use]
     pub fn rest(&self) -> &[CssComplexSelectorPart] {
         &self.rest
     }
 
+    /// Returns whether any compound selector contains a pseudo-element.
     #[must_use]
     pub fn has_pseudo_elements(&self) -> bool {
         self.first.has_pseudo_elements()
@@ -304,6 +317,7 @@ fn non_terminal_pseudo_element_index(
         .map(|index| index + 1)
 }
 
+/// One part of a complex selector: a combinator and the compound selector that follows it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssComplexSelectorPart {
     combinator: CssSelectorCombinator,
@@ -340,23 +354,30 @@ impl CssComplexSelectorPart {
         }
     }
 
+    /// Returns the combinator that relates this part to the compound selector before it.
     #[must_use]
     pub const fn combinator(&self) -> CssSelectorCombinator {
         self.combinator
     }
 
+    /// Returns the compound selector of this part.
     #[must_use]
     pub const fn selector(&self) -> &CssCompoundSelector {
         &self.selector
     }
 }
 
+/// A selector combinator.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssSelectorCombinator {
+    /// The descendant combinator, written as whitespace.
     Descendant,
+    /// The child combinator `>`.
     Child,
+    /// The next-sibling combinator `+`.
     NextSibling,
+    /// The subsequent-sibling combinator `~`.
     SubsequentSibling,
     /// The authored `||` relationship between a column and its cells.
     Column,
@@ -578,6 +599,7 @@ impl CssSelectorList {
         Self { selectors }
     }
 
+    /// Returns the members in authored order; the slice is never empty.
     #[must_use]
     pub fn selectors(&self) -> &[CssSelector] {
         &self.selectors
@@ -635,11 +657,13 @@ impl CssInvalidNestingSelectorItem {
             ..self.origin.span().end().byte_offset().value()]
     }
 
+    /// Returns the original raw-source window of the member.
     #[must_use]
     pub const fn origin(&self) -> &crate::source::CssParsedOrigin {
         &self.origin
     }
 
+    /// Returns the component values of the member, including edge trivia.
     #[must_use]
     pub const fn components(&self) -> &crate::component::CssComponentValues {
         &self.components
@@ -719,6 +743,7 @@ impl CssPseudoSelectorList {
         &self.items
     }
 
+    /// Returns whether any selector item contains a pseudo-element; retained invalid items do not.
     #[must_use]
     pub fn has_pseudo_elements(&self) -> bool {
         self.items.iter().any(|item| match item {
@@ -728,6 +753,7 @@ impl CssPseudoSelectorList {
     }
 }
 
+/// A relative selector: a leading combinator and the selector it relates to its anchor.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssRelativeSelector {
     combinator: CssSelectorCombinator,
@@ -735,6 +761,7 @@ pub struct CssRelativeSelector {
 }
 
 impl CssRelativeSelector {
+    /// Creates a relative selector from its leading combinator and selector.
     #[must_use]
     pub const fn new(combinator: CssSelectorCombinator, selector: CssSelector) -> Self {
         Self {
@@ -743,11 +770,13 @@ impl CssRelativeSelector {
         }
     }
 
+    /// Returns the leading combinator, which is the descendant combinator when none was authored.
     #[must_use]
     pub const fn combinator(&self) -> CssSelectorCombinator {
         self.combinator
     }
 
+    /// Returns the selector that follows the leading combinator.
     #[must_use]
     pub const fn selector(&self) -> &CssSelector {
         &self.selector
@@ -791,11 +820,13 @@ impl CssRelativeSelectorList {
         Self { selectors }
     }
 
+    /// Returns the relative selectors in authored order; the slice is never empty.
     #[must_use]
     pub fn selectors(&self) -> &[CssRelativeSelector] {
         &self.selectors
     }
 
+    /// Returns whether any relative selector contains a pseudo-element.
     #[must_use]
     pub fn has_pseudo_elements(&self) -> bool {
         self.selectors
@@ -804,82 +835,140 @@ impl CssRelativeSelectorList {
     }
 }
 
+/// A pseudo-class selector, such as `:hover` or `:nth-child(2n+1)`.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssPseudoClass {
-    /// The shadow host, without an argument.
+    /// `:host`: the host element of the shadow tree it is evaluated in.
     Host,
-    /// The shadow host constrained by one compound selector.
+    /// `:host()`: the host element of the shadow tree it is evaluated in, when the host element matches one compound selector.
     HostFunction(CssCompoundSelectorArgument),
-    /// A host whose context satisfies one compound selector.
+    /// `:host-context()`: the host element of the shadow tree it is evaluated in, when the host element or one of its ancestors matches one compound selector.
     HostContext(CssCompoundSelectorArgument),
+    /// `:root`: the root element of the document.
     Root,
+    /// `:scope`: the scoping root of the selector's context.
     Scope,
-    /// Host-defined construction state, retained without evaluating the host.
+    /// `:defined`: an element that is fully defined, as dictated by the host language.
     Defined,
-    /// Hyperlink identity, retained independently of Link and Visited.
+    /// `:any-link`: an element that acts as the source anchor of a hyperlink, equivalent to `:is(:link, :visited)`.
     AnyLink,
+    /// `:link`: a hyperlink that has not been visited.
     Link,
+    /// `:visited`: a hyperlink that has been visited.
     Visited,
+    /// `:target`: the element that is the target of the document's URL fragment.
     Target,
-    /// The current search match, admitted after SearchText and element-backed pseudos.
+    /// `:current`: the currently focused match instance, when combined with `::search-text`.
     Current,
+    /// `:dir()`: an element whose directionality is the given one.
     Dir(CssDirectionality),
+    /// `:lang()`: an element whose content language matches one of the given language ranges.
     Lang(CssLanguageRangeList),
+    /// `:hover`: an element the user is pointing at with a pointing device.
     Hover,
+    /// `:active`: an element that is being activated by the user.
     Active,
+    /// `:focus`: the element that has input focus.
     Focus,
+    /// `:focus-visible`: a focused element for which the user agent shows a focus indication.
     FocusVisible,
+    /// `:focus-within`: an element that has focus or has a descendant that has focus.
     FocusWithin,
+    /// `:disabled`: a user interface element that is in a disabled state.
     Disabled,
+    /// `:enabled`: a user interface element that is in an enabled state.
     Enabled,
+    /// `:checked`: an element that is toggled on, such as a checked checkbox or radio button or a selected option.
     Checked,
+    /// `:unchecked`: an element that is toggled off, such as an unchecked checkbox or radio button or an unselected option.
     Unchecked,
+    /// `:required`: a form element for which a value is required before its form can be validly submitted.
     Required,
+    /// `:optional`: a form element for which a value is optional before its form can be validly submitted.
     Optional,
+    /// `:valid`: an element whose contents or value is valid under the document language's data validity semantics.
     Valid,
+    /// `:invalid`: an element whose contents or value is invalid under the document language's data validity semantics.
     Invalid,
+    /// `:user-valid`: a valid form control after the user has interacted with it.
     UserValid,
+    /// `:user-invalid`: an invalid form control after the user has interacted with it.
     UserInvalid,
+    /// `:placeholder-shown`: an input element that is currently showing placeholder text.
     PlaceholderShown,
     /// The standard input autofill state; the required WebKit alias has this identity.
     Autofill,
+    /// `:first-child`: an element that is the first child of its parent.
     FirstChild,
+    /// `:last-child`: an element that is the last child of its parent.
     LastChild,
+    /// `:only-child`: an element that is the only child of its parent.
     OnlyChild,
+    /// `:empty`: an element with no children other than the exceptions the specification allows.
     Empty,
+    /// `:nth-child()`: an element at a position matching the pattern among its siblings, optionally restricted to siblings matching a selector list.
     NthChild(CssNthChildPattern),
+    /// `:nth-last-child()`: like `:nth-child()`, counting from the last sibling.
     NthLastChild(CssNthChildPattern),
+    /// `:first-of-type`: an element that is the first of its type among its siblings.
     FirstOfType,
+    /// `:last-of-type`: an element that is the last of its type among its siblings.
     LastOfType,
+    /// `:only-of-type`: an element that is the only one of its type among its siblings.
     OnlyOfType,
+    /// `:nth-of-type()`: an element at a position matching the pattern among siblings of its type.
     NthOfType(CssNthPattern),
+    /// `:nth-last-of-type()`: like `:nth-of-type()`, counting from the last sibling of the type.
     NthLastOfType(CssNthPattern),
+    /// `:not()`: an element that matches none of the argument selectors.
     Not(CssPseudoSelectorList),
+    /// `:is()`: an element that matches any of the argument selectors.
     Is(CssPseudoSelectorList),
+    /// `:where()`: like `:is()`, but with zero specificity.
     Where(CssPseudoSelectorList),
+    /// `:has()`: an element for which any of the relative selectors matches relative to it.
     Has(CssRelativeSelectorList),
+    /// `:playing`: a media element that is playing.
     Playing,
+    /// `:paused`: a media element that is paused.
     Paused,
+    /// `:seeking`: a media element that is seeking.
     Seeking,
+    /// `:buffering`: a media element that cannot continue playing because it is obtaining media data.
     Buffering,
+    /// `:stalled`: a media element that is obtaining media data but has received none for some time.
     Stalled,
+    /// `:muted`: an element capable of making sound that is currently muted.
     Muted,
+    /// `:volume-locked`: an element capable of making sound whose volume is locked by the user agent or the user.
     VolumeLocked,
+    /// `:open`: an element that has open and closed states and is currently open.
     Open,
+    /// `:modal`: an element in a state that excludes interaction with elements outside it until it is dismissed.
     Modal,
+    /// `:fullscreen`: an element displayed in a mode that takes up most or all of the screen.
     Fullscreen,
+    /// `:picture-in-picture`: an element displayed in a Picture-in-Picture mode, confined to part of the screen over other content.
     PictureInPicture,
+    /// `:popover-open`: a popover element that is currently showing.
     PopoverOpen,
+    /// `:default`: a user interface element that is the default among a set of similar elements.
     Default,
+    /// `:indeterminate`: an element that could be checked or unchecked but is neither, or whose value is indeterminate, such as a progress meter with unknown progress.
     Indeterminate,
+    /// `:read-only`: an element that the user cannot edit.
     ReadOnly,
+    /// `:read-write`: an element that the user can edit.
     ReadWrite,
+    /// `:in-range`: an element with range limits whose value is within them.
     InRange,
+    /// `:out-of-range`: an element with range limits whose value is outside them.
     OutOfRange,
 }
 
 impl CssPseudoClass {
+    /// Returns whether the arguments of the pseudo-class contain a pseudo-element.
     #[must_use]
     pub fn has_pseudo_elements(&self) -> bool {
         match self {
@@ -952,7 +1041,9 @@ impl CssPseudoClass {
 /// The authored token form of a language range.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssLanguageRangeKind {
+    /// The range was written as an identifier.
     Identifier,
+    /// The range was written as a quoted string.
     String,
 }
 
@@ -1094,13 +1185,16 @@ impl CssLanguageRangeList {
 
 /// One checked compound argument for `:host()`, `:host-context()` or `::slotted()`.
 /// Logical functions inherit the compound-only restriction; `:has()` retains its
-/// relative-selector grammar. Pseudo-elements and recursively nested `:has()` fail.
+/// relative-selector grammar. Pseudo-elements and a `:has()` nested inside `:has()` fail.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssCompoundSelectorArgument {
     compound: Box<CssCompoundSelector>,
 }
 
 impl CssCompoundSelectorArgument {
+    /// Creates an argument from a selector, or returns `None` when `selector` is not a valid compound argument.
+    ///
+    /// Pseudo-elements, a `:has()` nested inside another `:has()`, and any complex selector (one with a combinator) are rejected.
     #[must_use]
     pub fn try_new(selector: CssSelector) -> Option<Self> {
         if !selector_is_valid_argument(&selector, true, true) {
@@ -1150,6 +1244,7 @@ impl CssPartName {
         }
     }
 
+    /// Returns the decoded identifier text, preserving case.
     #[must_use]
     pub fn as_str(&self) -> &str {
         match self.component.view() {
@@ -1160,11 +1255,13 @@ impl CssPartName {
         }
     }
 
+    /// Returns the original token origin, or explicit programmatic provenance.
     #[must_use]
     pub fn origin(&self) -> &CssValueOrigin {
         self.component.origin()
     }
 
+    /// Serializes the identifier canonically, with CSS escapes where needed.
     #[must_use]
     pub fn to_css_string(&self) -> String {
         cssparser::ToCss::to_css_string(&cssparser::Token::Ident(self.as_str().into()))
@@ -1178,10 +1275,12 @@ pub struct CssPartNameList {
 }
 
 impl CssPartNameList {
+    /// Creates a list, or returns `None` when `names` is empty.
     #[must_use]
     pub fn try_new(names: Vec<CssPartName>) -> Option<Self> {
         (!names.is_empty()).then_some(Self { names })
     }
+    /// Returns the part names in authored order; the slice is never empty.
     #[must_use]
     pub fn names(&self) -> &[CssPartName] {
         &self.names
@@ -1236,35 +1335,59 @@ impl CssUnknownWebkitPseudoElement {
     }
 }
 
+/// A pseudo-element selector, such as `::before` or `::part(label)`.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssPseudoElement {
+    /// `::before`: generated content before the element's content.
     Before,
+    /// `::after`: generated content after the element's content.
     After,
+    /// `::first-line`: the first formatted line of the element.
     FirstLine,
+    /// `::first-letter`: the first letter of the first formatted line of the element.
     FirstLetter,
+    /// `::prefix`: the punctuation preceding the first letter, available on `::first-letter`.
     Prefix,
+    /// `::suffix`: the punctuation following the first letter, available on `::first-letter`.
     Suffix,
+    /// `::marker`: the list marker of a list item.
     Marker,
+    /// `::selection`: the portion of a document selected as the target of some possible future user-agent operation.
     Selection,
+    /// `::search-text`: text matched by the user agent's find-in-page search.
     SearchText,
+    /// `::target-text`: text directly targeted by the document URL's fragment.
     TargetText,
+    /// `::spelling-error`: text that the user agent has marked as misspelled.
     SpellingError,
+    /// `::grammar-error`: text that the user agent has marked as grammatically incorrect.
     GrammarError,
     /// A case-preserving custom highlight name, without registry lookup.
     Highlight(CssCustomIdent),
+    /// `::placeholder`: the placeholder text of a form control.
     Placeholder,
+    /// `::backdrop`: the backdrop rendered behind an element shown in the top layer.
     Backdrop,
+    /// `::file-selector-button`: the button of a file input.
     FileSelectorButton,
+    /// `::details-content`: the content wrapper of a `details` element.
     DetailsContent,
     /// The tree-abiding root of an authored view transition pseudo tree.
     ViewTransition,
+    /// `::view-transition-group()`: the group of a named view transition participant, with a name or the `*` wildcard.
     ViewTransitionGroup(CssViewTransitionNameSelector),
+    /// `::view-transition-image-pair()`: the image pair of a named view transition participant, with a name or the `*` wildcard.
     ViewTransitionImagePair(CssViewTransitionNameSelector),
+    /// `::view-transition-old()`: the old-state snapshot of a named view transition participant, with a name or the `*` wildcard.
     ViewTransitionOld(CssViewTransitionNameSelector),
+    /// `::view-transition-new()`: the new-state snapshot of a named view transition participant, with a name or the `*` wildcard.
     ViewTransitionNew(CssViewTransitionNameSelector),
+    /// `::slotted()`: elements assigned to a slot that match the compound selector argument.
     Slotted(CssCompoundSelectorArgument),
+    /// `::part()`: shadow parts whose `part` attribute lists all the given names.
     Part(CssPartNameList),
+    /// An unknown `-webkit-` pseudo-element, which parses but matches nothing.
     UnknownWebkit(CssUnknownWebkitPseudoElement),
 }
 
@@ -1322,10 +1445,13 @@ impl CssPseudoElement {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssPseudoElementSegment {
+    /// A pseudo-element.
     PseudoElement(CssPseudoElement),
+    /// A pseudo-class that qualifies the most recent pseudo-element.
     PseudoClass(CssPseudoClass),
 }
 
+/// A nonempty ordered sequence of pseudo-elements and of the pseudo-classes that qualify them, following the originating element's compound selector.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPseudoElementSequence {
     segments: Vec<CssPseudoElementSegment>,
@@ -1653,6 +1779,7 @@ fn pseudo_is_valid_in_context(pseudo: &CssPseudoClass, context: CssSelectorGramm
         }
 }
 
+/// The argument of `:nth-child()` or `:nth-last-child()`: a position pattern with an optional `of <selector-list>` filter.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssNthChildPattern {
     pattern: CssNthPattern,
@@ -1660,6 +1787,7 @@ pub struct CssNthChildPattern {
 }
 
 impl CssNthChildPattern {
+    /// Creates an argument from a pattern and an optional selector list.
     #[must_use]
     pub const fn new(pattern: CssNthPattern, selector_list: Option<CssPseudoSelectorList>) -> Self {
         Self {
@@ -1668,16 +1796,19 @@ impl CssNthChildPattern {
         }
     }
 
+    /// Returns the position pattern.
     #[must_use]
     pub const fn pattern(&self) -> CssNthPattern {
         self.pattern
     }
 
+    /// Returns the `of <selector-list>` filter, or `None` when none was authored.
     #[must_use]
     pub const fn selector_list(&self) -> Option<&CssPseudoSelectorList> {
         self.selector_list.as_ref()
     }
 
+    /// Returns whether the filter selector list contains a pseudo-element.
     #[must_use]
     pub fn has_pseudo_elements(&self) -> bool {
         self.selector_list
@@ -1686,12 +1817,17 @@ impl CssNthChildPattern {
     }
 }
 
+/// A position pattern, the `<an+b>` micro-syntax of the `:nth-*` pseudo-classes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssNthPattern {
+    /// `odd`: positions 1, 3, 5, ... (equivalent to `2n+1`).
     Odd,
+    /// `even`: positions 2, 4, 6, ... (equivalent to `2n`).
     Even,
+    /// A plain integer: exactly that position.
     Integer(i32),
+    /// An explicit `an+b` pattern.
     AnPlusB(CssNthAnPlusB),
 }
 
@@ -1923,16 +2059,19 @@ impl CssQualifiedAttributeName {
         }
     }
 
+    /// Returns the namespace constraint of the attribute name.
     #[must_use]
     pub const fn namespace(&self) -> &CssNamespaceConstraint {
         &self.namespace
     }
 
+    /// Returns the authored prefix form of the name.
     #[must_use]
     pub const fn prefix(&self) -> &CssQualifiedNamePrefix {
         &self.prefix
     }
 
+    /// Returns the local name without the prefix.
     #[must_use]
     pub const fn local_name(&self) -> &CssAttributeName {
         &self.local_name
@@ -1952,6 +2091,7 @@ impl CssQualifiedAttributeName {
     }
 }
 
+/// The `an+b` pattern: matches positions `a*n + b` for every integer `n >= 0`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssNthAnPlusB {
     a: i32,
@@ -1959,16 +2099,19 @@ pub struct CssNthAnPlusB {
 }
 
 impl CssNthAnPlusB {
+    /// Creates the pattern `an+b` from its two coefficients.
     #[must_use]
     pub const fn new(a: i32, b: i32) -> Self {
         Self { a, b }
     }
 
+    /// Returns the step `a`.
     #[must_use]
     pub const fn a(self) -> i32 {
         self.a
     }
 
+    /// Returns the offset `b`.
     #[must_use]
     pub const fn b(self) -> i32 {
         self.b
@@ -1981,10 +2124,15 @@ impl CssNthAnPlusB {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssSimpleSelector {
+    /// A type or universal selector, possibly namespace-qualified.
     Type(CssQualifiedSelectorName),
+    /// An ID selector, carrying the decoded identifier.
     Id(crate::values::common::CssIdent),
+    /// A class selector, carrying the decoded identifier.
     Class(crate::values::common::CssIdent),
+    /// An attribute selector.
     Attribute(CssAttributeSelector),
+    /// A pseudo-class selector.
     PseudoClass(CssPseudoClass),
 }
 
@@ -2256,6 +2404,7 @@ impl CssCompoundSelector {
         self.nesting_selectors
     }
 
+    /// Returns whether the compound contains at least one symbolic scope anchor.
     #[must_use]
     pub const fn has_scope_anchor(&self) -> bool {
         self.scope_anchors != 0
@@ -2293,32 +2442,38 @@ impl CssCompoundSelector {
         &self.ids
     }
 
+    /// Returns the class names in authored order.
     #[must_use]
     pub fn classes(&self) -> &[String] {
         &self.classes
     }
 
+    /// Returns the attribute selectors in authored order.
     #[must_use]
     pub fn attributes(&self) -> &[CssAttributeSelector] {
         &self.attributes
     }
 
+    /// Returns the pseudo-classes of the originating element in authored order, excluding those that qualify a pseudo-element.
     #[must_use]
     pub fn pseudo_classes(&self) -> &[CssPseudoClass] {
         &self.pseudo_classes
     }
 
+    /// Returns the pseudo-element sequence, or `None` when the compound has no pseudo-element.
     #[must_use]
     pub const fn pseudo_elements(&self) -> Option<&CssPseudoElementSequence> {
         self.pseudo_elements.as_ref()
     }
 
+    /// Returns whether the compound has a pseudo-element.
     #[must_use]
     pub const fn has_pseudo_elements(&self) -> bool {
         self.pseudo_elements.is_some()
     }
 }
 
+/// An attribute selector: a qualified attribute name, a matcher and a case-sensitivity mode.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssAttributeSelector {
     name: CssQualifiedAttributeName,
@@ -2397,22 +2552,26 @@ impl CssAttributeSelector {
         &self.name
     }
 
+    /// Returns the local attribute name without its namespace prefix.
     #[must_use]
     pub const fn name(&self) -> &CssAttributeName {
         self.name.local_name()
     }
 
+    /// Returns how the attribute value is compared.
     #[must_use]
     pub const fn matcher(&self) -> &CssAttributeMatcher {
         &self.matcher
     }
 
+    /// Returns the case-sensitivity mode.
     #[must_use]
     pub const fn case_sensitivity(&self) -> CssAttributeCaseSensitivity {
         self.case_sensitivity
     }
 }
 
+/// A decoded attribute name, which may need escapes when written in CSS.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct CssAttributeName {
     name: String,
@@ -2435,29 +2594,42 @@ impl CssAttributeName {
         Self { name }
     }
 
+    /// Returns the decoded attribute name.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.name
     }
 }
 
+/// How an attribute selector compares the attribute value; the operand is the decoded string.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAttributeMatcher {
+    /// `[attr]`: the attribute is present.
     Exists,
+    /// `[attr=value]`: the attribute value is exactly the operand.
     Equals(String),
+    /// `[attr~=value]`: the attribute value is a whitespace-separated list containing the operand.
     Includes(String),
+    /// `[attr|=value]`: the attribute value is exactly the operand or begins with the operand followed by `-`.
     DashMatch(String),
+    /// `[attr^=value]`: the attribute value begins with the operand.
     Prefix(String),
+    /// `[attr$=value]`: the attribute value ends with the operand.
     Suffix(String),
+    /// `[attr*=value]`: the attribute value contains the operand.
     Substring(String),
 }
 
+/// The case-sensitivity modifier of an attribute selector.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAttributeCaseSensitivity {
+    /// No modifier: case sensitivity follows the document language.
     DocumentDefault,
+    /// `i`: the value is compared ASCII case-insensitively.
     AsciiCaseInsensitive,
+    /// `s`: the value is compared case-sensitively.
     ExplicitSensitive,
 }
 impl CssSelector {

@@ -2,10 +2,13 @@
 
 use crate::rule::font_feature_values::CssFontFeatureValueName;
 
+/// The CSS 2.1 `font-variant` keyword that the `font` shorthand can set: `normal` or `small-caps`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariant {
+    /// `normal`: selects a font that is not a small-caps font.
     Normal,
+    /// `small-caps`: selects a small-caps font, in which lowercase letters look like uppercase ones in a smaller size.
     SmallCaps,
 }
 
@@ -13,12 +16,19 @@ pub enum CssFontVariant {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariantCaps {
+    /// `normal`: none of the capitalization features are enabled.
     Normal,
+    /// `small-caps`: enables display of small capitals (OpenType feature `smcp`).
     SmallCaps,
+    /// `all-small-caps`: enables display of small capitals for both upper and lowercase letters (OpenType features `c2sc`, `smcp`).
     AllSmallCaps,
+    /// `petite-caps`: enables display of petite capitals (OpenType feature `pcap`).
     PetiteCaps,
+    /// `all-petite-caps`: enables display of petite capitals for both upper and lowercase letters (OpenType features `c2pc`, `pcap`).
     AllPetiteCaps,
+    /// `unicase`: enables display of a mixture of small capitals for uppercase letters with normal lowercase letters (OpenType feature `unic`).
     Unicase,
+    /// `titling-caps`: enables display of titling capitals (OpenType feature `titl`).
     TitlingCaps,
 }
 
@@ -26,7 +36,9 @@ pub enum CssFontVariantCaps {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariantLigatureState {
+    /// The ligature group is enabled, as with `common-ligatures`.
     Enabled,
+    /// The ligature group is disabled, as with `no-common-ligatures`.
     Disabled,
 }
 
@@ -40,6 +52,9 @@ pub struct CssFontVariantLigatureValues {
 }
 
 impl CssFontVariantLigatureValues {
+    /// Checks a set of ligature-group choices.
+    ///
+    /// Returns `None` when no group was chosen.
     #[must_use]
     pub const fn try_new(
         common: Option<CssFontVariantLigatureState>,
@@ -63,21 +78,25 @@ impl CssFontVariantLigatureValues {
         }
     }
 
+    /// Returns the choice for the common ligatures group, or `None` when it was not written.
     #[must_use]
     pub const fn common(self) -> Option<CssFontVariantLigatureState> {
         self.common
     }
 
+    /// Returns the choice for the discretionary ligatures group, or `None` when it was not written.
     #[must_use]
     pub const fn discretionary(self) -> Option<CssFontVariantLigatureState> {
         self.discretionary
     }
 
+    /// Returns the choice for the historical ligatures group, or `None` when it was not written.
     #[must_use]
     pub const fn historical(self) -> Option<CssFontVariantLigatureState> {
         self.historical
     }
 
+    /// Returns the choice for the contextual alternates group, or `None` when it was not written.
     #[must_use]
     pub const fn contextual(self) -> Option<CssFontVariantLigatureState> {
         self.contextual
@@ -88,8 +107,11 @@ impl CssFontVariantLigatureValues {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariantLigatures {
+    /// `normal`: ligatures and contextual forms are applied by the font's default behavior.
     Normal,
+    /// `none`: all optional ligatures and contextual forms are disabled.
     None,
+    /// One or more explicit ligature-group choices.
     Values(CssFontVariantLigatureValues),
 }
 
@@ -97,7 +119,9 @@ pub enum CssFontVariantLigatures {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariantNumericFigure {
+    /// `lining-nums`: enables display of lining numerals (OpenType feature `lnum`).
     LiningNums,
+    /// `oldstyle-nums`: enables display of old-style numerals (OpenType feature `onum`).
     OldstyleNums,
 }
 
@@ -105,7 +129,9 @@ pub enum CssFontVariantNumericFigure {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariantNumericSpacing {
+    /// `proportional-nums`: enables display of proportional numerals (OpenType feature `pnum`).
     ProportionalNums,
+    /// `tabular-nums`: enables display of tabular numerals (OpenType feature `tnum`).
     TabularNums,
 }
 
@@ -113,7 +139,9 @@ pub enum CssFontVariantNumericSpacing {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariantNumericFraction {
+    /// `diagonal-fractions`: enables display of lining diagonal fractions (OpenType feature `frac`).
     DiagonalFractions,
+    /// `stacked-fractions`: enables display of lining stacked fractions (OpenType feature `afrc`).
     StackedFractions,
 }
 
@@ -128,6 +156,9 @@ pub struct CssFontVariantNumericValues {
 }
 
 impl CssFontVariantNumericValues {
+    /// Checks a set of numeric-variant choices.
+    ///
+    /// Returns `None` when no figure, spacing or fraction choice is given and neither `ordinal` nor `slashed-zero` is set.
     #[must_use]
     pub const fn try_new(
         figure: Option<CssFontVariantNumericFigure>,
@@ -149,26 +180,31 @@ impl CssFontVariantNumericValues {
         }
     }
 
+    /// Returns the figure form, or `None` when `lining-nums` and `oldstyle-nums` were both omitted.
     #[must_use]
     pub const fn figure(self) -> Option<CssFontVariantNumericFigure> {
         self.figure
     }
 
+    /// Returns the figure spacing, or `None` when `proportional-nums` and `tabular-nums` were both omitted.
     #[must_use]
     pub const fn spacing(self) -> Option<CssFontVariantNumericSpacing> {
         self.spacing
     }
 
+    /// Returns the fraction form, or `None` when neither fraction keyword was written.
     #[must_use]
     pub const fn fraction(self) -> Option<CssFontVariantNumericFraction> {
         self.fraction
     }
 
+    /// Returns whether `ordinal` was written, enabling letter forms used with ordinal numbers (OpenType feature `ordn`).
     #[must_use]
     pub const fn ordinal(self) -> bool {
         self.ordinal
     }
 
+    /// Returns whether `slashed-zero` was written, enabling slashed zeros (OpenType feature `zero`).
     #[must_use]
     pub const fn slashed_zero(self) -> bool {
         self.slashed_zero
@@ -179,7 +215,9 @@ impl CssFontVariantNumericValues {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariantNumeric {
+    /// `normal`: none of the numeric features are enabled.
     Normal,
+    /// One or more explicit numeric-variant choices.
     Values(CssFontVariantNumericValues),
 }
 
@@ -187,11 +225,17 @@ pub enum CssFontVariantNumeric {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariantEastAsianVariant {
+    /// `jis78`: JIS78 forms (OpenType feature `jp78`).
     Jis78,
+    /// `jis83`: JIS83 forms (OpenType feature `jp83`).
     Jis83,
+    /// `jis90`: JIS90 forms (OpenType feature `jp90`).
     Jis90,
+    /// `jis04`: JIS2004 forms (OpenType feature `jp04`).
     Jis04,
+    /// `simplified`: simplified forms (OpenType feature `smpl`).
     Simplified,
+    /// `traditional`: traditional forms (OpenType feature `trad`).
     Traditional,
 }
 
@@ -199,7 +243,9 @@ pub enum CssFontVariantEastAsianVariant {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariantEastAsianWidth {
+    /// `full-width`: full-width variants (OpenType feature `fwid`).
     FullWidth,
+    /// `proportional-width`: proportionally spaced variants (OpenType feature `pwid`).
     ProportionalWidth,
 }
 
@@ -212,6 +258,9 @@ pub struct CssFontVariantEastAsianValues {
 }
 
 impl CssFontVariantEastAsianValues {
+    /// Checks a set of East Asian variant choices.
+    ///
+    /// Returns `None` when no variant or width was given and `ruby` is not set.
     #[must_use]
     pub const fn try_new(
         variant: Option<CssFontVariantEastAsianVariant>,
@@ -229,16 +278,19 @@ impl CssFontVariantEastAsianValues {
         }
     }
 
+    /// Returns the regional glyph form, or `None` when it was omitted.
     #[must_use]
     pub const fn variant(self) -> Option<CssFontVariantEastAsianVariant> {
         self.variant
     }
 
+    /// Returns the glyph width form, or `None` when it was omitted.
     #[must_use]
     pub const fn width(self) -> Option<CssFontVariantEastAsianWidth> {
         self.width
     }
 
+    /// Returns whether `ruby` was written, selecting ruby variant glyphs.
     #[must_use]
     pub const fn ruby(self) -> bool {
         self.ruby
@@ -249,7 +301,9 @@ impl CssFontVariantEastAsianValues {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariantEastAsian {
+    /// `normal`: none of the East Asian features are enabled.
     Normal,
+    /// One or more explicit East Asian variant choices.
     Values(CssFontVariantEastAsianValues),
 }
 
@@ -257,8 +311,11 @@ pub enum CssFontVariantEastAsian {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariantPosition {
+    /// `normal`: none of the subscript and superscript features are enabled.
     Normal,
+    /// `sub`: enables display of subscript variants (OpenType feature `subs`).
     Sub,
+    /// `super`: enables display of superscript variants (OpenType feature `sups`).
     Super,
 }
 
@@ -269,11 +326,15 @@ pub struct CssFontVariantAlternateNames {
 }
 
 impl CssFontVariantAlternateNames {
+    /// Checks a list of feature-value names.
+    ///
+    /// Returns `None` when `names` is empty.
     #[must_use]
     pub fn try_new(names: Vec<CssFontFeatureValueName>) -> Option<Self> {
         (!names.is_empty()).then_some(Self { names })
     }
 
+    /// Returns the names in authored order; the slice is never empty.
     #[must_use]
     pub fn names(&self) -> &[CssFontFeatureValueName] {
         &self.names
@@ -293,6 +354,9 @@ pub struct CssFontVariantAlternateValues {
 }
 
 impl CssFontVariantAlternateValues {
+    /// Checks a set of alternate-feature choices.
+    ///
+    /// Returns `None` when no choice is given and `historical_forms` is `false`.
     #[must_use]
     pub fn try_new(
         stylistic: Option<CssFontFeatureValueName>,
@@ -324,30 +388,37 @@ impl CssFontVariantAlternateValues {
         })
     }
 
+    /// Returns the `stylistic()` feature-value name, or `None` when it was not written.
     #[must_use]
     pub fn stylistic(&self) -> Option<&CssFontFeatureValueName> {
         self.stylistic.as_ref()
     }
+    /// Returns whether `historical-forms` was written.
     #[must_use]
     pub fn historical_forms(&self) -> bool {
         self.historical_forms
     }
+    /// Returns the `styleset()` names, or `None` when it was not written.
     #[must_use]
     pub fn styleset(&self) -> Option<&CssFontVariantAlternateNames> {
         self.styleset.as_ref()
     }
+    /// Returns the `character-variant()` names, or `None` when it was not written.
     #[must_use]
     pub fn character_variant(&self) -> Option<&CssFontVariantAlternateNames> {
         self.character_variant.as_ref()
     }
+    /// Returns the `swash()` feature-value name, or `None` when it was not written.
     #[must_use]
     pub fn swash(&self) -> Option<&CssFontFeatureValueName> {
         self.swash.as_ref()
     }
+    /// Returns the `ornaments()` feature-value name, or `None` when it was not written.
     #[must_use]
     pub fn ornaments(&self) -> Option<&CssFontFeatureValueName> {
         self.ornaments.as_ref()
     }
+    /// Returns the `annotation()` feature-value name, or `None` when it was not written.
     #[must_use]
     pub fn annotation(&self) -> Option<&CssFontFeatureValueName> {
         self.annotation.as_ref()
@@ -358,7 +429,9 @@ impl CssFontVariantAlternateValues {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariantAlternates {
+    /// `normal`: none of the alternate features are enabled.
     Normal,
+    /// One or more explicit alternate-feature choices.
     Values(CssFontVariantAlternateValues),
 }
 
@@ -366,9 +439,13 @@ pub enum CssFontVariantAlternates {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariantEmoji {
+    /// `normal`: the user agent can choose to draw an emoji presentation participating code point in either emoji or text style, typically following platform conventions.
     Normal,
+    /// `text`: code points are rendered as if U+FE0E VARIATION SELECTOR-15 was appended to every emoji presentation participating code point.
     Text,
+    /// `emoji`: code points are rendered as if U+FE0F VARIATION SELECTOR-16 was appended to every emoji presentation participating code point.
     Emoji,
+    /// `unicode`: code points are rendered as UTS #51 specifies, as emoji-default, text-default or text-only, depending on their Emoji and Emoji_Presentation properties.
     Unicode,
 }
 
@@ -385,6 +462,9 @@ pub struct CssFontVariantValues {
 }
 
 impl CssFontVariantValues {
+    /// Checks the combination of `font-variant` component groups.
+    ///
+    /// Returns `None` when every group is omitted, or when `position`, `caps` or `emoji` is the `normal` keyword, which the shorthand grammar admits only as the whole-value `normal`.
     #[must_use]
     pub fn try_new(
         ligatures: Option<CssFontVariantLigatureValues>,
@@ -420,35 +500,42 @@ impl CssFontVariantValues {
         }
     }
 
+    /// Returns the ligature choices, or `None` when they were omitted.
     #[must_use]
     pub const fn ligatures(&self) -> Option<&CssFontVariantLigatureValues> {
         self.ligatures.as_ref()
     }
 
+    /// Returns the position keyword, or `None` when it was omitted.
     #[must_use]
     pub const fn position(&self) -> Option<CssFontVariantPosition> {
         self.position
     }
 
+    /// Returns the capitalization keyword, or `None` when it was omitted.
     #[must_use]
     pub const fn caps(&self) -> Option<CssFontVariantCaps> {
         self.caps
     }
 
+    /// Returns the numeric-variant choices, or `None` when they were omitted.
     #[must_use]
     pub const fn numeric(&self) -> Option<&CssFontVariantNumericValues> {
         self.numeric.as_ref()
     }
 
+    /// Returns the East Asian variant choices, or `None` when they were omitted.
     #[must_use]
     pub const fn east_asian(&self) -> Option<&CssFontVariantEastAsianValues> {
         self.east_asian.as_ref()
     }
 
+    /// Returns the alternate-feature choices, or `None` when they were omitted.
     #[must_use]
     pub const fn alternates(&self) -> Option<&CssFontVariantAlternateValues> {
         self.alternates.as_ref()
     }
+    /// Returns the emoji keyword, or `None` when it was omitted.
     #[must_use]
     pub const fn emoji(&self) -> Option<CssFontVariantEmoji> {
         self.emoji
@@ -459,8 +546,11 @@ impl CssFontVariantValues {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariantValue {
+    /// `normal`: every `font-variant` longhand takes its initial value.
     Normal,
+    /// `none`: ligatures are disabled and the other `font-variant` longhands take their initial values.
     None,
+    /// One or more explicit component groups.
     Values(CssFontVariantValues),
 }
 

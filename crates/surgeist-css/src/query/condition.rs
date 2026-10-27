@@ -1,12 +1,12 @@
 //! One boolean condition model over grammar-specific leaves (#1388).
 //!
-//! Media Queries 4 §3 defines `<media-condition>` and Conditional 3
-//! `<supports-condition>`, Contain 3 `<container-condition>`, `<style-query>` and
-//! `<scroll-state-query>`, and Conditional 5 §3 `<boolean-condition>` ("a boolean
-//! algebra a la Media Queries 4 § 3") share one shape: a negated operand, an
-//! explicitly parenthesized condition, operands joined by one repeated operator,
-//! or a grammar-specific leaf. Each grammar names its leaf type; this module owns
-//! the shape and the provenance every condition keeps.
+//! Media Queries 4 §3 defines `<media-condition>`, Conditional 3 defines
+//! `<supports-condition>`, and Conditional 5 defines `<boolean-condition>` (§3,
+//! "a boolean algebra a la Media Queries 4 § 3"), `<container-query>`,
+//! `<style-query>` and `<scroll-state-query>` (§5.4). They share one shape: a
+//! negated operand, an explicitly parenthesized condition, operands joined by one
+//! repeated operator, or a grammar-specific leaf. Each grammar names its leaf type;
+//! this module owns the shape and the provenance every condition keeps.
 use crate::component::values::serialize::CssCanonicalBuilder;
 use crate::component::{
     CssComponentValue, CssComponentValueError, CssComponentValueLimits, CssSerializedValue,
@@ -40,8 +40,9 @@ mod sealed {
 /// }
 /// ```
 pub trait CssConditionLeaf: sealed::Sealed {
-    /// What a condition of this grammar retains of its authored text.
-    #[doc(hidden)]
+    /// What a condition of this grammar retains of its authored text: a region of the shared
+    /// lexical root for the component-list grammars, or the per-operand syntax of a media
+    /// condition. The sealed trait keeps this an implementation detail of the crate's leaves.
     type Backing: Clone + std::fmt::Debug + PartialEq;
 }
 
@@ -110,11 +111,15 @@ pub(crate) enum SupportsAuthoredForm {
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssConditionKind<L: CssConditionLeaf> {
+    /// `not <condition>`: the negation of one operand.
     Not(Box<CssCondition<L>>),
+    /// Operands joined by `and`, in source order.
     And(CssConditionList<L>),
+    /// Operands joined by `or`, in source order.
     Or(CssConditionList<L>),
     /// An explicit grouping pair around a condition, including redundant pairs.
     Parenthesized(Box<CssCondition<L>>),
+    /// A grammar-specific leaf test.
     Leaf(L),
 }
 
@@ -141,6 +146,7 @@ impl<L: CssConditionLeaf> CssConditionList<L> {
         Self { conditions }
     }
 
+    /// Returns the operands in source order; there are at least two.
     #[must_use]
     pub fn conditions(&self) -> &[CssCondition<L>] {
         &self.conditions

@@ -112,6 +112,7 @@ impl CssSpecifiedFontFaceDeclarationBlock {
         }
         Ok(Self { entries: admitted })
     }
+    /// Returns the admitted descriptor occurrences in the supplied order; no two share a descriptor kind.
     #[must_use]
     pub fn entries(&self) -> &[CssFontFaceDescriptor] {
         &self.entries

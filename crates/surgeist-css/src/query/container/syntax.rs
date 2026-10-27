@@ -14,12 +14,16 @@ fn is_exact_css_identifier(value: &str) -> bool {
         .is_some_and(|parsed| parser.expect_exhausted().is_ok() && parsed.as_ref() == value)
 }
 
+/// A container name: a decoded `<custom-ident>` that is not a CSS-wide keyword or one of `none`, `and`, `or`, `not` and `default`.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct CssContainerName {
     name: String,
 }
 
 impl CssContainerName {
+    /// Creates a name from text that is exactly one identifier token whose decoded text equals `name`.
+    ///
+    /// Returns `None` when `name` is not such an identifier or is a reserved word (compared case-insensitively).
     #[must_use]
     pub fn try_new(name: impl Into<String>) -> Option<Self> {
         let name = name.into();
@@ -51,6 +55,7 @@ impl CssContainerName {
             .then_some(Self { name })
     }
 
+    /// Returns the decoded name text.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.name
@@ -108,6 +113,7 @@ impl CssContainerPrelude {
             origin,
         }
     }
+    /// Returns the comma-separated entries in authored order; the list is never empty.
     #[must_use]
     pub fn entries(&self) -> &[CssContainerQueryEntry] {
         &self.entries
@@ -117,10 +123,12 @@ impl CssContainerPrelude {
     pub fn components(&self) -> &[crate::component::CssComponentValue] {
         self.lexical.items()
     }
+    /// Returns the origin of the first component of the prelude.
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
         &self.origin
     }
+    /// Returns the source position of the prelude, or `None` when its origin was not parsed from source.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         crate::query::media::construction::parsed_position(&self.origin)
@@ -166,6 +174,7 @@ impl CssContainerQueryEntry {
             origin,
         }
     }
+    /// Returns the container name, or `None` when the entry is a query without a name.
     #[must_use]
     pub const fn name(&self) -> Option<&CssContainerName> {
         match &self.kind {
@@ -173,6 +182,7 @@ impl CssContainerQueryEntry {
             CssContainerQueryEntryKind::Query { name, .. } => name.as_ref(),
         }
     }
+    /// Returns the container condition, or `None` when the entry is only a name.
     #[must_use]
     pub const fn query(&self) -> Option<&CssCondition<CssContainerLeaf>> {
         match &self.kind {
@@ -185,10 +195,12 @@ impl CssContainerQueryEntry {
     pub fn components(&self) -> &[crate::component::CssComponentValue] {
         self.lexical.items()
     }
+    /// Returns the origin of the first component of the entry.
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
         &self.origin
     }
+    /// Returns the source position of the entry, or `None` when its origin was not parsed from source.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         crate::query::media::construction::parsed_position(&self.origin)
@@ -200,9 +212,13 @@ impl CssContainerQueryEntry {
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssContainerLeaf {
+    /// A `<general-enclosed>` production that is not a recognized container feature, `style()` or `scroll-state()`.
     GeneralEnclosed(CssContainerGeneralEnclosed),
+    /// A size feature test such as `(width > 400px)` or `(orientation: portrait)`.
     Feature(CssContainerFeatureQuery),
+    /// A `style()` query over style features.
     Style(CssCondition<CssStyleQueryLeaf>),
+    /// A `scroll-state()` query over scroll-state features.
     ScrollState(CssCondition<CssScrollStateLeaf>),
 }
 
@@ -234,14 +250,17 @@ impl CssContainerGeneralEnclosed {
             .find(|value| !crate::query::supports::construction::trivia(value))
             .expect("one admitted enclosure")
     }
+    /// Returns the origin of the enclosure component.
     #[must_use]
     pub fn origin(&self) -> &CssValueOrigin {
         self.component().origin()
     }
+    /// Returns the source position of the enclosure, or `None` when its origin was not parsed from source.
     #[must_use]
     pub fn position(&self) -> Option<CssSourcePosition> {
         crate::query::media::construction::parsed_position(self.origin())
     }
+    /// Returns the enclosure's original source text, or `None` when it was not parsed from source.
     #[must_use]
     pub fn authored(&self) -> Option<&str> {
         let origin = self.component().parsed_origin()?;
@@ -350,14 +369,22 @@ impl From<crate::component::CssComponentValueError> for CssContainerConstruction
     }
 }
 
+/// An authored container size feature test, without evaluation against a container.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssContainerFeatureQuery {
+    /// A feature name alone, such as `(width)`.
     Boolean(CssContainerSizeFeatureKind),
+    /// `width`, as a plain, `min-`/`max-` prefixed, comparison or interval range.
     Width(CssMediaRange<CssContainerLength>),
+    /// `height`, as a plain, `min-`/`max-` prefixed, comparison or interval range.
     Height(CssMediaRange<CssContainerLength>),
+    /// `inline-size`, as a plain, `min-`/`max-` prefixed, comparison or interval range.
     InlineSize(CssMediaRange<CssContainerLength>),
+    /// `block-size`, as a plain, `min-`/`max-` prefixed, comparison or interval range.
     BlockSize(CssMediaRange<CssContainerLength>),
+    /// `aspect-ratio`, as a plain, `min-`/`max-` prefixed, comparison or interval range of `<ratio>` values.
     AspectRatio(CssMediaRange<CssContainerRatio>),
+    /// `orientation: <value>`, a discrete orientation keyword or pending operand.
     Orientation(CssContainerOrientation),
 }

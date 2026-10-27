@@ -15,8 +15,11 @@ type SerializationResult<T> = Result<T, CssSerializationError>;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontKerning {
+    /// `auto`: whether kerning is applied is left to the user agent.
     Auto,
+    /// `normal`: kerning is applied.
     Normal,
+    /// `none`: kerning is not applied.
     None,
 }
 
@@ -24,7 +27,9 @@ pub enum CssFontKerning {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssFontSizeAdjust {
+    /// `none`: the font's x-height is not preserved.
     None,
+    /// A non-negative `<number>` aspect value used to adjust the used font size; may be a deferred calculation.
     Number(CssNumeric<CssNumber, CssNonNegative>),
 }
 
@@ -46,10 +51,20 @@ pub struct CssFontLanguageString {
 }
 
 impl CssFontLanguageString {
+    /// Creates a font-language string from decoded text.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `InvalidString` error when `decoded` contains U+0000 or does not tokenize back to the same text.
     pub fn try_new(decoded: impl Into<String>) -> Result<Self, CssComponentValueError> {
         Self::try_from_component(CssComponentValue::try_string(decoded)?)
     }
 
+    /// Wraps a component value that is a string token.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `InvalidString` error carrying the component's origin when the component is not a string token.
     pub fn try_from_component(
         component: CssComponentValue,
     ) -> Result<Self, CssComponentValueError> {
@@ -67,6 +82,7 @@ impl CssFontLanguageString {
         })
     }
 
+    /// Returns the decoded string text.
     #[must_use]
     pub fn as_str(&self) -> &str {
         let CssComponentValueRef::Token(CssValueTokenRef::String(value)) = self.component.view()
@@ -76,11 +92,13 @@ impl CssFontLanguageString {
         value
     }
 
+    /// Returns the underlying string component value.
     #[must_use]
     pub const fn component(&self) -> &CssComponentValue {
         &self.component
     }
 
+    /// Returns the origin of the underlying string component.
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
         self.component.origin()
@@ -98,7 +116,9 @@ impl Eq for CssFontLanguageString {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontLanguageOverride {
+    /// `normal`: for OpenType fonts, the content language of the element is used to infer the OpenType language system.
     Normal,
+    /// An authored `<string>`: a single case-sensitive four-character OpenType language system tag, used instead of the language system implied by the element's language.
     String(CssFontLanguageString),
 }
 
@@ -106,7 +126,9 @@ pub enum CssFontLanguageOverride {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontOpticalSizing {
+    /// `auto`: the user agent may modify the shape of glyphs based on the font size and the pixel density of the screen.
     Auto,
+    /// `none`: the user agent must not modify the shape of glyphs for optical size.
     None,
 }
 

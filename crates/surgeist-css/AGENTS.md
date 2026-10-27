@@ -7,9 +7,9 @@ This supplement records crate facts and grants no additional authority.
 
 This crate owns authored CSS syntax, intrinsic grammar validation, browser recovery,
 diagnostic provenance, support metadata, and shared pure CSS language operations.
-Ordinary authored parsing returns retained syntax and ordered diagnostics; the
-always-available validators accept exactly clean reports without selecting another
-grammar. Keep authored symbolic values unresolved. CSS owns source parsing,
+Ordinary authored parsing returns retained syntax and ordered diagnostics;
+`CssParseReport::into_validation_result` accepts exactly clean reports without selecting
+another grammar. Keep authored symbolic values unresolved. CSS owns source parsing,
 exact authored expressions/decimals, contextual resolution, source/fact
 qualification and specified serialization. [surgeist-color](../surgeist-color/README.md)
 owns numerical values, conversion, interpolation, transformations, resolved
@@ -25,10 +25,10 @@ CSS/Color integration.
 | Fact | Authoritative source |
 | --- | --- |
 | Package identity, dependencies, features and targets | [Cargo.toml](Cargo.toml) |
-| Public front door and feature gates | [src/lib.rs](src/lib.rs) and its reexports |
-| Parsing and recovery behavior | [src/parser/](src/parser/), [src/report.rs](src/report.rs), and [src/error.rs](src/error.rs) |
-| Authored syntax, source coordinates, and property schema | [src/syntax.rs](src/syntax.rs), [src/source.rs](src/source.rs), and [src/properties.rs](src/properties.rs) |
-| Specification provenance, support, and exclusions | [src/conformance.rs](src/conformance.rs) |
+| Public front door | [src/lib.rs](src/lib.rs): the five crate-root items and the module list; every other public item has one path in its domain module |
+| Parsing and recovery behavior | [src/parser/](src/parser/), [src/report.rs](src/report.rs), [src/parser_context.rs](src/parser_context.rs), and [src/diagnostic/](src/diagnostic/) |
+| Authored syntax, source coordinates, and property schema | The domain modules: [src/rule/](src/rule/), [src/declaration/](src/declaration/), [src/selector/](src/selector/), [src/query/](src/query/), [src/values/](src/values/), [src/property/](src/property/), [src/numeric/](src/numeric/), [src/color/](src/color/), [src/component/](src/component/), and [src/source/](src/source/) |
+| Serialization, normalization, and specification provenance | [src/serialization/](src/serialization/), [src/normalize/](src/normalize/), and [src/conformance/](src/conformance/) |
 | Verification and public-contract evidence | Tracked test modules in [src/](src/), rustdoc examples, and [tests/](tests/) |
 | Shared handwritten property inventories and their consumers | [tests/css/support/property_expectations/README.md](tests/css/support/property_expectations/README.md) and `records.rs` in that directory |
 | Corpus provenance, generated set, and maintenance owner | [tests/corpus/csstree/README.md](tests/corpus/csstree/README.md) and [tests/corpus/csstree/corpus.toml](tests/corpus/csstree/corpus.toml) |

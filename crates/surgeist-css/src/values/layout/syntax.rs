@@ -9,7 +9,9 @@ use crate::values::box_model::CssSizeValue;
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssColumnCount {
+    /// `auto`: the column count is determined by the other column properties.
     Auto,
+    /// A positive `<integer>` column count.
     Count(CssNumeric<CssInteger, CssPositive>),
 }
 
@@ -21,8 +23,11 @@ pub enum CssColumnCount {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssColumnFill {
+    /// `auto`: columns are filled sequentially.
     Auto,
+    /// `balance`: content is balanced between columns, as far as possible; in fragmented contexts only the last fragment is balanced.
     Balance,
+    /// `balance-all`: content is balanced between columns, as far as possible; in fragmented contexts all fragments are balanced.
     BalanceAll,
 }
 
@@ -34,7 +39,9 @@ pub enum CssColumnFill {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssColumnSpan {
+    /// `none`: the element does not span multiple columns.
     None,
+    /// `all`: the element spans all columns of the multicol container.
     All,
 }
 
@@ -58,11 +65,13 @@ impl CssColumns {
         Self { width, count }
     }
 
+    /// Returns the column width, which may be `auto`.
     #[must_use]
     pub const fn width(&self) -> &CssSizeValue {
         &self.width
     }
 
+    /// Returns the column count, which may be `auto`.
     #[must_use]
     pub const fn count(&self) -> &CssColumnCount {
         &self.count

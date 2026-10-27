@@ -44,8 +44,11 @@ impl CssWillChangePropertyName {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssWillChangeFeature {
+    /// `scroll-position`: the scroll position of the element is expected to change.
     ScrollPosition,
+    /// `contents`: the element's contents are expected to change.
     Contents,
+    /// A property name whose value is expected to change.
     Property(CssWillChangePropertyName),
 }
 
@@ -74,7 +77,9 @@ impl CssWillChangeFeatures {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssWillChange {
+    /// `auto`: no optimization hint is given.
     Auto,
+    /// A nonempty list of expected changes.
     Features(CssWillChangeFeatures),
 }
 

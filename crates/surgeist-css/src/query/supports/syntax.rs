@@ -12,12 +12,19 @@ use crate::source::CssSourcePosition;
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssSupportsLeaf {
+    /// A declaration test such as `(display: grid)`, which is valid syntax even when the property or value is unknown.
     Declaration(Box<CssSupportsDeclaration>),
+    /// A reference to a named supports condition, such as `(--my-test)`.
     Named(crate::query::supports::CssSupportsConditionName),
+    /// A `selector()` test.
     Selector(CssSelector),
+    /// A `font-tech()` test.
     FontTech(CssFontTechHint),
+    /// A `font-format()` test.
     FontFormat(CssFontFormat),
+    /// An `at-rule()` test, such as `at-rule(@media)`.
     AtRule(crate::query::supports::CssSupportsAtRule),
+    /// A `<general-enclosed>` production that is not a recognized supports test.
     GeneralEnclosed(CssGeneralEnclosed),
 }
 
@@ -71,18 +78,22 @@ impl CssSupportsDeclaration {
             value_range,
         }
     }
+    /// Returns the original source text of the declaration test, or `None` when it was not parsed from source.
     #[must_use]
     pub fn authored(&self) -> Option<&str> {
         self.authored.as_deref()
     }
+    /// Returns the property name text as authored.
     #[must_use]
     pub fn property(&self) -> &str {
         &self.property
     }
+    /// Returns whether the declaration carries `!important`.
     #[must_use]
     pub const fn importance(&self) -> CssImportance {
         self.importance
     }
+    /// Returns the typed declaration when the property and value are known to the property schema, and otherwise `None`.
     #[must_use]
     pub const fn known(&self) -> Option<&CssKnownDeclaration> {
         match &self.admitted {
@@ -100,22 +111,27 @@ impl CssSupportsDeclaration {
             _ => None,
         }
     }
+    /// Returns the origin of the property-name component.
     #[must_use]
     pub fn origin(&self) -> &CssValueOrigin {
         self.property_component().origin()
     }
+    /// Returns the source position of the property name, or `None` when its origin was not parsed from source.
     #[must_use]
     pub fn position(&self) -> Option<CssSourcePosition> {
         crate::query::media::construction::parsed_position(self.origin())
     }
+    /// Returns all components of the declaration test.
     #[must_use]
     pub fn components(&self) -> &[crate::component::CssComponentValue] {
         self.lexical.items()
     }
+    /// Returns the component holding the property name.
     #[must_use]
     pub fn property_component(&self) -> &crate::component::CssComponentValue {
         &self.components()[self.property_index]
     }
+    /// Returns the components of the declaration value.
     #[must_use]
     pub fn value_components(&self) -> &[crate::component::CssComponentValue] {
         &self.components()[self.value_range.clone()]

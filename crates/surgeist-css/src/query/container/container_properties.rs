@@ -13,11 +13,17 @@ use crate::serialization::specified_rule_serialization::SpecifiedRuleWriter;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum CssContainerType {
+    /// `normal`: the element is not a query container for size or scroll-state queries.
     Normal,
+    /// `size`: the element is a query container for size queries on both the inline and block axes.
     Size,
+    /// `inline-size`: the element is a query container for size queries on its own inline axis.
     InlineSize,
+    /// `scroll-state`: the element is a query container for scroll-state queries.
     ScrollState,
+    /// `size scroll-state`: a size query container on both axes that is also a scroll-state query container.
     SizeScrollState,
+    /// `inline-size scroll-state`: an inline-axis size query container that is also a scroll-state query container.
     InlineSizeScrollState,
 }
 impl CssContainerType {
@@ -45,10 +51,12 @@ pub struct CssContainerNameList {
     names: Vec<CssContainerName>,
 }
 impl CssContainerNameList {
+    /// Returns the list for a nonempty `names` vector, or `None` when it is empty.
     #[must_use]
     pub fn try_new(names: Vec<CssContainerName>) -> Option<Self> {
         (!names.is_empty()).then_some(Self { names })
     }
+    /// Returns the names in authored order.
     #[must_use]
     pub fn names(&self) -> &[CssContainerName] {
         &self.names
@@ -59,7 +67,9 @@ impl CssContainerNameList {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum CssContainerNames {
+    /// `none`: the element has no container names.
     None,
+    /// A nonempty ordered list of `<custom-ident>` container names.
     Names(CssContainerNameList),
 }
 impl CssContainerNames {
@@ -78,6 +88,7 @@ pub struct CssContainer {
     container_type: CssContainerType,
 }
 impl CssContainer {
+    /// Creates a container shorthand from its name domain and type; no further validation is needed because both parts are already checked values.
     #[must_use]
     pub const fn new(names: CssContainerNames, container_type: CssContainerType) -> Self {
         Self {
@@ -85,10 +96,12 @@ impl CssContainer {
             container_type,
         }
     }
+    /// Returns the `container-name` part of the shorthand.
     #[must_use]
     pub const fn names(&self) -> &CssContainerNames {
         &self.names
     }
+    /// Returns the `container-type` part of the shorthand, which is `normal` when the type was omitted.
     #[must_use]
     pub const fn container_type(&self) -> CssContainerType {
         self.container_type

@@ -456,7 +456,12 @@ pub enum CssValueTokenRef<'a> {
     /// A decoded at-keyword without `@`.
     AtKeyword(&'a str),
     /// A decoded hash without `#`, retaining the type flag.
-    Hash { value: &'a str, flag: CssHashFlag },
+    Hash {
+        /// The decoded name without `#`.
+        value: &'a str,
+        /// The hash type flag.
+        flag: CssHashFlag,
+    },
     /// A decoded quoted string.
     String(&'a str),
     /// A decoded unquoted URL token; quoted URLs are functions.
@@ -469,7 +474,9 @@ pub enum CssValueTokenRef<'a> {
     Percentage(CssNumericTokenRef<'a>),
     /// A lexical dimension and its decoded unit.
     Dimension {
+        /// The numeric spelling before the unit.
         number: CssNumericTokenRef<'a>,
+        /// The decoded unit.
         unit: &'a str,
     },
     /// Actual CSS whitespace, distinct from comments.

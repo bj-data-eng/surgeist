@@ -179,10 +179,15 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssSpeechBreakStrength {
+    /// `x-weak`: the weakest prosodic break strength.
     XWeak,
+    /// `weak`: a prosodic break no weaker than `x-weak`.
     Weak,
+    /// `medium`: a prosodic break no weaker than `weak`.
     Medium,
+    /// `strong`: a prosodic break no weaker than `medium`.
     Strong,
+    /// `x-strong`: the strongest prosodic break strength.
     XStrong,
 }
 
@@ -211,8 +216,11 @@ impl CssSpeechBreakStrength {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssSpeechBreak {
+    /// `none`: no prosodic break is produced; the specification equates it with `0ms`, but it is kept distinct from an explicit zero time.
     None,
+    /// A break strength keyword; the exact time is left to the speech processor.
     Strength(CssSpeechBreakStrength),
+    /// A non-negative `<time>` giving the break as an absolute duration.
     Time(CssNumeric<CssTime, CssNonNegative>),
 }
 
@@ -341,11 +349,13 @@ impl CssDecibelLiteral {
         number
     }
 
+    /// Returns the checked `dB` dimension component, including its original source.
     #[must_use]
     pub const fn component(&self) -> &crate::component::CssComponentValue {
         &self.component
     }
 
+    /// Returns the provenance of the dimension component.
     #[must_use]
     pub const fn origin(&self) -> &crate::component::CssValueOrigin {
         self.component.origin()
@@ -424,6 +434,7 @@ impl CssAudioCue {
         Self { url, decibel }
     }
 
+    /// Returns the shared authored URL of the cue.
     #[must_use]
     pub const fn url(&self) -> &crate::values::common::CssUrl {
         &self.url
@@ -494,7 +505,9 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCue {
+    /// `none`: no auditory icon.
     None,
+    /// An auditory icon: a URL with an optional decibel offset.
     Audio(CssAudioCue),
 }
 
@@ -569,10 +582,15 @@ crate::values::common::common_values::side_pair_serialization!(CssCue);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceStress {
+    /// `normal`: the default emphasis produced by the speech synthesizer.
     Normal,
+    /// `strong`: more emphasis than `normal`, and no weaker than `moderate`.
     Strong,
+    /// `moderate`: more emphasis than `normal`.
     Moderate,
+    /// `none`: prevents the synthesizer from emphasizing text it would normally emphasize.
     None,
+    /// `reduced`: effectively the opposite of emphasizing a word.
     Reduced,
 }
 impl crate::serialization::specified_rule_serialization::SpecifiedProvider for CssVoiceStress {
@@ -595,8 +613,11 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceAge {
+    /// `child`: the preferred age category is a child.
     Child,
+    /// `young`: the preferred age category is young.
     Young,
+    /// `old`: the preferred age category is old.
     Old,
 }
 impl CssVoiceAge {
@@ -612,8 +633,11 @@ impl CssVoiceAge {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceGender {
+    /// `male`: the preferred gender is male.
     Male,
+    /// `female`: the preferred gender is female.
     Female,
+    /// `neutral`: the preferred gender is neutral.
     Neutral,
 }
 impl CssVoiceGender {
@@ -640,7 +664,9 @@ pub struct CssVoiceFamilyName {
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssVoiceFamilyNameRef<'a> {
+    /// A quoted voice name, decoded; it may be empty.
     Quoted(&'a str),
+    /// A name written as a sequence of identifiers, one decoded identifier per element.
     Identifiers(&'a [crate::values::common::CssIdent]),
 }
 impl CssVoiceFamilyName {
@@ -733,10 +759,12 @@ impl CssGenericVoice {
             variant,
         })
     }
+    /// Returns the age keyword, or `None` when none was authored.
     #[must_use]
     pub const fn age(&self) -> Option<CssVoiceAge> {
         self.age
     }
+    /// Returns the gender keyword.
     #[must_use]
     pub const fn gender(&self) -> CssVoiceGender {
         self.gender
@@ -754,7 +782,9 @@ impl CssGenericVoice {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceFamilyEntry {
+    /// A specific voice named by a quoted string or an identifier sequence.
     Name(CssVoiceFamilyName),
+    /// A generic voice described by an optional age, a gender and an optional variant.
     Generic(CssGenericVoice),
 }
 
@@ -779,6 +809,7 @@ impl CssVoiceFamilyList {
     pub(crate) fn from_parser(entries: Vec<CssVoiceFamilyEntry>) -> Option<Self> {
         (!entries.is_empty()).then_some(Self { entries })
     }
+    /// Returns the entries in priority order; the slice is never empty.
     #[must_use]
     pub fn entries(&self) -> &[CssVoiceFamilyEntry] {
         &self.entries
@@ -792,7 +823,9 @@ impl CssVoiceFamilyList {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceFamily {
+    /// A prioritized list of voices.
     Voices(CssVoiceFamilyList),
+    /// `preserve`: the inherited `voice-family` value is kept and used even when the content language changes.
     Preserve,
 }
 impl crate::serialization::specified_rule_serialization::SpecifiedProvider for CssVoiceFamily {
@@ -855,7 +888,9 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceDuration {
+    /// `auto`: the duration is that of the speech synthesis at the inherited `voice-rate`.
     Auto,
+    /// A non-negative `<time>` giving the duration in absolute time units.
     Time(CssNumeric<CssTime, CssNonNegative>),
 }
 
@@ -885,10 +920,15 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceLevel {
+    /// `x-low`: the lowest level.
     XLow,
+    /// `low`: a level no lower than `x-low`.
     Low,
+    /// `medium`: a level no lower than `low`.
     Medium,
+    /// `high`: a level no lower than `medium`.
     High,
+    /// `x-high`: the highest level.
     XHigh,
 }
 impl CssVoiceLevel {
@@ -910,11 +950,21 @@ pub struct CssSemitoneLiteral {
     component: Box<crate::component::CssComponentValue>,
 }
 impl CssSemitoneLiteral {
+    /// Creates a semitone dimension from a number spelling, attaching the `st` unit.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `number` is not a valid number token.
     pub fn try_new(number: &str) -> Result<Self, crate::component::CssComponentValueError> {
         Self::try_from_component(crate::component::CssComponentValue::try_dimension(
             number, "st",
         )?)
     }
+    /// Retains one dimension component whose decoded unit is `st`, compared ASCII case-insensitively.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `component` is not a dimension token with the `st` unit.
     pub fn try_from_component(
         component: crate::component::CssComponentValue,
     ) -> Result<Self, crate::component::CssComponentValueError> {
@@ -940,10 +990,12 @@ impl CssSemitoneLiteral {
         };
         number
     }
+    /// Returns the checked `st` dimension component, including its original source.
     #[must_use]
     pub const fn component(&self) -> &crate::component::CssComponentValue {
         &self.component
     }
+    /// Returns the provenance of the dimension component.
     #[must_use]
     pub const fn origin(&self) -> &crate::component::CssValueOrigin {
         self.component.origin()
@@ -981,8 +1033,11 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceOffset {
+    /// A relative `<frequency>` offset, such as `+30Hz`.
     Frequency(crate::numeric::CssNumeric<crate::numeric::CssFrequency>),
+    /// A relative offset in semitones (`<semitones>`), such as `+2st`.
     Semitones(CssSemitoneLiteral),
+    /// A relative `<percentage>` offset.
     Percentage(crate::numeric::CssNumeric<crate::numeric::CssPercentage>),
     /// Typed math permits frequency and percentage against an unresolved frequency basis.
     Calculation(crate::numeric::CssCalculation<crate::numeric::CssFrequencyPercentage>),
@@ -1170,6 +1225,7 @@ impl CssVoicePitchRange {
             },
         }
     }
+    /// Returns the frequency of the `absolute` form, or `None` for a relative composition.
     #[must_use]
     pub const fn absolute_frequency(
         &self,
@@ -1179,6 +1235,7 @@ impl CssVoicePitchRange {
             VoicePitchRangeState::Relative { .. } => None,
         }
     }
+    /// Returns the symbolic level of a relative composition, or `None` when none was authored or the value is absolute.
     #[must_use]
     pub const fn level(&self) -> Option<CssVoiceLevel> {
         match &self.state {
@@ -1186,6 +1243,7 @@ impl CssVoicePitchRange {
             VoicePitchRangeState::Absolute(_) => None,
         }
     }
+    /// Returns the offset of a relative composition, or `None` when none was authored or the value is absolute.
     #[must_use]
     pub const fn offset(&self) -> Option<&CssVoiceOffset> {
         match &self.state {
@@ -1243,11 +1301,17 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceRateKeyword {
+    /// `normal`: the default rate produced by the speech synthesizer for the active voice.
     Normal,
+    /// `x-slow`: the slowest speaking rate keyword.
     XSlow,
+    /// `slow`: a speaking rate no slower than `x-slow`.
     Slow,
+    /// `medium`: a speaking rate no slower than `slow`.
     Medium,
+    /// `fast`: a speaking rate no slower than `medium`.
     Fast,
+    /// `x-fast`: the fastest speaking rate keyword.
     XFast,
 }
 impl CssVoiceRateKeyword {
@@ -1278,6 +1342,11 @@ pub struct CssVoiceRate {
 }
 
 impl CssVoiceRate {
+    /// Creates a rate from an optional keyword and an optional non-negative percentage.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when both are absent or when the percentage calculation was closed implicitly.
     pub fn try_new(
         keyword: Option<CssVoiceRateKeyword>,
         percentage: Option<
@@ -1321,6 +1390,7 @@ impl CssVoiceRate {
             percentage,
         })
     }
+    /// Creates a rate holding only a keyword, with no percentage.
     #[must_use]
     pub const fn keyword_only(keyword: CssVoiceRateKeyword) -> Self {
         Self {
@@ -1328,10 +1398,12 @@ impl CssVoiceRate {
             percentage: None,
         }
     }
+    /// Returns the keyword, or `None` when only a percentage was authored.
     #[must_use]
     pub const fn keyword(&self) -> Option<CssVoiceRateKeyword> {
         self.keyword
     }
+    /// Returns the authored percentage, or `None` when none was authored; an authored `100%` is kept.
     #[must_use]
     pub const fn percentage(
         &self,
@@ -1376,10 +1448,15 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceBalanceKeyword {
+    /// `left`: the left side; equivalent to the number `-100`.
     Left,
+    /// `center`: the center point; equivalent to the number `0`.
     Center,
+    /// `right`: the right side; equivalent to the number `100`.
     Right,
+    /// `leftwards`: moves the sound left of the inherited balance, by subtracting 20 and clamping to `-100`.
     Leftwards,
+    /// `rightwards`: moves the sound right of the inherited balance, by adding 20 and clamping to `100`.
     Rightwards,
 }
 impl CssVoiceBalanceKeyword {
@@ -1409,6 +1486,7 @@ pub struct CssVoiceBalance {
     state: VoiceBalanceState,
 }
 impl CssVoiceBalance {
+    /// Creates a balance holding a keyword.
     #[must_use]
     pub const fn from_keyword(keyword: CssVoiceBalanceKeyword) -> Self {
         Self {
@@ -1445,6 +1523,7 @@ impl CssVoiceBalance {
             state: VoiceBalanceState::Number(number),
         }
     }
+    /// Returns the keyword, or `None` when the balance is a number.
     #[must_use]
     pub const fn keyword(&self) -> Option<CssVoiceBalanceKeyword> {
         match &self.state {
@@ -1452,6 +1531,7 @@ impl CssVoiceBalance {
             VoiceBalanceState::Number(_) => None,
         }
     }
+    /// Returns the authored number, which is not clamped, or `None` when the balance is a keyword.
     #[must_use]
     pub const fn number(&self) -> Option<&crate::numeric::CssNumeric<crate::numeric::CssNumber>> {
         match &self.state {
@@ -1477,10 +1557,15 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceVolumeLevel {
+    /// `x-soft`: the quietest calibrated volume level.
     XSoft,
+    /// `soft`: a calibrated level no quieter than `x-soft`.
     Soft,
+    /// `medium`: a calibrated level no quieter than `soft`.
     Medium,
+    /// `loud`: a calibrated level no quieter than `medium`.
     Loud,
+    /// `x-loud`: the loudest calibrated volume level.
     XLoud,
 }
 impl CssVoiceVolumeLevel {
@@ -1505,11 +1590,16 @@ impl CssVoiceVolumeLevel {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssVoiceVolume {
+    /// `silent`: no sound is generated, while the element still takes the time it would have been spoken in.
     Silent,
+    /// A calibrated level keyword with an optional decibel offset.
     Level {
+        /// The level keyword.
         level: CssVoiceVolumeLevel,
+        /// The optional relative offset in decibels; omission is distinct from an explicit zero offset.
         decibel: Option<CssDecibelLiteral>,
     },
+    /// A `<decibel>` offset with no level keyword.
     Offset(CssDecibelLiteral),
 }
 impl crate::serialization::specified_rule_serialization::SpecifiedProvider for CssVoiceVolume {

@@ -105,6 +105,7 @@ impl CssGridTemplateAreaName {
         Ok(Self { value })
     }
 
+    /// Returns the decoded area name.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.value
@@ -115,7 +116,9 @@ impl CssGridTemplateAreaName {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridTemplateAreaCell {
+    /// A null cell token (`.`) that belongs to no area.
     Empty,
+    /// A cell that belongs to the named area.
     Named(CssGridTemplateAreaName),
 }
 
@@ -126,6 +129,11 @@ pub struct CssGridTemplateAreaRow {
 }
 
 impl CssGridTemplateAreaRow {
+    /// Builds a row from its cells.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `cells` is empty.
     pub fn try_new(cells: Vec<CssGridTemplateAreaCell>) -> Result<Self, CssGridTemplateAreaError> {
         if cells.is_empty() {
             Err(CssGridTemplateAreaError::from(
@@ -136,6 +144,7 @@ impl CssGridTemplateAreaRow {
         }
     }
 
+    /// Returns the cells in order; the row is never empty.
     #[must_use]
     pub fn cells(&self) -> &[CssGridTemplateAreaCell] {
         &self.cells
@@ -149,6 +158,11 @@ pub struct CssGridTemplateAreaRows {
 }
 
 impl CssGridTemplateAreaRows {
+    /// Builds the matrix from its rows.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when there are no rows, the rows are empty, the rows have different widths, or a named area does not form one rectangle.
     pub fn try_new(rows: Vec<CssGridTemplateAreaRow>) -> Result<Self, CssGridTemplateAreaError> {
         validate_area_matrix(&rows, CssGridTemplateAreaRow::cells, |cell| match cell {
             CssGridTemplateAreaCell::Empty => None,
@@ -157,6 +171,7 @@ impl CssGridTemplateAreaRows {
         Ok(Self { rows })
     }
 
+    /// Returns the rows in order; the matrix is never empty.
     #[must_use]
     pub fn rows(&self) -> &[CssGridTemplateAreaRow] {
         &self.rows
@@ -171,11 +186,18 @@ impl CssGridTemplateAreaRows {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridTemplateAreas {
+    /// `none`: no areas are defined.
     None,
+    /// A rectangular matrix of area rows.
     Rows(CssGridTemplateAreaRows),
 }
 
 impl CssGridTemplateAreas {
+    /// Builds a `grid-template-areas` value from rows.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when there are no rows, the rows are empty, the rows have different widths, or a named area does not form one rectangle.
     pub fn try_rows(rows: Vec<CssGridTemplateAreaRow>) -> Result<Self, CssGridTemplateAreaError> {
         CssGridTemplateAreaRows::try_new(rows).map(Self::Rows)
     }

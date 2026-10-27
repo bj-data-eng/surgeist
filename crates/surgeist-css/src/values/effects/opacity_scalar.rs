@@ -11,7 +11,9 @@ use crate::values::effects::CssOpacityValue;
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssOpacityScalarKind {
+    /// The scalar is a `<number>` token.
     Number,
+    /// The scalar is a `<percentage>` token.
     Percentage,
 }
 

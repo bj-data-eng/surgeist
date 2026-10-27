@@ -18,7 +18,9 @@ use crate::numeric::{CssAngle, CssNumber, CssNumeric};
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssRotate {
+    /// `none`: no individual rotation.
     None,
+    /// An angle with an optional axis.
     Value(CssRotateValues),
 }
 
@@ -27,9 +29,13 @@ pub enum CssRotate {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssRotateAxis {
+    /// The `x` keyword: rotation about the x axis.
     X,
+    /// The `y` keyword: rotation about the y axis.
     Y,
+    /// The `z` keyword: rotation about the z axis.
     Z,
+    /// A rotation axis given as three numbers, `<number>{3}`, in x, y, z order.
     Vector([CssNumeric<CssNumber>; 3]),
 }
 

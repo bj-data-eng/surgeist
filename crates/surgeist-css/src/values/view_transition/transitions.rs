@@ -40,7 +40,9 @@ impl CssViewTransitionIdent {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssViewTransitionName {
+    /// `none`: the element does not participate separately in a view transition.
     None,
+    /// A `<custom-ident>` that names the element as a view-transition participant.
     Custom(CssViewTransitionIdent),
 }
 
@@ -65,6 +67,8 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssViewTransitionNameSelector {
+    /// `*`: the wildcard that matches every participant name.
     Wildcard,
+    /// A case-sensitive `<custom-ident>` participant name.
     Name(CssCustomIdent),
 }

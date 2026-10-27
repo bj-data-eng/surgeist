@@ -333,36 +333,42 @@ impl CssColor {
     pub(crate) fn nesting_depth(&self) -> Result<u32, CssColorConstructionError> {
         authored_color_depth(self).map_err(Into::into)
     }
+    /// Retains a checked custom-profile `color()` value.
     pub const fn from_custom(value: CssCustomColor) -> Self {
         Self {
             original_closed: true,
             representation: CssColorRepresentation::Custom(value),
         }
     }
+    /// Retains a checked custom-profile relative color.
     pub fn from_relative_custom(value: CssRelativeCustomColor) -> Self {
         Self {
             original_closed: true,
             representation: CssColorRepresentation::RelativeCustom(Box::new(value)),
         }
     }
+    /// Retains a checked `alpha(from ...)` value.
     pub const fn from_alpha(value: CssAlphaColor) -> Self {
         Self {
             original_closed: true,
             representation: CssColorRepresentation::Alpha(value),
         }
     }
+    /// Borrows the checked payload, when this is a custom-profile `color()`.
     pub const fn custom_value(&self) -> Option<&CssCustomColor> {
         match &self.representation {
             CssColorRepresentation::Custom(v) => Some(v),
             _ => None,
         }
     }
+    /// Borrows the checked payload, when this is a custom-profile relative color.
     pub const fn relative_custom_value(&self) -> Option<&CssRelativeCustomColor> {
         match &self.representation {
             CssColorRepresentation::RelativeCustom(v) => Some(v),
             _ => None,
         }
     }
+    /// Borrows the checked payload, when this is an `alpha(from ...)` color.
     pub const fn alpha_value(&self) -> Option<&CssAlphaColor> {
         match &self.representation {
             CssColorRepresentation::Alpha(v) => Some(v),
@@ -370,6 +376,7 @@ impl CssColor {
         }
     }
 
+    /// Creates the `currentcolor` keyword.
     pub const fn current_color() -> Self {
         Self {
             original_closed: true,
@@ -377,6 +384,7 @@ impl CssColor {
         }
     }
 
+    /// Creates the `transparent` keyword.
     pub const fn transparent() -> Self {
         Self {
             original_closed: true,
@@ -418,6 +426,7 @@ impl CssColor {
         }
     }
 
+    /// Retains a checked hex color.
     pub const fn from_hex(value: CssHexColor) -> Self {
         Self {
             original_closed: true,
@@ -425,6 +434,7 @@ impl CssColor {
         }
     }
 
+    /// Retains a checked named color keyword.
     pub const fn from_named(value: CssNamedColor) -> Self {
         Self {
             original_closed: true,
@@ -432,6 +442,7 @@ impl CssColor {
         }
     }
 
+    /// Retains a system color keyword.
     pub const fn from_system(value: CssSystemColor) -> Self {
         Self {
             original_closed: true,
@@ -439,6 +450,7 @@ impl CssColor {
         }
     }
 
+    /// Retains a checked `rgb()` or `rgba()` color.
     pub const fn from_rgb(value: CssRgbColor) -> Self {
         Self {
             original_closed: true,
@@ -446,6 +458,7 @@ impl CssColor {
         }
     }
 
+    /// Retains a checked `hsl()` or `hsla()` color.
     pub const fn from_hsl(value: CssHslColor) -> Self {
         Self {
             original_closed: true,
@@ -453,6 +466,7 @@ impl CssColor {
         }
     }
 
+    /// Retains a checked `hwb()` color.
     pub const fn from_hwb(value: CssHwbColor) -> Self {
         Self {
             original_closed: true,
@@ -460,6 +474,7 @@ impl CssColor {
         }
     }
 
+    /// Retains a checked `lab()` color.
     pub const fn from_lab(value: CssLabColor) -> Self {
         Self {
             original_closed: true,
@@ -467,6 +482,7 @@ impl CssColor {
         }
     }
 
+    /// Retains a checked `lch()` color.
     pub const fn from_lch(value: CssLchColor) -> Self {
         Self {
             original_closed: true,
@@ -474,6 +490,7 @@ impl CssColor {
         }
     }
 
+    /// Retains a checked `oklab()` color; it shares the payload type of `lab()`.
     pub const fn from_oklab(value: CssLabColor) -> Self {
         Self {
             original_closed: true,
@@ -481,6 +498,7 @@ impl CssColor {
         }
     }
 
+    /// Retains a checked `oklch()` color; it shares the payload type of `lch()`.
     pub const fn from_oklch(value: CssLchColor) -> Self {
         Self {
             original_closed: true,
@@ -488,6 +506,7 @@ impl CssColor {
         }
     }
 
+    /// Retains a checked `color()` value in a predefined color space.
     pub const fn from_predefined(value: CssPredefinedColor) -> Self {
         Self {
             original_closed: true,
@@ -495,6 +514,7 @@ impl CssColor {
         }
     }
 
+    /// Retains a checked relative color.
     pub fn from_relative(value: CssRelativeColor) -> Self {
         Self {
             original_closed: true,
@@ -502,6 +522,7 @@ impl CssColor {
         }
     }
 
+    /// Retains a checked `color-mix()` color.
     pub const fn from_color_mix(value: CssColorMix) -> Self {
         Self {
             original_closed: true,
@@ -509,16 +530,19 @@ impl CssColor {
         }
     }
 
+    /// Returns whether this is the `currentcolor` keyword.
     #[must_use]
     pub const fn is_current_color(&self) -> bool {
         matches!(self.representation, CssColorRepresentation::CurrentColor)
     }
 
+    /// Returns whether this is the `transparent` keyword.
     #[must_use]
     pub const fn is_transparent(&self) -> bool {
         matches!(self.representation, CssColorRepresentation::Transparent)
     }
 
+    /// Borrows the checked payload, when this is a hex color.
     #[must_use]
     pub const fn hex_value(&self) -> Option<&CssHexColor> {
         match &self.representation {
@@ -527,6 +551,7 @@ impl CssColor {
         }
     }
 
+    /// Borrows the checked payload, when this is a named color.
     #[must_use]
     pub const fn named(&self) -> Option<&CssNamedColor> {
         match &self.representation {
@@ -535,6 +560,7 @@ impl CssColor {
         }
     }
 
+    /// Returns the system color keyword, when this is a system color.
     #[must_use]
     pub const fn system(&self) -> Option<CssSystemColor> {
         match self.representation {
@@ -543,6 +569,7 @@ impl CssColor {
         }
     }
 
+    /// Borrows the checked payload, when this is an `rgb()` or `rgba()` color.
     #[must_use]
     pub const fn rgb_value(&self) -> Option<&CssRgbColor> {
         match &self.representation {
@@ -551,6 +578,7 @@ impl CssColor {
         }
     }
 
+    /// Borrows the checked payload, when this is an `hsl()` or `hsla()` color.
     #[must_use]
     pub const fn hsl_value(&self) -> Option<&CssHslColor> {
         match &self.representation {
@@ -559,6 +587,7 @@ impl CssColor {
         }
     }
 
+    /// Borrows the checked payload, when this is an `hwb()` color.
     #[must_use]
     pub const fn hwb_value(&self) -> Option<&CssHwbColor> {
         match &self.representation {
@@ -567,6 +596,7 @@ impl CssColor {
         }
     }
 
+    /// Borrows the checked payload, when this is a `lab()` color.
     #[must_use]
     pub const fn lab_value(&self) -> Option<&CssLabColor> {
         match &self.representation {
@@ -575,6 +605,7 @@ impl CssColor {
         }
     }
 
+    /// Borrows the checked payload, when this is an `lch()` color.
     #[must_use]
     pub const fn lch_value(&self) -> Option<&CssLchColor> {
         match &self.representation {
@@ -583,6 +614,7 @@ impl CssColor {
         }
     }
 
+    /// Borrows the checked payload, when this is an `oklab()` color.
     #[must_use]
     pub const fn oklab_value(&self) -> Option<&CssLabColor> {
         match &self.representation {
@@ -591,6 +623,7 @@ impl CssColor {
         }
     }
 
+    /// Borrows the checked payload, when this is an `oklch()` color.
     #[must_use]
     pub const fn oklch_value(&self) -> Option<&CssLchColor> {
         match &self.representation {
@@ -599,6 +632,7 @@ impl CssColor {
         }
     }
 
+    /// Borrows the checked payload, when this is a `color()` value in a predefined color space.
     #[must_use]
     pub const fn predefined_value(&self) -> Option<&CssPredefinedColor> {
         match &self.representation {
@@ -625,6 +659,7 @@ impl CssColor {
         }
     }
 
+    /// Returns a short lowercase label of the authored branch, such as `hex`, `named`, `rgb`, `color-mix` or `relative`.
     #[must_use]
     pub const fn kind_name(&self) -> &'static str {
         match &self.representation {
@@ -653,12 +688,16 @@ impl CssColor {
     }
 }
 
+/// A checked hex color retaining its digits as authored, without the leading `#`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssHexColor {
     digits: String,
 }
 
 impl CssHexColor {
+    /// Checks that `digits` is 3, 4, 6 or 8 ASCII hexadecimal digits, without a leading `#`.
+    ///
+    /// Returns `None` for any other length or character.
     pub fn try_new(digits: impl Into<String>) -> Option<Self> {
         let digits = digits.into();
         (matches!(digits.len(), 3 | 4 | 6 | 8)
@@ -666,6 +705,7 @@ impl CssHexColor {
         .then_some(Self { digits })
     }
 
+    /// Returns the retained hexadecimal digits, without a leading `#`.
     #[must_use]
     pub fn digits(&self) -> &str {
         &self.digits
@@ -686,6 +726,9 @@ impl CssNamedColor {
     pub(crate) const fn checked_rgb(&self) -> [u8; 3] {
         self.rgb
     }
+    /// Checks `name` against the named color keywords, ASCII case-insensitively, and retains it lowercased.
+    ///
+    /// Returns `None` when `name` is not a named color keyword.
     pub fn try_new(name: impl Into<String>) -> Option<Self> {
         let name = name.into();
         let (red, green, blue) = cssparser::color::parse_named_color(&name).ok()?;
@@ -695,74 +738,128 @@ impl CssNamedColor {
         })
     }
 
+    /// Returns the canonical lowercase keyword.
     #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 }
 
+/// A `<system-color>` keyword, or a deprecated system color of Color 4 Appendix A, as authored.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssSystemColor {
+    /// `Canvas`: background of application content or documents.
     Canvas,
+    /// `CanvasText`: text in application content or documents.
     CanvasText,
+    /// `LinkText`: text in non-active, non-visited links.
     LinkText,
+    /// `VisitedText`: text in visited links.
     VisitedText,
+    /// `ActiveText`: text in active links.
     ActiveText,
+    /// `ButtonFace`: face background of push buttons.
     ButtonFace,
+    /// `ButtonText`: text on push buttons.
     ButtonText,
+    /// `ButtonBorder`: base border color of push buttons.
     ButtonBorder,
+    /// `Field`: background of input fields.
     Field,
+    /// `FieldText`: text in input fields.
     FieldText,
+    /// `Highlight`: background of selected text.
     Highlight,
+    /// `HighlightText`: text of selected text.
     HighlightText,
+    /// `Mark`: background of specially marked text.
     Mark,
+    /// `MarkText`: specially marked text.
     MarkText,
+    /// `GrayText`: disabled text.
     GrayText,
+    /// `SelectedItem`: background of selected items.
     SelectedItem,
+    /// `SelectedItemText`: text of selected items.
     SelectedItemText,
+    /// `AccentColor`: background of accented user interface controls.
     AccentColor,
+    /// `AccentColorText`: text of accented user interface controls.
     AccentColorText,
+    /// `ActiveBorder`: deprecated active window border; it computes as `ButtonBorder`.
     ActiveBorder,
+    /// `ActiveCaption`: deprecated active window caption; it computes as `Canvas`.
     ActiveCaption,
+    /// `AppWorkspace`: deprecated multiple-document-interface background; it computes as `Canvas`.
     AppWorkspace,
+    /// `Background`: deprecated desktop background; it computes as `Canvas`.
     Background,
+    /// `ButtonHighlight`: deprecated border facing the light on one-layer 3-D elements; it computes as `ButtonFace`.
     ButtonHighlight,
+    /// `ButtonShadow`: deprecated border away from the light on one-layer 3-D elements; it computes as `ButtonFace`.
     ButtonShadow,
+    /// `CaptionText`: deprecated text in captions, size boxes and scrollbar arrow boxes; it computes as `CanvasText`.
     CaptionText,
+    /// `InactiveBorder`: deprecated inactive window border; it computes as `ButtonBorder`.
     InactiveBorder,
+    /// `InactiveCaption`: deprecated inactive window caption; it computes as `Canvas`.
     InactiveCaption,
+    /// `InactiveCaptionText`: deprecated text in an inactive caption; it computes as `GrayText`.
     InactiveCaptionText,
+    /// `InfoBackground`: deprecated tooltip background; it computes as `Canvas`.
     InfoBackground,
+    /// `InfoText`: deprecated tooltip text; it computes as `CanvasText`.
     InfoText,
+    /// `Menu`: deprecated menu background; it computes as `Canvas`.
     Menu,
+    /// `MenuText`: deprecated text in menus; it computes as `CanvasText`.
     MenuText,
+    /// `Scrollbar`: deprecated scroll bar gray area; it computes as `Canvas`.
     Scrollbar,
+    /// `ThreeDDarkShadow`: deprecated darker outer border away from the light on two-layer 3-D elements; it computes as `ButtonBorder`.
     ThreeDDarkShadow,
+    /// `ThreeDFace`: deprecated face background of two-layer 3-D elements; it computes as `ButtonFace`.
     ThreeDFace,
+    /// `ThreeDHighlight`: deprecated lighter outer border facing the light on two-layer 3-D elements; it computes as `ButtonBorder`.
     ThreeDHighlight,
+    /// `ThreeDLightShadow`: deprecated darker inner border facing the light on two-layer 3-D elements; it computes as `ButtonBorder`.
     ThreeDLightShadow,
+    /// `ThreeDShadow`: deprecated lighter inner border away from the light on two-layer 3-D elements; it computes as `ButtonBorder`.
     ThreeDShadow,
+    /// `Window`: deprecated window background; it computes as `Canvas`.
     Window,
+    /// `WindowFrame`: deprecated window frame; it computes as `ButtonBorder`.
     WindowFrame,
+    /// `WindowText`: deprecated text in windows; it computes as `CanvasText`.
     WindowText,
 }
 
+/// The punctuation form in which a color function was authored.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssColorSyntax {
+    /// The comma-separated legacy form, such as `rgb(0, 0, 0)`; each color constructor rejects the component combinations this form does not admit.
     Legacy,
+    /// The space-separated modern form, with `/` before alpha, such as `rgb(0 0 0 / 50%)`.
     Modern,
 }
 
+/// One authored color component: a scalar or a calculation, retained without evaluation.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssColorComponent {
+    /// The missing component `none`.
     None,
+    /// A `<number>` literal.
     Number(CssColorNumberLiteral),
+    /// A `<percentage>` literal.
     Percentage(CssColorPercentageLiteral),
+    /// A math function resolving to a `<number>`.
     NumberCalculation(CssCalculation<CssNumber>),
+    /// A math function resolving to a `<number>` whose percentage basis remains contextual.
     HintedNumberCalculation(CssCalculation<CssHintedNumber>),
+    /// A math function resolving to a `<percentage>`.
     PercentageCalculation(CssCalculation<CssPercentage>),
 }
 
@@ -784,13 +881,19 @@ impl CssColorComponent {
     }
 }
 
+/// One authored hue: a scalar or a calculation, retained without evaluation.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssColorHue {
+    /// The missing component `none`.
     None,
+    /// A unitless `<number>` hue, in degrees.
     Number(CssColorNumberLiteral),
+    /// An `<angle>` literal.
     Angle(CssNumericLiteral<CssAngle>),
+    /// A math function resolving to a `<number>`.
     NumberCalculation(CssCalculation<CssNumber>),
+    /// A math function resolving to an `<angle>`.
     AngleCalculation(CssCalculation<CssAngle>),
 }
 
@@ -800,6 +903,7 @@ impl CssColorHue {
     }
 }
 
+/// A checked authored `rgb()` or `rgba()` color with three channels, retaining its punctuation form.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssRgbColor {
     syntax: CssColorSyntax,
@@ -808,6 +912,13 @@ pub struct CssRgbColor {
 }
 
 impl CssRgbColor {
+    /// Checks the syntax and component combination, retaining every supplied component.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the legacy syntax is combined with `none` or with channels of different kinds
+    /// (number or percentage), when a component expression is not valid in a pure context, or when the
+    /// composed color exceeds the structural nesting limit.
     pub fn try_new(
         syntax: CssColorSyntax,
         channels: [CssColorComponent; 3],
@@ -830,11 +941,13 @@ impl CssRgbColor {
         })
     }
 
+    /// Returns the retained authored punctuation form.
     #[must_use]
     pub const fn syntax(&self) -> CssColorSyntax {
         self.syntax
     }
 
+    /// Borrows the red, green and blue channels, in that order.
     #[must_use]
     pub const fn channels(&self) -> &[CssColorComponent; 3] {
         &self.channels
@@ -862,6 +975,7 @@ impl CssRgbColor {
     }
 }
 
+/// A checked authored `hsl()` or `hsla()` color, retaining its punctuation form.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssHslColor {
     syntax: CssColorSyntax,
@@ -872,6 +986,13 @@ pub struct CssHslColor {
 }
 
 impl CssHslColor {
+    /// Checks the syntax and component combination, retaining every supplied component.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the legacy syntax is combined with a `none` hue or alpha, or with a saturation
+    /// or lightness that is not a percentage, when a component expression is not valid in a pure context, or
+    /// when the composed color exceeds the structural nesting limit.
     pub fn try_new(
         syntax: CssColorSyntax,
         hue: CssColorHue,
@@ -911,21 +1032,25 @@ impl CssHslColor {
         })
     }
 
+    /// Returns the retained authored punctuation form.
     #[must_use]
     pub const fn syntax(&self) -> CssColorSyntax {
         self.syntax
     }
 
+    /// Borrows the authored hue.
     #[must_use]
     pub const fn hue(&self) -> &CssColorHue {
         &self.hue
     }
 
+    /// Borrows the authored saturation.
     #[must_use]
     pub const fn saturation(&self) -> &CssColorComponent {
         &self.saturation
     }
 
+    /// Borrows the authored lightness.
     #[must_use]
     pub const fn lightness(&self) -> &CssColorComponent {
         &self.lightness
@@ -953,6 +1078,7 @@ impl CssHslColor {
     }
 }
 
+/// A checked authored `hwb()` color.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssHwbColor {
     hue: CssColorHue,
@@ -962,6 +1088,12 @@ pub struct CssHwbColor {
 }
 
 impl CssHwbColor {
+    /// Retains every supplied component after checking the composed color.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a component expression is not valid in a pure context or when the composed
+    /// color exceeds the structural nesting limit.
     pub fn try_new(
         hue: CssColorHue,
         whiteness: CssColorComponent,
@@ -989,16 +1121,19 @@ impl CssHwbColor {
         })
     }
 
+    /// Borrows the authored hue.
     #[must_use]
     pub const fn hue(&self) -> &CssColorHue {
         &self.hue
     }
 
+    /// Borrows the authored whiteness.
     #[must_use]
     pub const fn whiteness(&self) -> &CssColorComponent {
         &self.whiteness
     }
 
+    /// Borrows the authored blackness.
     #[must_use]
     pub const fn blackness(&self) -> &CssColorComponent {
         &self.blackness
@@ -1036,6 +1171,12 @@ pub struct CssLabColor {
 }
 
 impl CssLabColor {
+    /// Retains every supplied component after checking the composed color.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a component expression is not valid in a pure context or when the composed
+    /// color exceeds the structural nesting limit.
     pub fn try_new(
         lightness: CssColorComponent,
         a: CssColorComponent,
@@ -1062,16 +1203,19 @@ impl CssLabColor {
         })
     }
 
+    /// Borrows the authored lightness.
     #[must_use]
     pub const fn lightness(&self) -> &CssColorComponent {
         &self.lightness
     }
 
+    /// Borrows the authored `a` axis component.
     #[must_use]
     pub const fn a(&self) -> &CssColorComponent {
         &self.a
     }
 
+    /// Borrows the authored `b` axis component.
     #[must_use]
     pub const fn b(&self) -> &CssColorComponent {
         &self.b
@@ -1109,6 +1253,12 @@ pub struct CssLchColor {
 }
 
 impl CssLchColor {
+    /// Retains every supplied component after checking the composed color.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a component expression is not valid in a pure context or when the composed
+    /// color exceeds the structural nesting limit.
     pub fn try_new(
         lightness: CssColorComponent,
         chroma: CssColorComponent,
@@ -1136,16 +1286,19 @@ impl CssLchColor {
         })
     }
 
+    /// Borrows the authored lightness.
     #[must_use]
     pub const fn lightness(&self) -> &CssColorComponent {
         &self.lightness
     }
 
+    /// Borrows the authored chroma.
     #[must_use]
     pub const fn chroma(&self) -> &CssColorComponent {
         &self.chroma
     }
 
+    /// Borrows the authored hue.
     #[must_use]
     pub const fn hue(&self) -> &CssColorHue {
         &self.hue
@@ -1177,6 +1330,9 @@ impl CssLchColor {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssColorProfileComponentName(String);
 impl CssColorProfileComponentName {
+    /// Checks `decoded` as a custom-profile component name and retains it unchanged.
+    ///
+    /// Returns `None` when `decoded` is `none` (ASCII case-insensitively) or is not a valid identifier.
     pub fn try_new(decoded: impl Into<String>) -> Option<Self> {
         let decoded = decoded.into();
         if decoded.eq_ignore_ascii_case("none") {
@@ -1185,6 +1341,7 @@ impl CssColorProfileComponentName {
         crate::component::CssComponentValue::try_ident(decoded.clone()).ok()?;
         Some(Self(decoded))
     }
+    /// Returns the decoded component name.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -1376,6 +1533,12 @@ pub struct CssCustomColor {
     nesting_depth: u32,
 }
 impl CssCustomColor {
+    /// Checks that at least one channel is supplied and that the composed color is within the structural limits.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `channels` is empty, when a component expression is not valid in a pure
+    /// context, or when the composed color exceeds the structural nesting limit.
     pub fn try_new(
         profile: CssColorProfileName,
         channels: Vec<CssColorComponent>,
@@ -1394,12 +1557,15 @@ impl CssCustomColor {
             nesting_depth,
         })
     }
+    /// Borrows the custom color profile name.
     pub const fn profile(&self) -> &CssColorProfileName {
         &self.profile
     }
+    /// Borrows the authored channels, in authored order.
     pub fn channels(&self) -> &[CssColorComponent] {
         &self.channels
     }
+    /// Borrows the authored alpha, when present; omission remains distinct from `none`.
     pub const fn alpha(&self) -> Option<&CssColorComponent> {
         self.alpha.as_ref()
     }
@@ -1414,6 +1580,11 @@ pub struct CssRelativeCustomColor {
     nesting_depth: u32,
 }
 impl CssRelativeCustomColor {
+    /// Checks that at least one channel expression is supplied and that the composed color is within the structural limits.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `channels` is empty or when the composed color exceeds the structural nesting limit.
     pub fn try_new(
         source: CssColor,
         profile: CssColorProfileName,
@@ -1440,15 +1611,19 @@ impl CssRelativeCustomColor {
             nesting_depth,
         })
     }
+    /// Borrows the source (origin) color.
     pub const fn source(&self) -> &CssColor {
         &self.source
     }
+    /// Borrows the custom color profile name.
     pub const fn profile(&self) -> &CssColorProfileName {
         &self.profile
     }
+    /// Borrows the authored channel expressions, in authored order.
     pub fn channels(&self) -> &[crate::color::CssProfileColorExpression] {
         &self.channels
     }
+    /// Borrows the authored alpha expression, when present; omission remains distinct from `none`.
     pub const fn alpha(&self) -> Option<&crate::color::CssProfileColorExpression> {
         self.alpha.as_ref()
     }
@@ -1461,6 +1636,12 @@ pub struct CssAlphaColor {
     nesting_depth: u32,
 }
 impl CssAlphaColor {
+    /// Checks that `alpha` is an alpha-slot expression of the alpha environment and that the composed color is within the structural limits.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `alpha` was authored for another environment or result domain, or when the
+    /// composed color exceeds the structural nesting limit.
     pub fn try_new(
         source: CssColor,
         alpha: Option<CssRelativeColorExpression>,
@@ -1487,9 +1668,11 @@ impl CssAlphaColor {
             nesting_depth,
         })
     }
+    /// Borrows the source (origin) color.
     pub const fn source(&self) -> &CssColor {
         &self.source
     }
+    /// Borrows the authored alpha expression, when present; omission remains distinct from `none`.
     pub const fn alpha(&self) -> Option<&CssRelativeColorExpression> {
         self.alpha.as_ref()
     }
@@ -1498,20 +1681,34 @@ impl CssAlphaColor {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAbsoluteColorEligibility {
+    /// The color needs no external context and no custom color profile.
     Eligible,
+    /// The color depends on a custom color profile.
     ProfileDependent,
+    /// The color depends on external context named by the exclusion.
     Contextual(CssAbsoluteColorExclusion),
 }
+/// The external context that excludes a color from absolute eligibility.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAbsoluteColorExclusion {
+    /// The color contains `currentcolor`.
     CurrentColor,
+    /// The color contains a system color.
     SystemColor,
+    /// The color contains `light-dark()`.
     LightDark,
+    /// The color contains `contrast-color()`.
     ContrastColor,
+    /// The color contains `device-cmyk()`.
     DeviceCmyk,
 }
 impl CssColor {
+    /// Classifies the whole authored color graph.
+    ///
+    /// It is contextual when the graph contains `currentcolor`, a system color, `light-dark()`,
+    /// `contrast-color()` or `device-cmyk()`; otherwise profile-dependent when it uses a custom
+    /// color profile; otherwise eligible.
     pub fn absolute_eligibility(&self) -> CssAbsoluteColorEligibility {
         use CssAbsoluteColorEligibility as E;
         use CssAbsoluteColorExclusion as X;
@@ -1571,15 +1768,25 @@ pub struct CssPredefinedColor {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssRelativeColorEnvironment {
+    /// The `alpha(from ...)` environment, which exposes only `alpha`.
     Alpha,
+    /// The `rgb()` environment, which exposes `r`, `g`, `b` and `alpha`.
     Rgb,
+    /// The `hsl()` environment, which exposes `h`, `s`, `l` and `alpha`.
     Hsl,
+    /// The `hwb()` environment, which exposes `h`, `w`, `b` and `alpha`.
     Hwb,
+    /// The `lab()` environment, which exposes `l`, `a`, `b` and `alpha`.
     Lab,
+    /// The `lch()` environment, which exposes `l`, `c`, `h` and `alpha`.
     Lch,
+    /// The `oklab()` environment, which exposes `l`, `a`, `b` and `alpha`.
     Oklab,
+    /// The `oklch()` environment, which exposes `l`, `c`, `h` and `alpha`.
     Oklch,
+    /// The `color()` environment of an RGB-like predefined space, which exposes `r`, `g`, `b` and `alpha`.
     PredefinedRgb(PredefinedColorSpace),
+    /// The `color()` environment of an XYZ predefined space, which exposes `x`, `y`, `z` and `alpha`.
     Xyz(PredefinedColorSpace),
 }
 impl CssRelativeColorEnvironment {
@@ -1604,8 +1811,11 @@ impl CssRelativeColorEnvironment {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssRelativeColorResultDomain {
+    /// A slot that takes a number or a percentage.
     NumberPercentage,
+    /// A hue slot, which takes a number or an angle.
     Hue,
+    /// The alpha slot.
     Alpha,
 }
 
@@ -1613,18 +1823,31 @@ pub enum CssRelativeColorResultDomain {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssRelativeColorChannel {
+    /// `r`: the red channel.
     R,
+    /// `g`: the green channel.
     G,
+    /// `b`: the blue channel, the blackness of `hwb()`, or the `b` axis of the Lab family, according to the environment.
     B,
+    /// `h`: the hue.
     H,
+    /// `s`: the saturation.
     S,
+    /// `l`: the lightness.
     L,
+    /// `w`: the whiteness.
     W,
+    /// `a`: the `a` axis of the Lab family.
     A,
+    /// `c`: the chroma.
     C,
+    /// `x`: the X coordinate of an XYZ space.
     X,
+    /// `y`: the Y coordinate of an XYZ space.
     Y,
+    /// `z`: the Z coordinate of an XYZ space.
     Z,
+    /// `alpha`: the alpha channel.
     Alpha,
 }
 
@@ -1632,11 +1855,17 @@ pub enum CssRelativeColorChannel {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssRelativeColorExpressionValue {
+    /// The missing component `none`.
     None,
+    /// A `<number>` literal.
     Number(CssColorNumberLiteral),
+    /// A `<percentage>` literal.
     Percentage(CssColorPercentageLiteral),
+    /// An `<angle>` literal.
     Angle(CssNumericLiteral<CssAngle>),
+    /// A bare channel keyword of the environment.
     Channel(CssRelativeColorChannel),
+    /// A calculation retained symbolically.
     Calculation(CssRelativeColorCalculation),
 }
 
@@ -1669,16 +1898,19 @@ impl CssRelativeColorCalculation {
         }
     }
 
+    /// Returns the authored declaration value of the calculation, with its original components.
     #[must_use]
     pub const fn authored(&self) -> &CssAuthoredDeclarationValue {
         &self.data.authored
     }
 
+    /// Returns the result type of the calculation.
     #[must_use]
     pub const fn result_type(&self) -> CssCalculationType {
         self.data.result_type
     }
 
+    /// Returns the relative color channels the calculation references.
     #[must_use]
     pub fn references(&self) -> &[CssRelativeColorChannel] {
         &self.data.references
@@ -1714,20 +1946,24 @@ impl CssRelativeColorExpression {
         }
     }
 
+    /// Returns the origin-channel environment the expression was checked against.
     #[must_use]
     pub const fn environment(&self) -> CssRelativeColorEnvironment {
         self.environment
     }
 
+    /// Returns the result slot the expression was checked for.
     #[must_use]
     pub const fn result_domain(&self) -> CssRelativeColorResultDomain {
         self.result_domain
     }
 
+    /// Returns the checked expression value.
     #[must_use]
     pub const fn value(&self) -> &CssRelativeColorExpressionValue {
         &self.value
     }
+    /// Returns the origin of the authored expression.
     #[must_use]
     pub const fn origin(&self) -> &crate::component::CssValueOrigin {
         &self.origin
@@ -1745,6 +1981,12 @@ pub struct CssRelativeColor {
 }
 
 impl CssRelativeColor {
+    /// Checks that every channel expression and the alpha expression match the environment and slot domains of `function`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a channel or alpha expression was authored for another environment or result
+    /// domain, or when the composed color exceeds the structural nesting limit.
     pub fn try_new(
         function: CssRelativeColorFunction,
         source: CssColor,
@@ -1788,26 +2030,31 @@ impl CssRelativeColor {
         })
     }
 
+    /// Returns the relative color function.
     #[must_use]
     pub const fn function(&self) -> &CssRelativeColorFunction {
         &self.function
     }
 
+    /// Returns the origin-channel environment of the function.
     #[must_use]
     pub const fn environment(&self) -> CssRelativeColorEnvironment {
         self.environment
     }
 
+    /// Borrows the source (origin) color.
     #[must_use]
     pub const fn source(&self) -> &CssColor {
         &self.source
     }
 
+    /// Borrows the three channel result expressions, in the function's channel order.
     #[must_use]
     pub const fn channels(&self) -> &[CssRelativeColorExpression; 3] {
         &self.channels
     }
 
+    /// Borrows the alpha result expression, when present; omission remains distinct from `none`.
     #[must_use]
     pub const fn alpha(&self) -> Option<&CssRelativeColorExpression> {
         self.alpha.as_ref()
@@ -1815,6 +2062,12 @@ impl CssRelativeColor {
 }
 
 impl CssPredefinedColor {
+    /// Checks the channel and alpha components and retains them with the predefined color space.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a component expression is not valid in a pure context or when the composed
+    /// color exceeds the structural nesting limit.
     pub fn try_new(
         color_space: PredefinedColorSpace,
         channels: [CssColorComponent; 3],
@@ -1828,11 +2081,13 @@ impl CssPredefinedColor {
         })
     }
 
+    /// Returns the predefined color space of the `color()` value.
     #[must_use]
     pub const fn color_space(&self) -> PredefinedColorSpace {
         self.color_space
     }
 
+    /// Borrows the three authored channels, in the order of the color space.
     #[must_use]
     pub const fn channels(&self) -> &[CssColorComponent; 3] {
         &self.channels
@@ -1882,6 +2137,7 @@ impl CssColorMixPercentage {
         }
         Ok(Self { literal })
     }
+    /// Borrows the exact checked percentage literal.
     #[must_use]
     pub const fn literal(&self) -> &CssColorPercentageLiteral {
         &self.literal
@@ -1893,6 +2149,9 @@ impl CssColorMixPercentage {
 pub struct CssColorProfileName(String);
 
 impl CssColorProfileName {
+    /// Checks `decoded` as a custom color profile name, case-sensitively.
+    ///
+    /// Returns `None` unless `decoded` starts with `--` and is a valid identifier.
     pub fn try_new(decoded: impl Into<String>) -> Option<Self> {
         let decoded = decoded.into();
         if !decoded.starts_with("--") {
@@ -1901,6 +2160,7 @@ impl CssColorProfileName {
         crate::component::CssComponentValue::try_ident(decoded.clone()).ok()?;
         Some(Self(decoded))
     }
+    /// Returns the decoded name, including its leading `--`.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -1921,10 +2181,12 @@ impl CssColorInterpolation {
     pub const fn from_predefined(method: CssColorInterpolationMethod) -> Self {
         Self(ColorInterpolation::Predefined(method))
     }
+    /// Wraps a symbolic custom color profile name as the interpolation space.
     #[must_use]
     pub fn custom(name: CssColorProfileName) -> Self {
         Self(ColorInterpolation::Custom(name))
     }
+    /// Returns the predefined interpolation method, or `None` for a custom profile.
     #[must_use]
     pub fn predefined(&self) -> Option<CssColorInterpolationMethod> {
         match &self.0 {
@@ -1932,6 +2194,7 @@ impl CssColorInterpolation {
             ColorInterpolation::Custom(_) => None,
         }
     }
+    /// Returns the custom color profile name, or `None` for a predefined method.
     #[must_use]
     pub fn custom_profile(&self) -> Option<&CssColorProfileName> {
         match &self.0 {
@@ -1950,10 +2213,16 @@ enum ColorMixWeight {
     Calculation(CssCalculation<CssPercentage>),
 }
 impl CssColorMixWeight {
+    /// Wraps a checked literal percentage as a weight.
     #[must_use]
     pub fn literal(value: CssColorMixPercentage) -> Self {
         Self(ColorMixWeight::Literal(value))
     }
+    /// Wraps a percentage calculation as a weight.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `value` is not exactly one math function, ignoring whitespace and comments.
     pub fn try_calculation(
         value: CssCalculation<CssPercentage>,
     ) -> Result<Self, crate::component::CssComponentValueError> {
@@ -1975,6 +2244,7 @@ impl CssColorMixWeight {
         }
         Ok(Self(ColorMixWeight::Calculation(value)))
     }
+    /// Returns the literal weight, or `None` for a calculated weight.
     #[must_use]
     pub fn literal_value(&self) -> Option<&CssColorMixPercentage> {
         match &self.0 {
@@ -1982,6 +2252,7 @@ impl CssColorMixWeight {
             ColorMixWeight::Calculation(_) => None,
         }
     }
+    /// Returns the calculated weight, or `None` for a literal weight.
     #[must_use]
     pub fn calculation(&self) -> Option<&CssCalculation<CssPercentage>> {
         match &self.0 {
@@ -1998,6 +2269,7 @@ pub struct CssColorMixComponent {
     weight: Option<CssColorMixWeight>,
 }
 impl CssColorMixComponent {
+    /// Pairs a color with its optional weight; omission remains distinct from an explicit weight.
     #[must_use]
     pub fn new(color: CssColor, weight: Option<CssColorMixWeight>) -> Self {
         Self {
@@ -2005,10 +2277,12 @@ impl CssColorMixComponent {
             weight,
         }
     }
+    /// Borrows the authored color.
     #[must_use]
     pub const fn color(&self) -> &CssColor {
         &self.color
     }
+    /// Borrows the authored weight, when present.
     #[must_use]
     pub const fn weight(&self) -> Option<&CssColorMixWeight> {
         self.weight.as_ref()
@@ -2023,6 +2297,12 @@ pub struct CssColorMix {
     nesting_depth: u32,
 }
 impl CssColorMix {
+    /// Checks that at least one component is supplied and that the composed color is within the structural limits.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `components` is empty or when the composed color exceeds the structural
+    /// nesting limit.
     pub fn try_new(
         interpolation: Option<CssColorInterpolation>,
         components: Vec<CssColorMixComponent>,
@@ -2039,10 +2319,12 @@ impl CssColorMix {
             nesting_depth,
         })
     }
+    /// Returns the explicit interpolation (`in <space>`), or `None` when it was omitted.
     #[must_use]
     pub const fn interpolation(&self) -> Option<&CssColorInterpolation> {
         self.interpolation.as_ref()
     }
+    /// Borrows the authored components, in authored order.
     #[must_use]
     pub fn components(&self) -> &[CssColorMixComponent] {
         &self.components
@@ -2204,11 +2486,13 @@ impl CssColorInterpolationMethod {
         Ok(Self { space, hue })
     }
 
+    /// Returns the interpolation color space.
     #[must_use]
     pub const fn space(&self) -> ColorSpace {
         self.space
     }
 
+    /// Returns the authored hue strategy, or `None` when it was omitted.
     #[must_use]
     pub const fn hue(&self) -> Option<HueInterpolation> {
         self.hue
@@ -2231,20 +2515,30 @@ impl CssColorInterpolationMethod {
     }
 }
 
+/// The color function of a relative color, which fixes its origin environment and channel domains.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssRelativeColorFunction {
+    /// `rgb()`.
     Rgb,
+    /// `hsl()`.
     Hsl,
+    /// `hwb()`.
     Hwb,
+    /// `lab()`.
     Lab,
+    /// `lch()`.
     Lch,
+    /// `oklab()`.
     Oklab,
+    /// `oklch()`.
     Oklch,
+    /// `color()` in the given predefined color space.
     Color(PredefinedColorSpace),
 }
 
 impl CssRelativeColorFunction {
+    /// Returns the origin-channel environment and the result domain of each of the three channels.
     pub const fn signature(
         self,
     ) -> (
@@ -2267,6 +2561,7 @@ impl CssRelativeColorFunction {
             Self::Color(space) => (E::PredefinedRgb(space), [N; 3]),
         }
     }
+    /// Returns the number of non-alpha channels, which is three for every function.
     #[must_use]
     pub const fn component_count(self) -> usize {
         match self {

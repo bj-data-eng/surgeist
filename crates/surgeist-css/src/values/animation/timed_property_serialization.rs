@@ -220,7 +220,7 @@ fn omitted(
 
 /// CSSOM's shortest serialization over Transitions 1 §2.5: an explicit initial
 /// (`all`, `0s`, `ease`, `0s`) is omitted when omission keeps the meaning. The
-/// first <time> is the duration, so a duration stays whenever a delay follows,
+/// first `<time>` is the duration, so a duration stays whenever a delay follows,
 /// and a property spelled like an easing keyword keeps an easing before it.
 /// An item whose components are all initial keeps its first present component.
 fn transition(writer: &mut SpecifiedRuleWriter, value: &CssTransition) -> Result<()> {

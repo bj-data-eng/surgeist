@@ -17,8 +17,11 @@ type Result<T> = std::result::Result<T, CssSerializationError>;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssHyphens {
+    /// `none`: words are not hyphenated, even at explicit hyphenation opportunities.
     None,
+    /// `manual`: words are hyphenated only at characters that explicitly suggest hyphenation opportunities.
     Manual,
+    /// `auto`: words may also be hyphenated at opportunities the user agent determines automatically for the content language.
     Auto,
 }
 
@@ -42,7 +45,7 @@ impl CssHyphenateString {
             component: Box::new(component),
         })
     }
-    /// Constructs a decoded string through the shared token owner; NUL is rejected.
+    /// Constructs a decoded string through the shared token owner; U+0000, or text that does not tokenize back to the same string, is rejected.
     pub fn try_new(value: impl Into<String>) -> std::result::Result<Self, CssComponentValueError> {
         Ok(Self {
             component: Box::new(CssComponentValue::try_string(value)?),
@@ -68,7 +71,9 @@ impl CssHyphenateString {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssHyphenateCharacter {
+    /// `auto`: the user agent picks a hyphenation string from the content language's typographic conventions.
     Auto,
+    /// An authored `<string>` used as the hyphenation character.
     String(CssHyphenateString),
 }
 
@@ -76,7 +81,9 @@ pub enum CssHyphenateCharacter {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssHyphenateLimitCharsComponent {
+    /// `auto`: the user agent chooses the count.
     Auto,
+    /// A non-negative `<integer>` count; it may be a deferred calculation.
     Integer(CssNumeric<CssInteger, CssNonNegative>),
 }
 /// One to three authored slots; an after slot cannot exist without a before slot.
@@ -140,17 +147,24 @@ impl CssHyphenateLimitChars {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssHyphenateLimitLines {
+    /// `no-limit`: consecutive hyphenated lines are not limited.
     NoLimit,
+    /// A non-negative `<integer>` maximum number of consecutive hyphenated lines; it may be a deferred calculation.
     Integer(CssNumeric<CssInteger, CssNonNegative>),
 }
 /// Authored restrictions on hyphenation of the last line.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssHyphenateLimitLast {
+    /// `none`: no restrictions are imposed.
     None,
+    /// `always`: the last full line of the element, or the last line before any column, page or spread break inside it, should not be hyphenated.
     Always,
+    /// `column`: the last line before any column, page or spread break inside the element should not be hyphenated.
     Column,
+    /// `page`: the last line before any page or spread break inside the element should not be hyphenated.
     Page,
+    /// `spread`: the last line before any spread break inside the element should not be hyphenated.
     Spread,
 }
 
@@ -158,11 +172,17 @@ pub enum CssHyphenateLimitLast {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextJustifyBase {
+    /// `auto`: the user agent chooses the justification algorithm.
     Auto,
+    /// `none`: justification is disabled; there are no justification opportunities.
     None,
+    /// `inter-word`: justification adjusts spacing at word separators only.
     InterWord,
+    /// `inter-character`: justification adjusts spacing between adjacent typographic character units.
     InterCharacter,
+    /// `ruby`: as `auto`, except that justification opportunities are disabled at word separators and between Bopomofo characters.
     Ruby,
+    /// `distribute`: a legacy alias for `inter-character`, kept as authored.
     Distribute,
 }
 /// Nonempty authored justification roles, retaining an omitted base.
@@ -202,11 +222,17 @@ impl CssTextJustify {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextGroupAlign {
+    /// `none`: text alignment happens normally; group alignment is not performed.
     None,
+    /// `start`: lines are group-aligned to the inline-start side by padding the inline-end side.
     Start,
+    /// `end`: lines are group-aligned to the inline-end side by padding the inline-start side.
     End,
+    /// `left`: lines are group-aligned to the line-left side by padding the line-right side.
     Left,
+    /// `right`: lines are group-aligned to the line-right side by padding the line-left side.
     Right,
+    /// `center`: lines are group-aligned to the center by padding both sides of each line box, half the spacing to each side.
     Center,
 }
 
@@ -214,7 +240,9 @@ pub enum CssTextGroupAlign {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAutospaceMode {
+    /// `insert`: the specified spacing is inserted only where no space character of any kind (Unicode general category `Z`) is already present.
     Insert,
+    /// `replace`: the specified spacing is inserted even where a U+0020 space exists, and that space is removed; other space characters suppress the spacing, as for `insert`.
     Replace,
 }
 /// Nonempty authored character-class spacing flags and optional insertion mode.
@@ -273,33 +301,46 @@ impl CssAutospaceValues {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAutospace {
+    /// `no-autospace`: no automatic space is inserted.
     NoAutospace,
+    /// One or more of `ideograph-alpha`, `ideograph-numeric` and `punctuation`, with an optional `insert` or `replace` mode.
     Spacing(CssAutospaceValues),
 }
 /// The whole authored autospace longhand.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextAutospace {
+    /// `normal`: the same behavior as `ideograph-alpha ideograph-numeric`.
     Normal,
+    /// `auto`: the user agent chooses the spacing.
     Auto,
+    /// An explicit `<autospace>` value.
     Autospace(CssAutospace),
 }
 /// The six-token `<spacing-trim>` constituent, excluding whole-longhand `auto`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssSpacingTrim {
+    /// `space-all`: all fullwidth punctuation is set with full-width (spaced) glyphs.
     SpaceAll,
+    /// `normal`: fullwidth opening punctuation is spaced at the start of each line; fullwidth closing punctuation is set flush at the end of a line when it would not otherwise fit, and spaced otherwise.
     Normal,
+    /// `space-first`: as `normal`, except that fullwidth opening punctuation is spaced on the first line of the block container and after each forced line break.
     SpaceFirst,
+    /// `trim-start`: fullwidth opening punctuation is set half-width (flush) at the start of each line; otherwise as `normal`.
     TrimStart,
+    /// `trim-both`: fullwidth opening and closing punctuation are set half-width (flush) at the start and end of each line, and adjacent punctuation is collapsed.
     TrimBoth,
+    /// `trim-all`: fullwidth opening, closing and middle dot punctuation are set with half-width glyphs regardless of position.
     TrimAll,
 }
 /// Whole authored punctuation trimming, including contextual `auto`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextSpacingTrim {
+    /// An explicit `<spacing-trim>` value.
     Trim(CssSpacingTrim),
+    /// `auto`: the user agent chooses the trimming.
     Auto,
 }
 /// Nonempty shorthand constituents; whole-member omissions remain explicit.
@@ -334,15 +375,20 @@ impl CssTextSpacingValues {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextSpacing {
+    /// `none`: turns off all text-spacing features: sets `text-spacing-trim` to `space-all` and `text-autospace` to `no-autospace`.
     None,
+    /// `auto`: sets both `text-spacing-trim` and `text-autospace` to `auto`.
     Auto,
+    /// A `<spacing-trim>` and/or `<autospace>` value; an omitted component takes its initial value.
     Components(CssTextSpacingValues),
 }
 /// The mutually exclusive end-hanging role.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssHangingPunctuationEnd {
+    /// `force-end`: a stop or comma at the end of a line hangs.
     ForceEnd,
+    /// `allow-end`: a stop or comma at the end of a line hangs conditionally.
     AllowEnd,
 }
 /// Nonempty first/end/last hanging roles.
@@ -383,7 +429,9 @@ impl CssHangingPunctuationValues {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssHangingPunctuation {
+    /// `none`: no punctuation character hangs.
     None,
+    /// One or more of `first`, `last` and an end role (`force-end` or `allow-end`) that hang punctuation.
     Hang(CssHangingPunctuationValues),
 }
 

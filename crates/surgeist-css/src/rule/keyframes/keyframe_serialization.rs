@@ -169,11 +169,13 @@ impl<'a> CssKeyframeRuleView<'a> {
         })
     }
 
+    /// Returns the borrowed selector list of this keyframe.
     #[must_use]
     pub const fn selectors(&self) -> &'a CssKeyframeSelectorList {
         self.selectors
     }
 
+    /// Returns the borrowed keyframe-domain declaration block of this keyframe.
     #[must_use]
     pub const fn declarations(&self) -> &'a CssSpecifiedDeclarationBlock {
         self.declarations
@@ -233,10 +235,12 @@ impl<'a> CssKeyframesRuleView<'a> {
         view.serialize_cssom(limits)?;
         Ok(view)
     }
+    /// Returns the borrowed checked animation name.
     #[must_use]
     pub const fn name(self) -> &'a crate::rule::keyframes::CssKeyframesName {
         self.name
     }
+    /// Returns the borrowed child keyframes in the supplied order, including duplicates and empty blocks.
     #[must_use]
     pub const fn rules(self) -> &'a [CssKeyframeRuleView<'a>] {
         self.rules

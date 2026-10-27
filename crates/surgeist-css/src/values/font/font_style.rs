@@ -30,9 +30,13 @@ const HALF_PI_DIGITS: &str = concat!(
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontStyleKeyword {
+    /// `normal`: matches a face that is neither italic nor oblique, equivalent to an oblique angle of zero.
     Normal,
+    /// `italic`: matches an italic face, or an oblique face if no italic face exists.
     Italic,
+    /// `left`: matches an italic face with a positive (clockwise) slant, or an oblique face with positive slant if none exists.
     Left,
+    /// `right`: matches an italic face with a negative (counter-clockwise) slant, or an oblique face with negative slant if none exists.
     Right,
 }
 
@@ -83,8 +87,11 @@ impl CssRange<CssAngle> for CssObliqueAngleRange {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontStyle {
+    /// A `normal`, `italic`, `left` or `right` keyword.
     Keyword(CssFontStyleKeyword),
+    /// `oblique` with an optional angle.
     Oblique {
+        /// The authored `<angle [-90deg,90deg]>`, or `None` when it was omitted (an omitted angle represents `14deg`).
         angle: Option<CssNumeric<CssAngle, CssObliqueAngleRange>>,
     },
 }
@@ -170,9 +177,13 @@ crate::serialization::specified_rule_serialization::specified_serialization!(
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFaceStyle {
+    /// `auto`: for font selection the face is treated as if `normal` were chosen, and variation axis values are not clamped.
     Auto,
+    /// A `normal`, `italic`, `left` or `right` keyword.
     Keyword(CssFontStyleKeyword),
+    /// `oblique` with an optional angle range.
     Oblique {
+        /// The authored one- or two-endpoint angle range, or `None` when `oblique` was written alone.
         range: Option<CssFontFaceObliqueRange>,
     },
 }

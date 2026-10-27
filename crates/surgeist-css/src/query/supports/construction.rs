@@ -43,11 +43,13 @@ impl CssSupportsAtRule {
         at_keyword_name(self.component()).expect("checked at-keyword argument")
     }
 
+    /// Returns the origin of the at-keyword argument.
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
         self.component().origin()
     }
 
+    /// Returns the source position of the at-keyword argument, or `None` when its origin was not parsed from source.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         crate::query::media::construction::parsed_position(self.origin())
@@ -302,6 +304,11 @@ impl CssCondition<CssSupportsLeaf> {
         })
     }
 
+    /// Constructs a supports condition from authored component values.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssSupportsConstructionError`] when the components do not form a `<supports-condition>` under `context`, contain an implicitly closed component, or violate `limits`.
     pub fn try_from_components(
         values: CssComponentValues,
         context: &CssNamespaceContext,

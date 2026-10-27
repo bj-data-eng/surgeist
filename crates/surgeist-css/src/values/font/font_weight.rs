@@ -29,8 +29,11 @@ impl CssRange<CssNumber> for CssFontWeightRange {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAbsoluteFontWeight {
+    /// `normal`: the regular weight, equivalent to `400`.
     Normal,
+    /// `bold`: the bold weight, equivalent to `700`.
     Bold,
+    /// A `<number [1,1000]>` weight; it may be a deferred calculation.
     Number(CssNumeric<CssNumber, CssFontWeightRange>),
 }
 
@@ -42,8 +45,11 @@ pub enum CssAbsoluteFontWeight {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontWeight {
+    /// An absolute weight: a keyword or number.
     Absolute(CssAbsoluteFontWeight),
+    /// `bolder`: a weight bolder than the inherited value, chosen when the weight is computed.
     Bolder,
+    /// `lighter`: a weight lighter than the inherited value, chosen when the weight is computed.
     Lighter,
 }
 
@@ -55,9 +61,13 @@ pub enum CssFontWeight {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFaceWeight {
+    /// `auto`: for font selection the face is treated as if `normal` were chosen, and variation axis values are not clamped.
     Auto,
+    /// One or two absolute weights forming the range the face supports.
     Range {
+        /// The first authored weight.
         start: CssAbsoluteFontWeight,
+        /// The second authored weight, or `None` when only one was written (the range then covers only the first).
         end: Option<CssAbsoluteFontWeight>,
     },
 }

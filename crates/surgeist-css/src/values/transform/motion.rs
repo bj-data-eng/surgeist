@@ -64,11 +64,17 @@ impl Error for CssMotionConstructionError {}
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum CssCoordBox {
+    /// `content-box`: the content box.
     ContentBox,
+    /// `padding-box`: the padding box.
     PaddingBox,
+    /// `border-box`: the border box.
     BorderBox,
+    /// `fill-box`: the object bounding box.
     FillBox,
+    /// `stroke-box`: the stroke bounding box.
     StrokeBox,
+    /// `view-box`: the nearest SVG viewport box.
     ViewBox,
 }
 impl CssCoordBox {
@@ -121,13 +127,19 @@ impl TryFrom<CssBoxEdgeKeyword> for CssCoordBox {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssRaySize {
+    /// `closest-side`: the distance from the ray's start to the closest side of the containing block.
     ClosestSide,
+    /// `closest-corner`: the distance from the ray's start to the closest corner of the containing block.
     ClosestCorner,
+    /// `farthest-side`: the distance from the ray's start to the farthest side of the containing block.
     FarthestSide,
+    /// `farthest-corner`: the distance from the ray's start to the farthest corner of the containing block.
     FarthestCorner,
+    /// `sides`: the distance from the ray's start to where the ray meets the containing block's boundary.
     Sides,
 }
 impl CssRaySize {
+    /// Converts one decoded keyword, ASCII case-insensitively, to a ray size; returns `None` for any other keyword.
     #[must_use]
     pub fn from_keyword(keyword: &str) -> Option<Self> {
         Some(match keyword.to_ascii_lowercase().as_str() {
@@ -139,6 +151,7 @@ impl CssRaySize {
             _ => return None,
         })
     }
+    /// Returns the canonical keyword.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -180,18 +193,22 @@ impl CssRay {
             position,
         }
     }
+    /// Returns the authored bearing angle.
     #[must_use]
     pub const fn angle(&self) -> &CssNumeric<CssAngle> {
         &self.angle
     }
+    /// Returns the authored size keyword, or `None` when omitted.
     #[must_use]
     pub const fn size(&self) -> Option<CssRaySize> {
         self.size
     }
+    /// Returns whether the `contain` keyword was authored.
     #[must_use]
     pub const fn contain(&self) -> bool {
         self.contain
     }
+    /// Returns the authored starting position, or `None` when `at <position>` was omitted.
     #[must_use]
     pub const fn position(&self) -> Option<&CssPosition> {
         self.position.as_ref()
@@ -206,8 +223,11 @@ impl CssRay {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssOffsetPathKind {
+    /// A `ray()` function.
     Ray(CssRay),
+    /// A `<url>` referencing an SVG shape element.
     Url(CssUrl),
+    /// A `<basic-shape>` function.
     BasicShape(CssBasicShape),
 }
 
@@ -222,14 +242,17 @@ pub struct CssOffsetPathValue {
     coord_box: Option<CssCoordBox>,
 }
 impl CssOffsetPathValue {
+    /// Creates a path value from a path production and an optional coordinate box.
     #[must_use]
     pub const fn new(path: CssOffsetPathKind, coord_box: Option<CssCoordBox>) -> Self {
         Self { path, coord_box }
     }
+    /// Returns the authored path production.
     #[must_use]
     pub const fn path(&self) -> &CssOffsetPathKind {
         &self.path
     }
+    /// Returns the explicitly authored coordinate box, or `None` when omitted.
     #[must_use]
     pub const fn coord_box(&self) -> Option<CssCoordBox> {
         self.coord_box
@@ -246,8 +269,11 @@ pub(crate) enum OffsetPath {
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssOffsetPathRef<'a> {
+    /// `none`: the element does not have an offset transform.
     None,
+    /// A bare `<coord-box>`.
     CoordBox(CssCoordBox),
+    /// A path production with an optional coordinate box.
     Path(&'a CssOffsetPathValue),
 }
 /// The whole authored offset-path property, including none and box-only branches.
@@ -260,24 +286,28 @@ pub struct CssOffsetPath {
     value: OffsetPath,
 }
 impl CssOffsetPath {
+    /// Creates the `none` value.
     #[must_use]
     pub const fn none() -> Self {
         Self {
             value: OffsetPath::None,
         }
     }
+    /// Creates a value holding only a coordinate box.
     #[must_use]
     pub const fn from_coord_box(value: CssCoordBox) -> Self {
         Self {
             value: OffsetPath::CoordBox(value),
         }
     }
+    /// Creates a value holding a path production with its optional coordinate box.
     #[must_use]
     pub const fn from_path(value: CssOffsetPathValue) -> Self {
         Self {
             value: OffsetPath::Path(value),
         }
     }
+    /// Returns a borrowed view of the branch this value holds.
     #[must_use]
     pub const fn view(&self) -> CssOffsetPathRef<'_> {
         match &self.value {
@@ -296,8 +326,11 @@ impl CssOffsetPath {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssOffsetPosition {
+    /// `normal`: the element has no offset starting position.
     Normal,
+    /// `auto`: the starting position is the top-left corner of the element's own box.
     Auto,
+    /// A `<position>` starting position.
     Position(CssPosition),
 }
 /// The authored offset-anchor, before transform-origin or reference-box resolution.
@@ -308,7 +341,9 @@ pub enum CssOffsetPosition {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssOffsetAnchor {
+    /// `auto`: the anchor point is the one indicated by `transform-origin`.
     Auto,
+    /// A `<position>` anchor point.
     Position(CssPosition),
 }
 /// An explicit authored tangent-rotation modifier; absence stays distinct from auto.
@@ -319,7 +354,10 @@ pub enum CssOffsetAnchor {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssOffsetRotateModifier {
+    /// `auto`: the offset transform's rotation equals the difference between the offset path's
+    /// direction at the offset position and the direction of the positive X axis.
     Auto,
+    /// `reverse`: like `auto`, with an additional 180deg of rotation.
     Reverse,
 }
 /// A nonempty authored modifier/angle combination, without tangent evaluation.
@@ -345,6 +383,7 @@ impl CssOffsetRotate {
         }
         Ok(Self { modifier, angle })
     }
+    /// Creates the value consisting of the `auto` modifier alone.
     #[must_use]
     pub const fn auto() -> Self {
         Self {
@@ -352,10 +391,12 @@ impl CssOffsetRotate {
             angle: None,
         }
     }
+    /// Returns the authored modifier, or `None` when only an angle was authored.
     #[must_use]
     pub const fn modifier(&self) -> Option<CssOffsetRotateModifier> {
         self.modifier
     }
+    /// Returns the authored angle, or `None` when only a modifier was authored.
     #[must_use]
     pub const fn angle(&self) -> Option<&CssNumeric<CssAngle>> {
         self.angle.as_ref()
@@ -402,22 +443,27 @@ impl CssOffset {
             anchor,
         })
     }
+    /// Returns the authored `offset-position`, or `None` when omitted.
     #[must_use]
     pub const fn position(&self) -> Option<&CssOffsetPosition> {
         self.position.as_ref()
     }
+    /// Returns the authored `offset-path`, or `None` when omitted.
     #[must_use]
     pub const fn path(&self) -> Option<&CssOffsetPath> {
         self.path.as_ref()
     }
+    /// Returns the authored `offset-distance`, or `None` when omitted.
     #[must_use]
     pub const fn distance(&self) -> Option<&CssNumeric<CssLengthPercentage>> {
         self.distance.as_ref()
     }
+    /// Returns the authored `offset-rotate`, or `None` when omitted.
     #[must_use]
     pub const fn rotate(&self) -> Option<&CssOffsetRotate> {
         self.rotate.as_ref()
     }
+    /// Returns the authored `offset-anchor`, or `None` when omitted.
     #[must_use]
     pub const fn anchor(&self) -> Option<&CssOffsetAnchor> {
         self.anchor.as_ref()

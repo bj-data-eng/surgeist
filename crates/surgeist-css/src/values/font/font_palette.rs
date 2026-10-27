@@ -14,10 +14,15 @@ use crate::rule::font_palette_values::CssFontPaletteName;
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontPalette {
+    /// `normal`: the font's default palette or default glyph colorisation; user agents should select the first light or dark palette instead when `color-scheme` is set to a value other than `normal`.
     Normal,
+    /// `light`: the first available palette in the font marked as applicable on a light background; behaves as `normal` if none is.
     Light,
+    /// `dark`: the first available palette in the font marked as applicable on a dark background; behaves as `normal` if none is.
     Dark,
+    /// A symbolic `<dashed-ident>` palette name, resolved against `@font-palette-values` downstream.
     Named(CssFontPaletteName),
+    /// A `palette-mix()` function.
     Mix(Box<CssFontPaletteMix>),
 }
 
@@ -29,16 +34,19 @@ pub struct CssFontPaletteMixComponent {
 }
 
 impl CssFontPaletteMixComponent {
+    /// Creates a mix component from a palette and an optional percentage.
     #[must_use]
     pub const fn new(palette: CssFontPalette, weight: Option<CssColorMixWeight>) -> Self {
         Self { palette, weight }
     }
 
+    /// Returns the palette being mixed.
     #[must_use]
     pub const fn palette(&self) -> &CssFontPalette {
         &self.palette
     }
 
+    /// Returns the authored percentage, or `None` when it was omitted.
     #[must_use]
     pub const fn weight(&self) -> Option<&CssColorMixWeight> {
         self.weight.as_ref()
@@ -138,11 +146,13 @@ impl CssFontPaletteMix {
         })
     }
 
+    /// Returns the authored color interpolation method, or `None` when it was omitted.
     #[must_use]
     pub const fn interpolation(&self) -> Option<&CssColorInterpolation> {
         self.interpolation.as_ref()
     }
 
+    /// Returns the mix components in authored order; the slice is never empty.
     #[must_use]
     pub fn components(&self) -> &[CssFontPaletteMixComponent] {
         &self.components

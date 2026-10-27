@@ -127,16 +127,23 @@ impl CssGeneralEnclosed {
     }
 }
 
+/// A comparison operator of a range-context query, as written.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssQueryComparison {
+    /// `<`: less than.
     LessThan,
+    /// `<=`: less than or equal to.
     LessThanOrEqual,
+    /// `=`: equal to.
     Equal,
+    /// `>=`: greater than or equal to.
     GreaterThanOrEqual,
+    /// `>`: greater than.
     GreaterThan,
 }
 
+/// A range-style feature value paired with an optional comparison operator.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssRangeFeature<T> {
     comparison: Option<CssQueryComparison>,
@@ -144,17 +151,20 @@ pub struct CssRangeFeature<T> {
 }
 
 impl<T> CssRangeFeature<T> {
+    /// Returns the comparison operator, or `None` when the feature carries no comparison.
     #[must_use]
     pub const fn comparison(&self) -> Option<CssQueryComparison> {
         self.comparison
     }
 
+    /// Returns the value the feature is compared with.
     #[must_use]
     pub const fn value(&self) -> &T {
         &self.value
     }
 }
 
+/// A nonnegative finite query length, either a number with a length unit or the unitless zero.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CssQueryLength {
     value: CssFiniteNumber,
@@ -162,6 +172,9 @@ pub struct CssQueryLength {
 }
 
 impl CssQueryLength {
+    /// Constructs a length from a value and a unit.
+    ///
+    /// Returns `None` when `value` is negative or is not finite.
     #[must_use]
     pub fn try_new(value: f32, unit: CssLengthUnit) -> Option<Self> {
         if value >= 0.0 {
@@ -183,6 +196,7 @@ impl CssQueryLength {
         }
     }
 
+    /// Returns the numeric value of the length; it is `0` for the unitless zero.
     #[must_use]
     pub const fn value(self) -> CssFiniteNumber {
         self.value

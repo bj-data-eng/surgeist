@@ -90,10 +90,20 @@ pub struct CssSupportsConditionName {
 }
 
 impl CssSupportsConditionName {
+    /// Constructs a name from a decoded identifier, escaping it as necessary.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssSupportsConstructionError`] when `name` is not a valid identifier, or is not a custom `--` extension name.
     pub fn try_new(name: impl Into<String>) -> Result<Self, CssSupportsConstructionError> {
         Self::try_from_component(CssComponentValue::try_ident(name)?)
     }
 
+    /// Constructs a name from an identifier component.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssSupportsConstructionError`] when the component is not an identifier that starts with `--`.
     pub fn try_from_component(
         component: CssComponentValue,
     ) -> Result<Self, CssSupportsConstructionError> {
@@ -110,18 +120,22 @@ impl CssSupportsConditionName {
         })
     }
 
+    /// Returns the decoded name, including its leading `--`.
     pub fn as_str(&self) -> &str {
         &self.name
     }
 
+    /// Returns the original identifier component the name was built from.
     pub const fn component(&self) -> &CssComponentValue {
         &self.component
     }
 
+    /// Returns the origin of the identifier component.
     pub const fn origin(&self) -> &CssValueOrigin {
         self.component.origin()
     }
 
+    /// Returns the source position of the identifier, or `None` when its origin was not parsed from source.
     pub const fn position(&self) -> Option<CssSourcePosition> {
         crate::query::media::construction::parsed_position(self.origin())
     }
@@ -140,28 +154,34 @@ pub struct CssSupportsTestDeclaration {
 }
 
 impl CssSupportsTestDeclaration {
+    /// Returns the property name text as authored.
     pub fn property(&self) -> &str {
         &self.name
     }
 
+    /// Returns the component holding the property name.
     pub fn property_component(&self) -> &CssComponentValue {
         &self.components[self.property_index]
     }
 
+    /// Returns the components of the declaration value, without the property name, colon or importance.
     pub fn value_components(&self) -> &[CssComponentValue] {
         &self.components[self.value_range.clone()]
     }
 
+    /// Returns all components of the declaration, including the property name and any importance.
     pub fn components(&self) -> &[CssComponentValue] {
         &self.components
     }
 
+    /// Returns the `!important` components, or `None` when the declaration has no importance.
     pub fn importance_components(&self) -> Option<&[CssComponentValue]> {
         self.importance_range
             .as_ref()
             .map(|range| &self.components[range.clone()])
     }
 
+    /// Returns [`CssImportance::Important`] when the declaration carries `!important`, and [`CssImportance::Normal`] otherwise.
     pub fn importance(&self) -> CssImportance {
         if self.importance_range.is_some() {
             CssImportance::Important
@@ -170,10 +190,12 @@ impl CssSupportsTestDeclaration {
         }
     }
 
+    /// Returns the origin of the property-name component.
     pub fn origin(&self) -> &CssValueOrigin {
         self.property_component().origin()
     }
 
+    /// Returns the source position of the property name, or `None` when its origin was not parsed from source.
     pub fn position(&self) -> Option<CssSourcePosition> {
         crate::query::media::construction::parsed_position(self.origin())
     }
@@ -186,6 +208,7 @@ pub struct CssSupportsTestDeclarations {
 }
 
 impl CssSupportsTestDeclarations {
+    /// Returns the declarations of the run in authored order.
     pub fn declarations(&self) -> &[CssSupportsTestDeclaration] {
         &self.declarations
     }
@@ -224,14 +247,17 @@ impl CssSupportsQualifiedRuleTest {
         }
     }
 
+    /// Returns the prelude of the qualified rule as authored component values.
     pub fn prelude(&self) -> &CssComponentValues {
         &self.data.prelude
     }
 
+    /// Returns the test body inside the rule's braces.
     pub fn body(&self) -> &CssSupportsTestBody {
         &self.data.body
     }
 
+    /// Returns the origin of the first non-trivia prelude component, or of the opening brace when the prelude has none.
     pub fn origin(&self) -> &CssValueOrigin {
         self.data
             .prelude
@@ -282,22 +308,27 @@ impl CssSupportsAtRuleTest {
         }
     }
 
+    /// Returns the decoded at-rule name, without the `@`.
     pub fn name(&self) -> &str {
         &self.data.name
     }
 
+    /// Returns the at-keyword component with its original spelling and origin.
     pub fn at_keyword(&self) -> &CssComponentValue {
         &self.data.at_keyword
     }
 
+    /// Returns the prelude of the at-rule as authored component values.
     pub fn prelude(&self) -> &CssComponentValues {
         &self.data.prelude
     }
 
+    /// Returns the test body in braces, or `None` when the at-rule ends with a semicolon and has no block.
     pub fn body(&self) -> Option<&CssSupportsTestBody> {
         self.data.body.as_deref()
     }
 
+    /// Returns the origin of the at-keyword.
     pub fn origin(&self) -> &CssValueOrigin {
         self.data.at_keyword.origin()
     }
@@ -307,8 +338,11 @@ impl CssSupportsAtRuleTest {
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssSupportsTestItem {
+    /// A nonempty run of declarations.
     Declarations(CssSupportsTestDeclarations),
+    /// A generic qualified rule: a prelude and a braced test body.
     QualifiedRule(CssSupportsQualifiedRuleTest),
+    /// A generic at-rule, including unknown future at-rules.
     AtRule(CssSupportsAtRuleTest),
 }
 
@@ -327,6 +361,11 @@ pub struct CssSupportsTestBody {
 }
 
 impl CssSupportsTestBody {
+    /// Constructs a test body from authored component values.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssSupportsConstructionError`] when the components contain an implicitly closed component, do not form a test body, or violate `limits`.
     pub fn try_from_components(
         values: CssComponentValues,
         limits: CssComponentValueLimits,
@@ -345,10 +384,12 @@ impl CssSupportsTestBody {
         Ok(body)
     }
 
+    /// Returns the ordered candidates and declaration runs of the body.
     pub fn items(&self) -> &[CssSupportsTestItem] {
         &self.items
     }
 
+    /// Returns the origin of the recovered input that makes this body unfit for a definition, or `None` when none was recovered.
     pub fn recovery_origin(&self) -> Option<&CssValueOrigin> {
         self.recovery_origin.as_ref()
     }
@@ -528,8 +569,11 @@ pub(crate) fn validate_emitted_budget(
 /// One inert direct child. Nested candidate bodies remain immutable CSS payload.
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssSupportsTestChild {
+    /// A declaration.
     Declaration(CssSupportsTestDeclaration),
+    /// A generic qualified rule.
     QualifiedRule(CssSupportsQualifiedRuleTest),
+    /// A generic at-rule.
     AtRule(CssSupportsAtRuleTest),
 }
 
@@ -541,11 +585,15 @@ pub enum CssSupportsTestChild {
 /// same native writer allowances.
 #[derive(Clone, Copy, Debug)]
 pub enum CssSupportsTestChildRef<'a> {
+    /// The borrowed declaration.
     Declaration(&'a CssSupportsTestDeclaration),
+    /// The borrowed generic qualified rule.
     QualifiedRule(&'a CssSupportsQualifiedRuleTest),
+    /// The borrowed generic at-rule.
     AtRule(&'a CssSupportsAtRuleTest),
 }
 impl CssSupportsTestChild {
+    /// Returns the child as a borrowed view.
     pub fn as_ref(&self) -> CssSupportsTestChildRef<'_> {
         match self {
             Self::Declaration(v) => CssSupportsTestChildRef::Declaration(v),
@@ -555,6 +603,7 @@ impl CssSupportsTestChild {
     }
 }
 impl<'a> CssSupportsTestChildRef<'a> {
+    /// Returns the origin of the child.
     pub fn origin(self) -> &'a CssValueOrigin {
         match self {
             Self::Declaration(v) => v.origin(),

@@ -15,10 +15,12 @@ pub struct CssColorSchemeParseReport {
     retained: CssUtf16ValueStorage,
 }
 impl CssColorSchemeParseReport {
+    /// Returns the original captured source of the complete UTF16 input.
     #[must_use]
     pub const fn source(&self) -> &crate::source::CssParseSource {
         &self.source
     }
+    /// Returns the checked declaration, or the property-value error produced for the input.
     pub const fn result(
         &self,
     ) -> &Result<crate::declaration::CssDeclaration, crate::property::CssPropertyValueError> {

@@ -1159,7 +1159,9 @@ enum ExpansionShape {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CssContributionValueRef<'a> {
+    /// A completed ordinary longhand value.
     Ordinary(CssLonghandValueRef<'a>),
+    /// A whole-value CSS-wide keyword.
     Global(CssGlobalKeyword),
     /// An intrinsic initial requiring a user-agent environment.
     UserAgentInitial(CssUserAgentInitial),
@@ -1330,24 +1332,30 @@ pub struct CssSvgGlyphOrientationVerticalContribution {
     context: Arc<ContributionContext>,
 }
 impl CssSvgGlyphOrientationVerticalContribution {
+    /// Returns the property, always `glyph-orientation-vertical`.
     #[must_use]
     pub const fn property(&self) -> CssPropertyNameRef<'static> {
         CssPropertyNameRef::SvgGlyphOrientationVertical
     }
+    /// Returns the completed ordinary value, or `None` when the declaration was a CSS-wide keyword.
     #[must_use]
     pub const fn ordinary_value(
         &self,
     ) -> Option<&crate::property::CssSvgGlyphOrientationVerticalValue> {
         self.declaration.value()
     }
+    /// Returns the CSS-wide keyword, or `None` when the declaration held an ordinary value.
     #[must_use]
     pub const fn global(&self) -> Option<CssGlobalKeyword> {
         self.declaration.global()
     }
+    /// Returns the original authored declaration occurrence.
     #[must_use]
     pub fn source(&self) -> &CssDeclaration {
         &self.context.source
     }
+    /// Returns the substituted replacement components this contribution was completed from, or
+    /// `None` when it was not completed from a substitution reentry.
     #[must_use]
     pub fn replacement_components(&self) -> Option<&CssComponentValues> {
         self.context.replacement.as_ref()
@@ -1370,8 +1378,11 @@ fn complete_svg_contribution(
 pub enum CssContributions {
     /// One independent SVG terminal write, without a modern TextOrientation projection.
     SvgGlyphOrientationVertical(CssSvgGlyphOrientationVerticalContribution),
+    /// The longhand values of a declaration or shorthand expansion.
     Longhands(CssLonghandContributions),
+    /// The symbolic effect of an `all` declaration.
     UniversalReset(CssUniversalReset),
+    /// A symbolic custom-property declaration.
     Custom(CssCustomPropertyContribution),
 }
 
@@ -1379,7 +1390,9 @@ pub enum CssContributions {
 #[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum CssExpansion {
+    /// Completed contributions.
     Contributions(CssContributions),
+    /// A declaration whose grammar awaits substitution.
     Pending(CssPendingSubstitution),
 }
 
@@ -1651,7 +1664,9 @@ impl CssLonghandValue {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssUserAgentInitial {
+    /// The initial `font-family`, which depends on the user agent's default font family.
     FontFamily,
+    /// The initial `voice-family`, which depends on the user agent's default voice.
     VoiceFamily,
 }
 impl CssUserAgentInitial {
@@ -1682,7 +1697,9 @@ pub struct CssLonghandInitialValue {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CssInitialValueRef<'a> {
+    /// A symbolic ordinary initial value.
     Value(&'a CssLonghandValue),
+    /// A requirement the user agent resolves.
     UserAgent(CssUserAgentInitial),
 }
 impl CssLonghandInitialValue {
@@ -1781,10 +1798,13 @@ impl CssPropertyMetadata {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug)]
 pub enum CssPropertyKindRef<'a> {
+    /// A terminal property.
     Longhand(&'a CssLonghandMetadata),
+    /// A shorthand that expands to longhands.
     Shorthand(&'a CssShorthandMetadata),
     /// An authored coordinate-mode shorthand with exactly four selected sides.
     FourSideShorthand(&'a CssFourSideShorthandMetadata),
+    /// The `all` reset.
     UniversalReset(&'a CssUniversalResetMetadata),
 }
 /// A terminal property's inheritance and intrinsic initial.

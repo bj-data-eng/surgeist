@@ -5,15 +5,24 @@ use crate::color::controlled::protocol::ColorProtocolError;
 use crate::component::CssValueOrigin;
 use std::mem::{size_of, take};
 
+/// One edge of the path from an authored color to a component inside it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssColorPathStep {
+    /// The source color of a relative color, or the color operand of `contrast-color()`.
     Source,
+    /// The channel at this zero-based index in the function's component order.
     Channel(usize),
+    /// The alpha component.
     Alpha,
+    /// The first color of `light-dark()`, used for the light scheme.
     First,
+    /// The second color of `light-dark()`, used for the dark scheme.
     Second,
+    /// The color of the `color-mix()` component at this zero-based index.
     MixColor(usize),
+    /// The weight of the `color-mix()` component at this zero-based index.
     MixWeight(usize),
+    /// The operand at this zero-based index of a calculation expression node.
     ExpressionOperand(usize),
 }
 
@@ -23,12 +32,15 @@ pub struct CssColorComponentPath {
     steps: Vec<CssColorPathStep>,
 }
 impl CssColorComponentPath {
+    /// Returns the steps that lead from the authored root color to the failing component.
     pub fn steps(&self) -> &[CssColorPathStep] {
         &self.steps
     }
+    /// Returns the allocated capacity of the path, in steps.
     pub fn capacity(&self) -> usize {
         self.steps.capacity()
     }
+    /// Returns the allocated capacity of the path, in bytes.
     pub fn capacity_bytes(&self) -> usize {
         capacity_bytes(self.capacity())
     }

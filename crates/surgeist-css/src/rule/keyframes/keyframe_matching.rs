@@ -47,22 +47,27 @@ pub struct CssKeyframeSelectorComparisonError {
 }
 
 impl CssKeyframeSelectorComparisonError {
+    /// Returns the serialization or resource failure that rejected the comparison.
     #[must_use]
     pub fn cause(&self) -> &CssSerializationError {
         &self.cause
     }
+    /// Returns the stage that was running when the comparison failed.
     #[must_use]
     pub const fn stage(&self) -> CssKeyframeSelectorComparisonStage {
         self.stage
     }
+    /// Returns the index of the selector being processed when the failure occurred, or `None` when the failure arose in list-level work.
     #[must_use]
     pub const fn selector_index(&self) -> Option<usize> {
         self.selector_index
     }
+    /// Returns the origin of the left-hand calculation involved in the failure, or `None` when there is none (literal endpoints and programmatic lists have no origin).
     #[must_use]
     pub fn left_origin(&self) -> Option<&CssValueOrigin> {
         self.left_origin.as_deref()
     }
+    /// Returns the origin of the right-hand calculation involved in the failure, or `None` when there is none (literal endpoints and programmatic lists have no origin).
     #[must_use]
     pub fn right_origin(&self) -> Option<&CssValueOrigin> {
         self.right_origin.as_deref()

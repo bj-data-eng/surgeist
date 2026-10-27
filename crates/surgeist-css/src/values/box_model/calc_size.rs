@@ -25,12 +25,19 @@ type SerializationResult<T> = std::result::Result<T, CssSerializationError>;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssIntrinsicSizeKeyword {
+    /// `auto`: the box's automatic size.
     Auto,
+    /// `content`: the flex-only `content` size; rejected when the calc-size is converted to a box-sizing value.
     Content,
+    /// `stretch`: stretch-fit sizing, which matches the box's margin box to the size of its containing block.
     Stretch,
+    /// `contain`: contain-fit sizing when the box has a preferred aspect ratio, otherwise stretch-fit sizing.
     Contain,
+    /// `min-content`: the box's min-content size.
     MinContent,
+    /// `max-content`: the box's max-content size.
     MaxContent,
+    /// `fit-content`: the box's fit-content size, `min(max-content, max(min-content, stretch))`.
     FitContent,
 }
 impl CssIntrinsicSizeKeyword {
@@ -71,9 +78,13 @@ enum Basis {
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssCalcSizeBasisRef<'a> {
+    /// An intrinsic-size keyword basis, as authored.
     Keyword(CssIntrinsicSizeKeyword),
+    /// The `any` basis, which admits no size leaf in the calculation.
     Any,
+    /// A nested `calc-size()` used as the basis.
     Nested(&'a CssCalcSize),
+    /// A calculation sum used as the basis.
     Sum(CssCalculationExpressionRef<'a>),
 }
 
@@ -209,6 +220,11 @@ impl CssCalcSize {
         Ok(true)
     }
 
+    /// Checks one component value as a symbolic `calc-size()` function and retains its authored provenance.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the component is not a `calc-size()` function with exactly two non-empty comma-separated arguments; when the basis is not an intrinsic-size keyword, `any`, a nested `calc-size()` or a calculation sum (a `fit-content()` function is rejected as a basis); when either calculation is invalid, including a `size` leaf under an `any` basis; when the component was recovered from unterminated input; or when it exceeds `limits`.
     pub fn try_from_component(
         component: CssComponentValue,
         limits: CssComponentValueLimits,
@@ -309,6 +325,7 @@ impl CssCalcSize {
         Ok(built.expect("nonempty calc-size chain"))
     }
 
+    /// Returns the borrowed checked basis, without resolving it.
     pub fn basis(&self) -> CssCalcSizeBasisRef<'_> {
         match &self.data.basis {
             Basis::Keyword(keyword) => CssCalcSizeBasisRef::Keyword(*keyword),
@@ -317,12 +334,15 @@ impl CssCalcSize {
             Basis::Sum(value) => CssCalcSizeBasisRef::Sum(value.as_ref().as_ref()),
         }
     }
+    /// Returns the origin of the authored basis component, which is the first significant component before the comma.
     pub fn basis_origin(&self) -> &CssValueOrigin {
         &self.data.basis_origin
     }
+    /// Returns the borrowed symbolic calculation sum, which may contain the `size` leaf unless the basis is `any`.
     pub fn calculation(&self) -> CssCalculationExpressionRef<'_> {
         self.data.calculation.as_ref().as_ref()
     }
+    /// Returns the origin of the complete authored `calc-size()` function.
     pub fn origin(&self) -> &CssValueOrigin {
         &self.data.origin
     }
@@ -441,10 +461,12 @@ impl TryFrom<CssCalcSize> for CssBoxCalcSize {
 }
 
 impl CssBoxCalcSize {
+    /// Borrows the generic checked `calc-size()` inside this box-sizing value.
     pub fn as_calc_size(&self) -> &CssCalcSize {
         &self.0
     }
 
+    /// Consumes this box-sizing value and returns the generic checked `calc-size()`.
     pub fn into_calc_size(self) -> CssCalcSize {
         self.0
     }

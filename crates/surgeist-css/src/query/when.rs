@@ -12,7 +12,7 @@ use crate::serialization::CssSerializationError;
 use crate::source::CssSourcePosition;
 use std::fmt;
 
-/// A leaf of a `@when` condition: one `<boolean-condition-in-parens>` operand of
+/// A leaf of a `@when` condition: one operand of a `<boolean-condition>` in
 /// Surgeist's bounded Conditional 5 authored profile that is not itself a
 /// negation, junction or explicit grouping.
 ///
@@ -21,8 +21,11 @@ use std::fmt;
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssWhenLeaf {
+    /// A single `media()` feature test, such as `media(width > 600px)`.
     MediaFeature(CssWhenMediaFeature),
+    /// A `supports()` declaration test, such as `supports(display: grid)`.
     SupportsDeclaration(Box<CssSupportsDeclaration>),
+    /// A `<general-enclosed>` production that is not a recognized `media()` or `supports()` test.
     GeneralEnclosed(CssGeneralEnclosed),
 }
 /// Exactly one media feature inside its real `media()` function component.
@@ -35,7 +38,9 @@ pub struct CssWhenMediaFeature {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssWhenMediaFeatureKind {
+    /// A recognized media feature test.
     Feature(CssMediaFeatureQuery),
+    /// A structurally valid media feature whose name, value or operation has unknown truth.
     UnknownFeature(CssUnknownMediaFeature),
 }
 impl CssWhenMediaFeature {
@@ -56,18 +61,22 @@ impl CssWhenMediaFeature {
             crate::parser::queries::construct_when_media_feature(component, limits)
         })
     }
+    /// Returns whether the feature is a recognized media feature or one with unknown truth.
     #[must_use]
     pub const fn kind(&self) -> &CssWhenMediaFeatureKind {
         &self.kind
     }
+    /// Returns the original `media()` function component.
     #[must_use]
     pub const fn component(&self) -> &CssComponentValue {
         &self.component
     }
+    /// Returns the origin of the `media()` function component.
     #[must_use]
     pub fn origin(&self) -> &CssValueOrigin {
         self.component.origin()
     }
+    /// Returns the source position of the `media()` function, or `None` when its origin was not parsed from source.
     #[must_use]
     pub fn position(&self) -> Option<CssSourcePosition> {
         crate::query::media::construction::parsed_position(self.origin())

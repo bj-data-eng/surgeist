@@ -39,9 +39,11 @@ macro_rules! literal {
                 };
                 value
             }
+            /// Borrows the original checked component.
             pub const fn component(&self) -> &CssComponentValue {
                 &self.component
             }
+            /// Borrows the original component provenance.
             pub const fn origin(&self) -> &CssValueOrigin {
                 self.component.origin()
             }

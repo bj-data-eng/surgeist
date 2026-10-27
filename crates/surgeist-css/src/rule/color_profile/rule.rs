@@ -27,7 +27,9 @@ use crate::values::common::CssUrl;
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssColorProfileRuleName {
+    /// A custom `<dashed-ident>` profile name; names are case-sensitive.
     Custom(CssColorProfileName),
+    /// The reserved `device-cmyk` name, which defines the profile used to resolve `device-cmyk()` colors.
     DeviceCmyk,
 }
 
@@ -50,13 +52,18 @@ pub enum CssColorProfileRuleName {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssColorProfileRenderingIntent {
+    /// `relative-colorimetric`: leaves in-gamut source colors unchanged relative to the media white points (the initial value).
     #[default]
     RelativeColorimetric,
+    /// `absolute-colorimetric`: leaves in-gamut source colors unchanged relative to the adopted white, without white-point or black-point matching.
     AbsoluteColorimetric,
+    /// `perceptual`: re-optimizes the appearance of colors for the destination medium, preserving the overall artistic intent.
     Perceptual,
+    /// `saturation`: preserves the relative saturation (chroma) of the source colors.
     Saturation,
 }
 impl CssColorProfileRenderingIntent {
+    /// Returns the CSS spelling of the intent, such as `relative-colorimetric`.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -82,11 +89,15 @@ impl CssColorProfileRenderingIntent {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssColorProfileDescriptorKind {
+    /// The `src` descriptor, which gives the URL of the profile data.
     Src,
+    /// The `rendering-intent` descriptor, which chooses one of the intents contained in the profile.
     RenderingIntent,
+    /// The `components` descriptor, which names the profile's color components in order.
     Components,
 }
 impl CssColorProfileDescriptorKind {
+    /// Returns the CSS descriptor name, such as `rendering-intent`.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -146,9 +157,13 @@ impl CssColorProfileValueError {
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssColorProfileDescriptorValueRef<'a> {
+    /// A `src` value: the profile URL.
     Src(&'a CssUrl),
+    /// A `rendering-intent` value.
     RenderingIntent(CssColorProfileRenderingIntent),
+    /// A `components` value: the component names, one per `<ident>` of the comma-separated list.
     Components(&'a [CssColorProfileComponentName]),
+    /// A value whose grammar depends on later substitution and is still symbolic.
     Pending(&'a CssSubstitutionDependentValue),
 }
 
@@ -247,16 +262,19 @@ impl CssColorProfileDescriptorValue {
         }
     }
 
+    /// Returns which descriptor this value was checked as.
     #[must_use]
     pub const fn kind(&self) -> CssColorProfileDescriptorKind {
         self.kind
     }
 
+    /// Returns the component values the descriptor was checked from, with their original provenance.
     #[must_use]
     pub const fn components(&self) -> &CssComponentValues {
         &self.components
     }
 
+    /// Returns the checked semantics as a borrowed view.
     #[must_use]
     pub fn view(&self) -> CssColorProfileDescriptorValueRef<'_> {
         match &self.data {
@@ -288,6 +306,7 @@ pub struct CssColorProfileDescriptor {
 }
 
 impl CssColorProfileDescriptor {
+    /// Creates a descriptor occurrence from a checked value, with no source position.
     #[must_use]
     pub const fn new(value: CssColorProfileDescriptorValue) -> Self {
         Self {
@@ -301,11 +320,13 @@ impl CssColorProfileDescriptor {
         self
     }
 
+    /// Returns the checked descriptor value.
     #[must_use]
     pub const fn value(&self) -> &CssColorProfileDescriptorValue {
         &self.value
     }
 
+    /// Returns the source position of the descriptor, or `None` when it was constructed programmatically.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
@@ -324,6 +345,9 @@ pub struct CssColorProfileRule {
     position: Option<CssSourcePosition>,
 }
 impl CssColorProfileRule {
+    /// Creates a rule from its name and descriptor occurrences, with no source position.
+    ///
+    /// The descriptors are retained in the given order, including duplicates.
     #[must_use]
     pub const fn new(
         name: CssColorProfileRuleName,
@@ -339,14 +363,17 @@ impl CssColorProfileRule {
         self.position = Some(position);
         self
     }
+    /// Returns the profile name.
     #[must_use]
     pub const fn name(&self) -> &CssColorProfileRuleName {
         &self.name
     }
+    /// Returns every retained descriptor occurrence in authored order, including duplicates.
     #[must_use]
     pub fn descriptors(&self) -> &[CssColorProfileDescriptor] {
         &self.descriptors
     }
+    /// Returns the source position of the rule, or `None` when it was constructed programmatically.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position

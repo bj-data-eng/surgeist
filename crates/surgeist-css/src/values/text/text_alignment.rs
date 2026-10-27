@@ -15,13 +15,19 @@ use crate::values::text::CssTextAlign;
 
 type SerializationResult<T> = std::result::Result<T, CssSerializationError>;
 
+/// An alignment position keyword used as the fallback of a character-based `text-align`.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssTextAlignPosition {
+    /// `start`: aligned to the start edge of the line box.
     Start,
+    /// `end`: aligned to the end edge of the line box.
     End,
+    /// `left`: aligned to the line-left edge of the line box.
     Left,
+    /// `right`: aligned to the line-right edge of the line box.
     Right,
+    /// `center`: centered within the line box.
     Center,
 }
 
@@ -117,6 +123,11 @@ pub struct CssCharacterAlignment {
 }
 
 impl CssCharacterAlignment {
+    /// Creates a character alignment from decoded string text and an optional authored fallback.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the text contains U+0000 or does not tokenize back to the same string, or is not exactly one extended grapheme cluster.
     pub fn try_new(
         decoded: impl Into<String>,
         authored_fallback: Option<CssTextAlignPosition>,
@@ -125,6 +136,11 @@ impl CssCharacterAlignment {
         Self::try_from_component(component, authored_fallback)
     }
 
+    /// Wraps a string-token component as a character alignment with an optional authored fallback.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error carrying the component's origin when the component is not a string token or its text is not exactly one extended grapheme cluster.
     pub fn try_from_component(
         component: CssComponentValue,
         authored_fallback: Option<CssTextAlignPosition>,
@@ -148,6 +164,7 @@ impl CssCharacterAlignment {
         })
     }
 
+    /// Returns the decoded alignment character: a single extended grapheme cluster.
     #[must_use]
     pub fn decoded(&self) -> &str {
         let CssComponentValueRef::Token(CssValueTokenRef::String(decoded)) = self.component.view()
@@ -157,16 +174,19 @@ impl CssCharacterAlignment {
         decoded
     }
 
+    /// Returns the retained string component, which keeps the original token spelling and provenance.
     #[must_use]
     pub const fn component(&self) -> &CssComponentValue {
         &self.component
     }
 
+    /// Returns the authored fallback, or `None` when none was written.
     #[must_use]
     pub const fn authored_fallback(&self) -> Option<CssTextAlignPosition> {
         self.authored_fallback
     }
 
+    /// Returns the authored fallback, or `right` when none was written.
     #[must_use]
     pub fn effective_fallback(&self) -> CssTextAlignPosition {
         self.authored_fallback
@@ -204,28 +224,38 @@ impl crate::serialization::specified_rule_serialization::SpecifiedProvider
 }
 crate::serialization::specified_rule_serialization::specified_serialization!(CssCharacterAlignment);
 
+/// The value form of `text-align-all`: a keyword or a character-based alignment.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CssTextAlignAllValue {
+    /// A `text-align` keyword.
     Keyword(CssTextAlign),
+    /// A `<string>` that aligns text on that character, with an optional fallback position.
     Character(CssCharacterAlignment),
 }
 
+/// The value of the `text-align` shorthand.
 #[non_exhaustive]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CssTextAlignValue {
+    /// An alignment that sets `text-align-all` and leaves `text-align-last` as `auto`, except that `match-parent` also sets `text-align-last`.
     Alignment(CssTextAlignAllValue),
+    /// `justify-all`: justifies all lines, including the last, by setting both longhands to `justify`.
     JustifyAll,
 }
 
+/// The value of `text-align-last`.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssTextAlignLastValue {
+    /// `auto`: the affected line is aligned per `text-align-all`, except that it is start-aligned when `text-align-all` is `justify`.
     Auto,
+    /// A `text-align` keyword applied to the last line of a block and to a line right before a forced line break.
     Keyword(CssTextAlign),
 }
 
 impl CssTextAlignAllValue {
+    /// Returns the initial value, the `start` keyword.
     #[must_use]
     pub const fn initial() -> Self {
         Self::Keyword(CssTextAlign::Start)
@@ -270,6 +300,7 @@ impl crate::serialization::specified_rule_serialization::SpecifiedProvider for C
 crate::serialization::specified_rule_serialization::specified_serialization!(CssTextAlignValue);
 
 impl CssTextAlignLastValue {
+    /// Returns the initial value, `auto`.
     #[must_use]
     pub const fn initial() -> Self {
         Self::Auto

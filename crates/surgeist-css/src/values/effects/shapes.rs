@@ -5,9 +5,14 @@ use crate::values::shape::CssBasicShape;
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssClipPath {
+    /// `none`: no clipping path gets created.
     None,
+    /// A `<url>` referencing a `clipPath` element.
     Url(CssUrl),
+    /// A bare `<geometry-box>` keyword, whose box edges, including any corner shaping, form
+    /// the clipping path.
     GeometryBox(CssBoxEdgeKeyword),
+    /// A `<basic-shape>` with an optional reference box.
     BasicShape(CssClipPathShape),
 }
 
@@ -28,10 +33,12 @@ impl CssClipPathShape {
             reference_box,
         }
     }
+    /// Returns the authored basic shape.
     #[must_use]
     pub const fn shape(&self) -> &CssBasicShape {
         &self.shape
     }
+    /// Returns the explicit reference box, or `None` when it was omitted.
     #[must_use]
     pub const fn reference_box(&self) -> Option<CssBoxEdgeKeyword> {
         self.reference_box

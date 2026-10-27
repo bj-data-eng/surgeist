@@ -11,8 +11,11 @@ use crate::values::image::images;
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssImageValue {
+    /// `none`: no image.
     None,
+    /// A `url()` or `src()` image reference.
     Url(CssUrl),
+    /// A gradient function.
     Gradient(CssGradient),
     /// Two authored image/none branches, retaining their order and scheme dependency.
     LightDark(Box<CssLightDarkImage>),
@@ -30,9 +33,15 @@ pub enum CssImageValue {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssImageOrientation {
+    /// `from-image`: computes to the angle that the image's own metadata, such as EXIF, specifies
+    /// is necessary to orient it correctly, or to `none` when it specifies no orientation.
     FromImage,
+    /// `none`: no additional rotation is applied; the image is oriented as encoded.
     None,
+    /// An `<angle>` rotation; positive angles rotate clockwise.
     Angle(CssNumeric<CssAngle>),
+    /// The `flip` keyword, which flips the image horizontally after rotation, with the `<angle>`
+    /// that was authored with it; `None` when no angle was authored.
     Flip(Option<CssNumeric<CssAngle>>),
 }
 
@@ -52,10 +61,17 @@ impl PartialEq for CssImageOrientation {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssImageRendering {
+    /// `auto`: the user agent picks the scaling algorithm.
     Auto,
+    /// `smooth`: the image is scaled with an algorithm that maximizes its appearance, such as bilinear interpolation.
     Smooth,
+    /// `high-quality`: like `smooth`, with a preference for higher-quality scaling when resources are constrained.
     HighQuality,
+    /// `crisp-edges`: the image is scaled so that contrast and edges are preserved and no smoothing or blurring is applied.
     CrispEdges,
+    /// `pixelated`: the image is scaled in a way that preserves its pixelation as much as
+    /// possible, but allows minor smoothing when the target size is not a clean multiple of the
+    /// original.
     Pixelated,
     /// Deprecated CSS-standard syntax accepted by user agents; authors must not use it.
     /// Its authored identity stays distinct from the downstream crisp-edges behavior.
@@ -69,10 +85,18 @@ pub enum CssImageRendering {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssObjectFit {
+    /// `fill`: the replaced content is sized to fill the element's content box.
     Fill,
+    /// `contain`: the replaced content is sized to maintain its natural aspect ratio while
+    /// fitting within the content box.
     Contain,
+    /// `cover`: the replaced content is sized to maintain its natural aspect ratio while filling
+    /// the entire content box.
     Cover,
+    /// `none`: the replaced content is not resized to fit inside the content box.
     None,
+    /// `scale-down`: sized as if `none` or `contain` were specified, whichever gives the smaller
+    /// concrete object size.
     ScaleDown,
 }
 
@@ -87,11 +111,13 @@ pub struct CssImageValueList {
 }
 
 impl CssImageValueList {
+    /// Returns the list, or `None` when `images` is empty.
     #[must_use]
     pub fn try_new(images: Vec<CssImageValue>) -> Option<Self> {
         (!images.is_empty()).then_some(Self { images })
     }
 
+    /// Returns the authored images in comma order.
     #[must_use]
     pub fn images(&self) -> &[CssImageValue] {
         &self.images
@@ -106,24 +132,35 @@ impl CssImageValueList {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssGradient {
+    /// A `linear-gradient()`.
     Linear(CssLinearGradient),
+    /// A `radial-gradient()`.
     Radial(CssRadialGradient),
+    /// A `repeating-linear-gradient()`.
     RepeatingLinear(CssLinearGradient),
+    /// A `repeating-radial-gradient()`.
     RepeatingRadial(CssRadialGradient),
+    /// A `conic-gradient()`.
     Conic(CssConicGradient),
 }
 
+/// The horizontal side keyword of a linear-gradient side or corner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssHorizontalGradientSide {
+    /// `left`: the left side.
     Left,
+    /// `right`: the right side.
     Right,
 }
 
+/// The vertical side keyword of a linear-gradient side or corner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssVerticalGradientSide {
+    /// `top`: the top side.
     Top,
+    /// `bottom`: the bottom side.
     Bottom,
 }
 
@@ -135,6 +172,8 @@ pub struct CssSideOrCorner {
 }
 
 impl CssSideOrCorner {
+    /// Returns a side or corner, or `None` when both `horizontal` and `vertical` are omitted.
+    /// One component names a side and two name a corner.
     #[must_use]
     pub const fn try_new(
         horizontal: Option<CssHorizontalGradientSide>,
@@ -150,21 +189,26 @@ impl CssSideOrCorner {
         }
     }
 
+    /// Returns the horizontal side, or `None` when only a vertical side was authored.
     #[must_use]
     pub const fn horizontal(self) -> Option<CssHorizontalGradientSide> {
         self.horizontal
     }
 
+    /// Returns the vertical side, or `None` when only a horizontal side was authored.
     #[must_use]
     pub const fn vertical(self) -> Option<CssVerticalGradientSide> {
         self.vertical
     }
 }
 
+/// The authored direction of a linear gradient.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssLinearGradientDirection {
+    /// An `<angle>` or bare zero.
     Angle(CssAngleOrZero),
+    /// A `to <side-or-corner>` direction.
     SideOrCorner(CssSideOrCorner),
 }
 
@@ -197,11 +241,13 @@ impl PartialEq for CssGradientColorStop {
 }
 
 impl CssGradientColorStop {
+    /// Returns the authored stop color.
     #[must_use]
     pub const fn color(&self) -> &CssColor {
         &self.color
     }
 
+    /// Returns the first authored position, or `None` when the stop has no position.
     #[must_use]
     pub fn position(&self) -> Option<&CssNumeric<CssLengthPercentage>> {
         self.positions.first()
@@ -217,7 +263,9 @@ impl CssGradientColorStop {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssColorStopListItem {
+    /// A color stop, boxed to keep the enum small.
     Stop(Box<CssGradientColorStop>),
+    /// A `<length-percentage>` interpolation hint between two stops.
     Hint(CssNumeric<CssLengthPercentage>),
 }
 
@@ -238,6 +286,7 @@ pub struct CssColorStopList {
 }
 
 impl CssColorStopList {
+    /// Returns the list, or `None` unless it starts and ends with a stop and has no two adjacent hints.
     #[must_use]
     pub fn try_new(items: Vec<CssColorStopListItem>) -> Option<Self> {
         let ordered = matches!(items.first(), Some(CssColorStopListItem::Stop(_)))
@@ -251,6 +300,7 @@ impl CssColorStopList {
         ordered.then_some(Self { items })
     }
 
+    /// Returns the authored stops and hints in order.
     #[must_use]
     pub fn items(&self) -> &[CssColorStopListItem] {
         &self.items
@@ -276,21 +326,26 @@ impl CssLinearGradient {
         self.interpolation = interpolation;
         self
     }
+    /// Returns the authored direction, or `None` when it was omitted.
     #[must_use]
     pub const fn direction(&self) -> Option<&CssLinearGradientDirection> {
         self.direction.as_ref()
     }
 
+    /// Returns the authored color-stop list.
     #[must_use]
     pub const fn stops(&self) -> &CssColorStopList {
         &self.stops
     }
 }
 
+/// The authored ending shape of a radial gradient.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssRadialShape {
+    /// `circle`: the ending shape is a circle.
     Circle,
+    /// `ellipse`: the ending shape is an ellipse.
     Ellipse,
 }
 
@@ -312,19 +367,25 @@ impl CssRadialEllipseSize {
             vertical,
         }
     }
+    /// Returns the horizontal radius.
     pub const fn horizontal(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
         &self.horizontal
     }
+    /// Returns the vertical radius.
     pub const fn vertical(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
         &self.vertical
     }
 }
 
+/// The authored size of a radial gradient's ending shape.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssRadialSize {
+    /// A radial extent keyword.
     Extent(CssRadialExtent),
+    /// A single non-negative `<length>` radius, sizing a circle.
     Circle(CssNumeric<CssLength, CssNonNegative>),
+    /// A pair of non-negative `<length-percentage>` radii, sizing an ellipse.
     Ellipse(CssRadialEllipseSize),
 }
 
@@ -360,21 +421,25 @@ impl CssRadialGradient {
         self.interpolation = interpolation;
         self
     }
+    /// Returns the authored ending shape, or `None` when it was omitted.
     #[must_use]
     pub const fn shape(&self) -> Option<CssRadialShape> {
         self.shape
     }
 
+    /// Returns the authored ending-shape size, or `None` when it was omitted.
     #[must_use]
     pub const fn size(&self) -> Option<&CssRadialSize> {
         self.size.as_ref()
     }
 
+    /// Returns the authored center position, or `None` when it was omitted.
     #[must_use]
     pub const fn position(&self) -> Option<&CssPosition> {
         self.position.as_ref()
     }
 
+    /// Returns the authored color-stop list.
     #[must_use]
     pub const fn stops(&self) -> &CssColorStopList {
         &self.stops
@@ -389,9 +454,13 @@ impl CssRadialGradient {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssAngularColorStopPosition {
+    /// An `<angle>` position.
     Angle(CssNumeric<CssAngle>),
+    /// A `<percentage>` position.
     Percentage(crate::numeric::CssNumeric<crate::numeric::CssPercentage>),
+    /// A bare zero position.
     Zero(crate::numeric::CssZeroLiteral),
+    /// A `calc()` expression resolving to an `<angle-percentage>`.
     Calculation(crate::numeric::CssCalculation<crate::numeric::CssAnglePercentage>),
 }
 impl PartialEq for CssAngularColorStopPosition {
@@ -439,7 +508,9 @@ impl CssAngularColorStop {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssAngularColorStopListItem {
+    /// An angular color stop, boxed to keep the enum small.
     Stop(Box<CssAngularColorStop>),
+    /// An angular interpolation hint position.
     Hint(CssAngularColorStopPosition),
 }
 
@@ -519,9 +590,13 @@ use crate::values::position::CssPosition;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssRadialExtent {
+    /// `closest-side`: the ending shape meets the side of the box closest to its center.
     ClosestSide,
+    /// `farthest-side`: the ending shape meets the side of the box farthest from its center.
     FarthestSide,
+    /// `closest-corner`: the ending shape passes through the corner of the box closest to its center.
     ClosestCorner,
+    /// `farthest-corner`: the ending shape passes through the corner of the box farthest from its center.
     FarthestCorner,
 }
 use crate::color::{CssColor, CssColorInterpolation};

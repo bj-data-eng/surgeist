@@ -8,14 +8,21 @@ use crate::query::media::{CssMediaRatio, CssOrientation};
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum CssContainerSizeFeatureKind {
+    /// `width`: the width of the query container's content box.
     Width,
+    /// `height`: the height of the query container's content box.
     Height,
+    /// `inline-size`: the size of the query container's content box in the container's inline axis.
     InlineSize,
+    /// `block-size`: the size of the query container's content box in the container's block axis.
     BlockSize,
+    /// `aspect-ratio`: the ratio of the value of the container `width` feature to the value of the container `height` feature.
     AspectRatio,
+    /// `orientation`: `portrait` when the container `height` feature is at least the container `width` feature, otherwise `landscape`.
     Orientation,
 }
 impl CssContainerSizeFeatureKind {
+    /// Returns the feature's lowercase CSS name, such as `inline-size`.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Width => "width",
@@ -32,11 +39,17 @@ impl CssContainerSizeFeatureKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssContainerValueDomain {
+    /// A `<length>`, as used by the `width`, `height`, `inline-size` and `block-size` features.
     Length,
+    /// A `<ratio>`, as used by the `aspect-ratio` feature.
     Ratio,
+    /// An orientation keyword, as used by the `orientation` feature.
     Orientation,
+    /// A `stuck` scroll-state keyword.
     Stuck,
+    /// A `snapped` scroll-state keyword.
     Snapped,
+    /// A scroll-direction keyword, as used by the `scrollable` and `scrolled` scroll-state features.
     ScrollDirection,
 }
 
@@ -51,9 +64,11 @@ impl CssContainerPendingValue {
     pub(crate) fn new(domain: CssContainerValueDomain, components: CssComponentValues) -> Self {
         Self { domain, components }
     }
+    /// Returns the grammar the substituted value must match.
     pub const fn domain(&self) -> CssContainerValueDomain {
         self.domain
     }
+    /// Returns the authored component values of the whole operand, including its `var()` references.
     pub fn components(&self) -> &CssComponentValues {
         &self.components
     }
@@ -84,8 +99,11 @@ macro_rules! operand {
         }
         #[derive(Clone, Copy, Debug)]
         #[non_exhaustive]
+        #[doc = concat!("Borrowed view of a [`", stringify!($name), "`]: either its typed value or its pending operand.")]
         pub enum $view<'a> {
+            /// The typed value that was admitted without `var()`.
             $variant(&'a $value),
+            /// A whole operand containing `var()` that awaits substitution into the feature's domain.
             Pending(&'a CssContainerPendingValue),
         }
         impl $name {
@@ -95,12 +113,14 @@ macro_rules! operand {
             pub(crate) fn pending(value: CssContainerPendingValue) -> Self {
                 Self { value: $state::Pending(value) }
             }
+            /// Returns the typed value, or the pending operand when the value awaits substitution.
             pub fn view(&self) -> $view<'_> {
                 match &self.value {
                     $state::$variant { value, .. } => $view::$variant(value),
                     $state::Pending(value) => $view::Pending(value),
                 }
             }
+            /// Returns the authored component values of the whole operand.
             pub fn components(&self) -> &CssComponentValues {
                 match &self.value {
                     $state::$variant { components, .. } => components,

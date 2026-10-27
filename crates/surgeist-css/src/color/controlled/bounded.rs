@@ -143,21 +143,69 @@ fn reached(error: core::Error) -> CssColorError {
 /// One actual fixed fact observation, not a hidden array lookup/scan.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssColorFactRead {
+    /// The property facts, which supply the current color.
     Properties,
+    /// The number of entries in the system color palette.
     PaletteLength,
-    PaletteEntry { index: usize, earlier: bool },
+    /// One system color palette entry.
+    PaletteEntry {
+        /// Zero-based index of the palette entry.
+        index: usize,
+        /// Whether the entry is compared as an earlier entry in a duplicate check,
+        /// rather than read as the lookup candidate.
+        earlier: bool,
+    },
+    /// The used color scheme.
     Scheme,
+    /// The number of custom color profile bindings.
     ProfilesLength,
-    ProfileHeader { binding: usize },
-    ProfileNameByte { binding: usize, index: usize },
+    /// The header of one profile binding.
+    ProfileHeader {
+        /// Zero-based index of the profile binding.
+        binding: usize,
+    },
+    /// One byte of a profile binding's name.
+    ProfileNameByte {
+        /// Zero-based index of the profile binding.
+        binding: usize,
+        /// Zero-based index of the byte within the profile name.
+        index: usize,
+    },
+    /// The header of the profile binding already selected for the color.
     SelectedProfileHeader,
-    ComponentNameHeader { ordinal: usize },
-    ComponentNameByte { ordinal: usize, index: usize },
+    /// The header of one component name of the selected profile.
+    ComponentNameHeader {
+        /// Zero-based position of the name in the profile's ordered component names.
+        ordinal: usize,
+    },
+    /// One byte of a component name of the selected profile.
+    ComponentNameByte {
+        /// Zero-based position of the name in the profile's ordered component names.
+        ordinal: usize,
+        /// Zero-based index of the byte within the component name.
+        index: usize,
+    },
+    /// The number of profile conversions.
     ConversionLength,
-    ConversionHeader { ordinal: usize },
-    ConversionChannel { conversion: usize, ordinal: usize },
+    /// The header of one profile conversion.
+    ConversionHeader {
+        /// Zero-based index of the profile conversion.
+        ordinal: usize,
+    },
+    /// One input channel of a resolved profile conversion.
+    ConversionChannel {
+        /// Zero-based index of the profile conversion.
+        conversion: usize,
+        /// Zero-based index of the channel within the conversion.
+        ordinal: usize,
+    },
+    /// The `device-cmyk()` processing fact.
     DeviceHeader,
-    DeviceChannel { index: usize },
+    /// One input channel of the resolved `device-cmyk()` processing record.
+    DeviceChannel {
+        /// Zero-based index of the channel.
+        index: usize,
+    },
 }
 /// The canonical core's pending work, classified once for every driver: the
 /// public parse and the crate-private authored protocol share it.
@@ -259,6 +307,8 @@ pub(crate) fn pending(cursor: &core::ColorOperation<'_, '_>) -> Pending {
 /// are absent observations. These are compiled record layouts, not lengths of
 /// referenced names, channels or arrays; those units have separate actions.
 impl CssColorFactRead {
+    /// Returns the sizes in bytes of the fixed records this observation can inspect, as
+    /// `[identity, record, nested record]`; a zero entry means no such observation.
     #[must_use]
     pub fn record_layouts(self) -> [usize; 3] {
         use std::mem::size_of;
@@ -309,13 +359,21 @@ impl CssColorFactRead {
 /// capacity/copy events. CSS never converts these layouts into guessed weights.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssColorActionLayout {
+    /// Size in bytes of the original input unit the action reads; zero when it reads none.
     pub input_unit_bytes: usize,
+    /// Size in bytes of the bank record the action reads back; zero when it reads none.
     pub slot_read_bytes: usize,
+    /// Size in bytes of the bank record the action writes; zero when it writes none.
     pub slot_write_bytes: usize,
+    /// Sizes in bytes of the fixed fact records the action inspects, as returned by `CssColorFactRead::record_layouts`.
     pub fact_records: [usize; 3],
+    /// Size in bytes of the output the numerical computation writes; zero for other actions.
     pub output_unit_bytes: usize,
+    /// Size in bytes the numerical computation reads; zero for other actions.
     pub numerical_read_bytes: usize,
+    /// Size in bytes the numerical computation writes; zero for other actions.
     pub numerical_write_bytes: usize,
+    /// The kernel the action executes.
     pub kernel: CssColorKernel,
 }
 pub(crate) fn layout(
@@ -356,8 +414,11 @@ pub(crate) fn layout(
 /// original consumer owns admission and any actual backing allocation/copy.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssColorInitializationLayout {
+    /// Size in bytes of the operation owner anchor.
     pub owner_bytes: usize,
+    /// Size in bytes of the fixed parse registers.
     pub register_bytes: usize,
+    /// Size in bytes of one fact-set identity.
     pub fact_identity_bytes: usize,
 }
 /// The pending parse of one color. It never contains a completed outcome.
@@ -711,16 +772,24 @@ impl<'owner, 'facts> CssColorParse<'owner, 'facts> {
     reason = "A pending action owns the fixed-register parse inline, admitted as action_bytes; boxing it introduces an unadmitted heap allocation"
 )]
 pub enum CssColorParseStep<'owner, 'facts> {
+    /// The parse waits on this action.
     Pending(CssColorParseAction<'owner, 'facts>),
+    /// The parse finished with this outcome.
     Complete(CssColorParseOutcome<'facts>),
 }
 /// Exactly one finite action; the guard owns the parse until its completion.
 pub enum CssColorParseAction<'owner, 'facts> {
+    /// Read one original input unit.
     ReadInput(CssColorReadInput<'owner, 'facts>),
+    /// Read back one record stored in a bank.
     ReadSlot(CssColorReadSlot<'owner, 'facts>),
+    /// Append a new record at the end of a bank.
     AppendSlot(CssColorWriteSlot<'owner, 'facts>),
+    /// Replace a record already stored in a bank.
     UpdateSlot(CssColorWriteSlot<'owner, 'facts>),
+    /// Observe one fixed fact of the supplied envelope.
     ReadFact(CssColorReadFact<'owner, 'facts>),
+    /// Execute one fixed-register kernel transition.
     Compute(CssColorCompute<'owner, 'facts>),
 }
 impl<'owner, 'facts> CssColorParseAction<'owner, 'facts> {
@@ -792,10 +861,12 @@ pub struct CssColorReadSlot<'owner, 'facts> {
     index: usize,
 }
 impl<'owner, 'facts> CssColorReadSlot<'owner, 'facts> {
+    /// Returns the bank holding the record to read back.
     #[must_use]
     pub const fn bank(&self) -> CssColorBank {
         self.bank
     }
+    /// Returns the position of the record within its bank.
     #[must_use]
     pub const fn index(&self) -> usize {
         self.index
@@ -830,10 +901,12 @@ pub struct CssColorWriteSlot<'owner, 'facts> {
     index: usize,
 }
 impl<'owner, 'facts> CssColorWriteSlot<'owner, 'facts> {
+    /// Returns the bank the record is written to.
     #[must_use]
     pub const fn bank(&self) -> CssColorBank {
         self.bank
     }
+    /// Returns the position the record is stored at; for an append it is the bank's current length.
     #[must_use]
     pub const fn index(&self) -> usize {
         self.index
@@ -901,6 +974,7 @@ pub struct CssColorReadFact<'owner, 'facts> {
     fact: CssColorFactRead,
 }
 impl<'owner, 'facts> CssColorReadFact<'owner, 'facts> {
+    /// Returns the fixed fact observation the parse is waiting on.
     #[must_use]
     pub const fn fact(&self) -> CssColorFactRead {
         self.fact
@@ -924,6 +998,7 @@ pub struct CssColorCompute<'owner, 'facts> {
     kernel: CssColorKernel,
 }
 impl<'owner, 'facts> CssColorCompute<'owner, 'facts> {
+    /// Returns the fixed kernel this action executes.
     #[must_use]
     pub const fn kernel(&self) -> CssColorKernel {
         self.kernel
@@ -944,7 +1019,9 @@ impl<'owner, 'facts> CssColorCompute<'owner, 'facts> {
 }
 /// Standard failure is the only parse result that admits an explicit fallback.
 pub enum CssColorParseOutcome<'facts> {
+    /// The input parsed to a used color.
     Used(CssUsedColorCheckpoint<'facts>),
+    /// The input is standard-invalid; the checkpoint admits an explicit fallback.
     StandardFailure(CssColorFailureCheckpoint<'facts>),
 }
 /// Fixed used value plus original source/fact qualification, no recipe backing.
@@ -976,10 +1053,12 @@ fn failure(value: core::StandardFailure) -> CssColorStandardFailure {
     }
 }
 impl<'facts> CssUsedColorCheckpoint<'facts> {
+    /// Returns the used color value.
     #[must_use]
     pub const fn value(&self) -> Color {
         self.checkpoint.value()
     }
+    /// Returns the original input range the color consumed.
     #[must_use]
     pub fn consumed(&self) -> CssColorInputRange {
         let range = self.checkpoint.context().consumed;
@@ -988,10 +1067,12 @@ impl<'facts> CssUsedColorCheckpoint<'facts> {
             end: range.end,
         }
     }
+    /// Returns the descriptor of the original input.
     #[must_use]
     pub fn source(&self) -> CssColorSourceDescriptor {
         source(self.checkpoint.context())
     }
+    /// Returns the identity of the fact set the parse expected.
     #[must_use]
     pub const fn fact_identity(&self) -> CssColorFactIdentity {
         self.checkpoint.context().expected
@@ -1003,6 +1084,7 @@ impl<'facts> CssUsedColorCheckpoint<'facts> {
     pub const fn facts(&self) -> &'facts CssColorFacts<'facts> {
         self.checkpoint.context().facts
     }
+    /// Returns the standard failure an explicit fallback replaced, or `None` when the color parsed directly.
     #[must_use]
     pub fn standard_failure(&self) -> Option<CssColorStandardFailure> {
         self.checkpoint.standard_failure().map(failure)
@@ -1032,6 +1114,7 @@ impl<'facts> CssUsedColorCheckpoint<'facts> {
     }
 }
 impl<'facts> CssColorFailureCheckpoint<'facts> {
+    /// Returns the standard failure: its reason and original input range.
     #[must_use]
     pub fn failure(&self) -> CssColorStandardFailure {
         failure(self.checkpoint.failure())

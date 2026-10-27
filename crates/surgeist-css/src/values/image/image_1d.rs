@@ -17,6 +17,11 @@ pub struct CssStripeLengthPercentage {
     value: CssNumeric<CssLengthPercentage, CssNonNegative>,
 }
 impl CssStripeLengthPercentage {
+    /// Checks one component as a stripe thickness.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a percentage literal is outside 0% to 100%, or when the component is not a non-negative `<length-percentage>` accepted by the shared numeric constructor.
     pub fn try_from_component(
         component: CssComponentValue,
     ) -> Result<Self, CssNumericConstructionError> {
@@ -32,6 +37,11 @@ impl CssStripeLengthPercentage {
         CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(component)
             .map(|value| Self { value })
     }
+    /// Checks a `calc()` expression as a stripe thickness.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the calculation retains a component recovered without an explicit closing delimiter, or when the shared numeric constructor rejects it.
     pub fn try_from_calculation(
         calculation: CssCalculation<CssLengthPercentage>,
     ) -> Result<Self, CssNumericConstructionError> {
@@ -53,9 +63,11 @@ impl CssStripeLengthPercentage {
         CssNumeric::<CssLengthPercentage, CssNonNegative>::from_parser_calculation(calculation)
             .map(|value| Self { value })
     }
+    /// Returns the checked non-negative `<length-percentage>`.
     pub const fn value(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
         &self.value
     }
+    /// Returns the source origin of the thickness.
     pub fn origin(&self) -> &CssValueOrigin {
         self.value.origin()
     }
@@ -64,7 +76,9 @@ impl CssStripeLengthPercentage {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssStripeThickness {
+    /// A `<length-percentage>` thickness with percentages limited to 0% to 100%.
     LengthPercentage(CssStripeLengthPercentage),
+    /// A `<flex>` thickness.
     Flex(CssNumeric<CssFlex>),
 }
 impl PartialEq for CssStripeThickness {
@@ -80,6 +94,7 @@ impl PartialEq for CssStripeThickness {
 }
 impl Eq for CssStripeThickness {}
 impl CssStripeThickness {
+    /// Returns the source origin of the thickness.
     pub fn origin(&self) -> &CssValueOrigin {
         match self {
             Self::LengthPercentage(value) => value.origin(),
@@ -200,15 +215,19 @@ impl CssStripe {
         }
         Ok(())
     }
+    /// Returns the checked stripe color.
     pub const fn color(&self) -> &CssColor {
         &self.color
     }
+    /// Returns the original color component, preserving its authored syntax.
     pub const fn color_component(&self) -> &CssComponentValue {
         &self.color_component
     }
+    /// Returns the source origin of the color component.
     pub const fn color_origin(&self) -> &CssValueOrigin {
         self.color_component.origin()
     }
+    /// Returns the authored thickness, or `None` when it was omitted.
     pub const fn thickness(&self) -> Option<&CssStripeThickness> {
         self.thickness.as_ref()
     }
@@ -225,6 +244,11 @@ impl PartialEq for CssStripes {
     }
 }
 impl CssStripes {
+    /// Checks a non-empty list of stripes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `stripes` is empty, when any stripe retains a component recovered without an explicit closing delimiter, or when a stripe's nesting reaches the structural nesting limit.
     pub fn try_new(stripes: Vec<CssStripe>) -> Result<Self, CssImageConstructionError> {
         if stripes.is_empty() {
             return Err(CssImageConstructionError::new(
@@ -264,6 +288,7 @@ impl CssStripes {
             original: Some(original),
         }
     }
+    /// Returns the stripes in authored order.
     pub fn stripes(&self) -> &[CssStripe] {
         &self.stripes
     }
@@ -271,6 +296,7 @@ impl CssStripes {
     pub const fn original_component(&self) -> Option<&CssComponentValue> {
         self.original.as_ref()
     }
+    /// Returns the source origin of the parsed `stripes()` function, or the programmatic origin when the value was constructed directly.
     pub fn origin(&self) -> &CssValueOrigin {
         self.original
             .as_ref()
@@ -281,6 +307,7 @@ impl CssStripes {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssImage1D {
+    /// A `stripes()` image.
     Stripes(CssStripes),
 }
 impl CssImage1D {
@@ -295,6 +322,7 @@ impl CssImage1D {
         }
         crate::parser::image_1d::checked_image(&values)
     }
+    /// Returns the stripes of this image.
     pub fn stripes(&self) -> &CssStripes {
         match self {
             Self::Stripes(value) => value,

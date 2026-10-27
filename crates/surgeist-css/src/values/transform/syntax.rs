@@ -12,6 +12,7 @@ pub struct CssTransformBox {
 }
 
 impl CssTransformBox {
+    /// Returns a `transform-box` value, or `None` for `padding-box` and `margin-box`, which the property does not accept.
     #[must_use]
     pub const fn try_new(edge: CssBoxEdgeKeyword) -> Option<Self> {
         match edge {
@@ -24,35 +25,58 @@ impl CssTransformBox {
         }
     }
 
+    /// Returns the underlying box edge keyword, which is never `padding-box` or `margin-box`.
     #[must_use]
     pub const fn edge(&self) -> CssBoxEdgeKeyword {
         self.edge
     }
 }
 
+/// The identity of an authored transform function, without its operands.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTransformFunctionKind {
+    /// `matrix()`.
     Matrix,
+    /// `matrix3d()`.
     Matrix3d,
+    /// `perspective()`.
     Perspective,
+    /// `rotate()`.
     Rotate,
+    /// `rotate3d()`.
     Rotate3d,
+    /// `rotateX()`.
     RotateX,
+    /// `rotateY()`.
     RotateY,
+    /// `rotateZ()`.
     RotateZ,
+    /// `scale()`.
     Scale,
+    /// `scale3d()`.
     Scale3d,
+    /// `scaleX()`.
     ScaleX,
+    /// `scaleY()`.
     ScaleY,
+    /// `scaleZ()`.
     ScaleZ,
+    /// `skew()`.
     Skew,
+    /// `skewX()`.
     SkewX,
+    /// `skewY()`.
     SkewY,
+    /// `translate()`.
     Translate,
+    /// `translate3d()`.
     Translate3d,
+    /// `translateX()`.
     TranslateX,
+    /// `translateY()`.
     TranslateY,
+    /// `translateZ()`.
     TranslateZ,
 }
 
@@ -60,12 +84,15 @@ pub enum CssTransformFunctionKind {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssTransformScaleComponent {
+    /// A `<number>` scale factor.
     Number(CssNumeric<CssNumber>),
     /// A Number result whose dimensional percentage basis remains unresolved.
     HintedNumberCalculation(CssCalculation<CssHintedNumber>),
+    /// A `<percentage>` scale factor.
     Percentage(CssNumeric<CssPercentage>),
 }
 
+/// The six numbers of a `matrix()` function, in authored order `a, b, c, d, e, f`.
 #[derive(Clone, Debug)]
 pub struct CssTransformMatrix {
     components: [CssNumeric<CssNumber>; 6],
@@ -94,16 +121,19 @@ impl PartialEq for CssTransformMatrix {
 }
 
 impl CssTransformMatrix {
+    /// Creates a matrix from its six authored numbers.
     pub const fn new(components: [CssNumeric<CssNumber>; 6]) -> Self {
         Self { components }
     }
 
+    /// Returns the six authored numbers in authored order.
     #[must_use]
     pub const fn components(&self) -> &[CssNumeric<CssNumber>; 6] {
         &self.components
     }
 }
 
+/// The sixteen numbers of a `matrix3d()` function, in authored column-major order.
 #[derive(Clone, Debug)]
 pub struct CssTransformMatrix3d {
     components: [CssNumeric<CssNumber>; 16],
@@ -119,20 +149,25 @@ impl PartialEq for CssTransformMatrix3d {
 }
 
 impl CssTransformMatrix3d {
+    /// Creates a matrix from its sixteen authored numbers.
     pub const fn new(components: [CssNumeric<CssNumber>; 16]) -> Self {
         Self { components }
     }
 
+    /// Returns the sixteen authored numbers in authored order.
     #[must_use]
     pub const fn components(&self) -> &[CssNumeric<CssNumber>; 16] {
         &self.components
     }
 }
 
+/// The authored operand of a `perspective()` transform function.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssTransformPerspective {
+    /// `none`: no perspective.
     None,
+    /// A non-negative `<length>` distance.
     Length(CssNumeric<CssLength, CssNonNegative>),
 }
 
@@ -146,6 +181,7 @@ impl PartialEq for CssTransformPerspective {
     }
 }
 
+/// The authored operands of a `rotate3d()` function: three axis numbers and an angle.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssTransformRotate3d {
     x: CssNumeric<CssNumber>,
@@ -155,6 +191,7 @@ pub struct CssTransformRotate3d {
 }
 
 impl CssTransformRotate3d {
+    /// Creates a value from the x, y and z axis components and the rotation angle.
     pub const fn new(
         x: CssNumeric<CssNumber>,
         y: CssNumeric<CssNumber>,
@@ -164,27 +201,32 @@ impl CssTransformRotate3d {
         Self { x, y, z, angle }
     }
 
+    /// Returns the x component of the rotation axis.
     #[must_use]
     pub const fn x(&self) -> &CssNumeric<CssNumber> {
         &self.x
     }
 
+    /// Returns the y component of the rotation axis.
     #[must_use]
     pub const fn y(&self) -> &CssNumeric<CssNumber> {
         &self.y
     }
 
+    /// Returns the z component of the rotation axis.
     #[must_use]
     pub const fn z(&self) -> &CssNumeric<CssNumber> {
         &self.z
     }
 
+    /// Returns the rotation angle.
     #[must_use]
     pub const fn angle(&self) -> &CssAngleOrZero {
         &self.angle
     }
 }
 
+/// The authored operands of a `scale()` function.
 #[derive(Clone, Debug)]
 pub struct CssTransformScale {
     x: CssTransformScaleComponent,
@@ -197,19 +239,23 @@ impl PartialEq for CssTransformScale {
     }
 }
 impl CssTransformScale {
+    /// Creates a value from the x factor and an optional y factor.
     pub const fn new(x: CssTransformScaleComponent, y: Option<CssTransformScaleComponent>) -> Self {
         Self { x, y }
     }
+    /// Returns the x factor.
     #[must_use]
     pub const fn x(&self) -> &CssTransformScaleComponent {
         &self.x
     }
+    /// Returns the y factor, or `None` when it was omitted.
     #[must_use]
     pub const fn y(&self) -> Option<&CssTransformScaleComponent> {
         self.y.as_ref()
     }
 }
 
+/// The authored operands of a `scale3d()` function.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssTransformScale3d {
     x: CssTransformScaleComponent,
@@ -218,6 +264,7 @@ pub struct CssTransformScale3d {
 }
 
 impl CssTransformScale3d {
+    /// Creates a value from the x, y and z factors.
     pub const fn new(
         x: CssTransformScaleComponent,
         y: CssTransformScaleComponent,
@@ -226,22 +273,26 @@ impl CssTransformScale3d {
         Self { x, y, z }
     }
 
+    /// Returns the x factor.
     #[must_use]
     pub const fn x(&self) -> &CssTransformScaleComponent {
         &self.x
     }
 
+    /// Returns the y factor.
     #[must_use]
     pub const fn y(&self) -> &CssTransformScaleComponent {
         &self.y
     }
 
+    /// Returns the z factor.
     #[must_use]
     pub const fn z(&self) -> &CssTransformScaleComponent {
         &self.z
     }
 }
 
+/// The authored operands of a `skew()` function.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssTransformSkew {
     x: CssAngleOrZero,
@@ -249,21 +300,25 @@ pub struct CssTransformSkew {
 }
 
 impl CssTransformSkew {
+    /// Creates a value from the x angle and an optional y angle.
     pub const fn new(x: CssAngleOrZero, y: Option<CssAngleOrZero>) -> Self {
         Self { x, y }
     }
 
+    /// Returns the x angle.
     #[must_use]
     pub const fn x(&self) -> &CssAngleOrZero {
         &self.x
     }
 
+    /// Returns the y angle, or `None` when it was omitted.
     #[must_use]
     pub const fn y(&self) -> Option<&CssAngleOrZero> {
         self.y.as_ref()
     }
 }
 
+/// The authored operands of a `translate()` function.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssTransformTranslate {
     x: CssNumeric<CssLengthPercentage>,
@@ -271,6 +326,7 @@ pub struct CssTransformTranslate {
 }
 
 impl CssTransformTranslate {
+    /// Creates a value from the x offset and an optional y offset.
     pub const fn new(
         x: CssNumeric<CssLengthPercentage>,
         y: Option<CssNumeric<CssLengthPercentage>>,
@@ -278,17 +334,20 @@ impl CssTransformTranslate {
         Self { x, y }
     }
 
+    /// Returns the x offset.
     #[must_use]
     pub const fn x(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.x
     }
 
+    /// Returns the y offset, or `None` when it was omitted.
     #[must_use]
     pub const fn y(&self) -> Option<&CssNumeric<CssLengthPercentage>> {
         self.y.as_ref()
     }
 }
 
+/// The authored operands of a `translate3d()` function.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssTransformTranslate3d {
     x: CssNumeric<CssLengthPercentage>,
@@ -297,6 +356,7 @@ pub struct CssTransformTranslate3d {
 }
 
 impl CssTransformTranslate3d {
+    /// Creates a value from the x and y offsets and the z length.
     pub const fn new(
         x: CssNumeric<CssLengthPercentage>,
         y: CssNumeric<CssLengthPercentage>,
@@ -305,16 +365,19 @@ impl CssTransformTranslate3d {
         Self { x, y, z }
     }
 
+    /// Returns the x offset.
     #[must_use]
     pub const fn x(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.x
     }
 
+    /// Returns the y offset.
     #[must_use]
     pub const fn y(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.y
     }
 
+    /// Returns the z length.
     #[must_use]
     pub const fn z(&self) -> &CssNumeric<CssLength> {
         &self.z
@@ -325,26 +388,47 @@ impl CssTransformTranslate3d {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssTransformFunction {
+    /// A `matrix()` function.
     Matrix(CssTransformMatrix),
+    /// A `matrix3d()` function, boxed to keep the enum small.
     Matrix3d(Box<CssTransformMatrix3d>),
+    /// A `perspective()` function.
     Perspective(CssTransformPerspective),
+    /// A `rotate()` function with its angle.
     Rotate(CssAngleOrZero),
+    /// A `rotate3d()` function.
     Rotate3d(CssTransformRotate3d),
+    /// A `rotateX()` function with its angle.
     RotateX(CssAngleOrZero),
+    /// A `rotateY()` function with its angle.
     RotateY(CssAngleOrZero),
+    /// A `rotateZ()` function with its angle.
     RotateZ(CssAngleOrZero),
+    /// A `scale()` function.
     Scale(CssTransformScale),
+    /// A `scale3d()` function.
     Scale3d(CssTransformScale3d),
+    /// A `scaleX()` function with its factor.
     ScaleX(CssTransformScaleComponent),
+    /// A `scaleY()` function with its factor.
     ScaleY(CssTransformScaleComponent),
+    /// A `scaleZ()` function with its factor.
     ScaleZ(CssTransformScaleComponent),
+    /// A `skew()` function.
     Skew(CssTransformSkew),
+    /// A `skewX()` function with its angle.
     SkewX(CssAngleOrZero),
+    /// A `skewY()` function with its angle.
     SkewY(CssAngleOrZero),
+    /// A `translate()` function.
     Translate(CssTransformTranslate),
+    /// A `translate3d()` function.
     Translate3d(CssTransformTranslate3d),
+    /// A `translateX()` function with its offset.
     TranslateX(CssNumeric<CssLengthPercentage>),
+    /// A `translateY()` function with its offset.
     TranslateY(CssNumeric<CssLengthPercentage>),
+    /// A `translateZ()` function with its length.
     TranslateZ(CssNumeric<CssLength>),
 }
 
@@ -379,6 +463,7 @@ impl PartialEq for CssTransformFunction {
 }
 
 impl CssTransformFunction {
+    /// Returns the identity of this function, discarding its operands.
     #[must_use]
     pub const fn kind(&self) -> CssTransformFunctionKind {
         match self {
@@ -414,11 +499,13 @@ pub struct CssTransformFunctionList {
 }
 
 impl CssTransformFunctionList {
+    /// Returns the list, or `None` when `functions` is empty.
     #[must_use]
     pub fn try_new(functions: Vec<CssTransformFunction>) -> Option<Self> {
         (!functions.is_empty()).then_some(Self { functions })
     }
 
+    /// Returns the authored functions in order.
     #[must_use]
     pub fn functions(&self) -> &[CssTransformFunction] {
         &self.functions
@@ -436,7 +523,9 @@ impl CssTransformFunctionList {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssTransform {
+    /// `none`: no transform.
     None,
+    /// One or more transform functions.
     Functions(CssTransformFunctionList),
 }
 
@@ -449,10 +538,13 @@ pub enum CssTransform {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssTranslate {
+    /// `none`: no translation.
     None,
+    /// One to three translation components.
     Values(CssTranslateValues),
 }
 
+/// The authored components of the individual `translate` property.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssTranslateValues {
     x: CssNumeric<CssLengthPercentage>,
@@ -472,12 +564,15 @@ impl CssTranslateValues {
         }
         Some(Self { x, y, z })
     }
+    /// Returns the x offset.
     pub const fn x(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.x
     }
+    /// Returns the y offset, or `None` when it was omitted.
     pub const fn y(&self) -> Option<&CssNumeric<CssLengthPercentage>> {
         self.y.as_ref()
     }
+    /// Returns the z length, or `None` when it was omitted.
     pub const fn z(&self) -> Option<&CssNumeric<CssLength>> {
         self.z.as_ref()
     }
@@ -492,10 +587,13 @@ impl CssTranslateValues {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssScale {
+    /// `none`: no scaling.
     None,
+    /// One to three scale factors.
     Values(CssScaleValues),
 }
 
+/// The authored factors of the individual `scale` property, one to three in axis order.
 #[derive(Clone, Debug)]
 pub struct CssScaleValues {
     values: Vec<CssTransformScaleComponent>,
@@ -512,6 +610,7 @@ impl CssScaleValues {
     pub fn try_new(values: Vec<CssTransformScaleComponent>) -> Option<Self> {
         (1..=3).contains(&values.len()).then_some(Self { values })
     }
+    /// Returns the authored factors in axis order.
     #[must_use]
     pub fn values(&self) -> &[CssTransformScaleComponent] {
         &self.values
@@ -529,7 +628,9 @@ impl CssScaleValues {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssPerspective {
+    /// `none`: no perspective.
     None,
+    /// A non-negative `<length>` distance.
     Length(CssNumeric<CssLength, CssNonNegative>),
 }
 impl PartialEq for CssPerspective {
@@ -545,13 +646,19 @@ impl PartialEq for CssPerspective {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTransformStyle {
+    /// `flat`: the initial value; a transformed element does not create a 3D rendering context
+    /// and creates a flattened representation of its content.
     Flat,
+    /// `preserve-3d`: overrides the flattening, letting descendants of the transformed element
+    /// share the same 3D rendering context.
     Preserve3d,
 }
 /// Authored visibility of the back face, without executing an accumulated matrix.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBackfaceVisibility {
+    /// `visible`: the element remains visible when its reverse side is towards the viewer.
     Visible,
+    /// `hidden`: the element is invisible when its reverse side is towards the viewer.
     Hidden,
 }

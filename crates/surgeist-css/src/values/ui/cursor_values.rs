@@ -15,7 +15,9 @@ use crate::values::ui::CssCursorKeyword;
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCursor {
+    /// A cursor keyword with no image alternatives.
     Keyword(CssCursorKeyword),
+    /// One or more image alternatives followed by the mandatory fallback keyword.
     Images(CssCursorImages),
 }
 
@@ -35,6 +37,9 @@ pub struct CssCursorImages {
 }
 
 impl CssCursorImages {
+    /// Builds an image list with its fallback keyword.
+    ///
+    /// Returns `None` when `images` is empty.
     #[must_use]
     pub fn try_new(images: Vec<CssCursorImage>, fallback: CssCursorKeyword) -> Option<Self> {
         if images.is_empty() {
@@ -44,11 +49,13 @@ impl CssCursorImages {
         }
     }
 
+    /// Returns the image alternatives in authored order; the list is never empty.
     #[must_use]
     pub fn images(&self) -> &[CssCursorImage] {
         &self.images
     }
 
+    /// Returns the keyword that applies when no image alternative can be used.
     #[must_use]
     pub const fn fallback(&self) -> CssCursorKeyword {
         self.fallback
@@ -64,6 +71,9 @@ pub struct CssCursorImage {
 }
 
 impl CssCursorImage {
+    /// Builds an image alternative from its source and optional hotspot.
+    ///
+    /// A `None` hotspot means the coordinates were omitted and come from the resource downstream; it is distinct from an explicit `0 0` pair.
     #[must_use]
     pub const fn new(
         source: CssCursorImageSource,
@@ -72,11 +82,13 @@ impl CssCursorImage {
         Self { source, hotspot }
     }
 
+    /// Returns the image source, either a URL or an `image-set()` of URLs.
     #[must_use]
     pub const fn source(&self) -> &CssCursorImageSource {
         &self.source
     }
 
+    /// Returns the authored hotspot coordinates (x, then y) as unclamped numbers, or `None` when they were omitted.
     #[must_use]
     pub const fn hotspot(&self) -> Option<&[CssNumeric<CssNumber>; 2]> {
         self.hotspot.as_ref()
@@ -87,7 +99,9 @@ impl CssCursorImage {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCursorImageSource {
+    /// A single `<url>` reference.
     Url(CssUrl),
+    /// An `image-set()` of URL candidates.
     UrlSet(CssCursorUrlSet),
 }
 
@@ -99,6 +113,9 @@ pub struct CssCursorUrlSet {
 }
 
 impl CssCursorUrlSet {
+    /// Builds an `image-set()` from its candidates.
+    ///
+    /// Returns `None` when `options` is empty.
     #[must_use]
     pub fn try_new(options: Vec<CssCursorUrlSetOption>) -> Option<Self> {
         if options.is_empty() {
@@ -108,6 +125,7 @@ impl CssCursorUrlSet {
         }
     }
 
+    /// Returns the candidates in authored order; the list is never empty.
     #[must_use]
     pub fn options(&self) -> &[CssCursorUrlSetOption] {
         &self.options
@@ -151,6 +169,7 @@ impl CssCursorUrlSetOption {
         })
     }
 
+    /// Returns the candidate's URL or string reference.
     #[must_use]
     pub const fn reference(&self) -> &CssCursorUrlSetReference {
         &self.reference
@@ -162,6 +181,7 @@ impl CssCursorUrlSetOption {
         &self.descriptors
     }
 
+    /// Returns the candidate's non-negative resolution descriptor, or `None` when none was authored.
     #[must_use]
     pub fn resolution(&self) -> Option<&CssNumeric<CssResolution, CssNonNegative>> {
         self.descriptors
@@ -172,6 +192,7 @@ impl CssCursorUrlSetOption {
             })
     }
 
+    /// Returns the candidate's `type()` string, or `None` when none was authored.
     #[must_use]
     pub fn image_type(&self) -> Option<&CssContentString> {
         self.descriptors
@@ -187,7 +208,9 @@ impl CssCursorUrlSetOption {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCursorUrlSetReference {
+    /// A `url()` reference.
     Url(CssUrl),
+    /// A string that stands for a URL, retaining its authored string form.
     String(CssContentString),
 }
 
@@ -195,6 +218,8 @@ pub enum CssCursorUrlSetReference {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCursorUrlSetDescriptor {
+    /// A non-negative `<resolution>` descriptor.
     Resolution(CssNumeric<CssResolution, CssNonNegative>),
+    /// A `type()` descriptor holding the authored MIME-type string, which is not validated.
     Type(CssContentString),
 }

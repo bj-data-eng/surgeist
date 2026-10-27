@@ -12,9 +12,13 @@ type SerializationResult<T> = Result<T, CssSerializationError>;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFlexDirection {
+    /// `row`: the main axis is the inline axis, with items placed start to end.
     Row,
+    /// `column`: the main axis is the block axis, with items placed start to end.
     Column,
+    /// `row-reverse`: like `row` with main-start and main-end swapped.
     RowReverse,
+    /// `column-reverse`: like `column` with main-start and main-end swapped.
     ColumnReverse,
 }
 
@@ -53,8 +57,11 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFlexWrap {
+    /// `nowrap`: the container is single-line.
     NoWrap,
+    /// `wrap`: the container is multi-line, with new lines stacked in the cross-start to cross-end direction.
     Wrap,
+    /// `wrap-reverse`: the container is multi-line, with new lines stacked in the opposite direction.
     WrapReverse,
 }
 
@@ -171,16 +178,21 @@ pub struct CssFlexBasisValue(Basis);
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssFlexBasisRef<'a> {
+    /// The flex-only `content` basis, which sizes the item from its content.
     Content,
+    /// A width-style size, which is not a `calc-size()` function.
     Size(&'a CssSizeValue),
+    /// A `calc-size()` function.
     CalcSize(&'a CssCalcSize),
 }
 
 impl CssFlexBasisValue {
+    /// Returns the flex-only `content` basis.
     pub const fn content() -> Self {
         Self(Basis::Content)
     }
 
+    /// Returns the borrowed canonical basis branch.
     pub fn view(&self) -> CssFlexBasisRef<'_> {
         match &self.0 {
             Basis::Content => CssFlexBasisRef::Content,
@@ -254,6 +266,9 @@ pub struct CssFlexComponents {
 }
 
 impl CssFlexComponents {
+    /// Builds the flex shorthand components from the authored members.
+    ///
+    /// Returns `None` when `grow` is omitted and either `basis` is omitted or `shrink` is present.
     pub fn try_new(
         grow: Option<CssNumeric<CssNumber, CssNonNegative>>,
         shrink: Option<CssNumeric<CssNumber, CssNonNegative>>,
@@ -269,24 +284,31 @@ impl CssFlexComponents {
         })
     }
 
+    /// Returns the authored flex-grow factor, or `None` when it was omitted.
     pub fn grow(&self) -> Option<&CssNumeric<CssNumber, CssNonNegative>> {
         self.grow.as_ref()
     }
 
+    /// Returns the authored flex-shrink factor, or `None` when it was omitted.
     pub fn shrink(&self) -> Option<&CssNumeric<CssNumber, CssNonNegative>> {
         self.shrink.as_ref()
     }
 
+    /// Returns the authored flex-basis, or `None` when it was omitted.
     pub fn basis(&self) -> Option<&CssFlexBasisValue> {
         self.basis.as_ref()
     }
 }
 
+/// An authored `flex` shorthand value.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFlexValue {
+    /// `none`: the shorthand for `0 0 auto`.
     None,
+    /// `auto`: the shorthand for `1 1 auto`.
     Auto,
+    /// Authored grow, shrink and basis components, each of which may be omitted.
     Components(CssFlexComponents),
 }
 

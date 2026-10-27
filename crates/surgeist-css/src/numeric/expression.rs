@@ -397,12 +397,19 @@ impl<'a> NumericInputContext<'a> {
 /// A dimensional axis in the CSS numeric type algebra.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssNumericDimension {
+    /// The `<length>` axis.
     Length,
+    /// The `<angle>` axis.
     Angle,
+    /// The `<time>` axis.
     Time,
+    /// The `<frequency>` axis.
     Frequency,
+    /// The `<resolution>` axis.
     Resolution,
+    /// The `<flex>` axis.
     Flex,
+    /// The `<percentage>` axis, tracked separately until a percentage hint resolves it.
     Percentage,
 }
 pub(crate) const DIMENSIONS: [CssNumericDimension; 7] = [
@@ -511,18 +518,31 @@ impl CssNumericType {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCalculationType {
+    /// A `<number>` with no dimension.
     Number,
+    /// A `<percentage>`.
     Percentage,
+    /// A `<length>`.
     Length,
+    /// A `<length-percentage>`: a length whose percentage basis is lengths.
     LengthPercentage,
+    /// An `<angle>`.
     Angle,
+    /// An `<angle-percentage>`: an angle whose percentage basis is angles.
     AnglePercentage,
+    /// A `<time>`.
     Time,
+    /// A `<time-percentage>`: a time whose percentage basis is times.
     TimePercentage,
+    /// A `<frequency>`.
     Frequency,
+    /// A `<frequency-percentage>`: a frequency whose percentage basis is frequencies.
     FrequencyPercentage,
+    /// A `<resolution>`.
     Resolution,
+    /// A `<flex>`.
     Flex,
+    /// An intermediate type that is none of the named root types; it carries the complete numeric type.
     Algebra(CssNumericType),
 }
 impl CssCalculationType {
@@ -817,11 +837,17 @@ pub(crate) type Result<T> = std::result::Result<T, CssNumericConstructionError>;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssNumericUnit {
+    /// A `<length>` unit.
     Length(CssLengthUnit),
+    /// An `<angle>` unit.
     Angle(crate::numeric::CssAngleUnit),
+    /// A `<time>` unit.
     Time(crate::numeric::CssTimeUnit),
+    /// A `<frequency>` unit.
     Frequency(crate::numeric::CssFrequencyUnit),
+    /// A `<resolution>` unit.
     Resolution(crate::numeric::CssResolutionUnit),
+    /// The `fr` flex unit.
     Flex,
 }
 
@@ -855,14 +881,17 @@ pub struct CssNumericLiteralRef<'a> {
     pub(crate) ty: CssNumericType,
 }
 impl<'a> CssNumericLiteralRef<'a> {
+    /// Returns the canonical unit of a dimension literal, or `None` for a number or percentage.
     pub fn canonical_unit(self) -> Option<CssNumericUnit> {
         let unit = self.unit()?;
         Some(CssNumericUnit::parse(unit).expect("checked numeric unit"))
     }
 
+    /// Returns the numeric type of the literal.
     pub fn numeric_type(self) -> CssNumericType {
         self.ty
     }
+    /// Returns the numeric token of the literal.
     pub fn numeric(self) -> CssNumericTokenRef<'a> {
         match self.component.view() {
             CssComponentValueRef::Token(
@@ -873,15 +902,18 @@ impl<'a> CssNumericLiteralRef<'a> {
             _ => unreachable!("checked numeric leaf"),
         }
     }
+    /// Returns the original coefficient text of the literal.
     pub fn representation(self) -> &'a str {
         self.numeric().representation()
     }
+    /// Returns the authored unit spelling, or `None` when the literal is not a dimension.
     pub fn unit(self) -> Option<&'a str> {
         match self.component.view() {
             CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit, .. }) => Some(unit),
             _ => None,
         }
     }
+    /// Returns the origin of the literal.
     pub fn origin(self) -> &'a CssValueOrigin {
         self.component.origin()
     }
@@ -893,25 +925,41 @@ impl PartialEq for CssNumericLiteralRef<'_> {
 }
 impl Eq for CssNumericLiteralRef<'_> {}
 
+/// A numeric literal leaf, classified by its type.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCalculationValueRef<'a> {
+    /// An `<integer>` literal.
     Integer(CssNumericLiteralRef<'a>),
+    /// A `<number>` literal.
     Number(CssNumericLiteralRef<'a>),
+    /// A `<percentage>` literal.
     Percentage(CssNumericLiteralRef<'a>),
+    /// A `<length>` literal.
     Length(CssNumericLiteralRef<'a>),
+    /// An `<angle>` literal.
     Angle(CssNumericLiteralRef<'a>),
+    /// A `<time>` literal.
     Time(CssNumericLiteralRef<'a>),
+    /// A `<frequency>` literal.
     Frequency(CssNumericLiteralRef<'a>),
+    /// A `<resolution>` literal.
     Resolution(CssNumericLiteralRef<'a>),
+    /// A `<flex>` literal.
     Flex(CssNumericLiteralRef<'a>),
 }
+/// A numeric constant keyword of a calculation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssNumericConstant {
+    /// `e`: Euler's number.
     E,
+    /// `pi`: the ratio of a circle's circumference to its diameter.
     Pi,
+    /// `infinity`: positive infinity.
     Infinity,
+    /// `-infinity`: negative infinity.
     NegativeInfinity,
+    /// `NaN`: not a number.
     NaN,
 }
 impl CssNumericConstant {
@@ -941,28 +989,50 @@ impl CssNumericConstant {
         }
     }
 }
+/// A math function of a calculation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssMathFunction {
+    /// `calc()`: evaluates one calculation.
     Calc,
+    /// `min()`: the smallest of its arguments.
     Min,
+    /// `max()`: the largest of its arguments.
     Max,
+    /// `clamp()`: limits a value between a minimum and a maximum, either of which may be `none`.
     Clamp,
+    /// `round()`: rounds a value to an integer multiple of an interval, by a rounding strategy.
     Round,
+    /// `mod()`: the modulus of a dividend and a divisor, with the sign of the divisor.
     Mod,
+    /// `rem()`: the remainder of a dividend and a divisor, with the sign of the dividend.
     Rem,
+    /// `sin()`: the sine of an angle or number.
     Sin,
+    /// `cos()`: the cosine of an angle or number.
     Cos,
+    /// `tan()`: the tangent of an angle or number.
     Tan,
+    /// `asin()`: the arc sine of a number, as an angle.
     Asin,
+    /// `acos()`: the arc cosine of a number, as an angle.
     Acos,
+    /// `atan()`: the arc tangent of a number, as an angle.
     Atan,
+    /// `atan2()`: the angle between the positive x-axis and the point given by two arguments.
     Atan2,
+    /// `pow()`: the first argument raised to the power of the second.
     Pow,
+    /// `sqrt()`: the square root of its argument.
     Sqrt,
+    /// `hypot()`: the square root of the sum of the squares of its arguments.
     Hypot,
+    /// `log()`: the natural logarithm, or the logarithm in an optional second argument's base.
     Log,
+    /// `exp()`: `e` raised to the power of its argument.
     Exp,
+    /// `abs()`: the absolute value of its argument.
     Abs,
+    /// `sign()`: the sign of its argument, as -1, 0 or 1.
     Sign,
 }
 impl CssMathFunction {
@@ -992,6 +1062,7 @@ impl CssMathFunction {
             _ => return None,
         })
     }
+    /// Returns the function name in lowercase CSS spelling.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Calc => "calc",
@@ -1021,11 +1092,16 @@ impl CssMathFunction {
 pub(crate) fn is_math_function(name: &str) -> bool {
     CssMathFunction::parse(name).is_some()
 }
+/// The rounding strategy of `round()`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssRoundingStrategy {
+    /// `nearest`: the closer of the two neighboring multiples, the upper one on a tie.
     Nearest,
+    /// `up`: the neighboring multiple closer to positive infinity.
     Up,
+    /// `down`: the neighboring multiple closer to negative infinity.
     Down,
+    /// `to-zero`: the neighboring multiple closer to zero.
     ToZero,
 }
 impl CssRoundingStrategy {
@@ -1038,14 +1114,20 @@ impl CssRoundingStrategy {
         }
     }
 }
+/// The operator joining one term of a calculation sum to the previous term.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssCalculationSumOperator {
+    /// `+`: addition.
     Add,
+    /// `-`: subtraction.
     Subtract,
 }
+/// The operator joining one factor of a calculation product to the previous factor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssCalculationProductOperator {
+    /// `*`: multiplication.
     Multiply,
+    /// `/`: division.
     Divide,
 }
 
@@ -1054,7 +1136,9 @@ pub enum CssCalculationProductOperator {
 /// not by the context-free numeric constructors.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssTreeCountingFunction {
+    /// `sibling-count()`: the total number of child elements of the element's parent.
     SiblingCount,
+    /// `sibling-index()`: the 1-based index of the element among its parent's children.
     SiblingIndex,
 }
 impl CssTreeCountingFunction {
@@ -1746,22 +1830,35 @@ impl CssCalculationExpression {
     }
 }
 
+/// A borrowed view of one node of a checked calculation expression.
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssCalculationExpressionRef<'a> {
+    /// A numeric literal leaf.
     Value(CssCalculationValueRef<'a>),
+    /// The symbolic `size` keyword of a `calc-size()` calculation.
     Size(CssCalculationSizeRef<'a>),
+    /// A numeric constant keyword such as `pi`.
     Constant(CssCalculationConstantRef<'a>),
+    /// A channel keyword of a relative color's origin color.
     Variable(CssCalculationVariableRef<'a>),
+    /// A reference to a custom color profile component.
     ProfileChannel(CssCalculationProfileChannelRef<'a>),
+    /// A `sibling-count()` or `sibling-index()` function.
     TreeCounting(CssCalculationTreeCountingRef<'a>),
+    /// A chain of additions and subtractions.
     Sum(CssCalculationSumRef<'a>),
+    /// A chain of multiplications and divisions.
     Product(CssCalculationProductRef<'a>),
+    /// A parenthesized sub-expression.
     Group(CssCalculationUnaryRef<'a>),
+    /// A nested `calc()` function.
     NestedCalc(CssCalculationUnaryRef<'a>),
+    /// A math function other than `calc()`.
     Function(CssCalculationFunctionRef<'a>),
 }
 impl<'a> CssCalculationExpressionRef<'a> {
+    /// Returns the origin of the node.
     pub fn origin(self) -> &'a CssValueOrigin {
         match self {
             Self::Value(v) => v.literal().origin(),
@@ -1776,6 +1873,7 @@ impl<'a> CssCalculationExpressionRef<'a> {
             Self::Function(v) => v.origin(),
         }
     }
+    /// Returns the numeric type of the node.
     pub fn numeric_type(self) -> CssNumericType {
         match self {
             Self::Value(v) => v.literal().numeric_type(),
@@ -1797,14 +1895,17 @@ pub struct CssCalculationSizeRef<'a> {
     node: &'a CssCalculationExpression,
 }
 impl<'a> CssCalculationSizeRef<'a> {
+    /// Returns the origin of the `size` node.
     pub fn origin(self) -> &'a CssValueOrigin {
         &self.node.origin
     }
+    /// Returns the numeric type of the `size` node.
     pub fn numeric_type(self) -> CssNumericType {
         self.node.ty
     }
 }
 impl<'a> CssCalculationValueRef<'a> {
+    /// Returns the numeric literal of the value.
     pub fn literal(self) -> CssNumericLiteralRef<'a> {
         match self {
             Self::Integer(v)
@@ -1819,20 +1920,24 @@ impl<'a> CssCalculationValueRef<'a> {
         }
     }
 }
+/// A borrowed numeric constant node.
 #[derive(Clone, Copy, Debug)]
 pub struct CssCalculationConstantRef<'a> {
     node: &'a CssCalculationExpression,
 }
 impl<'a> CssCalculationConstantRef<'a> {
+    /// Returns the constant.
     pub fn value(self) -> CssNumericConstant {
         let NodeKind::Constant(v) = self.node.kind else {
             unreachable!()
         };
         v
     }
+    /// Returns the origin of the node.
     pub fn origin(self) -> &'a CssValueOrigin {
         &self.node.origin
     }
+    /// Returns the numeric type of the node.
     pub fn numeric_type(self) -> CssNumericType {
         self.node.ty
     }
@@ -1843,54 +1948,66 @@ pub struct CssCalculationTreeCountingRef<'a> {
     node: &'a CssCalculationExpression,
 }
 impl<'a> CssCalculationTreeCountingRef<'a> {
+    /// Returns the tree-counting function.
     pub fn function(self) -> CssTreeCountingFunction {
         let NodeKind::TreeCounting(function) = self.node.kind else {
             unreachable!()
         };
         function
     }
+    /// Returns the origin of the node.
     pub fn origin(self) -> &'a CssValueOrigin {
         &self.node.origin
     }
+    /// Returns the numeric type of the node.
     pub fn numeric_type(self) -> CssNumericType {
         self.node.ty
     }
 }
+/// A borrowed relative-color channel reference node.
 #[derive(Clone, Copy, Debug)]
 pub struct CssCalculationVariableRef<'a> {
     node: &'a CssCalculationExpression,
 }
 impl<'a> CssCalculationVariableRef<'a> {
+    /// Returns the referenced channel.
     pub fn channel(self) -> CssRelativeColorChannel {
         let NodeKind::Variable(v) = self.node.kind else {
             unreachable!()
         };
         v
     }
+    /// Returns the origin of the node.
     pub fn origin(self) -> &'a CssValueOrigin {
         &self.node.origin
     }
+    /// Returns the numeric type of the node.
     pub fn numeric_type(self) -> CssNumericType {
         self.node.ty
     }
 }
+/// A borrowed chain of additions and subtractions.
 #[derive(Clone, Copy, Debug)]
 pub struct CssCalculationSumRef<'a> {
     node: &'a CssCalculationExpression,
 }
 impl<'a> CssCalculationSumRef<'a> {
+    /// Returns the number of terms.
     pub fn len(self) -> usize {
         match &self.node.kind {
             NodeKind::Sum(v) => v.len(),
             _ => unreachable!(),
         }
     }
+    /// Returns whether the sum has no terms, which is never the case.
     pub fn is_empty(self) -> bool {
         false
     }
+    /// Returns the origin of the sum.
     pub fn origin(self) -> &'a CssValueOrigin {
         &self.node.origin
     }
+    /// Returns the term at the zero-based index, or `None` when the index is out of range.
     pub fn term(self, i: usize) -> Option<CssCalculationSumTermRef<'a>> {
         let NodeKind::Sum(v) = &self.node.kind else {
             unreachable!()
@@ -1917,6 +2034,7 @@ impl<'a> CssCalculationSumRef<'a> {
             })
     }
 }
+/// One term of a borrowed sum.
 #[derive(Clone, Copy, Debug)]
 pub struct CssCalculationSumTermRef<'a> {
     operator: Option<CssCalculationSumOperator>,
@@ -1924,33 +2042,41 @@ pub struct CssCalculationSumTermRef<'a> {
     operator_origin: Option<&'a CssValueOrigin>,
 }
 impl<'a> CssCalculationSumTermRef<'a> {
+    /// Returns the origin of the operator token before this term, or `None` for the first term.
     pub fn operator_origin(self) -> Option<&'a CssValueOrigin> {
         self.operator_origin
     }
+    /// Returns the operator joining this term to the previous one, or `None` for the first term.
     pub fn operator(self) -> Option<CssCalculationSumOperator> {
         self.operator
     }
+    /// Returns the term's expression.
     pub fn expression(self) -> CssCalculationExpressionRef<'a> {
         self.expression.as_ref()
     }
 }
+/// A borrowed chain of multiplications and divisions.
 #[derive(Clone, Copy, Debug)]
 pub struct CssCalculationProductRef<'a> {
     node: &'a CssCalculationExpression,
 }
 impl<'a> CssCalculationProductRef<'a> {
+    /// Returns the number of factors.
     pub fn len(self) -> usize {
         match &self.node.kind {
             NodeKind::Product(v) => v.len(),
             _ => unreachable!(),
         }
     }
+    /// Returns whether the product has no factors, which is never the case.
     pub fn is_empty(self) -> bool {
         false
     }
+    /// Returns the origin of the product.
     pub fn origin(self) -> &'a CssValueOrigin {
         &self.node.origin
     }
+    /// Returns the factor at the zero-based index, or `None` when the index is out of range.
     pub fn factor(self, i: usize) -> Option<CssCalculationProductFactorRef<'a>> {
         let NodeKind::Product(v) = &self.node.kind else {
             unreachable!()
@@ -1977,6 +2103,7 @@ impl<'a> CssCalculationProductRef<'a> {
             })
     }
 }
+/// One factor of a borrowed product.
 #[derive(Clone, Copy, Debug)]
 pub struct CssCalculationProductFactorRef<'a> {
     operator: Option<CssCalculationProductOperator>,
@@ -1984,24 +2111,30 @@ pub struct CssCalculationProductFactorRef<'a> {
     operator_origin: Option<&'a CssValueOrigin>,
 }
 impl<'a> CssCalculationProductFactorRef<'a> {
+    /// Returns the origin of the operator token before this factor, or `None` for the first factor.
     pub fn operator_origin(self) -> Option<&'a CssValueOrigin> {
         self.operator_origin
     }
+    /// Returns the operator joining this factor to the previous one, or `None` for the first factor.
     pub fn operator(self) -> Option<CssCalculationProductOperator> {
         self.operator
     }
+    /// Returns the factor's expression.
     pub fn expression(self) -> CssCalculationExpressionRef<'a> {
         self.expression.as_ref()
     }
 }
+/// A borrowed node with one operand: a parenthesized group or a nested `calc()`.
 #[derive(Clone, Copy, Debug)]
 pub struct CssCalculationUnaryRef<'a> {
     node: &'a CssCalculationExpression,
 }
 impl<'a> CssCalculationUnaryRef<'a> {
+    /// Returns the origin of the node.
     pub fn origin(self) -> &'a CssValueOrigin {
         &self.node.origin
     }
+    /// Returns the operand expression.
     pub fn operand(self) -> CssCalculationExpressionRef<'a> {
         match &self.node.kind {
             NodeKind::Group(v) => v.as_ref().as_ref(),
@@ -2010,29 +2143,37 @@ impl<'a> CssCalculationUnaryRef<'a> {
         }
     }
 }
+/// A borrowed math function call other than `calc()`.
 #[derive(Clone, Copy, Debug)]
 pub struct CssCalculationFunctionRef<'a> {
     node: &'a CssCalculationExpression,
 }
 impl<'a> CssCalculationFunctionRef<'a> {
+    /// Returns the origin of the function call.
     pub fn origin(self) -> &'a CssValueOrigin {
         &self.node.origin
     }
+    /// Returns the math function.
     pub fn function(self) -> CssMathFunction {
         let NodeKind::Function { function, .. } = &self.node.kind else {
             unreachable!()
         };
         *function
     }
+    /// Returns the number of arguments.
     pub fn len(self) -> usize {
         let NodeKind::Function { args, .. } = &self.node.kind else {
             unreachable!()
         };
         args.len()
     }
+    /// Returns whether the call has no arguments, which is never the case.
     pub fn is_empty(self) -> bool {
         false
     }
+    /// Returns the argument at the zero-based index.
+    ///
+    /// The outer `None` means the index is out of range; the inner `None` means the argument was authored as `none`.
     pub fn argument(self, i: usize) -> Option<Option<CssCalculationExpressionRef<'a>>> {
         let NodeKind::Function { args, .. } = &self.node.kind else {
             unreachable!()
@@ -2040,6 +2181,7 @@ impl<'a> CssCalculationFunctionRef<'a> {
         args.get(i)
             .map(|a| a.as_ref().map(CssCalculationExpression::as_ref))
     }
+    /// Returns the leading rounding strategy of a `round()` call, or `None` when it was omitted or the function takes none.
     pub fn rounding_strategy(self) -> Option<CssRoundingStrategy> {
         let NodeKind::Function { strategy, .. } = &self.node.kind else {
             unreachable!()
@@ -3096,15 +3238,18 @@ pub struct CssCalculationProfileChannelRef<'a> {
     node: &'a CssCalculationExpression,
 }
 impl<'a> CssCalculationProfileChannelRef<'a> {
+    /// Returns the referenced custom color profile component name.
     pub fn name(self) -> &'a crate::color::CssColorProfileComponentName {
         let NodeKind::ProfileChannel(name) = &self.node.kind else {
             unreachable!("checked profile reference")
         };
         name
     }
+    /// Returns the origin of the node.
     pub fn origin(self) -> &'a CssValueOrigin {
         &self.node.origin
     }
+    /// Returns the numeric type of the node.
     pub fn numeric_type(self) -> CssNumericType {
         self.node.ty
     }

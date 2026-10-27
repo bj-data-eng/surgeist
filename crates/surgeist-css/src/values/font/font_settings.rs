@@ -13,6 +13,9 @@ pub struct CssOpenTypeTag {
 }
 
 impl CssOpenTypeTag {
+    /// Checks an OpenType tag.
+    ///
+    /// Returns `None` unless `value` is exactly four bytes, each printable ASCII (U+0020 through U+007E).
     #[must_use]
     pub fn try_new(value: impl Into<String>) -> Option<Self> {
         let value = value.into();
@@ -20,6 +23,7 @@ impl CssOpenTypeTag {
             .then_some(Self { value })
     }
 
+    /// Returns the four-character tag text, with its case preserved.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.value
@@ -30,9 +34,13 @@ impl CssOpenTypeTag {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAuthoredFontFeatureValue {
+    /// No value was written after the tag; the feature takes the default value `1`.
     Omitted,
+    /// `on`: enables the feature, equivalent to `1`.
     On,
+    /// `off`: disables the feature, equivalent to `0`.
     Off,
+    /// A non-negative `<integer>` feature value; it may be a deferred calculation.
     Index(CssNumeric<CssInteger, CssNonNegative>),
 }
 
@@ -44,14 +52,17 @@ pub struct CssAuthoredFontFeature {
 }
 
 impl CssAuthoredFontFeature {
+    /// Creates a feature setting from a checked tag and its authored value.
     #[must_use]
     pub const fn new(tag: CssOpenTypeTag, value: CssAuthoredFontFeatureValue) -> Self {
         Self { tag, value }
     }
+    /// Returns the feature tag.
     #[must_use]
     pub const fn tag(&self) -> &CssOpenTypeTag {
         &self.tag
     }
+    /// Returns the authored value written after the tag.
     #[must_use]
     pub const fn value(&self) -> &CssAuthoredFontFeatureValue {
         &self.value
@@ -65,10 +76,14 @@ pub struct CssAuthoredFontFeatureList {
 }
 
 impl CssAuthoredFontFeatureList {
+    /// Checks a feature list.
+    ///
+    /// Returns `None` when `features` is empty.
     #[must_use]
     pub fn try_new(features: Vec<CssAuthoredFontFeature>) -> Option<Self> {
         (!features.is_empty()).then_some(Self { features })
     }
+    /// Returns the feature settings in authored order; the slice is never empty.
     #[must_use]
     pub fn features(&self) -> &[CssAuthoredFontFeature] {
         &self.features
@@ -79,7 +94,9 @@ impl CssAuthoredFontFeatureList {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAuthoredFontFeatureSettings {
+    /// `normal`: no change in glyph selection or positioning occurs due to this property.
     Normal,
+    /// A nonempty comma-separated list of feature settings.
     Features(CssAuthoredFontFeatureList),
 }
 
@@ -91,14 +108,17 @@ pub struct CssFontVariation {
 }
 
 impl CssFontVariation {
+    /// Creates a variation setting from a checked axis tag and a number.
     #[must_use]
     pub const fn new(tag: CssOpenTypeTag, value: CssNumeric<CssNumber>) -> Self {
         Self { tag, value }
     }
+    /// Returns the variation axis tag.
     #[must_use]
     pub const fn tag(&self) -> &CssOpenTypeTag {
         &self.tag
     }
+    /// Returns the authored axis value; it may be a deferred calculation.
     #[must_use]
     pub const fn value(&self) -> &CssNumeric<CssNumber> {
         &self.value
@@ -119,10 +139,14 @@ pub struct CssFontVariationList {
 }
 
 impl CssFontVariationList {
+    /// Checks a variation list.
+    ///
+    /// Returns `None` when `variations` is empty.
     #[must_use]
     pub fn try_new(variations: Vec<CssFontVariation>) -> Option<Self> {
         (!variations.is_empty()).then_some(Self { variations })
     }
+    /// Returns the variation settings in authored order, including repeated axis tags; the slice is never empty.
     #[must_use]
     pub fn variations(&self) -> &[CssFontVariation] {
         &self.variations
@@ -133,7 +157,9 @@ impl CssFontVariationList {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontVariationSettings {
+    /// `normal`: no change in glyph shape, matching, or positioning occurs due to this property.
     Normal,
+    /// A nonempty comma-separated list of variation settings.
     Variations(CssFontVariationList),
 }
 

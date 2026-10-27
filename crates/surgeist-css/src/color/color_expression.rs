@@ -18,6 +18,16 @@ use crate::numeric::{
 
 /// Checked authored expression in a relative color's result slot.
 impl crate::color::CssRelativeColorExpression {
+    /// Checks `values` as the single expression in the result slot of a relative color.
+    ///
+    /// The expression is `none`, a channel keyword of `environment`, a number, a percentage,
+    /// an angle (for a hue slot) or a math function.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `values` is empty, holds more than one value, exceeds `limits`,
+    /// is inconsistent with `environment` or `result_domain`, or is not a valid value for the
+    /// result domain.
     pub fn try_from_components(
         values: CssComponentValues,
         environment: crate::color::CssRelativeColorEnvironment,
@@ -173,14 +183,27 @@ enum ProfileExpression {
     },
     Calculation(CssProfileColorCalculation),
 }
+/// A borrowed view of the kind of a custom-profile color expression.
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssProfileColorExpressionRef<'a> {
+    /// A literal component: `none`, a number or a percentage.
     Literal(&'a crate::color::CssColorComponent),
+    /// A reference to a custom profile's component name.
     Reference(&'a crate::color::CssColorProfileComponentName),
+    /// A math function over custom-profile component references.
     Calculation(&'a CssProfileColorCalculation),
 }
 impl CssProfileColorExpression {
+    /// Checks `values` as the single expression in a custom profile's component environment.
+    ///
+    /// The expression is `none`, a number, a percentage, a profile component name or a math
+    /// function.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `values` is empty, holds more than one value, or is not a valid
+    /// expression of those kinds.
     pub fn try_from_components(values: CssComponentValues) -> Result<Self> {
         Self::from_components(values.into(), AdmissionPolicy::Strict)
     }
@@ -276,6 +299,7 @@ impl CssProfileColorExpression {
         };
         Ok(Self { value, origin })
     }
+    /// Returns a borrowed view of the classified expression.
     pub fn view(&self) -> CssProfileColorExpressionRef<'_> {
         match &self.value {
             ProfileExpression::Literal { value, .. } => {
@@ -287,9 +311,11 @@ impl CssProfileColorExpression {
             ProfileExpression::Calculation(v) => CssProfileColorExpressionRef::Calculation(v),
         }
     }
+    /// Returns the origin of the authored expression.
     pub fn origin(&self) -> &CssValueOrigin {
         &self.origin
     }
+    /// Returns the authored component values the expression was checked from.
     pub fn components(&self) -> &CssComponentValues {
         match &self.value {
             ProfileExpression::Literal { components, .. }
@@ -298,6 +324,7 @@ impl CssProfileColorExpression {
         }
     }
 }
+/// A checked math function over custom-profile component references.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssProfileColorCalculation {
     expression: Box<CssCalculationExpression>,
@@ -323,18 +350,23 @@ impl CssProfileColorCalculation {
             .specified_inverse_eq(&other.expression, context)
     }
 
+    /// Returns the checked calculation expression.
     pub fn expression(&self) -> CssCalculationExpressionRef<'_> {
         self.expression.as_ref().as_ref()
     }
+    /// Returns the custom-profile component references the calculation contains, one per occurrence.
     pub fn references(&self) -> &[crate::color::CssColorProfileComponentName] {
         &self.references
     }
+    /// Returns the authored component values of the calculation.
     pub fn components(&self) -> &CssComponentValues {
         self.expression.components.as_ref().expect("checked root")
     }
+    /// Returns the origin of the authored calculation.
     pub fn origin(&self) -> &CssValueOrigin {
         &self.expression.origin
     }
+    /// Returns the result type of the calculation.
     pub fn result_type(&self) -> CssCalculationType {
         self.expression.result_type()
     }

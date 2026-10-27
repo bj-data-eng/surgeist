@@ -28,11 +28,13 @@ impl CssColumnRule {
         CssBorder::try_new(width, style, color).map(|components| Self { components })
     }
 
+    /// Returns the authored rule width, or `None` when it was omitted.
     #[must_use]
     pub const fn width(&self) -> Option<&CssLineWidth> {
         self.components.width()
     }
 
+    /// Returns the authored rule style, or `None` when it was omitted.
     #[must_use]
     pub const fn style(&self) -> Option<CssLineStyle> {
         self.components.style()

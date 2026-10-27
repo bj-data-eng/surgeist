@@ -414,32 +414,57 @@ impl CssSelectorContext {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug)]
 pub enum CssRuleContextKindRef<'a> {
+    /// A style rule; the shared selector context carries its complete resolved selectors.
     Style(&'a CssSelectorContext),
+    /// A style rule nested in `@scope`, with its scope-relative selector context.
     ScopedStyle(&'a CssSelectorContext),
+    /// A run of declarations that follows a nested rule inside a style rule.
     NestedDeclarations(&'a CssSelectorContext),
+    /// A `@media` group header with its media query list.
     Media(&'a CssMediaQueryList),
+    /// A `@supports` group header with its supports condition.
     Supports(&'a CssCondition<CssSupportsLeaf>),
+    /// A `@supports` rule written in the named supports-condition form.
     SupportsCondition(&'a CssSupportsConditionRule),
+    /// A `@when` group header with its condition.
     When(&'a CssCondition<CssWhenLeaf>),
+    /// An `@else` group header; `None` for a bare `@else`.
     Else(Option<&'a CssCondition<CssWhenLeaf>>),
+    /// A `@container` group header.
     Container {
+        /// The container name list and condition.
         prelude: &'a CssContainerPrelude,
     },
+    /// A `@layer` block header; `None` for an anonymous layer.
     LayerBlock(Option<&'a CssLayerName>),
+    /// A `@scope` group header.
     Scope {
+        /// The scoping root selector list, when the prelude has one.
         root: Option<&'a CssScopeSelectorList>,
+        /// The scoping limit selector list (the `to (...)` part), when the prelude has one.
         limit: Option<&'a CssScopeSelectorList>,
     },
+    /// A `@layer` statement naming its layers.
     LayerStatement(&'a CssLayerNameList),
+    /// A `@import` rule payload.
     Import(&'a CssImportRule),
+    /// A `@namespace` rule payload.
     Namespace(&'a CssNamespaceRule),
+    /// A `@font-face` rule payload.
     FontFace(&'a CssFontFaceRule),
+    /// A `@custom-media` rule payload.
     CustomMedia(&'a CssCustomMediaRule),
+    /// A `@font-feature-values` rule payload.
     FontFeatureValues(&'a CssFontFeatureValuesRule),
+    /// A `@font-palette-values` rule payload.
     FontPaletteValues(&'a CssFontPaletteValuesRule),
+    /// A `@color-profile` rule payload.
     ColorProfile(&'a CssColorProfileRule),
+    /// A `@keyframes` rule payload.
     Keyframes(&'a CssKeyframesRule),
+    /// A `@counter-style` rule payload.
     CounterStyle(&'a CssCounterStyleRule),
+    /// A `@page` rule payload.
     Page(&'a CssPageRule),
 }
 
@@ -601,7 +626,9 @@ impl CssNormalizedDeclaration {
 #[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum CssNormalizedItem {
+    /// A rule header or terminal payload.
     Rule(CssRuleContext),
+    /// A declaration of a style or nested-declarations rule.
     Declaration(CssNormalizedDeclaration),
 }
 

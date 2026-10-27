@@ -17,6 +17,7 @@ pub surgeist_cssom::CssomAuthoredRule::RawNestedDeclarations(surgeist_css::decla
 pub surgeist_cssom::CssomAuthoredRule::Rule(surgeist_css::rule::syntax::CssRule)
 pub surgeist_cssom::CssomAuthoredRule::SupportsTestChild(surgeist_css::query::supports::named_supports::CssSupportsTestChild)
 impl surgeist_css::source::source_retention::CssRetainedSources for surgeist_cssom::CssomAuthoredRule
+pub fn surgeist_cssom::CssomAuthoredRule::visit_retained_sources(&self, sources: &mut surgeist_css::source::source_retention::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::source_retention::CssSourceRetentionError>
 pub enum surgeist_cssom::CssomBlockData
 pub surgeist_cssom::CssomBlockData::CounterStyle(alloc::boxed::Box<surgeist_css::rule::counter_style::syntax::CssCounterStyleDescriptors>)
 pub surgeist_cssom::CssomBlockData::FontFace(surgeist_css::rule::font_face::syntax::CssFontFaceDescriptors)
@@ -28,6 +29,7 @@ pub surgeist_cssom::CssomBlockData::Properties::authored: surgeist_cssom::CssomP
 pub surgeist_cssom::CssomBlockData::Properties::domain: surgeist_cssom::CssomPropertyDomain
 pub surgeist_cssom::CssomBlockData::Properties::selected: surgeist_cssom::CssomProjection<surgeist_css::declaration::specified_declaration_block::CssSpecifiedDeclarationBlock, surgeist_css::declaration::specified_declaration_block::CssDeclarationBlockError>
 impl surgeist_css::source::source_retention::CssRetainedSources for surgeist_cssom::CssomBlockData
+pub fn surgeist_cssom::CssomBlockData::visit_retained_sources(&self, sources: &mut surgeist_css::source::source_retention::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::source_retention::CssSourceRetentionError>
 pub enum surgeist_cssom::CssomChange
 pub surgeist_cssom::CssomChange::Ancestry
 pub surgeist_cssom::CssomChange::Base
@@ -178,6 +180,7 @@ pub surgeist_cssom::CssomGroupPrelude::When(surgeist_css::query::condition::CssC
 impl surgeist_cssom::CssomGroupPrelude
 pub const fn surgeist_cssom::CssomGroupPrelude::kind(&self) -> surgeist_cssom::CssomGroupKind
 impl surgeist_css::source::source_retention::CssRetainedSources for surgeist_cssom::CssomGroupPrelude
+pub fn surgeist_cssom::CssomGroupPrelude::visit_retained_sources(&self, sources: &mut surgeist_css::source::source_retention::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::source_retention::CssSourceRetentionError>
 pub enum surgeist_cssom::CssomInitialMedia<'a>
 pub surgeist_cssom::CssomInitialMedia::List
 pub surgeist_cssom::CssomInitialMedia::List::id: &'a surgeist_cssom::CssomMediaListId
@@ -249,6 +252,7 @@ pub enum surgeist_cssom::CssomProjection<T, E>
 pub surgeist_cssom::CssomProjection::Available(T)
 pub surgeist_cssom::CssomProjection::Unavailable(E)
 impl<T: surgeist_css::source::source_retention::CssRetainedSources, E: surgeist_css::source::source_retention::CssRetainedSources> surgeist_css::source::source_retention::CssRetainedSources for surgeist_cssom::CssomProjection<T, E>
+pub fn surgeist_cssom::CssomProjection<T, E>::visit_retained_sources(&self, sources: &mut surgeist_css::source::source_retention::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::source_retention::CssSourceRetentionError>
 pub enum surgeist_cssom::CssomPropertyDomain
 pub surgeist_cssom::CssomPropertyDomain::Keyframe
 pub surgeist_cssom::CssomPropertyDomain::Margin
@@ -259,6 +263,7 @@ pub surgeist_cssom::CssomPropertyOccurrences::Margin(surgeist_css::rule::page::s
 pub surgeist_cssom::CssomPropertyOccurrences::Ordinary(surgeist_css::declaration::syntax::CssDeclarationList)
 pub surgeist_cssom::CssomPropertyOccurrences::RawContents(surgeist_css::declaration::syntax::CssDeclarationList)
 impl surgeist_css::source::source_retention::CssRetainedSources for surgeist_cssom::CssomPropertyOccurrences
+pub fn surgeist_cssom::CssomPropertyOccurrences::visit_retained_sources(&self, sources: &mut surgeist_css::source::source_retention::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::source_retention::CssSourceRetentionError>
 pub enum surgeist_cssom::CssomPublication
 pub surgeist_cssom::CssomPublication::Changed(alloc::boxed::Box<surgeist_cssom::CssomChangeSummary>)
 pub surgeist_cssom::CssomPublication::Unchanged
@@ -353,6 +358,7 @@ impl surgeist_cssom::CssomRuleData
 pub fn surgeist_cssom::CssomRuleData::block(&self) -> core::option::Option<&surgeist_cssom::CssomBlockId>
 pub fn surgeist_cssom::CssomRuleData::children(&self) -> core::option::Option<&surgeist_cssom::CssomRuleListId>
 impl surgeist_css::source::source_retention::CssRetainedSources for surgeist_cssom::CssomRuleData
+pub fn surgeist_cssom::CssomRuleData::visit_retained_sources(&self, sources: &mut surgeist_css::source::source_retention::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::source_retention::CssSourceRetentionError>
 pub enum surgeist_cssom::CssomSheetListTarget<'a>
 pub surgeist_cssom::CssomSheetListTarget::Created(&'a surgeist_cssom::CssomSheetTicket)
 pub surgeist_cssom::CssomSheetListTarget::Existing(&'a surgeist_cssom::CssomSheetId)

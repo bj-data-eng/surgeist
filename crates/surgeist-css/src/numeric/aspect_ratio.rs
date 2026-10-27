@@ -30,10 +30,12 @@ impl CssSpecifiedRatio {
         }
     }
 
+    /// Returns the authored numerator operand.
     pub const fn numerator(&self) -> &CssNumeric<CssNumber, CssNonNegative> {
         &self.numerator
     }
 
+    /// Returns the authored denominator operand, or `None` when it was omitted (meaning one).
     pub const fn denominator(&self) -> Option<&CssNumeric<CssNumber, CssNonNegative>> {
         self.denominator.as_ref()
     }

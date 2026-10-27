@@ -11,6 +11,9 @@ use crate::values::common::CssIdent;
 pub struct CssGridLineName(CssIdent);
 
 impl CssGridLineName {
+    /// Checks a decoded identifier as a grid line name.
+    ///
+    /// Returns `None` when the identifier is a reserved custom identifier, `auto` or `span`, in any ASCII case.
     #[must_use]
     pub fn try_new(value: CssIdent) -> Option<Self> {
         (!crate::values::common::syntax::is_reserved_custom_ident(value.as_str())
@@ -19,6 +22,7 @@ impl CssGridLineName {
         .then_some(Self(value))
     }
 
+    /// Returns the decoded identifier.
     #[must_use]
     pub fn ident(&self) -> &CssIdent {
         &self.0
@@ -40,17 +44,22 @@ impl PartialEq for CssGridLineIndex {
 }
 
 impl CssGridLineIndex {
+    /// Builds a line index.
+    ///
+    /// Returns `None` when `value` is a literal zero. A calculation is accepted without evaluation.
     #[must_use]
     pub fn try_new(value: CssNumeric<CssInteger>, name: Option<CssGridLineName>) -> Option<Self> {
         let valid = !value.literal().is_some_and(CssNumericLiteral::is_zero);
         valid.then_some(Self { value, name })
     }
 
+    /// Returns the authored integer index.
     #[must_use]
     pub fn value(&self) -> &CssNumeric<CssInteger> {
         &self.value
     }
 
+    /// Returns the authored line name, or `None` when it was omitted.
     #[must_use]
     pub fn name(&self) -> Option<&CssGridLineName> {
         self.name.as_ref()
@@ -65,6 +74,9 @@ pub struct CssGridLineSpan {
 }
 
 impl CssGridLineSpan {
+    /// Builds a span from its optional parts.
+    ///
+    /// Returns `None` when both the integer and the name are omitted.
     #[must_use]
     pub fn try_new(
         integer: Option<CssNumeric<CssInteger, CssPositive>>,
@@ -73,11 +85,13 @@ impl CssGridLineSpan {
         (integer.is_some() || name.is_some()).then_some(Self { integer, name })
     }
 
+    /// Returns the authored positive span count, or `None` when it was omitted.
     #[must_use]
     pub fn integer(&self) -> Option<&CssNumeric<CssInteger, CssPositive>> {
         self.integer.as_ref()
     }
 
+    /// Returns the authored line name, or `None` when it was omitted.
     #[must_use]
     pub fn name(&self) -> Option<&CssGridLineName> {
         self.name.as_ref()
@@ -88,13 +102,20 @@ impl CssGridLineSpan {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridLine {
+    /// `auto`: contributes nothing to placement, indicating auto-placement or a default span of one.
     Auto,
+    /// A `<custom-ident>` that names a grid area or grid line.
     Name(CssGridLineName),
+    /// A nonzero integer index, optionally with a line name.
     Indexed(CssGridLineIndex),
+    /// A `span` with a positive count, a line name, or both.
     Span(CssGridLineSpan),
 }
 
 impl CssGridLine {
+    /// Builds an indexed line.
+    ///
+    /// Returns `None` when `value` is a literal zero.
     #[must_use]
     pub fn try_indexed(
         value: CssNumeric<CssInteger>,
@@ -103,6 +124,9 @@ impl CssGridLine {
         CssGridLineIndex::try_new(value, name).map(Self::Indexed)
     }
 
+    /// Builds a span line.
+    ///
+    /// Returns `None` when both the integer and the name are omitted.
     #[must_use]
     pub fn try_span(
         integer: Option<CssNumeric<CssInteger, CssPositive>>,
@@ -178,18 +202,22 @@ impl CssGridLineRange {
         Self::new(start, end)
     }
 
+    /// Builds a range from a start line and an optional end line; `None` records that the end was omitted.
     #[must_use]
     pub const fn new(start: CssGridLine, end: Option<CssGridLine>) -> Self {
         Self { start, end }
     }
+    /// Returns the start line.
     #[must_use]
     pub const fn start(&self) -> &CssGridLine {
         &self.start
     }
+    /// Returns the authored end line, or `None` when it was omitted.
     #[must_use]
     pub const fn authored_end(&self) -> Option<&CssGridLine> {
         self.end.as_ref()
     }
+    /// Returns the authored end line, or the line that an omitted end implies: the start's name when the start is a name, otherwise `auto`.
     #[must_use]
     pub fn effective_end(&self) -> CssGridLine {
         self.end
@@ -270,6 +298,9 @@ impl CssGridArea {
         unreachable!("full explicit area represents its four values")
     }
 
+    /// Builds an area from its authored lines.
+    ///
+    /// Returns `None` when a later line is authored without the line before it in the order row-start, column-start, row-end, column-end.
     #[must_use]
     pub fn try_new(
         row_start: CssGridLine,
@@ -289,34 +320,41 @@ impl CssGridArea {
             column_end,
         })
     }
+    /// Returns the row-start line.
     #[must_use]
     pub const fn row_start(&self) -> &CssGridLine {
         &self.row_start
     }
+    /// Returns the authored column-start line, or `None` when it was omitted.
     #[must_use]
     pub const fn authored_column_start(&self) -> Option<&CssGridLine> {
         self.column_start.as_ref()
     }
+    /// Returns the authored row-end line, or `None` when it was omitted.
     #[must_use]
     pub const fn authored_row_end(&self) -> Option<&CssGridLine> {
         self.row_end.as_ref()
     }
+    /// Returns the authored column-end line, or `None` when it was omitted.
     #[must_use]
     pub const fn authored_column_end(&self) -> Option<&CssGridLine> {
         self.column_end.as_ref()
     }
+    /// Returns the authored column-start line, or the line that its omission implies from the row-start line.
     #[must_use]
     pub fn effective_column_start(&self) -> CssGridLine {
         self.column_start
             .clone()
             .unwrap_or_else(|| self.row_start.omitted_partner())
     }
+    /// Returns the authored row-end line, or the line that its omission implies from the row-start line.
     #[must_use]
     pub fn effective_row_end(&self) -> CssGridLine {
         self.row_end
             .clone()
             .unwrap_or_else(|| self.row_start.omitted_partner())
     }
+    /// Returns the authored column-end line, or the line that its omission implies from the effective column-start line.
     #[must_use]
     pub fn effective_column_end(&self) -> CssGridLine {
         self.column_end

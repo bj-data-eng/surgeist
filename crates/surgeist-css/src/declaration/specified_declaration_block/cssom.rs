@@ -100,6 +100,13 @@ fn candidates_for_name(property: CssKnownProperty) -> &'static [&'static Candida
 }
 
 impl CssSpecifiedDeclarationBlock {
+    /// Serializes the block as CSSOM declaration-block text, collapsing complete shorthand groups
+    /// through their inverse where the selected values allow it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`CssDeclarationBlockError`](crate::declaration::CssDeclarationBlockError) when a
+    /// limit is exhausted or an entry has no standalone specified value; no partial text is returned.
     pub fn serialize_cssom(&self, limits: CssSerializationLimits) -> Result<String> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         self.append_cssom(&mut writer)?;

@@ -52,6 +52,7 @@ impl PartialEq for CssSheet {
 }
 
 impl CssSheet {
+    /// Creates an empty sheet with no rules, no stylesheet location and no parse source.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -119,26 +120,47 @@ impl CssSheet {
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssRule {
+    /// A `@custom-media` rule.
     CustomMedia(crate::rule::CssCustomMediaRule),
+    /// An `@import` rule.
     Import(CssImportRule),
+    /// A `@namespace` rule.
     Namespace(CssNamespaceRule),
+    /// A `@counter-style` rule.
     CounterStyle(CssCounterStyleRule),
+    /// A `@page` rule.
     Page(CssPageRule),
+    /// A `@layer` statement rule that only declares layer names.
     LayerStatement(CssLayerStatementRule),
+    /// A `@layer` block rule that holds child rules.
     LayerBlock(CssLayerBlockRule),
+    /// A `@font-face` rule.
     FontFace(CssFontFaceRule),
+    /// A `@font-feature-values` rule.
     FontFeatureValues(CssFontFeatureValuesRule),
+    /// A `@font-palette-values` rule.
     FontPaletteValues(CssFontPaletteValuesRule),
+    /// A `@color-profile` rule.
     ColorProfile(CssColorProfileRule),
+    /// A `@keyframes` rule.
     Keyframes(CssKeyframesRule),
+    /// A style rule: a selector list with its declarations and nested rules.
     Style(CssStyleRule),
+    /// A run of declarations nested directly in a style rule or conditional group.
     NestedDeclarations(CssNestedDeclarationsRule),
+    /// A `@media` rule.
     Media(CssMediaRule),
+    /// A `@supports` rule.
     Supports(CssSupportsRule),
+    /// A `@supports-condition` rule that defines a named supports condition.
     SupportsCondition(crate::rule::CssSupportsConditionRule),
+    /// A `@container` rule.
     Container(CssContainerRule),
+    /// A `@when` rule.
     When(crate::rule::CssWhenRule),
+    /// An `@else` rule.
     Else(crate::rule::CssElseRule),
+    /// A `@scope` rule.
     Scope(CssScopeRule),
 }
 
@@ -263,6 +285,7 @@ impl CssNamespaceName {
     }
 }
 
+/// A checked `@import` rule: its target, and optional layer, supports condition and media query list.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssImportRule {
     target: CssImportTarget,
@@ -290,11 +313,13 @@ impl CssImportRule {
         }
     }
 
+    /// Returns the imported resource, either a `url()` or a string.
     #[must_use]
     pub const fn target(&self) -> &CssImportTarget {
         &self.target
     }
 
+    /// Returns the `layer` clause, or `None` when the import has no layer clause.
     #[must_use]
     pub const fn layer(&self) -> Option<&CssImportLayer> {
         self.layer.as_ref()
@@ -307,29 +332,36 @@ impl CssImportRule {
         self.supports.as_ref()
     }
 
+    /// Returns the media query list that follows the import conditions, or `None` when the rule has none.
     #[must_use]
     pub const fn media(&self) -> Option<&CssMediaQueryList> {
         self.media.as_ref()
     }
 
+    /// Returns the origin of the `@import` at-keyword.
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
         self.syntax.at_keyword.origin()
     }
 
+    /// Returns the source position of the `@import` at-keyword, or `None` when its origin was not parsed from source.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         crate::query::media::construction::parsed_position(self.origin())
     }
 }
 
+/// The resource an `@import` rule names.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssImportTarget {
+    /// A `url()` target, as written.
     Url(CssImportUrl),
+    /// A string literal, as written.
     String(CssImportString),
 }
 
+/// An `@import` target written as a URL function, retaining the shared authored URL.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssImportUrl {
     url: CssUrl,
@@ -348,12 +380,14 @@ impl CssImportUrl {
         &self.url
     }
 
+    /// Returns the URL text without its function wrapper.
     #[must_use]
     pub fn as_str(&self) -> &str {
         self.url.as_str()
     }
 }
 
+/// An `@import` target written as a string, holding its decoded value.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssImportString {
     value: String,
@@ -368,16 +402,20 @@ impl CssImportString {
         Self { value }
     }
 
+    /// Returns the decoded string value.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.value
     }
 }
 
+/// The `layer` clause of an `@import` rule.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssImportLayer {
+    /// `layer`: the import is placed in an anonymous cascade layer.
     Anonymous,
+    /// `layer(<layer-name>)`: the import is placed in the named cascade layer.
     Named(CssLayerName),
 }
 
@@ -519,6 +557,9 @@ pub struct CssLayerName {
 }
 
 impl CssLayerName {
+    /// Constructs a name from decoded identifier components, which are the dot-separated parts of the `<layer-name>`.
+    ///
+    /// Returns `None` when there are no components, when a component is not a valid identifier, or when a component is a CSS-wide keyword (case-insensitively).
     #[must_use]
     pub fn try_new(components: impl IntoIterator<Item = impl Into<String>>) -> Option<Self> {
         let components = components.into_iter().map(Into::into).collect::<Vec<_>>();
@@ -544,18 +585,21 @@ impl CssLayerName {
         Self { components }
     }
 
+    /// Returns the decoded identifier components in order.
     #[must_use]
     pub fn components(&self) -> &[String] {
         &self.components
     }
 }
 
+/// A nonempty ordered list of cascade layer names, as in a `@layer a, b;` statement.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssLayerNameList {
     names: Vec<CssLayerName>,
 }
 
 impl CssLayerNameList {
+    /// Constructs a list from `names`, or returns `None` when `names` is empty.
     #[must_use]
     pub fn try_new(names: Vec<CssLayerName>) -> Option<Self> {
         if names.is_empty() {
@@ -571,12 +615,14 @@ impl CssLayerNameList {
         Self { names }
     }
 
+    /// Returns the names in authored order; the list is never empty.
     #[must_use]
     pub fn names(&self) -> &[CssLayerName] {
         &self.names
     }
 }
 
+/// A `@layer` statement rule that declares one or more layer names without a block.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssLayerStatementRule {
     names: CssLayerNameList,
@@ -590,17 +636,20 @@ impl CssLayerStatementRule {
         Self { names, position }
     }
 
+    /// Returns the names the statement declares.
     #[must_use]
     pub const fn names(&self) -> &CssLayerNameList {
         &self.names
     }
 
+    /// Returns the source position of the rule.
     #[must_use]
     pub const fn position(&self) -> CssSourcePosition {
         self.position
     }
 }
 
+/// A `@layer` block rule: an optional layer name and the child rules in that layer.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssLayerBlockRule {
     name: Option<CssLayerName>,
@@ -623,16 +672,19 @@ impl CssLayerBlockRule {
         }
     }
 
+    /// Returns the layer name, or `None` for an anonymous layer block.
     #[must_use]
     pub const fn name(&self) -> Option<&CssLayerName> {
         self.name.as_ref()
     }
 
+    /// Returns the child rules in authored order.
     #[must_use]
     pub fn rules(&self) -> &[CssRule] {
         &self.rules
     }
 
+    /// Returns the source position of the rule, or `None` when it was constructed rather than parsed.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
@@ -651,6 +703,7 @@ fn is_parser_reserved_layer_name(component: &str) -> bool {
     )
 }
 
+/// A checked `@media` rule: a media query list and its child rules.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssMediaRule {
     query: CssMediaQueryList,
@@ -672,16 +725,19 @@ impl CssMediaRule {
         }
     }
 
+    /// Returns the media query list that gates the child rules.
     #[must_use]
     pub const fn query(&self) -> &CssMediaQueryList {
         &self.query
     }
 
+    /// Returns the child rules in authored order.
     #[must_use]
     pub fn rules(&self) -> &[CssRule] {
         &self.rules
     }
 
+    /// Returns the source position of the rule, or `None` when it was constructed rather than parsed.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
@@ -713,22 +769,26 @@ impl CssSupportsRule {
         }
     }
 
+    /// Returns the authored `@supports` condition.
     #[must_use]
     pub const fn condition(&self) -> &CssCondition<CssSupportsLeaf> {
         &self.condition
     }
 
+    /// Returns the child rules in authored order.
     #[must_use]
     pub fn rules(&self) -> &[CssRule] {
         &self.rules
     }
 
+    /// Returns the source position of the rule, or `None` when it was constructed rather than parsed.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
 }
 
+/// A checked `@container` rule: its container prelude and child rules.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssContainerRule {
     prelude: CssContainerPrelude,
@@ -756,11 +816,13 @@ impl CssContainerRule {
         &self.prelude
     }
 
+    /// Returns the child rules in authored order.
     #[must_use]
     pub fn rules(&self) -> &[CssRule] {
         &self.rules
     }
 
+    /// Returns the source position of the rule, or `None` when it was constructed rather than parsed.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
@@ -797,21 +859,25 @@ impl CssScopeRule {
         }
     }
 
+    /// Returns the scoping root selector list, or `None` when the rule has no root prelude.
     #[must_use]
     pub const fn root(&self) -> Option<&CssScopeSelectorList> {
         self.root.as_ref()
     }
 
+    /// Returns the scoping limit selector list, or `None` when the rule has no `to` limit.
     #[must_use]
     pub const fn limit(&self) -> Option<&CssScopeSelectorList> {
         self.limit.as_ref()
     }
 
+    /// Returns the child rules of the scope.
     #[must_use]
     pub const fn rules(&self) -> &crate::rule::CssRuleList {
         &self.rules
     }
 
+    /// Returns the source position of the rule, or `None` when it was constructed rather than parsed.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
@@ -962,6 +1028,7 @@ impl CssNestedDeclarationsRule {
         Self { declarations }
     }
 
+    /// Returns the declarations of the run in authored order; the list is never empty.
     #[must_use]
     pub const fn declarations(&self) -> &CssDeclarationList {
         &self.declarations

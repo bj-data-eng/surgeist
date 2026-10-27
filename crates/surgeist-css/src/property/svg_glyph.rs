@@ -103,10 +103,12 @@ impl CssSvgGlyphOrientationVerticalValue {
             value: Value::Unitless(Box::new(component)),
         })
     }
+    /// Returns whether the value is the `auto` keyword.
     #[must_use]
     pub const fn is_auto(&self) -> bool {
         matches!(self.value, Value::Auto)
     }
+    /// Returns the angle, or `None` for `auto` and for a unitless number.
     #[must_use]
     pub const fn angle(&self) -> Option<&CssNumeric<CssAngle>> {
         match &self.value {
@@ -114,6 +116,8 @@ impl CssSvgGlyphOrientationVerticalValue {
             _ => None,
         }
     }
+    /// Returns the raw unitless Number token, or `None` for `auto` and for an angle. It is
+    /// serialized with the unit `deg`.
     #[must_use]
     pub fn unitless_component(&self) -> Option<&CssComponentValue> {
         match &self.value {
@@ -208,10 +212,13 @@ impl CssSvgGlyphOrientationVerticalDeclaration {
     pub(crate) const fn admission(&self) -> SvgGlyphAdmission {
         self.admission
     }
+    /// Returns the property, always `glyph-orientation-vertical`.
     #[must_use]
     pub const fn property(&self) -> CssPropertyNameRef<'static> {
         CssPropertyNameRef::SvgGlyphOrientationVertical
     }
+    /// Returns the ordinary value, or `None` for a CSS-wide keyword or a substitution-dependent
+    /// body.
     #[must_use]
     pub const fn value(&self) -> Option<&CssSvgGlyphOrientationVerticalValue> {
         match &self.declared {
@@ -219,6 +226,7 @@ impl CssSvgGlyphOrientationVerticalDeclaration {
             _ => None,
         }
     }
+    /// Returns the CSS-wide keyword, or `None` for any other body.
     #[must_use]
     pub const fn global(&self) -> Option<CssGlobalKeyword> {
         match self.declared {
@@ -226,6 +234,7 @@ impl CssSvgGlyphOrientationVerticalDeclaration {
             _ => None,
         }
     }
+    /// Returns the body awaiting substitution, or `None` for any other body.
     #[must_use]
     pub const fn substitution_dependent(&self) -> Option<&CssSubstitutionDependentValue> {
         match &self.declared {
@@ -235,14 +244,17 @@ impl CssSvgGlyphOrientationVerticalDeclaration {
             _ => None,
         }
     }
+    /// Returns the parser mode this declaration was admitted under.
     #[must_use]
     pub const fn parser_mode(&self) -> CssParserMode {
         self.admission.mode()
     }
+    /// Returns whether the declaration came from an SVG presentation attribute rather than CSS.
     #[must_use]
     pub const fn is_presentation_attribute(&self) -> bool {
         self.admission.is_attribute()
     }
+    /// Returns the intrinsic metadata shared by every declaration of this property.
     #[must_use]
     pub const fn metadata() -> &'static CssSvgGlyphOrientationVerticalMetadata {
         &METADATA
@@ -258,34 +270,42 @@ static METADATA: CssSvgGlyphOrientationVerticalMetadata = CssSvgGlyphOrientation
     initial: CssSvgGlyphOrientationVerticalValue::auto(),
 };
 impl CssSvgGlyphOrientationVerticalMetadata {
+    /// Returns the property name, `glyph-orientation-vertical`.
     #[must_use]
     pub const fn name(&self) -> &'static str {
         "glyph-orientation-vertical"
     }
+    /// Returns the property identity.
     #[must_use]
     pub const fn property(&self) -> CssPropertyNameRef<'static> {
         CssPropertyNameRef::SvgGlyphOrientationVertical
     }
+    /// Returns the support-catalogue feature id of the property.
     #[must_use]
     pub const fn feature_id(&self) -> CssFeatureId {
         CssFeatureId::new("interop.property.svg-glyph-orientation-vertical")
     }
+    /// Returns the intrinsic initial value, `auto`.
     #[must_use]
     pub const fn initial_value(&self) -> &CssSvgGlyphOrientationVerticalValue {
         &self.initial
     }
+    /// Returns whether the property inherits by default; it does.
     #[must_use]
     pub const fn inherited_by_default(&self) -> bool {
         true
     }
+    /// Returns whether the property is animatable; it is not.
     #[must_use]
     pub const fn is_animatable(&self) -> bool {
         false
     }
+    /// Returns the properties a declaration of this property sets: itself alone.
     #[must_use]
     pub const fn settable_members(&self) -> &'static [CssPropertyNameRef<'static>] {
         &[CssPropertyNameRef::SvgGlyphOrientationVertical]
     }
+    /// Returns the properties reset but not settable by this property: none.
     #[must_use]
     pub const fn reset_only_members(&self) -> &'static [CssPropertyNameRef<'static>] {
         &[]

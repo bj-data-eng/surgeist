@@ -160,6 +160,7 @@ impl CssFontPaletteName {
         Ok(Self(value.into()))
     }
 
+    /// Returns the decoded palette name, including the leading `--`.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -170,12 +171,16 @@ impl CssFontPaletteName {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontPaletteDescriptorKind {
+    /// The `font-family` descriptor, which lists the font families the palette applies to.
     FontFamily,
+    /// The `base-palette` descriptor, which selects the palette that the overrides modify.
     BasePalette,
+    /// The `override-colors` descriptor, which replaces individual palette entries by index.
     OverrideColors,
 }
 
 impl CssFontPaletteDescriptorKind {
+    /// Returns the CSS descriptor name, such as `override-colors`.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -196,8 +201,11 @@ impl CssFontPaletteDescriptorKind {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontPaletteBase {
+    /// `light`: the first palette in the font marked usable with a light background.
     Light,
+    /// `dark`: the first palette in the font marked usable with a dark background.
     Dark,
+    /// A non-negative `<integer>` selecting a palette by its index in the font.
     Index(CssNumeric<CssInteger, CssNonNegative>),
 }
 
@@ -209,6 +217,11 @@ pub struct CssFontPaletteOverride {
 }
 
 impl CssFontPaletteOverride {
+    /// Creates an override pair from a palette entry index and an override color.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `color` is not an absolute color (see [`CssColor::absolute_eligibility`]).
     pub fn try_new(
         index: CssNumeric<CssInteger, CssNonNegative>,
         color: CssColor,
@@ -221,11 +234,13 @@ impl CssFontPaletteOverride {
         Ok(Self { index, color })
     }
 
+    /// Returns the palette entry index being overridden.
     #[must_use]
     pub const fn index(&self) -> &CssNumeric<CssInteger, CssNonNegative> {
         &self.index
     }
 
+    /// Returns the absolute color that replaces the palette entry.
     #[must_use]
     pub const fn color(&self) -> &CssColor {
         &self.color
@@ -236,9 +251,13 @@ impl CssFontPaletteOverride {
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontPaletteDescriptorValueRef<'a> {
+    /// A `font-family` value: the families the palette definition applies to.
     FontFamily(&'a [CssFontFaceFamily]),
+    /// A `base-palette` value.
     BasePalette(&'a CssFontPaletteBase),
+    /// An `override-colors` value: the index and color pairs in authored order, duplicates retained.
     OverrideColors(&'a [CssFontPaletteOverride]),
+    /// A value whose grammar depends on later substitution and is still symbolic.
     Pending(&'a CssSubstitutionDependentValue),
 }
 
@@ -334,16 +353,19 @@ impl CssFontPaletteDescriptorValue {
         }
     }
 
+    /// Returns which descriptor this value was checked as.
     #[must_use]
     pub const fn kind(&self) -> CssFontPaletteDescriptorKind {
         self.kind
     }
 
+    /// Returns the component values the descriptor was checked from, with their original provenance.
     #[must_use]
     pub const fn components(&self) -> &CssComponentValues {
         &self.components
     }
 
+    /// Returns the checked semantics as a borrowed view.
     #[must_use]
     pub fn view(&self) -> CssFontPaletteDescriptorValueRef<'_> {
         match &self.data {
@@ -371,6 +393,7 @@ pub struct CssFontPaletteDescriptor {
 }
 
 impl CssFontPaletteDescriptor {
+    /// Creates a descriptor occurrence from a checked value, with no source position.
     #[must_use]
     pub const fn new(value: CssFontPaletteDescriptorValue) -> Self {
         Self {
@@ -384,11 +407,13 @@ impl CssFontPaletteDescriptor {
         self
     }
 
+    /// Returns the checked descriptor value.
     #[must_use]
     pub const fn value(&self) -> &CssFontPaletteDescriptorValue {
         &self.value
     }
 
+    /// Returns the source position of the descriptor, or `None` when it was constructed programmatically.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
@@ -408,6 +433,11 @@ pub struct CssFontPaletteValuesRule {
 }
 
 impl CssFontPaletteValuesRule {
+    /// Creates a palette definition from a name and descriptor occurrences, retaining the descriptors in the given order with no source position.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no descriptor is a `font-family` descriptor.
     pub fn try_new(
         name: CssFontPaletteName,
         descriptors: Vec<CssFontPaletteDescriptor>,
@@ -425,16 +455,19 @@ impl CssFontPaletteValuesRule {
         self
     }
 
+    /// Returns the palette name.
     #[must_use]
     pub const fn name(&self) -> &CssFontPaletteName {
         &self.name
     }
 
+    /// Returns every retained descriptor occurrence in authored order, including duplicates.
     #[must_use]
     pub fn descriptors(&self) -> &[CssFontPaletteDescriptor] {
         &self.descriptors
     }
 
+    /// Returns the source position of the rule, or `None` when it was constructed programmatically.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position

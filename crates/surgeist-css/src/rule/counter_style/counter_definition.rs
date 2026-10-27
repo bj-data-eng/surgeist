@@ -14,16 +14,24 @@ use crate::serialization::{CssSerializationError, CssSerializationLimits};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterStyleAlgorithm {
+    /// The `cyclic` system.
     Cyclic,
+    /// The `numeric` system.
     Numeric,
+    /// The `alphabetic` system.
     Alphabetic,
+    /// The `symbolic` system.
     Symbolic,
+    /// The `additive` system.
     Additive,
+    /// The `fixed` system, whatever its first symbol value.
     Fixed,
+    /// The `extends` system, whatever style it extends.
     Extends,
 }
 
 impl CssCounterStyleSystem {
+    /// Returns the identity of the system, without its parameters.
     #[must_use]
     pub const fn algorithm(&self) -> CssCounterStyleAlgorithm {
         match self {
@@ -53,10 +61,12 @@ impl<'a> CssCounterStyleDescriptorEntry<'a> {
             occurrence: None,
         }
     }
+    /// Returns the borrowed checked value.
     #[must_use]
     pub const fn value(self) -> &'a CssCounterStyleDescriptorValue {
         self.value
     }
+    /// Returns the genuine named descriptor occurrence, or `None` when the entry was created from a raw value with [`Self::from_value`].
     #[must_use]
     pub const fn occurrence(
         self,
@@ -90,8 +100,16 @@ impl<'a> From<CssCounterStyleDescriptorRef<'a>> for CssCounterStyleDescriptorEnt
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterStyleDefinitionIssue {
-    InsufficientSymbols { required: usize, actual: usize },
+    /// The `symbols` descriptor has fewer symbols than the system requires.
+    InsufficientSymbols {
+        /// The minimum symbol count of the system: two for `numeric` and `alphabetic`, one otherwise.
+        required: usize,
+        /// The symbol count of the effective `symbols` descriptor, zero when absent.
+        actual: usize,
+    },
+    /// An `additive` system has no `additive-symbols` descriptor.
     MissingAdditiveSymbols,
+    /// An `extends` system has a `symbols` or `additive-symbols` descriptor.
     ExtendsWithSymbols,
 }
 
@@ -99,7 +117,9 @@ pub enum CssCounterStyleDefinitionIssue {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterStyleDefinitionStatus {
+    /// The descriptors define a counter style.
     Defined,
+    /// The descriptors do not define a counter style, for the stated reason.
     Undefined(CssCounterStyleDefinitionIssue),
     /// A relevant descriptor is awaiting variable/environment substitution.
     SubstitutionDependent,
@@ -126,10 +146,12 @@ impl<'a> CssCounterStyleDescriptorCollection<'a> {
         }
         Ok(Self { entries })
     }
+    /// Returns the entries in the order they were supplied.
     #[must_use]
     pub fn entries(&self) -> &[CssCounterStyleDescriptorEntry<'a>] {
         &self.entries
     }
+    /// Returns the last entry of the given descriptor kind, or `None` when there is none.
     #[must_use]
     pub fn effective(&self, kind: Kind) -> Option<CssCounterStyleDescriptorEntry<'a>> {
         self.entries
@@ -147,6 +169,9 @@ impl<'a> CssCounterStyleDescriptorCollection<'a> {
             _ => None,
         }
     }
+    /// Returns whether the descriptors intrinsically define a counter style.
+    ///
+    /// A missing `system` is treated as `symbolic`.
     #[must_use]
     pub fn definition_status(&self) -> CssCounterStyleDefinitionStatus {
         use CssCounterStyleAlgorithm as A;
@@ -207,6 +232,11 @@ impl CssCounterStyleDescriptors {
     pub fn entries(&self) -> impl ExactSizeIterator<Item = CssCounterStyleDescriptorEntry<'_>> {
         self.occurrences().map(CssCounterStyleDescriptorEntry::from)
     }
+    /// Builds a collection from the occurrences of these descriptors, under the default serialization limits.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when traversing the values exceeds those limits.
     pub fn prospective(
         &self,
     ) -> Result<CssCounterStyleDescriptorCollection<'_>, CssSerializationError> {

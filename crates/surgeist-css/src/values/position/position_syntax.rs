@@ -42,10 +42,15 @@ impl Error for CssPositionConstructionError {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssHorizontalPositionKeyword {
+    /// `left`: the left edge.
     Left,
+    /// `center`: the horizontal center, a 50% offset.
     Center,
+    /// `right`: the right edge.
     Right,
+    /// `x-start`: the start edge of the horizontal axis in the element's writing mode.
     XStart,
+    /// `x-end`: the end edge of the horizontal axis in the element's writing mode.
     XEnd,
 }
 
@@ -53,16 +58,25 @@ pub enum CssHorizontalPositionKeyword {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssHorizontalPosition {
+    /// `left`: the left edge.
     Left,
+    /// `center`: the horizontal center, a 50% offset.
     Center,
+    /// `right`: the right edge.
     Right,
+    /// `x-start`: the start edge of the horizontal axis in the element's writing mode.
     XStart,
+    /// `x-end`: the end edge of the horizontal axis in the element's writing mode.
     XEnd,
     /// A free length-percentage from the axis start, without an edge keyword.
     Offset(CssNumeric<CssLengthPercentage>),
+    /// `left <length-percentage>`: an offset from the left edge.
     LeftOffset(CssNumeric<CssLengthPercentage>),
+    /// `right <length-percentage>`: an offset from the right edge.
     RightOffset(CssNumeric<CssLengthPercentage>),
+    /// `x-start <length-percentage>`: an offset from the x-axis start edge.
     XStartOffset(CssNumeric<CssLengthPercentage>),
+    /// `x-end <length-percentage>`: an offset from the x-axis end edge.
     XEndOffset(CssNumeric<CssLengthPercentage>),
 }
 
@@ -105,10 +119,15 @@ impl CssHorizontalPosition {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssVerticalPositionKeyword {
+    /// `top`: the top edge.
     Top,
+    /// `center`: the vertical center, a 50% offset.
     Center,
+    /// `bottom`: the bottom edge.
     Bottom,
+    /// `y-start`: the start edge of the vertical axis in the element's writing mode.
     YStart,
+    /// `y-end`: the end edge of the vertical axis in the element's writing mode.
     YEnd,
 }
 
@@ -116,16 +135,25 @@ pub enum CssVerticalPositionKeyword {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssVerticalPosition {
+    /// `top`: the top edge.
     Top,
+    /// `center`: the vertical center, a 50% offset.
     Center,
+    /// `bottom`: the bottom edge.
     Bottom,
+    /// `y-start`: the start edge of the vertical axis in the element's writing mode.
     YStart,
+    /// `y-end`: the end edge of the vertical axis in the element's writing mode.
     YEnd,
     /// A free length-percentage from the axis start, without an edge keyword.
     Offset(CssNumeric<CssLengthPercentage>),
+    /// `top <length-percentage>`: an offset from the top edge.
     TopOffset(CssNumeric<CssLengthPercentage>),
+    /// `bottom <length-percentage>`: an offset from the bottom edge.
     BottomOffset(CssNumeric<CssLengthPercentage>),
+    /// `y-start <length-percentage>`: an offset from the y-axis start edge.
     YStartOffset(CssNumeric<CssLengthPercentage>),
+    /// `y-end <length-percentage>`: an offset from the y-axis end edge.
     YEndOffset(CssNumeric<CssLengthPercentage>),
 }
 
@@ -260,10 +288,15 @@ impl CssPhysicalPosition {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssBlockPosition {
+    /// `center`: the center of the block axis, a 50% offset.
     Center,
+    /// `block-start`: the block-start edge.
     Start,
+    /// `block-end`: the block-end edge.
     End,
+    /// `block-start <length-percentage>`: an offset from the block-start edge.
     StartOffset(CssNumeric<CssLengthPercentage>),
+    /// `block-end <length-percentage>`: an offset from the block-end edge.
     EndOffset(CssNumeric<CssLengthPercentage>),
 }
 impl PartialEq for CssBlockPosition {
@@ -288,10 +321,15 @@ impl CssBlockPosition {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssInlinePosition {
+    /// `center`: the center of the inline axis, a 50% offset.
     Center,
+    /// `inline-start`: the inline-start edge.
     Start,
+    /// `inline-end`: the inline-end edge.
     End,
+    /// `inline-start <length-percentage>`: an offset from the inline-start edge.
     StartOffset(CssNumeric<CssLengthPercentage>),
+    /// `inline-end <length-percentage>`: an offset from the inline-end edge.
     EndOffset(CssNumeric<CssLengthPercentage>),
 }
 impl PartialEq for CssInlinePosition {
@@ -316,10 +354,15 @@ impl CssInlinePosition {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssRelativeAxisPosition {
+    /// `center`: the center of the axis, a 50% offset.
     Center,
+    /// `start`: the start edge of the axis.
     Start,
+    /// `end`: the end edge of the axis.
     End,
+    /// `start <length-percentage>`: an offset from the start edge.
     StartOffset(CssNumeric<CssLengthPercentage>),
+    /// `end <length-percentage>`: an offset from the end edge.
     EndOffset(CssNumeric<CssLengthPercentage>),
 }
 impl PartialEq for CssRelativeAxisPosition {
@@ -389,8 +432,11 @@ enum PositionFamily {
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssPositionRef<'a> {
+    /// A Cartesian position with horizontal and vertical axes.
     Cartesian(&'a CssCartesianPosition),
+    /// A position written with `block-start`/`block-end` and `inline-start`/`inline-end` keywords.
     NamedFlow(&'a CssNamedFlowPosition),
+    /// A position written with generic `start`/`end` keywords; the first component is the block axis and the second is the inline axis.
     RelativeFlow(&'a CssRelativeFlowPosition),
 }
 

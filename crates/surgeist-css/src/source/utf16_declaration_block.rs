@@ -28,16 +28,20 @@ impl CssDeclarationBlockParseReport {
         Self { source, report }
     }
 
+    /// Returns the parse source the report was parsed from: the normalized text and the parser
+    /// context.
     #[must_use]
     pub const fn source(&self) -> &CssParseSource {
         &self.source
     }
 
+    /// Returns the retained declaration list and its ordered recovery diagnostics.
     #[must_use]
     pub const fn report(&self) -> &CssParseReport<CssDeclarationList> {
         &self.report
     }
 
+    /// Splits the value into its parse source and report.
     #[must_use]
     pub fn into_parts(self) -> (CssParseSource, CssParseReport<CssDeclarationList>) {
         (self.source, self.report)

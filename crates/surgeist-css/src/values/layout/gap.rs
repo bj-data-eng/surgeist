@@ -16,7 +16,9 @@ type SerializationResult<T> = Result<T, CssSerializationError>;
 #[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum CssGapValue {
+    /// `normal`: a used gap of `1em` on multi-column containers and `0px` in all other contexts.
     Normal,
+    /// A non-negative `<length-percentage>` gap.
     LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>),
 }
 

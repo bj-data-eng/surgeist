@@ -1,4 +1,9 @@
 //! Cursor, caret, appearance, interactivity, scrollbar and will-change values.
+//!
+//! User-interface values: `cursor` (keywords, images and URL sets), caret and accent colors,
+//! `appearance`, `user-select`, `pointer-events`, `resize`, scrollbar properties, spatial and
+//! sequential navigation, interactivity and `will-change`. They retain authored syntax; no
+//! hit testing or interaction is performed.
 
 pub(crate) mod cursor_serialization;
 pub(crate) mod cursor_values;

@@ -6,17 +6,25 @@ use crate::rule::CssDescriptorOccurrence;
 use crate::source::{CssParsedOrigin, CssSourcePosition};
 use crate::values::common::CssAutoOr;
 
+/// A page-selector pseudo-class of an `@page` prelude.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum CssPagePseudo {
+    /// `:left`: matches a page that would be on the left of a pair of facing pages.
     Left,
+    /// `:right`: matches a page that would be on the right of a pair of facing pages.
     Right,
+    /// `:first`: matches the first printed page of the document.
     First,
+    /// `:blank`: matches content-empty pages that appear as a result of forced page breaks.
     Blank,
+    /// `:recto`: the flow-relative equivalent of `:right` in left-to-right page progressions and of `:left` in right-to-left ones.
     Recto,
+    /// `:verso`: the flow-relative equivalent of `:left` in left-to-right page progressions and of `:right` in right-to-left ones.
     Verso,
 }
 impl CssPagePseudo {
+    /// Returns the specificity the pseudo-class contributes: one `first_or_blank` for `:first` and `:blank`, one `side` for every other pseudo-class.
     #[must_use]
     pub const fn specificity(self) -> CssPageSpecificity {
         match self {
@@ -24,6 +32,7 @@ impl CssPagePseudo {
             _ => CssPageSpecificity::new(0, 0, 1),
         }
     }
+    /// Returns the CSS spelling of the pseudo-class without the colon, such as `first`.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -44,6 +53,7 @@ pub struct CssPageSpecificity {
     side: usize,
 }
 impl CssPageSpecificity {
+    /// Creates a specificity from its three counts.
     #[must_use]
     pub const fn new(named: usize, first_or_blank: usize, side: usize) -> Self {
         Self {
@@ -52,14 +62,17 @@ impl CssPageSpecificity {
             side,
         }
     }
+    /// Returns the count contributed by a page name (zero or one).
     #[must_use]
     pub const fn named(self) -> usize {
         self.named
     }
+    /// Returns the count contributed by `:first` and `:blank` pseudo-classes.
     #[must_use]
     pub const fn first_or_blank(self) -> usize {
         self.first_or_blank
     }
+    /// Returns the count contributed by the side pseudo-classes `:left`, `:right`, `:recto` and `:verso`.
     #[must_use]
     pub const fn side(self) -> usize {
         self.side
@@ -73,6 +86,9 @@ pub struct CssPageSelector {
     origin: Option<CssParsedOrigin>,
 }
 impl CssPageSelector {
+    /// Creates a selector from an optional page name and its pseudo-classes in order.
+    ///
+    /// Returns `None` when there is neither a name nor a pseudo-class.
     #[must_use]
     pub fn try_new(
         name: Option<crate::values::common::CssIdent>,
@@ -95,18 +111,22 @@ impl CssPageSelector {
             origin: Some(origin),
         }
     }
+    /// Returns the page name, or `None` when the selector has only pseudo-classes.
     #[must_use]
     pub const fn name(&self) -> Option<&crate::values::common::CssIdent> {
         self.name.as_ref()
     }
+    /// Returns the pseudo-classes in authored order.
     #[must_use]
     pub fn pseudos(&self) -> &[CssPagePseudo] {
         &self.pseudos
     }
+    /// Returns the original raw-source window of the selector, or `None` when it was constructed programmatically.
     #[must_use]
     pub const fn origin(&self) -> Option<&CssParsedOrigin> {
         self.origin.as_ref()
     }
+    /// Returns the page specificity: one `named` for a name, and the counts of `:first`/`:blank` and of side pseudo-classes.
     #[must_use]
     pub fn specificity(&self) -> CssPageSpecificity {
         CssPageSpecificity {
@@ -131,6 +151,7 @@ pub struct CssPageSelectorList {
     origin: Option<CssParsedOrigin>,
 }
 impl CssPageSelectorList {
+    /// Creates a selector list from the given selectors, which may be empty, with no parsed origin.
     #[must_use]
     pub fn new(selectors: Vec<CssPageSelector>) -> Self {
         Self {
@@ -144,28 +165,37 @@ impl CssPageSelectorList {
             origin: Some(origin),
         }
     }
+    /// Returns the selectors in authored order; the slice is empty for an empty prelude.
     #[must_use]
     pub fn selectors(&self) -> &[CssPageSelector] {
         &self.selectors
     }
+    /// Returns whether the prelude has no selectors.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.selectors.is_empty()
     }
+    /// Returns the original raw-source window of the complete prelude, or `None` when it was constructed programmatically.
     #[must_use]
     pub const fn origin(&self) -> Option<&CssParsedOrigin> {
         self.origin.as_ref()
     }
 }
+/// The descriptors that `@page` admits besides ordinary properties.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum CssPageDescriptorKind {
+    /// The `size` descriptor, which gives the page box size and orientation.
     Size,
+    /// The `page-orientation` descriptor, which rotates the page after layout.
     PageOrientation,
+    /// The `marks` descriptor, which adds crop and registration marks outside the page box.
     Marks,
+    /// The `bleed` descriptor, which gives the extent of the bleed area outside the page box.
     Bleed,
 }
 impl CssPageDescriptorKind {
+    /// Returns the CSS descriptor name, such as `page-orientation`.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -185,31 +215,49 @@ impl CssPageDescriptorKind {
             .find(|kind| name.eq_ignore_ascii_case(kind.as_str()))
     }
 }
+/// A page orientation keyword of the `size` descriptor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssPageOrientation {
+    /// `portrait`: the shorter sides of the page box are horizontal.
     Portrait,
+    /// `landscape`: the longer sides of the page box are horizontal.
     Landscape,
 }
+/// The value of the `page-orientation` descriptor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssPageOutputOrientation {
+    /// `upright`: no special orientation is applied; the page is laid out and shown as usual.
     Upright,
+    /// `rotate-left`: the laid-out page is displayed rotated a quarter turn counter-clockwise, if the output medium supports rotation.
     RotateLeft,
+    /// `rotate-right`: the laid-out page is displayed rotated a quarter turn clockwise, if the output medium supports rotation.
     RotateRight,
 }
+/// A `<page-size>` media name of the `size` descriptor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssPageSize {
+    /// `A5`: ISO A5 media, 148mm by 210mm.
     A5,
+    /// `A4`: ISO A4 media, 210mm by 297mm.
     A4,
+    /// `A3`: ISO A3 media, 297mm by 420mm.
     A3,
+    /// `B5`: ISO B5 media, 176mm by 250mm.
     B5,
+    /// `B4`: ISO B4 media, 250mm by 353mm.
     B4,
+    /// `JIS-B5`: JIS B5 media, 182mm by 257mm.
     JisB5,
+    /// `JIS-B4`: JIS B4 media, 257mm by 364mm.
     JisB4,
+    /// `letter`: North American letter media, 8.5 by 11 inches.
     Letter,
+    /// `legal`: North American legal media, 8.5 by 14 inches.
     Legal,
+    /// `ledger`: North American ledger media, 11 by 17 inches.
     Ledger,
 }
 impl CssPageSize {
@@ -228,14 +276,18 @@ impl CssPageSize {
         }
     }
 }
+/// The authored value of the `size` descriptor.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssPageSizeValue {
+    /// `auto`: the user agent chooses the page box size and orientation.
     Auto,
+    /// One or two non-negative lengths: with one, the page box is a square of that size; with two, the first is the width and the second the height.
     Dimensions(
         CssNumeric<CssLength, CssNonNegative>,
         Option<CssNumeric<CssLength, CssNonNegative>>,
     ),
+    /// A `<page-size>` name and/or an orientation keyword.
     Named(CssPageNamedSize),
 }
 /// A named page size and/or orientation; at least one component is present.
@@ -245,6 +297,9 @@ pub struct CssPageNamedSize {
     orientation: Option<CssPageOrientation>,
 }
 impl CssPageNamedSize {
+    /// Creates a named size from an optional media name and an optional orientation.
+    ///
+    /// Returns `None` when both are absent.
     #[must_use]
     pub fn try_new(
         size: Option<CssPageSize>,
@@ -252,15 +307,18 @@ impl CssPageNamedSize {
     ) -> Option<Self> {
         (size.is_some() || orientation.is_some()).then_some(Self { size, orientation })
     }
+    /// Returns the media name, or `None` when only an orientation was authored.
     #[must_use]
     pub const fn size(&self) -> Option<CssPageSize> {
         self.size
     }
+    /// Returns the orientation keyword, or `None` when none was authored.
     #[must_use]
     pub const fn orientation(&self) -> Option<CssPageOrientation> {
         self.orientation
     }
 }
+/// The value of the `marks` descriptor: whether crop marks and registration marks are printed. `none` is neither flag set.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssPageMarks {
     crop: bool,
@@ -270,10 +328,12 @@ impl CssPageMarks {
     pub(crate) const fn new(crop: bool, cross: bool) -> Self {
         Self { crop, cross }
     }
+    /// Returns whether crop marks (`crop`) are requested.
     #[must_use]
     pub const fn crop(self) -> bool {
         self.crop
     }
+    /// Returns whether registration marks (`cross`) are requested.
     #[must_use]
     pub const fn cross(self) -> bool {
         self.cross
@@ -288,14 +348,21 @@ pub(crate) enum PageValueData {
     Global(CssGlobalKeyword),
     Pending(crate::declaration::CssSubstitutionDependentValue),
 }
+/// A borrowed checked page descriptor value.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssPageDescriptorValueRef<'a> {
+    /// A `size` value.
     Size(&'a CssPageSizeValue),
+    /// A `page-orientation` value.
     PageOrientation(CssPageOutputOrientation),
+    /// A `marks` value.
     Marks(CssPageMarks),
+    /// A `bleed` value: `auto` or a length.
     Bleed(&'a CssAutoOr<CssNumeric<CssLength>>),
+    /// A CSS-wide keyword authored as the whole value.
     Global(CssGlobalKeyword),
+    /// A value whose grammar depends on later substitution and is still symbolic.
     Pending(&'a crate::declaration::CssSubstitutionDependentValue),
 }
 /// Checked domain-specific value. Every constructor is parser-owned; raw edits retain value-only
@@ -321,18 +388,22 @@ impl CssPageDescriptorValue {
             origin,
         }
     }
+    /// Returns which descriptor this value was checked as.
     #[must_use]
     pub const fn kind(&self) -> CssPageDescriptorKind {
         self.kind
     }
+    /// Returns the component values the descriptor was checked from, with their original provenance.
     #[must_use]
     pub const fn components(&self) -> &CssComponentValues {
         &self.components
     }
+    /// Returns the original raw-source window of the value.
     #[must_use]
     pub const fn origin(&self) -> &CssParsedOrigin {
         &self.origin
     }
+    /// Returns the checked semantics as a borrowed view.
     #[must_use]
     pub const fn view(&self) -> CssPageDescriptorValueRef<'_> {
         match &self.data {
@@ -345,6 +416,9 @@ impl CssPageDescriptorValue {
         }
     }
 }
+/// One page descriptor occurrence: a checked value with its importance and, when parsed or built from a named occurrence, that occurrence.
+///
+/// Clones are cheap and share their data.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPageDescriptor {
     inner: std::sync::Arc<PageDescriptorData>,
@@ -356,6 +430,7 @@ struct PageDescriptorData {
     occurrence: Option<CssDescriptorOccurrence<CssPageDescriptorValue>>,
 }
 impl CssPageDescriptor {
+    /// Creates a descriptor from a checked value and an importance, with no named occurrence.
     #[must_use]
     pub fn new(value: CssPageDescriptorValue, importance: CssImportance) -> Self {
         Self {
@@ -385,10 +460,12 @@ impl CssPageDescriptor {
             }),
         }
     }
+    /// Returns the checked value.
     #[must_use]
     pub fn value(&self) -> &CssPageDescriptorValue {
         &self.inner.value
     }
+    /// Returns whether the descriptor was declared `!important`.
     #[must_use]
     pub fn importance(&self) -> CssImportance {
         self.inner.importance
@@ -404,15 +481,19 @@ impl CssPageDescriptor {
             }),
         }
     }
+    /// Returns the original named occurrence of the descriptor, or `None` when it was created with [`Self::new`].
     #[must_use]
     pub fn occurrence(&self) -> Option<&CssDescriptorOccurrence<CssPageDescriptorValue>> {
         self.inner.occurrence.as_ref()
     }
 }
+/// One member of a `@page` declaration block, in authored order.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssPageDeclaration {
+    /// An ordinary declaration valid in a page context.
     Property(CssDeclaration),
+    /// A page descriptor such as `size`.
     Descriptor(CssPageDescriptor),
 }
 /// Checked Page declarations; ordered authored inventory and ordinary property projection stay
@@ -438,18 +519,22 @@ impl CssPageDeclarationBlock {
             properties,
         }
     }
+    /// Returns every declaration in authored order, descriptors and properties interleaved.
     #[must_use]
     pub fn occurrences(&self) -> &[CssPageDeclaration] {
         &self.occurrences
     }
+    /// Returns the ordinary property declarations, without the descriptors.
     #[must_use]
     pub const fn properties(&self) -> &CssDeclarationList {
         &self.properties
     }
+    /// Returns whether the block has no declarations.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.occurrences.is_empty()
     }
+    /// Returns the descriptor of the given kind that wins: the last `!important` occurrence, otherwise the last occurrence, or `None` when there is none.
     #[must_use]
     pub fn effective_descriptor(&self, kind: CssPageDescriptorKind) -> Option<&CssPageDescriptor> {
         self.occurrences
@@ -468,27 +553,47 @@ impl CssPageDeclarationBlock {
             })
     }
 }
+/// The name of a page-margin box at-rule.
+///
+/// The page margin area is divided into sixteen boxes: four corners and three boxes along each edge.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum CssMarginBox {
+    /// `@top-left-corner`: the box in the top-left corner.
     TopLeftCorner,
+    /// `@top-left`: the left box along the top edge.
     TopLeft,
+    /// `@top-center`: the center box along the top edge.
     TopCenter,
+    /// `@top-right`: the right box along the top edge.
     TopRight,
+    /// `@top-right-corner`: the box in the top-right corner.
     TopRightCorner,
+    /// `@bottom-left-corner`: the box in the bottom-left corner.
     BottomLeftCorner,
+    /// `@bottom-left`: the left box along the bottom edge.
     BottomLeft,
+    /// `@bottom-center`: the center box along the bottom edge.
     BottomCenter,
+    /// `@bottom-right`: the right box along the bottom edge.
     BottomRight,
+    /// `@bottom-right-corner`: the box in the bottom-right corner.
     BottomRightCorner,
+    /// `@left-top`: the top box along the left edge.
     LeftTop,
+    /// `@left-middle`: the middle box along the left edge.
     LeftMiddle,
+    /// `@left-bottom`: the bottom box along the left edge.
     LeftBottom,
+    /// `@right-top`: the top box along the right edge.
     RightTop,
+    /// `@right-middle`: the middle box along the right edge.
     RightMiddle,
+    /// `@right-bottom`: the bottom box along the right edge.
     RightBottom,
 }
 impl CssMarginBox {
+    /// Returns the CSS at-keyword name without the `@`, such as `top-left-corner`.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -533,6 +638,7 @@ impl CssMarginBox {
         .find(|v| name.eq_ignore_ascii_case(v.as_str()))
     }
 }
+/// The ordinary property declarations of a margin rule; margin rules have no descriptors.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssMarginDeclarationBlock {
     properties: CssDeclarationList,
@@ -541,10 +647,12 @@ impl CssMarginDeclarationBlock {
     pub(crate) fn from_parsed(properties: CssDeclarationList) -> Self {
         Self { properties }
     }
+    /// Returns the property declarations in authored order.
     #[must_use]
     pub const fn properties(&self) -> &CssDeclarationList {
         &self.properties
     }
+    /// Returns whether the block has no declarations.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.properties.is_empty()
@@ -561,6 +669,7 @@ pub struct CssMarginRule {
     detached_origin: Option<CssParsedOrigin>,
 }
 impl CssMarginRule {
+    /// Creates a margin rule from a box name and its declarations, with no source position or detached origin.
     #[must_use]
     pub const fn new(name: CssMarginBox, declarations: CssMarginDeclarationBlock) -> Self {
         Self {
@@ -582,14 +691,17 @@ impl CssMarginRule {
             detached_origin: None,
         }
     }
+    /// Returns which margin box the rule styles.
     #[must_use]
     pub const fn name(&self) -> CssMarginBox {
         self.name
     }
+    /// Returns the rule's property declarations.
     #[must_use]
     pub const fn declarations(&self) -> &CssMarginDeclarationBlock {
         &self.declarations
     }
+    /// Returns the source position of the rule, or `None` when it was constructed programmatically.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
@@ -608,12 +720,14 @@ impl CssMarginRule {
         self
     }
 }
+/// The contents of a `@page` rule: its declaration block and its margin rules.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPageBody {
     declarations: CssPageDeclarationBlock,
     margin_rules: Vec<CssMarginRule>,
 }
 impl CssPageBody {
+    /// Creates a body from a declaration block and margin rules in the given order.
     #[must_use]
     pub const fn new(
         declarations: CssPageDeclarationBlock,
@@ -624,15 +738,18 @@ impl CssPageBody {
             margin_rules,
         }
     }
+    /// Returns the declarations of the body.
     #[must_use]
     pub const fn declarations(&self) -> &CssPageDeclarationBlock {
         &self.declarations
     }
+    /// Returns the margin rules in authored order.
     #[must_use]
     pub fn margin_rules(&self) -> &[CssMarginRule] {
         &self.margin_rules
     }
 }
+/// A parser-produced authored `@page` rule: its selector prelude, declarations and margin rules.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPageRule {
     selectors: CssPageSelectorList,
@@ -651,22 +768,27 @@ impl CssPageRule {
             position,
         }
     }
+    /// Returns the selector prelude, which is empty for a rule without selectors.
     #[must_use]
     pub const fn selectors(&self) -> &CssPageSelectorList {
         &self.selectors
     }
+    /// Returns the declarations of the rule body.
     #[must_use]
     pub const fn declarations(&self) -> &CssPageDeclarationBlock {
         self.body.declarations()
     }
+    /// Returns the margin rules of the rule body in authored order.
     #[must_use]
     pub fn margin_rules(&self) -> &[CssMarginRule] {
         self.body.margin_rules()
     }
+    /// Returns the source position of the rule's `@page` at-keyword.
     #[must_use]
     pub const fn position(&self) -> CssSourcePosition {
         self.position
     }
+    /// Returns a copy of the rule with its body replaced, keeping the selectors and position.
     #[must_use]
     pub fn with_body(&self, body: CssPageBody) -> Self {
         Self {
@@ -674,6 +796,7 @@ impl CssPageRule {
             ..self.clone()
         }
     }
+    /// Returns a copy of the rule with its selector prelude replaced, keeping the body and position.
     #[must_use]
     pub fn with_selectors(&self, selectors: CssPageSelectorList) -> Self {
         Self {
@@ -789,6 +912,13 @@ fn check_property(
     Ok(value.into_page_context())
 }
 impl CssPageDeclarationBlock {
+    /// Checks the occurrences and creates a block, retaining their order.
+    ///
+    /// The occurrences are traversed under one cumulative budget given by `limits`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the responsible declaration when a property does not apply in a page context or has an invalid value there, or when `limits` are exceeded.
     pub fn try_new(
         occurrences: Vec<CssPageDeclaration>,
         limits: crate::serialization::CssSerializationLimits,
@@ -826,6 +956,13 @@ impl CssPageDeclarationBlock {
     }
 }
 impl CssMarginDeclarationBlock {
+    /// Checks the declarations and creates a margin block, retaining their order.
+    ///
+    /// The declarations are traversed under one cumulative budget given by `limits`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the responsible declaration when a property does not apply in a margin context or has an invalid value there, or when `limits` are exceeded.
     pub fn try_new(
         properties: Vec<CssDeclaration>,
         limits: crate::serialization::CssSerializationLimits,
@@ -853,6 +990,11 @@ impl CssMarginDeclarationBlock {
             properties: CssDeclarationList::new(admitted),
         })
     }
+    /// Projects the declarations into a selected property block.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a declaration cannot be selected or `limits` are exceeded.
     pub fn try_specified_properties(
         &self,
         limits: crate::serialization::CssSerializationLimits,
@@ -867,6 +1009,13 @@ impl CssMarginDeclarationBlock {
             &mut writer,
         )
     }
+    /// Serializes the declarations as CSSOM text, without braces.
+    ///
+    /// Failure publishes no partial text.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a declaration cannot be selected or `limits` are exceeded.
     pub fn serialize_cssom(
         &self,
         limits: crate::serialization::CssSerializationLimits,

@@ -13,9 +13,13 @@ type Result<T> = std::result::Result<T, CssSerializationError>;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextBoxTrim {
+    /// `none`: no special handling of the first or last line box of a block container; on an inline box, the over and under content edges coincide with the text-over and text-under baselines regardless of `text-box-edge`.
     None,
+    /// `trim-start`: on a block container or column box, trims the block-start side of the first formatted line to the specified `text-box-edge` metric of its root inline box, with no effect if there is no such line or intervening non-zero padding or borders; on an inline box, trims the block-start side of the box to that metric.
     TrimStart,
+    /// `trim-end`: on a block container or column box, trims the block-end side of the last formatted line to the specified `text-box-edge` metric of its root inline box, with no effect if there is no such line or intervening non-zero padding or borders; on an inline box, trims the block-end side of the box to that metric.
     TrimEnd,
+    /// `trim-both`: both `trim-start` and `trim-end`.
     TrimBoth,
 }
 
@@ -23,8 +27,11 @@ pub enum CssTextBoxTrim {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextEdgeMetric {
+    /// `text`: the text-over and text-under baselines.
     Text,
+    /// `ideographic`: the ideographic-over and ideographic-under baselines.
     Ideographic,
+    /// `ideographic-ink`: the ideographic-ink-over and ideographic-ink-under baselines.
     IdeographicInk,
 }
 
@@ -32,10 +39,15 @@ pub enum CssTextEdgeMetric {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextOverEdge {
+    /// `text`: the text-over baseline.
     Text,
+    /// `ideographic`: the ideographic-over baseline.
     Ideographic,
+    /// `ideographic-ink`: the ideographic-ink-over baseline.
     IdeographicInk,
+    /// `cap`: the cap-height baseline.
     Cap,
+    /// `ex`: the x-height baseline.
     Ex,
 }
 
@@ -43,9 +55,13 @@ pub enum CssTextOverEdge {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextUnderEdge {
+    /// `text`: the text-under baseline.
     Text,
+    /// `ideographic`: the ideographic-under baseline.
     Ideographic,
+    /// `ideographic-ink`: the ideographic-ink-under baseline.
     IdeographicInk,
+    /// `alphabetic`: the alphabetic baseline.
     Alphabetic,
 }
 
@@ -78,9 +94,13 @@ pub enum CssTextUnderEdge {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextEdge {
+    /// A single metric that sets both the over and under edges.
     Single(CssTextEdgeMetric),
+    /// An explicit over and under pair.
     Pair {
+        /// The over edge metric.
         over: CssTextOverEdge,
+        /// The under edge metric.
         under: CssTextUnderEdge,
     },
 }
@@ -111,7 +131,9 @@ impl CssTextEdge {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextBoxEdge {
+    /// `auto`: the metrics come from `line-fit-edge`, with its `leading` value treated as `text`.
     Auto,
+    /// An explicit `<text-edge>` over and under metric.
     Edge(CssTextEdge),
 }
 
@@ -160,7 +182,9 @@ impl CssTextBoxValues {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextBox {
+    /// `normal`: sets `text-box-trim` to `none` and `text-box-edge` to `auto`.
     Normal,
+    /// A nonempty trim and edge combination.
     Components(CssTextBoxValues),
 }
 

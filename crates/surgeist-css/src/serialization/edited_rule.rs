@@ -13,9 +13,13 @@ use crate::serialization::{CssRuleSerializationError, CssSerializationLimits};
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssGroupPreludeRef<'a> {
+    /// A `@media` prelude.
     Media(&'a CssMediaQueryList),
+    /// A `@supports` prelude.
     Supports(&'a CssCondition<CssSupportsLeaf>),
+    /// A `@container` prelude.
     Container(&'a CssContainerPrelude),
+    /// A `@layer` block prelude; `None` for an anonymous layer.
     Layer(Option<&'a CssLayerName>),
 }
 
@@ -54,6 +58,7 @@ pub struct CssRuleGraphInput<'a> {
     pub(crate) kind: EditedRuleKind<'a>,
 }
 impl<'a> CssRuleGraphInput<'a> {
+    /// Wraps a parsed rule, with its whole subtree, unchanged.
     #[must_use]
     pub const fn from_rule(rule: &'a CssRule) -> Self {
         Self {
@@ -73,6 +78,7 @@ impl<'a> CssRuleGraphInput<'a> {
             kind: EditedRuleKind::Style(selectors, declarations, children),
         }
     }
+    /// Builds a group rule from its prelude and its child inputs, in order.
     #[must_use]
     pub const fn group(prelude: CssGroupPreludeRef<'a>, children: &'a [Self]) -> Self {
         Self {
@@ -86,6 +92,7 @@ impl<'a> CssRuleGraphInput<'a> {
             kind: EditedRuleKind::NestedDeclarations(declarations),
         }
     }
+    /// Builds a `@page` rule from its checked view.
     #[must_use]
     pub const fn page(page: crate::rule::page::CssPageRuleView<'a>) -> Self {
         Self {
@@ -203,7 +210,9 @@ impl<'a> CssRuleGraphInput<'a> {
 /// Existing value-only serialization limits remain independent domain requests.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssRuleSerializationLimits {
+    /// Limits for each value serialization (declarations and preludes) within the graph operation.
     pub values: CssSerializationLimits,
+    /// Maximum structural depth of the rule graph; the root has depth zero.
     pub max_depth: usize,
 }
 impl Default for CssRuleSerializationLimits {

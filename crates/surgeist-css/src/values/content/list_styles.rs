@@ -14,7 +14,9 @@ use crate::values::image::CssImageValue;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssMarkerSide {
+    /// `match-self`: the marker box is positioned using the directionality of the `::marker`'s originating element, the list item itself.
     MatchSelf,
+    /// `match-parent`: the marker box is positioned using the directionality of the parent of the `::marker`'s originating element.
     MatchParent,
 }
 
@@ -26,8 +28,11 @@ pub enum CssMarkerSide {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssListStyleTypeValue {
+    /// `none`: the element has no marker string.
     None,
+    /// A `<string>` that is the element's marker string.
     String(CssContentString),
+    /// A named or `symbols()` counter style.
     CounterStyle(CssCounterStyleValue),
 }
 
@@ -71,14 +76,17 @@ impl CssListStyleValue {
         })
     }
 
+    /// Returns the authored `<'list-style-type'>` component, or `None` when it was omitted.
     #[must_use]
     pub const fn style_type(&self) -> Option<&CssListStyleTypeValue> {
         self.style_type.as_ref()
     }
+    /// Returns the authored `<'list-style-position'>` component, or `None` when it was omitted.
     #[must_use]
     pub const fn position(&self) -> Option<CssListStylePosition> {
         self.position
     }
+    /// Returns the authored `<'list-style-image'>` component, or `None` when it was omitted.
     #[must_use]
     pub const fn image(&self) -> Option<&CssImageValue> {
         self.image.as_ref()

@@ -121,7 +121,9 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssScrollBehavior {
+    /// `auto`: the scroll container is scrolled in an instant fashion.
     Auto,
+    /// `smooth`: the scroll container is scrolled in a smooth fashion, using a user-agent-defined timing function and duration; user agents may ignore this property.
     Smooth,
 }
 
@@ -147,8 +149,11 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssScrollbarGutter {
+    /// `auto`: classic scrollbars create a gutter only when `overflow` is `scroll`, or `auto` and the box overflows; overlay scrollbars consume no space.
     Auto,
+    /// `stable`: the gutter is present for classic scrollbars when `overflow` is `hidden`, `scroll` or `auto`, whether or not the box overflows; overlay scrollbars consume no space.
     Stable,
+    /// `stable both-edges`: like `stable`, and when a gutter would be present on one of the inline-start or inline-end edges, another is present on the opposite edge.
     StableBothEdges,
 }
 
@@ -189,7 +194,9 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssOverflowAnchor {
+    /// `auto`: the element is potentially eligible to participate in anchor node selection for any scrolling box created by it or an ancestor.
     Auto,
+    /// `none`: the element and its descendants, apart from those nested inside another scrolling element, are not eligible to participate in anchor node selection.
     None,
 }
 

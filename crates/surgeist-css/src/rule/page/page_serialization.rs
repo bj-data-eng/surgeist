@@ -16,6 +16,11 @@ use crate::serialization::specified_rule_serialization::SpecifiedRuleWriter;
 use crate::values::common::CssAutoOr;
 type Result<T> = std::result::Result<T, Error>;
 impl CssPageSelectorList {
+    /// Serializes the prelude as CSSOM selector text: selectors separated by `, `, each with its name and pseudo-classes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `limits` are exceeded.
     pub fn serialize_cssom(&self, limits: Limits) -> Result<String> {
         let mut writer = SpecifiedRuleWriter::new(limits);
         writer.append_page_selectors(self)?;
@@ -283,6 +288,13 @@ impl SpecifiedRuleWriter {
     }
 }
 impl CssMarginRule {
+    /// Serializes the margin rule as CSSOM text, such as `@top-left { ... }`.
+    ///
+    /// Failure publishes no partial text.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `limits` are exceeded or a declaration cannot be selected.
     pub fn serialize_cssom(
         &self,
         limits: Limits,
@@ -295,6 +307,13 @@ impl CssMarginRule {
     }
 }
 impl CssPageDeclarationBlock {
+    /// Serializes the declarations as CSSOM text, without braces; only the winning occurrence of each descriptor kind is emitted.
+    ///
+    /// Failure publishes no partial text.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `limits` are exceeded or a declaration cannot be selected.
     pub fn serialize_cssom(
         &self,
         limits: Limits,
@@ -305,6 +324,11 @@ impl CssPageDeclarationBlock {
         })?;
         Ok(writer.css)
     }
+    /// Projects the ordinary property declarations into a selected property block, leaving the descriptors out.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a property cannot be selected or `limits` are exceeded.
     pub fn try_specified_properties(
         &self,
         limits: Limits,

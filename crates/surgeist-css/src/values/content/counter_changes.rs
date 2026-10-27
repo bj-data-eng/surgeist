@@ -19,11 +19,13 @@ impl CssCounterChangeValue {
         Self { name, value }
     }
 
+    /// Returns the counter being changed.
     #[must_use]
     pub const fn name(&self) -> &CssContentCounterName {
         &self.name
     }
 
+    /// Returns the authored integer operand, or `None` when it was omitted.
     #[must_use]
     pub const fn value(&self) -> Option<&CssNumeric<CssInteger>> {
         self.value.as_ref()
@@ -70,7 +72,10 @@ impl CssCounterChangesValue {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterProperty {
+    /// `counter-reset`: instantiates the counter with the integer operand as its starting value, `0` when omitted.
     Reset,
+    /// `counter-increment`: increments the counter by the integer operand, `1` when omitted.
     Increment,
+    /// `counter-set`: sets the counter to the integer operand, `0` when omitted.
     Set,
 }

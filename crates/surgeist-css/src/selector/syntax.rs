@@ -6,6 +6,7 @@ pub struct CssScopeSelectorList {
 }
 
 impl CssScopeSelectorList {
+    /// Creates a scope boundary list, or returns `None` when `selectors` is empty or any member contains a pseudo-element.
     #[must_use]
     pub fn try_new(selectors: Vec<CssStyleSelector>) -> Option<Self> {
         if selectors.is_empty()
@@ -75,6 +76,7 @@ impl CssStyleSelectorList {
         )
     }
 
+    /// Returns the selectors in authored order; the slice is never empty.
     #[must_use]
     pub fn selectors(&self) -> &[CssStyleSelector] {
         &self.selectors
@@ -85,7 +87,9 @@ impl CssStyleSelectorList {
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum CssStyleSelector {
+    /// An authored selector without a leading combinator.
     Selector(CssSelector),
+    /// A selector with an explicit leading combinator, relative to the parent rule or scope.
     Relative(CssRelativeSelector),
 }
 

@@ -21,10 +21,13 @@ use surgeist_color::Color;
 /// The actual borrowed original source; UTF16 is never converted lossily.
 #[derive(Clone, Copy, Debug)]
 pub enum CssColorInput<'source> {
+    /// UTF-8 text borrowed as bytes.
     Utf8(&'source [u8]),
+    /// UTF-16 text borrowed as code units.
     Utf16(&'source [u16]),
 }
 impl CssColorInput<'_> {
+    /// Returns the input length in original units: bytes for UTF-8, code units for UTF-16.
     #[must_use]
     pub const fn len(self) -> usize {
         match self {
@@ -32,10 +35,12 @@ impl CssColorInput<'_> {
             Self::Utf16(input) => input.len(),
         }
     }
+    /// Returns whether the input holds no units.
     #[must_use]
     pub const fn is_empty(self) -> bool {
         self.len() == 0
     }
+    /// Returns the encoding of the input.
     #[must_use]
     pub const fn kind(self) -> CssColorInputKind {
         match self {
@@ -53,10 +58,15 @@ impl CssColorInput<'_> {
 /// Explicit ordinary logical ceilings. No shared/global controller is created.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssColorOrdinaryLimits {
+    /// Maximum number of original input units admitted.
     pub input_units: usize,
+    /// Maximum number of records in the algorithm bank.
     pub algorithm_records: usize,
+    /// Maximum number of records in the arithmetic bank.
     pub arithmetic_records: usize,
+    /// Maximum number of records in the evaluation bank.
     pub evaluation_records: usize,
+    /// Maximum number of serviced parse actions.
     pub actions: usize,
 }
 /// The actual exhausted ordinary resource, separate from CSS invalidity.
@@ -128,7 +138,12 @@ impl CssColorResolveError {
             kind: ResolveErrorKind::Allocation { resource },
         }
     }
-    /// Returns the exhausted resource with its allowed and required amounts.
+    /// Returns the exhausted resource with its allowed and required amounts, as the
+    /// tuple `(resource, allowed, required)`.
+    ///
+    /// The ceiling comes first and the demand second; a refusal means `required` exceeds
+    /// `allowed`. For example, an input of 3 units under an `input_units` ceiling of 2 reports
+    /// `(CssColorOrdinaryResource::InputUnits, 2, 3)`.
     #[must_use]
     pub const fn exhausted_limit(&self) -> Option<(CssColorOrdinaryResource, usize, usize)> {
         match self.kind {
@@ -194,7 +209,9 @@ impl From<CssColorError> for CssColorResolveError {
 /// A fixed source-qualified outcome after all ordinary scratch is retired.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CssColorOrdinaryOutcome {
+    /// The input parsed to this used color.
     Used(Color),
+    /// The input is standard-invalid; the failure keeps its reason and input range.
     StandardFailure(CssColorStandardFailure),
 }
 /// Borrows the actual original source and fact envelope; no graph/anchor/scratch
@@ -206,18 +223,22 @@ pub struct CssColorOrdinaryResult<'source, 'facts> {
     outcome: CssColorOrdinaryOutcome,
 }
 impl<'source, 'facts> CssColorOrdinaryResult<'source, 'facts> {
+    /// Returns the borrowed original input the result was parsed from.
     #[must_use]
     pub const fn input(&self) -> CssColorInput<'source> {
         self.input
     }
+    /// Returns the fact set the result was resolved against.
     #[must_use]
     pub const fn facts(&self) -> &'facts CssColorFacts<'facts> {
         self.facts
     }
+    /// Returns the input descriptor, including the range the color consumed.
     #[must_use]
     pub const fn source(&self) -> CssColorSourceDescriptor {
         self.source
     }
+    /// Returns whether the input parsed to a used color or is standard-invalid.
     #[must_use]
     pub const fn outcome(&self) -> CssColorOrdinaryOutcome {
         self.outcome

@@ -248,6 +248,7 @@ impl CssFontFeatureValueIndex {
             origin: None,
         })
     }
+    /// Returns the normalized decimal digits without sign or leading zeroes (`0` for zero).
     pub fn as_decimal_str(&self) -> &str {
         &self.digits
     }
@@ -255,6 +256,7 @@ impl CssFontFeatureValueIndex {
     pub fn to_u32(&self) -> Option<u32> {
         self.digits.parse().ok()
     }
+    /// Returns the original raw-source window of the index, or `None` when it was constructed programmatically.
     pub const fn origin(&self) -> Option<&CssParsedOrigin> {
         self.origin.as_ref()
     }
@@ -275,6 +277,11 @@ impl From<u32> for CssFontFeatureValueIndex {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssFontFeatureValueName(Box<str>);
 impl CssFontFeatureValueName {
+    /// Checks that `value` is a representable identifier and keeps its decoded text.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `value` cannot be an identifier.
     pub fn try_new(value: impl Into<String>) -> Result<Self, CssFontFeatureValuesError> {
         let value = value.into();
         CssComponentValue::try_ident(value.clone()).map_err(|_| {
@@ -282,6 +289,7 @@ impl CssFontFeatureValueName {
         })?;
         Ok(Self(value.into_boxed_str()))
     }
+    /// Returns the decoded identifier text; it is case-sensitive.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -290,15 +298,23 @@ impl CssFontFeatureValueName {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFeatureValueKind {
+    /// The `@stylistic` block, whose definitions take exactly one index.
     Stylistic,
+    /// The `@historical-forms` block, whose definitions take one or more indexes.
     HistoricalForms,
+    /// The `@styleset` block, whose definitions take one or more indexes.
     Styleset,
+    /// The `@character-variant` block, whose definitions take one or two indexes.
     CharacterVariant,
+    /// The `@swash` block, whose definitions take exactly one index.
     Swash,
+    /// The `@ornaments` block, whose definitions take exactly one index.
     Ornaments,
+    /// The `@annotation` block, whose definitions take exactly one index.
     Annotation,
 }
 impl CssFontFeatureValueKind {
+    /// Returns the CSS spelling of the block name without the `@`, such as `historical-forms`.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Stylistic => "stylistic",
@@ -358,6 +374,9 @@ pub struct CssFontFeatureValueDefinition {
     position: Option<CssSourcePosition>,
 }
 impl CssFontFeatureValueDefinition {
+    /// Creates a definition from a name and a value, with no parsed name origin or source position.
+    ///
+    /// The owning block checks that the value kind matches the block.
     #[must_use]
     pub const fn new(name: CssFontFeatureValueName, value: CssFontFeatureValue) -> Self {
         Self {
@@ -367,15 +386,19 @@ impl CssFontFeatureValueDefinition {
             position: None,
         }
     }
+    /// Returns the decoded feature-value name.
     pub const fn name(&self) -> &CssFontFeatureValueName {
         &self.name
     }
+    /// Returns the definition's indexes or pending value.
     pub const fn value(&self) -> &CssFontFeatureValue {
         &self.value
     }
+    /// Returns the original raw-source window of the name, or `None` when it was constructed programmatically.
     pub const fn parsed_name(&self) -> Option<&CssParsedOrigin> {
         self.parsed_name.as_ref()
     }
+    /// Returns the source position of the definition, or `None` when it was constructed programmatically.
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
@@ -397,6 +420,11 @@ pub struct CssFontFeatureValueBlock {
     position: Option<CssSourcePosition>,
 }
 impl CssFontFeatureValueBlock {
+    /// Creates a block of one kind from its definitions, retained in the given order with duplicates, with no source position.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the block kind and the definition index when a definition's value is of another kind.
     pub fn try_new(
         kind: CssFontFeatureValueKind,
         definitions: Vec<CssFontFeatureValueDefinition>,
@@ -418,12 +446,15 @@ impl CssFontFeatureValueBlock {
             position: None,
         })
     }
+    /// Returns which feature-value block this is.
     pub const fn kind(&self) -> CssFontFeatureValueKind {
         self.kind
     }
+    /// Returns the definitions in authored order, including duplicates.
     pub fn definitions(&self) -> &[CssFontFeatureValueDefinition] {
         &self.definitions
     }
+    /// Returns the source position of the block, or `None` when it was constructed programmatically.
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
@@ -440,6 +471,7 @@ pub struct CssFontFeatureDisplayOccurrence {
     position: Option<CssSourcePosition>,
 }
 impl CssFontFeatureDisplayOccurrence {
+    /// Creates a font-display occurrence from its value, with no parsed name origin or source position.
     pub const fn new(value: CssFontFeatureDisplayValue) -> Self {
         Self {
             value,
@@ -447,9 +479,11 @@ impl CssFontFeatureDisplayOccurrence {
             position: None,
         }
     }
+    /// Returns the font-display value.
     pub const fn value(&self) -> &CssFontFeatureDisplayValue {
         &self.value
     }
+    /// Returns the original raw-source window of the descriptor name, or `None` when it was constructed programmatically.
     pub const fn parsed_name(&self) -> Option<&CssParsedOrigin> {
         self.parsed_name.as_ref()
     }
@@ -457,6 +491,7 @@ impl CssFontFeatureDisplayOccurrence {
         self.parsed_name = Some(origin);
         self
     }
+    /// Returns the source position of the descriptor, or `None` when it was constructed programmatically.
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }
@@ -469,7 +504,9 @@ impl CssFontFeatureDisplayOccurrence {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFeatureValuesItem {
+    /// A `font-display` descriptor occurrence.
     FontDisplay(CssFontFeatureDisplayOccurrence),
+    /// A feature-value block such as `@swash`.
     Block(CssFontFeatureValueBlock),
 }
 /// An ordered authored rule. It neither resolves names nor chooses winning definitions.
@@ -480,6 +517,11 @@ pub struct CssFontFeatureValuesRule {
     position: Option<CssSourcePosition>,
 }
 impl CssFontFeatureValuesRule {
+    /// Creates a rule from its family names and body items, retaining the items in the given order with no source position.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `families` is empty.
     pub fn try_new(
         families: Vec<CssFontFaceFamily>,
         items: Vec<CssFontFeatureValuesItem>,
@@ -495,12 +537,15 @@ impl CssFontFeatureValuesRule {
             position: None,
         })
     }
+    /// Returns the family names of the prelude, in authored order; the slice is never empty.
     pub fn families(&self) -> &[CssFontFaceFamily] {
         &self.families
     }
+    /// Returns the body items in authored order, with interleaving and duplicates retained.
     pub fn items(&self) -> &[CssFontFeatureValuesItem] {
         &self.items
     }
+    /// Returns the source position of the rule, or `None` when it was constructed programmatically.
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
     }

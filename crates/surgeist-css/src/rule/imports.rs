@@ -58,11 +58,13 @@ impl<'a> CssImportRuleView<'a> {
         Ok(view)
     }
 
+    /// Returns the borrowed import rule.
     #[must_use]
     pub const fn rule(self) -> &'a CssImportRule {
         self.rule
     }
 
+    /// Returns the borrowed media query list that stands in for the rule's authored media.
     #[must_use]
     pub const fn media(self) -> &'a CssMediaQueryList {
         self.media

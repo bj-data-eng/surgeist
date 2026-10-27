@@ -433,15 +433,18 @@ struct SecondarySourceFormation {
 pub struct CssSourceStorageUsage(pub(crate) usize);
 
 impl CssSourceStorageUsage {
+    /// Returns the retained backing bytes.
     #[must_use]
     pub const fn retained_bytes(self) -> usize {
         self.0
     }
 
+    /// Adds two usages, or returns `None` when the sum overflows `usize`.
     pub fn checked_add(self, other: Self) -> Option<Self> {
         self.0.checked_add(other.0).map(Self)
     }
 
+    /// Returns whether this usage is within `maximum` bytes.
     pub fn validate(self, maximum: usize) -> bool {
         self.0 <= maximum
     }
@@ -623,6 +626,7 @@ impl CssSourceSnapshot {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
+    /// Returns the checked retained backing of this snapshot.
     #[must_use]
     pub fn storage_usage(&self) -> CssSourceStorageUsage {
         self.0.storage

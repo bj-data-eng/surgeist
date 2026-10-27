@@ -32,15 +32,25 @@ impl CssRuleCssomKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssRuleCssomFormat {
+    /// `@counter-style` rules.
     CounterStyle,
+    /// `@font-feature-values` rules.
     FontFeatureValues,
+    /// `@font-palette-values` rules.
     FontPaletteValues,
+    /// `@color-profile` rules.
     ColorProfile,
+    /// `@supports` rules in the named supports-condition form.
     SupportsCondition,
+    /// `@custom-media` rules.
     CustomMedia,
+    /// `@layer` statements.
     LayerStatement,
+    /// `@layer` blocks.
     LayerBlock,
+    /// `@container` rules.
     Container,
+    /// `@scope` rules.
     Scope,
 }
 
@@ -153,6 +163,8 @@ impl CssRuleSerializationError {
     pub fn rule_path(&self) -> &[usize] {
         &self.rule_path
     }
+    /// Returns the zero-based keyframe block index within the keyframes rule, when the failure
+    /// concerns a keyframe block.
     #[must_use]
     pub const fn keyframe_block_index(&self) -> Option<usize> {
         self.keyframe_block_index

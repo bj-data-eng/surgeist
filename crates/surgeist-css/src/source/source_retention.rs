@@ -164,7 +164,10 @@ pub enum CssSourceRetentionAction {
     Step,
     /// Complete live collector metadata and source-reference bank bytes.
     /// During replacement this includes both old and requested/actual new banks.
-    Scratch { live_bytes: usize },
+    Scratch {
+        /// Live bytes, including fixed collector metadata and every bank held at once.
+        live_bytes: usize,
+    },
 }
 
 struct Admission<'a> {
@@ -258,9 +261,25 @@ impl<E: std::error::Error + 'static> std::error::Error for CssRetainedPayloadErr
     }
 }
 
-/// CSS-owned source traversal. Implemented for retained CSS payload owners.
+/// A value that retains CSS source snapshots, directly or through nested owners.
+///
+/// CSS implements it for its retained payloads; a consumer that stores CSS payloads
+/// implements it for its own owners. The collector [`CssSourceRetention`] drives the
+/// traversal, so callers invoke [`CssSourceRetention::visit`] rather than the method below.
 pub trait CssRetainedSources {
-    #[doc(hidden)]
+    /// Reports the source snapshots `self` retains to `sources`.
+    ///
+    /// An implementation reaches every CSS payload it retains: it calls
+    /// [`CssSourceRetention::visit`] for each nested owner (each nested call charges one step
+    /// and one depth level) and [`CssSourceRetention::source`] for each snapshot it holds
+    /// directly, and charges its own representation work with
+    /// [`CssSourceRetention::charge_step`]. A consumer whose representation has its own depth
+    /// positions the collector with [`CssSourceRetention::at_depth`].
+    ///
+    /// # Errors
+    ///
+    /// Returns the first [`CssSourceRetentionError`] the collector reports, unchanged: an
+    /// implementation propagates a refusal and never swallows, retries or replaces it.
     fn visit_retained_sources(
         &self,
         sources: &mut CssSourceRetention<'_>,
@@ -286,6 +305,11 @@ pub struct CssSourceRetention<'admit> {
     admission: Admission<'admit>,
 }
 impl<'admit> CssSourceRetention<'admit> {
+    /// Constructs a collector without a caller admission predicate.
+    ///
+    /// `bytes` bounds the cumulative retained storage of the distinct snapshots recorded,
+    /// `maximum_visits` bounds the charged steps and the storage banks, and `maximum_depth`
+    /// bounds the owner nesting depth.
     #[must_use]
     pub const fn new(bytes: usize, maximum_visits: usize, maximum_depth: usize) -> Self {
         Self {
@@ -325,6 +349,11 @@ impl<'admit> CssSourceRetention<'admit> {
         collector.admission.callback = Some(admit);
         Ok(collector)
     }
+    /// Visits a nested owner one depth level deeper.
+    ///
+    /// Charges one step, refuses with [`CssSourceRetentionResource::Depth`] when the nesting would
+    /// exceed the maximum depth, and returns what `value.visit_retained_sources` returns. A caller
+    /// admission refusal recorded meanwhile is returned even if the visitor swallowed its own error.
     pub fn visit<T: CssRetainedSources + ?Sized>(
         &mut self,
         value: &T,
@@ -353,6 +382,15 @@ impl<'admit> CssSourceRetention<'admit> {
             ))?;
         Ok(())
     }
+    /// Records one source snapshot as retained backing.
+    ///
+    /// Charges a step, plus one per snapshot recorded earlier that is compared, and ignores a
+    /// snapshot already recorded (identity, not text). Otherwise it adds the snapshot's storage to
+    /// the cumulative usage, refusing with [`CssSourceRetentionResource::RetainedBytes`] beyond the
+    /// byte bound, with [`CssSourceRetentionResource::Storage`] when the snapshot bank's size
+    /// overflows or would exceed the visit bound, and with [`CssSourceRetentionError::allocation`]
+    /// when the allocator cannot provide it. A caller-admission refusal of the bank's scratch
+    /// storage is returned unchanged.
     pub fn source(&mut self, source: &CssSourceSnapshot) -> Result<(), CssSourceRetentionError> {
         self.charge_step()?;
         for index in 0..self.sources.len() {
@@ -456,11 +494,13 @@ impl<'admit> CssSourceRetention<'admit> {
         })
     }
 
+    /// Returns the cumulative storage usage of the distinct snapshots recorded so far.
     #[must_use]
     pub const fn usage(&self) -> CssSourceStorageUsage {
         self.usage
     }
 
+    /// Returns the number of steps charged so far.
     #[must_use]
     pub const fn steps(&self) -> usize {
         self.visits

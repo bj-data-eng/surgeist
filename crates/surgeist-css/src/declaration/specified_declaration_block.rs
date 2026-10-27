@@ -128,6 +128,7 @@ impl CssDeclarationBlockError {
         self.serialization()
             .is_some_and(CssSerializationError::is_resource_limit)
     }
+    /// Returns the original authored declaration the failure concerns, when it has one.
     #[must_use]
     pub const fn declaration(&self) -> Option<&CssDeclaration> {
         self.declaration.as_ref()
@@ -388,10 +389,15 @@ enum EntryValue {
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssSpecifiedDeclarationValueRef<'a> {
+    /// A completed longhand contribution: an ordinary value, a CSS-wide keyword, a user-agent
+    /// initial or a system-font requirement.
     Completed(CssContributionValueRef<'a>),
     /// The independent SVG terminal retains its actual completed contribution.
     SvgGlyphOrientationVertical(&'a CssSvgGlyphOrientationVerticalContribution),
+    /// A custom-property declaration, kept symbolic.
     Custom(&'a CssCustomDeclaration),
+    /// A longhand declared directly whose value still awaits substitution; the original
+    /// component values are retained.
     UnresolvedLonghand(&'a CssComponentValues),
     /// A fixed-footprint pending shorthand member; its individual value is empty.
     PendingShorthand(&'a CssDeclaration),
@@ -422,6 +428,8 @@ impl crate::source::CssRetainedSources for CssSpecifiedDeclarationEntry {
     }
 }
 impl CssSpecifiedDeclarationEntry {
+    /// Returns the terminal property this entry selects, or the authored property name for a
+    /// custom or pending entry.
     #[must_use]
     pub fn property_name(&self) -> CssPropertyNameRef<'_> {
         match self.property {
@@ -429,6 +437,7 @@ impl CssSpecifiedDeclarationEntry {
             None => self.source.property_name(),
         }
     }
+    /// Returns the importance this entry was selected with.
     #[must_use]
     pub fn importance(&self) -> CssImportance {
         self.importance
@@ -441,18 +450,24 @@ impl CssSpecifiedDeclarationEntry {
         entry.importance = importance;
         entry
     }
+    /// Returns the authored declaration occurrence this entry was expanded from.
     #[must_use]
     pub const fn source(&self) -> &CssDeclaration {
         &self.source
     }
+    /// Returns the zero-based input occurrence (or supplied expansion-group ordinal) this entry
+    /// came from; shorthand members share it.
     #[must_use]
     pub const fn authored_ordinal(&self) -> usize {
         self.authored_ordinal
     }
+    /// Returns the zero-based position of this entry among the members generated from its
+    /// authored occurrence.
     #[must_use]
     pub const fn member_ordinal(&self) -> usize {
         self.member_ordinal
     }
+    /// Borrows the terminal value, distinguishing completed, custom and pending phases.
     #[must_use]
     pub fn value(&self) -> CssSpecifiedDeclarationValueRef<'_> {
         match &self.value {
@@ -694,6 +709,8 @@ impl CssSpecifiedDeclarationBlock {
             &mut writer,
         )
     }
+    /// Builds the ordinary-domain snapshot from intrinsic expansions, keeping each terminal's
+    /// winner. Fails atomically on any refused expansion or exhausted allowance.
     pub fn try_from_expansions(
         expansions: &[CssExpansion],
         limits: CssSerializationLimits,
@@ -849,6 +866,8 @@ impl CssSpecifiedDeclarationBlock {
             domain,
         })
     }
+    /// Rebuilds a `@page` descriptor snapshot from selected entries, rejecting any entry outside the
+    /// Page property grammar. Duplicate terminal identities are rejected atomically.
     pub fn try_from_page_entries(
         entries: &[CssSpecifiedDeclarationEntry],
         limits: CssSerializationLimits,
@@ -861,6 +880,8 @@ impl CssSpecifiedDeclarationBlock {
     ) -> Result<Self> {
         Self::from_entries(entries, Domain::Page, writer)
     }
+    /// Rebuilds a page-margin descriptor snapshot from selected entries, rejecting any entry outside
+    /// the margin property grammar. Duplicate terminal identities are rejected atomically.
     pub fn try_from_margin_entries(
         entries: &[CssSpecifiedDeclarationEntry],
         limits: CssSerializationLimits,
@@ -873,10 +894,12 @@ impl CssSpecifiedDeclarationBlock {
     ) -> Result<Self> {
         Self::from_entries(entries, Domain::Margin, writer)
     }
+    /// Returns whether this snapshot was checked in the `@page` declaration domain.
     #[must_use]
     pub fn is_page(&self) -> bool {
         self.domain == Domain::Page
     }
+    /// Returns whether this snapshot was checked in the page-margin declaration domain.
     #[must_use]
     pub fn is_margin(&self) -> bool {
         self.domain == Domain::Margin
@@ -889,6 +912,7 @@ impl CssSpecifiedDeclarationBlock {
     pub(crate) fn is_ordinary(&self) -> bool {
         self.domain == Domain::Ordinary
     }
+    /// Returns the selected terminal entries in specified order.
     #[must_use]
     pub fn entries(&self) -> &[CssSpecifiedDeclarationEntry] {
         &self.entries

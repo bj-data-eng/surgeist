@@ -13,10 +13,15 @@ use crate::values::common::common_values::{four_sides_entry, side_element, side_
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssScrollSnapAxis {
+    /// `x`: the scroll container snaps in its horizontal axis only.
     X,
+    /// `y`: the scroll container snaps in its vertical axis only.
     Y,
+    /// `block`: the scroll container snaps in its block axis only.
     Block,
+    /// `inline`: the scroll container snaps in its inline axis only.
     Inline,
+    /// `both`: the scroll container snaps in both axes independently.
     Both,
 }
 
@@ -36,7 +41,9 @@ impl CssScrollSnapAxis {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssScrollSnapStrictness {
+    /// `mandatory`: the scroll container is required to be snapped to a snap position when no scrolling operation is active and a valid snap position exists.
     Mandatory,
+    /// `proximity`: the scroll container may snap to a snap position at the end of a scroll, at the user agent's discretion.
     Proximity,
 }
 
@@ -48,9 +55,13 @@ pub enum CssScrollSnapStrictness {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssScrollSnapType {
+    /// `none`: the scroll container must not snap.
     None,
+    /// An axis, optionally with an authored strictness.
     Axis {
+        /// The snap axis.
         axis: CssScrollSnapAxis,
+        /// The authored strictness, or `None` when it was omitted (which means `proximity`).
         strictness: Option<CssScrollSnapStrictness>,
     },
 }
@@ -97,9 +108,13 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssScrollSnapAlignment {
+    /// `none`: the box does not define a snap position on this axis.
     None,
+    /// `start`: start alignment of the box's snap area within the snapport is a snap position on this axis.
     Start,
+    /// `end`: end alignment of the box's snap area within the snapport is a snap position on this axis.
     End,
+    /// `center`: center alignment of the box's snap area within the snapport is a snap position on this axis.
     Center,
 }
 
@@ -136,7 +151,9 @@ side_pair_entry!(CssScrollSnapAlignment);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssScrollSnapStop {
+    /// `normal`: the scroll container may pass over a snap position defined by this element during a scrolling operation.
     Normal,
+    /// `always`: the scroll container must not pass over a snap position defined by this element during a scrolling operation.
     Always,
 }
 

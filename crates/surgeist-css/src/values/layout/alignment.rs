@@ -6,40 +6,61 @@ use crate::serialization::specified_serialization::SpecifiedSerializationContext
 
 type SerializationResult<T> = Result<T, CssSerializationError>;
 
+/// The `<overflow-position>` keyword that controls alignment when the alignment subject overflows its alignment container.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssOverflowPosition {
+    /// `safe`: if the subject overflows the container, it is aligned as if the alignment mode were `flex-start`.
     Safe,
+    /// `unsafe`: the given alignment is honored regardless of whether the subject overflows.
     Unsafe,
 }
 
+/// The `<baseline-position>` forms: an optional `first` or `last` preference followed by `baseline`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBaselinePosition {
+    /// `baseline`: the bare keyword, aligning to the first baseline set; it serializes as `baseline`.
     Baseline,
+    /// `first baseline`: the explicit first-baseline form; it serializes as `baseline`.
     First,
+    /// `last baseline`: aligns to the last baseline set.
     Last,
 }
 
+/// The `<self-position>` keywords that align the subject to a position in its alignment container.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAlignmentPosition {
+    /// `center`: centers the subject in the container.
     Center,
+    /// `start`: aligns the subject flush with the container's start edge in the appropriate axis; the keyword is flow-relative, so the writing mode decides which side that is.
     Start,
+    /// `end`: aligns the subject flush with the container's end edge in the appropriate axis; the keyword is flow-relative, so the writing mode decides which side that is.
     End,
+    /// `self-start`: aligns the subject flush with the container edge that corresponds to the subject's own start side in the appropriate axis.
     SelfStart,
+    /// `self-end`: aligns the subject flush with the container edge that corresponds to the subject's own end side in the appropriate axis.
     SelfEnd,
+    /// `flex-start`: aligns to the flex container's main-start or cross-start side, as appropriate; outside flex layout it behaves as `start`.
     FlexStart,
+    /// `flex-end`: aligns to the flex container's main-end or cross-end side, as appropriate; outside flex layout it behaves as `end`.
     FlexEnd,
+    /// `left`: aligns the subject flush with the container's line-left or physical left edge, whichever lies in the axis; where the axis is not parallel to left and right it behaves as `start`.
     Left,
+    /// `right`: aligns the subject flush with the container's line-right or physical right edge, whichever lies in the axis; where the axis is not parallel to left and right it behaves as `start`.
     Right,
 }
 
+/// The optional direction keyword of a `legacy` alignment.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssLegacyAlignment {
+    /// `legacy left`: the legacy alignment with a left direction.
     Left,
+    /// `legacy right`: the legacy alignment with a right direction.
     Right,
+    /// `legacy center`: the legacy alignment with a center direction.
     Center,
 }
 
@@ -47,19 +68,31 @@ pub enum CssLegacyAlignment {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAlignmentValue {
+    /// `normal`, with an optional preceding overflow keyword that only `align-self` and `justify-self` admit.
     Normal {
+        /// The authored overflow keyword, if any.
         overflow: Option<CssOverflowPosition>,
     },
+    /// `auto`: behaves as the parent's computed `align-items` or `justify-items` value (without any `legacy` keyword), or as `normal` when the box has no parent or when the actual position of an absolutely positioned box is determined.
     Auto,
+    /// `stretch`: sizes an automatically sized subject to fill the container as far as its size constraints allow.
     Stretch,
+    /// An authored baseline alignment.
     Baseline(CssBaselinePosition),
+    /// An optional overflow keyword followed by a self-position keyword.
     Position {
+        /// The authored overflow keyword, if any.
         overflow: Option<CssOverflowPosition>,
+        /// The self-position keyword.
         position: CssAlignmentPosition,
     },
+    /// `space-between`: distributes free space between items, with the first and last flush with the container edges.
     SpaceBetween,
+    /// `space-around`: distributes free space around items, with half-size spaces at the container edges.
     SpaceAround,
+    /// `space-evenly`: distributes free space so that all spaces, including those at the container edges, are equal.
     SpaceEvenly,
+    /// `legacy`, with an optional `left`, `right` or `center` direction; admitted only by `justify-items`.
     Legacy(Option<CssLegacyAlignment>),
 }
 

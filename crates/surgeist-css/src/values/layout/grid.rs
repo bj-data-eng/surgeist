@@ -9,6 +9,7 @@ pub(crate) fn adjacent_line_names<T>(
     previous.is_some_and(|previous| is_line_names(previous) && is_line_names(next))
 }
 
+/// One bracketed group of authored grid line names, which may be empty (`[]`).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssGridLineNames {
     names: Vec<CssGridLineName>,
@@ -21,16 +22,20 @@ impl CssGridLineNames {
         Self { names }
     }
 
+    /// Returns the names in authored order.
     #[must_use]
     pub fn names(&self) -> &[CssGridLineName] {
         &self.names
     }
 }
 
+/// The axis keyword of an explicit `grid-auto-flow` value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridAutoFlowAxis {
+    /// `row`: auto-placed items fill each row in turn.
     Row,
+    /// `column`: auto-placed items fill each column in turn.
     Column,
 }
 
@@ -42,24 +47,28 @@ pub struct CssGridAutoFlowMode {
 }
 
 impl CssGridAutoFlowMode {
+    /// Builds an explicit axis choice with optional dense packing.
     #[must_use]
     pub const fn new(axis: CssGridAutoFlowAxis, dense: bool) -> Self {
         Self { axis, dense }
     }
 
+    /// Returns the auto-flow axis.
     #[must_use]
     pub const fn axis(self) -> CssGridAutoFlowAxis {
         self.axis
     }
 
+    /// Returns whether `dense` packing was authored.
     #[must_use]
     pub const fn dense(self) -> bool {
         self.dense
     }
 }
 
-/// The six authored `grid-auto-flow` states. An unspecified direction remains
-/// symbolic for the layout layer; in particular, bare `dense` is not `row dense`.
+/// The six authored `grid-auto-flow` states. An omitted axis is retained as
+/// authored and is not replaced by `row`, so bare `dense` stays distinct from
+/// `row dense`.
 ///
 /// ```
 /// use surgeist_css::values::layout::{CssGridAutoFlowAxis, CssGridAutoFlow};
@@ -77,8 +86,11 @@ impl CssGridAutoFlowMode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridAutoFlow {
+    /// `normal`: for a grid lanes container, the orientation is determined from the `grid-template-*` properties.
     Normal,
+    /// `dense`: dense packing with the axis omitted; the omission is retained, so the value stays distinct from `row dense`.
     Dense,
+    /// An explicit `row` or `column` axis with optional `dense`.
     ExplicitAxis(CssGridAutoFlowMode),
 }
 
@@ -115,10 +127,15 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridTrackBreadthKind {
+    /// A length-percentage breadth.
     Length,
+    /// A flexible `<flex>` fraction breadth.
     Fraction,
+    /// `min-content`: the largest min-content contribution of the grid items occupying the track.
     MinContent,
+    /// `max-content`: the largest max-content contribution of the grid items occupying the track.
     MaxContent,
+    /// `auto`: as a minimum, the largest minimum size of the grid items occupying the track; as a maximum, the largest max-content contribution of those items, with expansion by the content-alignment properties allowed.
     Auto,
 }
 
@@ -139,35 +156,41 @@ enum CssGridTrackBreadthRepresentation {
 }
 
 impl CssGridTrackBreadth {
+    /// Builds a breadth from a non-negative `<length-percentage>`.
     pub fn from_length_percentage(value: CssNumeric<CssLengthPercentage, CssNonNegative>) -> Self {
         Self {
             representation: CssGridTrackBreadthRepresentation::Length(value),
         }
     }
+    /// Builds a breadth from a non-negative flexible `<flex>` fraction.
     pub fn from_flex(value: CssNumeric<CssFlex, CssNonNegative>) -> Self {
         Self {
             representation: CssGridTrackBreadthRepresentation::Fraction(value),
         }
     }
 
+    /// Builds the `min-content` breadth.
     pub const fn min_content() -> Self {
         Self {
             representation: CssGridTrackBreadthRepresentation::MinContent,
         }
     }
 
+    /// Builds the `max-content` breadth.
     pub const fn max_content() -> Self {
         Self {
             representation: CssGridTrackBreadthRepresentation::MaxContent,
         }
     }
 
+    /// Builds the `auto` breadth.
     pub const fn auto() -> Self {
         Self {
             representation: CssGridTrackBreadthRepresentation::Auto,
         }
     }
 
+    /// Returns which kind of breadth this is.
     #[must_use]
     pub const fn kind(&self) -> CssGridTrackBreadthKind {
         match self.representation {
@@ -179,6 +202,7 @@ impl CssGridTrackBreadth {
         }
     }
 
+    /// Returns the length-percentage, or `None` for any other kind.
     pub fn length_percentage(&self) -> Option<&CssNumeric<CssLengthPercentage, CssNonNegative>> {
         match &self.representation {
             CssGridTrackBreadthRepresentation::Length(specified) => Some(specified),
@@ -186,6 +210,7 @@ impl CssGridTrackBreadth {
         }
     }
 
+    /// Returns the flexible fraction, or `None` for any other kind.
     pub fn flex(&self) -> Option<&CssNumeric<CssFlex, CssNonNegative>> {
         match &self.representation {
             CssGridTrackBreadthRepresentation::Fraction(specified) => Some(specified),
@@ -212,8 +237,11 @@ impl CssGridTrackBreadth {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridTrackSizeKind {
+    /// A single breadth.
     Breadth,
+    /// A `minmax()` function of two breadths.
     MinMax,
+    /// A `fit-content()` function with a length-percentage limit.
     FitContent,
 }
 
@@ -235,6 +263,7 @@ enum CssGridTrackSizeRepresentation {
 }
 
 impl CssGridTrackSize {
+    /// Builds a track size from a single breadth.
     pub const fn from_breadth(value: CssGridTrackBreadth) -> Self {
         Self {
             representation: CssGridTrackSizeRepresentation::Breadth(value),
@@ -247,6 +276,9 @@ impl CssGridTrackSize {
         }
     }
 
+    /// Builds a `minmax()` track size.
+    ///
+    /// Returns `None` when `min` is a flexible fraction, which a minimum breadth cannot be.
     pub fn try_minmax(min: CssGridTrackBreadth, max: CssGridTrackBreadth) -> Option<Self> {
         if min.is_inflexible() {
             Some(Self::from_minmax(min, max))
@@ -255,12 +287,14 @@ impl CssGridTrackSize {
         }
     }
 
+    /// Builds a `fit-content()` track size from its non-negative limit.
     pub fn from_fit_content(value: CssNumeric<CssLengthPercentage, CssNonNegative>) -> Self {
         Self {
             representation: CssGridTrackSizeRepresentation::FitContent(value),
         }
     }
 
+    /// Returns which kind of track size this is.
     #[must_use]
     pub const fn kind(&self) -> CssGridTrackSizeKind {
         match self.representation {
@@ -270,6 +304,7 @@ impl CssGridTrackSize {
         }
     }
 
+    /// Returns the single breadth, or `None` for `minmax()` and `fit-content()`.
     #[must_use]
     pub const fn breadth(&self) -> Option<&CssGridTrackBreadth> {
         match &self.representation {
@@ -279,6 +314,7 @@ impl CssGridTrackSize {
         }
     }
 
+    /// Returns the minimum and maximum breadths, or `None` for any other kind.
     #[must_use]
     pub const fn minmax(&self) -> Option<(&CssGridTrackBreadth, &CssGridTrackBreadth)> {
         match &self.representation {
@@ -288,6 +324,7 @@ impl CssGridTrackSize {
         }
     }
 
+    /// Returns the `fit-content()` limit, or `None` for any other kind.
     pub fn fit_content(&self) -> Option<&CssNumeric<CssLengthPercentage, CssNonNegative>> {
         match &self.representation {
             CssGridTrackSizeRepresentation::FitContent(specified) => Some(specified),
@@ -314,6 +351,9 @@ pub struct CssGridFixedSize {
 }
 
 impl CssGridFixedSize {
+    /// Wraps a track size that is fixed.
+    ///
+    /// Returns `None` when `size` is not a fixed size: a fixed size has a length-percentage breadth or a `minmax()` with a length-percentage minimum or an inflexible minimum with a length-percentage maximum.
     pub fn try_new(size: CssGridTrackSize) -> Option<Self> {
         if size.is_fixed() {
             Some(Self::new(size))
@@ -326,6 +366,7 @@ impl CssGridFixedSize {
         Self { size }
     }
 
+    /// Returns the wrapped fixed track size.
     #[must_use]
     pub const fn size(&self) -> &CssGridTrackSize {
         &self.size
@@ -336,7 +377,9 @@ impl CssGridFixedSize {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridTrackRepeatComponent {
+    /// A group of line names.
     LineNames(CssGridLineNames),
+    /// A track size.
     TrackSize(CssGridTrackSize),
 }
 
@@ -348,6 +391,9 @@ pub struct CssGridTrackRepeatContent {
 }
 
 impl CssGridTrackRepeatContent {
+    /// Builds repeat content from its components.
+    ///
+    /// Returns `None` unless there is at least one track size and no two line-name groups are adjacent.
     pub fn try_new(components: Vec<CssGridTrackRepeatComponent>) -> Option<Self> {
         (components
             .iter()
@@ -364,6 +410,7 @@ impl CssGridTrackRepeatContent {
         Self { components }
     }
 
+    /// Returns the components in authored order; the sequence is never empty.
     #[must_use]
     pub fn components(&self) -> &[CssGridTrackRepeatComponent] {
         &self.components
@@ -374,7 +421,9 @@ impl CssGridTrackRepeatContent {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridFixedRepeatComponent {
+    /// A group of line names.
     LineNames(CssGridLineNames),
+    /// A fixed track size.
     FixedSize(CssGridFixedSize),
 }
 
@@ -386,6 +435,9 @@ pub struct CssGridFixedRepeatContent {
 }
 
 impl CssGridFixedRepeatContent {
+    /// Builds fixed-repeat content from its components.
+    ///
+    /// Returns `None` unless there is at least one fixed size and no two line-name groups are adjacent.
     pub fn try_new(components: Vec<CssGridFixedRepeatComponent>) -> Option<Self> {
         (components
             .iter()
@@ -402,6 +454,7 @@ impl CssGridFixedRepeatContent {
         Self { components }
     }
 
+    /// Returns the components in authored order; the sequence is never empty.
     #[must_use]
     pub fn components(&self) -> &[CssGridFixedRepeatComponent] {
         &self.components
@@ -427,6 +480,7 @@ impl CssGridIntegerTrackRepeat {
         Self { count, content }
     }
 
+    /// Returns the authored positive repetition count.
     #[must_use]
     pub const fn count(
         &self,
@@ -434,6 +488,7 @@ impl CssGridIntegerTrackRepeat {
         &self.count
     }
 
+    /// Returns the repeated content.
     #[must_use]
     pub const fn content(&self) -> &CssGridTrackRepeatContent {
         &self.content
@@ -458,6 +513,7 @@ impl CssGridIntegerFixedRepeat {
         Self { count, content }
     }
 
+    /// Returns the authored positive repetition count.
     #[must_use]
     pub const fn count(
         &self,
@@ -465,6 +521,7 @@ impl CssGridIntegerFixedRepeat {
         &self.count
     }
 
+    /// Returns the repeated fixed-size content.
     #[must_use]
     pub const fn content(&self) -> &CssGridFixedRepeatContent {
         &self.content
@@ -475,7 +532,9 @@ impl CssGridIntegerFixedRepeat {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridAutoRepeatKind {
+    /// `auto-fill`: repeats automatically to fill the grid container's content box, which requires definite track sizes.
     AutoFill,
+    /// `auto-fit`: like `auto-fill`, but repeated tracks that remain empty after placement collapse.
     AutoFit,
 }
 
@@ -491,15 +550,18 @@ pub struct CssGridAutoRepeat {
 }
 
 impl CssGridAutoRepeat {
+    /// Builds an automatic repetition of its kind and body.
     pub const fn new(kind: CssGridAutoRepeatKind, content: CssGridTrackRepeatContent) -> Self {
         Self { kind, content }
     }
 
+    /// Returns whether the repetition is `auto-fill` or `auto-fit`.
     #[must_use]
     pub const fn kind(&self) -> CssGridAutoRepeatKind {
         self.kind
     }
 
+    /// Returns the repeated content.
     #[must_use]
     pub const fn content(&self) -> &CssGridTrackRepeatContent {
         &self.content
@@ -510,8 +572,11 @@ impl CssGridAutoRepeat {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridGeneralTrackComponent {
+    /// A group of line names.
     LineNames(CssGridLineNames),
+    /// A track size.
     TrackSize(CssGridTrackSize),
+    /// An integer repetition whose body may hold any track size.
     Repeat(CssGridIntegerTrackRepeat),
 }
 
@@ -523,6 +588,9 @@ pub struct CssGridGeneralTrackList {
 }
 
 impl CssGridGeneralTrackList {
+    /// Builds a general track list from its components.
+    ///
+    /// Returns `None` unless the list has at least one component that is not a line-name group and no two line-name groups are adjacent.
     pub fn try_new(components: Vec<CssGridGeneralTrackComponent>) -> Option<Self> {
         (components
             .iter()
@@ -539,6 +607,7 @@ impl CssGridGeneralTrackList {
         Self { components }
     }
 
+    /// Returns the components in authored order; the list is never empty.
     #[must_use]
     pub fn components(&self) -> &[CssGridGeneralTrackComponent] {
         &self.components
@@ -549,9 +618,13 @@ impl CssGridGeneralTrackList {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridAutoTrackComponent {
+    /// A group of line names.
     LineNames(CssGridLineNames),
+    /// A fixed track size.
     FixedSize(CssGridFixedSize),
+    /// An integer repetition whose body holds fixed sizes only.
     Repeat(CssGridIntegerFixedRepeat),
+    /// The list's single automatic repetition.
     AutoRepeat(CssGridAutoRepeat),
 }
 
@@ -563,6 +636,9 @@ pub struct CssGridAutoTrackList {
 }
 
 impl CssGridAutoTrackList {
+    /// Builds an auto track list from its components.
+    ///
+    /// Returns `None` unless there is exactly one automatic repetition and no two line-name groups are adjacent.
     pub fn try_new(components: Vec<CssGridAutoTrackComponent>) -> Option<Self> {
         (components
             .iter()
@@ -581,6 +657,7 @@ impl CssGridAutoTrackList {
         Self { components }
     }
 
+    /// Returns the components in authored order.
     #[must_use]
     pub fn components(&self) -> &[CssGridAutoTrackComponent] {
         &self.components
@@ -603,6 +680,7 @@ pub struct CssGridTrackList {
 }
 
 impl CssGridTrackList {
+    /// Builds the `none` track list, which defines no explicit tracks.
     #[must_use]
     pub const fn none() -> Self {
         Self {
@@ -610,6 +688,7 @@ impl CssGridTrackList {
         }
     }
 
+    /// Returns whether this is the `none` track list.
     #[must_use]
     pub const fn is_none(&self) -> bool {
         matches!(self.representation, CssGridTrackListRepresentation::None)
@@ -631,6 +710,7 @@ impl CssGridTrackList {
             })
     }
 
+    /// Returns the subgrid components, or `None` when this is not a subgrid list. A bare `subgrid` keyword is an empty slice.
     #[must_use]
     pub fn subgrid_components(&self) -> Option<&[CssGridSubgridComponent]> {
         match &self.representation {
@@ -639,18 +719,21 @@ impl CssGridTrackList {
         }
     }
 
+    /// Builds a track list from a general track list.
     pub const fn general(value: CssGridGeneralTrackList) -> Self {
         Self {
             representation: CssGridTrackListRepresentation::General(value),
         }
     }
 
+    /// Builds a track list from an auto track list.
     pub const fn auto(value: CssGridAutoTrackList) -> Self {
         Self {
             representation: CssGridTrackListRepresentation::Auto(value),
         }
     }
 
+    /// Returns the general track list, or `None` for any other form.
     #[must_use]
     pub const fn general_list(&self) -> Option<&CssGridGeneralTrackList> {
         match &self.representation {
@@ -659,6 +742,7 @@ impl CssGridTrackList {
         }
     }
 
+    /// Returns the auto track list, or `None` for any other form.
     #[must_use]
     pub const fn auto_list(&self) -> Option<&CssGridAutoTrackList> {
         match &self.representation {
@@ -672,7 +756,9 @@ impl CssGridTrackList {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssGridSubgridComponent {
+    /// A group of line names.
     LineNames(CssGridLineNames),
+    /// A repetition of line-name groups.
     Repeat(CssGridNameRepeat),
 }
 
@@ -711,6 +797,7 @@ impl CssGridNameRepeat {
         })
     }
 
+    /// Returns the authored positive repetition count, or `None` for `auto-fill`.
     #[must_use]
     pub const fn count(
         &self,
@@ -722,11 +809,13 @@ impl CssGridNameRepeat {
         }
     }
 
+    /// Returns whether the repetition count is `auto-fill`.
     #[must_use]
     pub const fn is_auto_fill(&self) -> bool {
         matches!(self.count, CssGridNameRepeatCount::AutoFill)
     }
 
+    /// Returns the repeated line-name groups in authored order; the sequence is never empty.
     #[must_use]
     pub fn groups(&self) -> &[CssGridLineNames] {
         &self.groups
@@ -741,6 +830,9 @@ pub struct CssGridTrackSizeList {
 }
 
 impl CssGridTrackSizeList {
+    /// Builds a track size list.
+    ///
+    /// Returns `None` when `sizes` is empty.
     pub fn try_new(sizes: Vec<CssGridTrackSize>) -> Option<Self> {
         (!sizes.is_empty()).then(|| Self::new(sizes))
     }
@@ -749,6 +841,7 @@ impl CssGridTrackSizeList {
         Self { sizes }
     }
 
+    /// Returns the track sizes in authored order; the list is never empty.
     #[must_use]
     pub fn sizes(&self) -> &[CssGridTrackSize] {
         &self.sizes
@@ -779,6 +872,7 @@ pub struct CssGridTemplateAreaTrack {
 }
 
 impl CssGridTemplateAreaTrack {
+    /// Builds an area row from its area string, optional size and optional line-name groups before and after the size.
     #[must_use]
     pub fn new(
         area: crate::values::layout::CssGridTemplateAreaRow,
@@ -793,18 +887,22 @@ impl CssGridTemplateAreaTrack {
             after,
         }
     }
+    /// Returns the decoded area-string row.
     #[must_use]
     pub const fn area(&self) -> &crate::values::layout::CssGridTemplateAreaRow {
         &self.area
     }
+    /// Returns the authored track size for this row, or `None` when it was omitted.
     #[must_use]
     pub const fn size(&self) -> Option<&CssGridTrackSize> {
         self.size.as_ref()
     }
+    /// Returns the line names authored before this row, or `None` when there were none.
     #[must_use]
     pub const fn before(&self) -> Option<&CssGridLineNames> {
         self.before.as_ref()
     }
+    /// Returns the line names authored after this row, or `None` when there were none.
     #[must_use]
     pub const fn after(&self) -> Option<&CssGridLineNames> {
         self.after.as_ref()
@@ -907,12 +1005,14 @@ impl CssGridTemplate {
         Ok(result)
     }
 
+    /// Builds the `none` template, which defines no explicit tracks and no areas.
     pub const fn none() -> Self {
         Self {
             representation: CssGridTemplateRepresentation::None,
         }
     }
 
+    /// Builds a template from a row track list and a column track list.
     pub const fn rows_columns(rows: CssGridTrackList, columns: CssGridTrackList) -> Self {
         Self {
             representation: CssGridTemplateRepresentation::RowsColumns { rows, columns },
@@ -932,6 +1032,7 @@ impl CssGridTemplate {
         })
     }
 
+    /// Returns the area rows, or `None` when this template does not define areas.
     #[must_use]
     pub fn area_rows(&self) -> Option<&[CssGridTemplateAreaTrack]> {
         match &self.representation {
@@ -940,6 +1041,7 @@ impl CssGridTemplate {
         }
     }
 
+    /// Returns the explicit column content that accompanies the area rows, or `None` when there is none or this template does not define areas.
     #[must_use]
     pub const fn area_columns(&self) -> Option<&CssGridTrackRepeatContent> {
         match &self.representation {
@@ -948,11 +1050,13 @@ impl CssGridTemplate {
         }
     }
 
+    /// Returns whether this is the `none` template.
     #[must_use]
     pub const fn is_none(&self) -> bool {
         matches!(self.representation, CssGridTemplateRepresentation::None)
     }
 
+    /// Returns the row track list, or `None` when this template is `none` or defines areas.
     #[must_use]
     pub const fn rows(&self) -> Option<&CssGridTrackList> {
         match &self.representation {
@@ -961,6 +1065,7 @@ impl CssGridTemplate {
         }
     }
 
+    /// Returns the column track list, or `None` when this template is `none` or defines areas.
     #[must_use]
     pub const fn columns(&self) -> Option<&CssGridTrackList> {
         match &self.representation {
@@ -988,12 +1093,14 @@ pub struct CssGrid {
 }
 
 impl CssGrid {
+    /// Builds a `grid` value from a `grid-template` aggregate.
     pub const fn template(value: CssGridTemplate) -> Self {
         Self {
             representation: CssGridRepresentation::Template(value),
         }
     }
 
+    /// Builds a `grid` value from an auto-flow axis, optional implicit track sizes and an explicit track list.
     pub const fn from_auto_flow(
         flow: CssGridAutoFlowMode,
         auto_tracks: Option<CssGridTrackSizeList>,
@@ -1008,6 +1115,7 @@ impl CssGrid {
         }
     }
 
+    /// Returns the template, or `None` when the value uses `auto-flow`.
     #[must_use]
     pub const fn template_value(&self) -> Option<&CssGridTemplate> {
         match &self.representation {
@@ -1016,6 +1124,7 @@ impl CssGrid {
         }
     }
 
+    /// Returns the auto-flow axis choice, or `None` when the value is a template.
     #[must_use]
     pub const fn auto_flow(&self) -> Option<CssGridAutoFlowMode> {
         match self.representation {
@@ -1024,6 +1133,7 @@ impl CssGrid {
         }
     }
 
+    /// Returns the implicit track sizes, or `None` when they were omitted or the value is a template.
     #[must_use]
     pub const fn auto_tracks(&self) -> Option<&CssGridTrackSizeList> {
         match &self.representation {
@@ -1032,6 +1142,7 @@ impl CssGrid {
         }
     }
 
+    /// Returns the explicit track list, or `None` when the value is a template.
     #[must_use]
     pub const fn explicit_tracks(&self) -> Option<&CssGridTrackList> {
         match &self.representation {

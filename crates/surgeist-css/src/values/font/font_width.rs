@@ -11,14 +11,23 @@ type SerializationResult<T> = Result<T, CssSerializationError>;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontWidthKeyword {
+    /// `normal`: the normal width, equivalent to `100%`.
     Normal,
+    /// `ultra-condensed`: the most condensed width, equivalent to `50%`.
     UltraCondensed,
+    /// `extra-condensed`: equivalent to `62.5%`.
     ExtraCondensed,
+    /// `condensed`: equivalent to `75%`.
     Condensed,
+    /// `semi-condensed`: equivalent to `87.5%`.
     SemiCondensed,
+    /// `semi-expanded`: equivalent to `112.5%`.
     SemiExpanded,
+    /// `expanded`: equivalent to `125%`.
     Expanded,
+    /// `extra-expanded`: equivalent to `150%`.
     ExtraExpanded,
+    /// `ultra-expanded`: the most expanded width, equivalent to `200%`.
     UltraExpanded,
 }
 
@@ -30,7 +39,9 @@ pub enum CssFontWidthKeyword {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontWidth {
+    /// A width keyword.
     Keyword(CssFontWidthKeyword),
+    /// A non-negative `<percentage>` width relative to the normal width; it may be a deferred calculation.
     Percentage(CssNumeric<CssPercentage, CssNonNegative>),
 }
 
@@ -42,9 +53,13 @@ pub enum CssFontWidth {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFaceWidth {
+    /// `auto`: for font selection the face is treated as if `normal` were chosen, and variation axis values are not clamped.
     Auto,
+    /// One or two widths forming the range the face supports.
     Range {
+        /// The first authored width.
         start: CssFontWidth,
+        /// The second authored width, or `None` when only one was written.
         end: Option<CssFontWidth>,
     },
 }

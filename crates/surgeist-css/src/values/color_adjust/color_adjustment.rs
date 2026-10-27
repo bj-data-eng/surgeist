@@ -77,8 +77,11 @@ impl CssColorSchemeName {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssColorSchemeKeyword {
+    /// `light`: the element supports a light color scheme.
     Light,
+    /// `dark`: the element supports a dark color scheme.
     Dark,
+    /// An authored custom `<custom-ident>` scheme name, retained without interpretation.
     Custom(CssColorSchemeName),
 }
 
@@ -143,6 +146,7 @@ impl CssColorScheme {
         Ok(Self { schemes, only })
     }
 
+    /// Returns whether this is the `normal` branch, which has no scheme list.
     #[must_use]
     pub fn is_normal(&self) -> bool {
         self.schemes.is_empty()
@@ -154,6 +158,7 @@ impl CssColorScheme {
         &self.schemes
     }
 
+    /// Returns whether the `only` modifier was authored, which is always `false` for `normal`.
     #[must_use]
     pub const fn only(&self) -> bool {
         self.only
@@ -200,8 +205,11 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssForcedColorAdjust {
+    /// `auto`: the element's colors are automatically adjusted by the user agent in forced-colors mode.
     Auto,
+    /// `none`: the element's colors are not automatically adjusted by the user agent in forced-colors mode.
     None,
+    /// `preserve-parent-color`: like `none`, except that in forced-colors mode a `color` that inherits from its parent computes to the parent's used color.
     PreserveParentColor,
 }
 
@@ -230,7 +238,9 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssPrintColorAdjust {
+    /// `economy`: the user agent should make the adjustments to the page's styling that it deems necessary and prudent for the output device.
     Economy,
+    /// `exact`: the page uses color and styling on the element in a way that is important and significant and should not be changed except at the user's request.
     Exact,
 }
 

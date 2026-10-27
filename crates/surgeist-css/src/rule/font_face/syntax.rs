@@ -9,6 +9,9 @@ use crate::values::font::{
 
 pub(crate) mod pending;
 
+/// An authored `@font-face` rule: its descriptor occurrences in authored order.
+///
+/// The rule performs no font matching, loading or usability checks.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFaceRule {
     descriptors: CssFontFaceDescriptors,
@@ -30,11 +33,13 @@ impl CssFontFaceRule {
         self
     }
 
+    /// Returns the descriptor occurrences of the rule.
     #[must_use]
     pub const fn descriptors(&self) -> &CssFontFaceDescriptors {
         &self.descriptors
     }
 
+    /// Returns the source position of the rule, or `None` when it was assembled programmatically.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         self.position
@@ -47,19 +52,33 @@ impl CssFontFaceRule {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFaceDescriptorKind {
+    /// The `font-family` descriptor, which names the family the face belongs to.
     FontFamily,
+    /// The `src` descriptor, which lists where the font data comes from.
     Src,
+    /// The `font-weight` descriptor, which gives the weight or weight range the face covers.
     FontWeight,
+    /// The `font-style` descriptor, which gives the style the face covers.
     FontStyle,
+    /// The `font-width` descriptor, which gives the width or width range the face covers.
     FontWidth,
+    /// The `font-display` descriptor, which chooses the loading display policy.
     FontDisplay,
+    /// The `unicode-range` descriptor, which gives the code points the face may support, as a hint for deciding whether to download it.
     UnicodeRange,
+    /// The `font-feature-settings` descriptor, which gives initial feature settings applied when the face is rendered.
     FontFeatureSettings,
+    /// The `font-variation-settings` descriptor, which gives initial variation axis settings applied when the face is rendered.
     FontVariationSettings,
+    /// The `font-named-instance` descriptor, which selects a named instance of a variable font.
     FontNamedInstance,
+    /// The `font-language-override` descriptor, which gives an initial language override applied when the face is rendered.
     FontLanguageOverride,
+    /// The `ascent-override` descriptor, which overrides the font's ascent metric.
     AscentOverride,
+    /// The `descent-override` descriptor, which overrides the font's descent metric.
     DescentOverride,
+    /// The `line-gap-override` descriptor, which overrides the font's line gap metric.
     LineGapOverride,
 }
 
@@ -129,19 +148,33 @@ impl CssFontFaceDescriptorKind {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFaceDescriptorValue {
+    /// A `font-family` value: one literal family name.
     FontFamily(CssFontFaceFamily),
+    /// A `src` value: the ordered source list.
     Src(CssFontFaceSourceList),
+    /// A `font-weight` value: `auto` or an authored one- or two-value weight range.
     FontWeight(CssFontFaceWeight),
+    /// A `font-style` value: `auto`, a style keyword, or an authored oblique angle range.
     FontStyle(CssFontFaceStyle),
+    /// A `font-width` value: `auto` or an authored one- or two-value width range.
     FontWidth(CssFontFaceWidth),
+    /// A `font-display` value.
     FontDisplay(CssFontDisplay),
+    /// A `unicode-range` value: the ordered range list.
     UnicodeRange(CssUnicodeRangeList),
+    /// A `font-feature-settings` value, with feature tags as authored.
     FontFeatureSettings(CssAuthoredFontFeatureSettings),
+    /// A `font-variation-settings` value.
     FontVariationSettings(CssFontVariationSettings),
+    /// A `font-named-instance` value: `auto` or a string.
     FontNamedInstance(CssFontNamedInstance),
+    /// A `font-language-override` value.
     FontLanguageOverride(CssFontLanguageOverride),
+    /// An `ascent-override` value.
     AscentOverride(CssFontMetricOverride),
+    /// A `descent-override` value.
     DescentOverride(CssFontMetricOverride),
+    /// A `line-gap-override` value.
     LineGapOverride(CssFontMetricOverride),
 }
 
@@ -177,11 +210,14 @@ impl CssFontFaceDescriptorValue {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssAuthoredFontFaceDescriptorValue {
+    /// A checked value of the descriptor's own grammar.
     Ordinary(CssFontFaceDescriptorValue),
+    /// A complete descriptor token stream awaiting environment substitution.
     Pending(CssPendingFontFaceDescriptorValue),
 }
 
 impl CssAuthoredFontFaceDescriptorValue {
+    /// Returns the descriptor grammar of the ordinary or pending value.
     #[must_use]
     pub const fn kind(&self) -> CssFontFaceDescriptorKind {
         match self {
@@ -214,11 +250,13 @@ pub struct CssPendingFontFaceDescriptorValue {
 }
 
 impl CssPendingFontFaceDescriptorValue {
+    /// Returns the descriptor grammar the pending value will be rechecked against.
     #[must_use]
     pub const fn kind(&self) -> CssFontFaceDescriptorKind {
         self.kind
     }
 
+    /// Returns the complete pending component stream.
     #[must_use]
     pub const fn components(&self) -> &CssComponentValues {
         &self.components
@@ -294,7 +332,9 @@ impl CssFontFaceDescriptors {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFaceSource {
+    /// A `url()` source with optional `format()` and `tech()` hints.
     Url(CssFontFaceUrlSource),
+    /// A `local()` source naming an installed font.
     Local(CssFontLocalName),
 }
 
@@ -317,6 +357,7 @@ impl CssFontFaceUrlSource {
         Self { url, format, tech }
     }
 
+    /// Returns the authored URL.
     #[must_use]
     pub const fn url(&self) -> &CssUrl {
         &self.url
@@ -364,7 +405,9 @@ impl CssFontFaceUrlSource {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFormat {
+    /// A `format()` keyword such as `woff2`.
     Keyword(CssFontFormatHint),
+    /// A `format()` string, which may be empty or unrecognized.
     String(CssFontFormatString),
 }
 
@@ -398,6 +441,7 @@ impl CssFontFormatString {
         }
     }
 
+    /// Returns the decoded format text, which may be empty.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.value
@@ -444,6 +488,7 @@ impl CssFontFaceFamily {
         (!name.contains('\0')).then_some(Self { name })
     }
 
+    /// Returns the decoded family name.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.name
@@ -468,6 +513,7 @@ impl CssFontLocalName {
         (!name.contains('\0')).then_some(Self { name })
     }
 
+    /// Returns the decoded local font name.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.name
@@ -483,6 +529,7 @@ pub struct CssFontFaceSourceList {
 }
 
 impl CssFontFaceSourceList {
+    /// Creates a source list, or returns `None` when `sources` is empty.
     #[must_use]
     pub fn try_new(sources: Vec<CssFontFaceSource>) -> Option<Self> {
         if sources.is_empty() {
@@ -498,28 +545,38 @@ impl CssFontFaceSourceList {
         Self { sources }
     }
 
+    /// Returns the sources in authored order; the slice is never empty.
     #[must_use]
     pub fn sources(&self) -> &[CssFontFaceSource] {
         &self.sources
     }
 }
 
+/// The `font-display` descriptor keyword, which chooses how a font face is shown while it loads.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontDisplay {
+    /// `auto`: the font display policy is user-agent-defined.
     Auto,
+    /// `block`: a short block period and an infinite swap period.
     Block,
+    /// `swap`: an extremely small block period and an infinite swap period.
     Swap,
+    /// `fallback`: an extremely small block period and a short swap period.
     Fallback,
+    /// `optional`: the font is used if it loads immediately; otherwise the block and swap periods
+    /// are treated as expired before it finished loading.
     Optional,
 }
 
+/// A non-empty list of `<urange>` values of a `unicode-range` descriptor, in authored order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssUnicodeRangeList {
     ranges: Vec<CssUnicodeRange>,
 }
 
 impl CssUnicodeRangeList {
+    /// Creates a range list, or returns `None` when `ranges` is empty.
     #[must_use]
     pub fn try_new(ranges: Vec<CssUnicodeRange>) -> Option<Self> {
         if ranges.is_empty() {
@@ -535,12 +592,14 @@ impl CssUnicodeRangeList {
         Self { ranges }
     }
 
+    /// Returns the ranges in authored order; the slice is never empty.
     #[must_use]
     pub fn ranges(&self) -> &[CssUnicodeRange] {
         &self.ranges
     }
 }
 
+/// One inclusive range of Unicode code points of a `unicode-range` descriptor, as scalar bounds.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssUnicodeRange {
     start: u32,
@@ -548,6 +607,7 @@ pub struct CssUnicodeRange {
 }
 
 impl CssUnicodeRange {
+    /// Creates a range from inclusive bounds, or returns `None` unless `start <= end` and `end` is at most `0x10FFFF`.
     #[must_use]
     pub const fn try_new(start: u32, end: u32) -> Option<Self> {
         if start <= end && end <= 0x10ffff {
@@ -557,11 +617,13 @@ impl CssUnicodeRange {
         }
     }
 
+    /// Returns the first code point of the range.
     #[must_use]
     pub const fn start(self) -> u32 {
         self.start
     }
 
+    /// Returns the last code point of the range, which is included.
     #[must_use]
     pub const fn end(self) -> u32 {
         self.end
@@ -572,12 +634,19 @@ impl CssUnicodeRange {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontFormatHint {
+    /// `woff`: a WOFF 1.0 font.
     Woff,
+    /// `woff2`: a WOFF 2.0 font.
     Woff2,
+    /// `truetype`: a TrueType font; it is equivalent to `opentype` for compatibility checks.
     TrueType,
+    /// `opentype`: an OpenType font; it is equivalent to `truetype` for compatibility checks.
     OpenType,
+    /// `collection`: an OpenType collection.
     Collection,
+    /// `embedded-opentype`: an Embedded OpenType font.
     EmbeddedOpenType,
+    /// `svg`: an SVG font, which the specification deprecates.
     Svg,
 }
 
@@ -621,16 +690,27 @@ impl CssFontFormatHint {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontTechHint {
+    /// `variations`: support for font variations.
     Variations,
+    /// `palettes`: support for font color palettes.
     Palettes,
+    /// `color-COLRv0`: support for the color font technology represented by the `COLR` table.
     ColorCOLRv0,
+    /// `color-COLRv1`: support for the color font technology represented by the `COLR` table.
     ColorCOLRv1,
+    /// `color-SVG`: support for the `SVG` color table.
     ColorSVG,
+    /// `color-sbix`: support for the `sbix` color table.
     ColorSbix,
+    /// `color-CBDT`: support for the `CBDT` color table.
     ColorCBDT,
+    /// `features-opentype`: support for OpenType layout features.
     FeaturesOpenType,
+    /// `features-aat`: support for AAT font features.
     FeaturesAAT,
+    /// `features-graphite`: support for Graphite font features.
     FeaturesGraphite,
+    /// `incremental`: support for incremental font transfer.
     Incremental,
 }
 impl CssFontTechHint {

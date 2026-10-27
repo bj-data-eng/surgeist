@@ -24,6 +24,7 @@ impl Default for CssColorOperationOwner {
     }
 }
 impl CssColorOperationOwner {
+    /// Creates an anchor with no parse started.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -117,8 +118,11 @@ pub(crate) struct AuthoredName<'css> {
 /// Distinct flat storage banks, qualified by the same exclusive operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssColorBank {
+    /// The bank of every record other than the arithmetic and evaluation ones, such as lexical, decimal, grammar, syntax and color-resolution records.
     Algorithm,
+    /// The bank of arithmetic records: the calculation expression records that component evaluation reads, and the authored-color traversal records.
     Arithmetic,
+    /// The bank of evaluated calculation results.
     Evaluation,
 }
 

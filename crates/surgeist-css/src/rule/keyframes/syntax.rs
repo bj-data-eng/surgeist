@@ -6,6 +6,9 @@ use crate::property::CssPropertyNameRef;
 use crate::source::CssSourcePosition;
 use crate::values::common::CssCustomIdent;
 
+/// A parser-produced authored `@keyframes` rule: its animation name and its keyframe blocks in authored order.
+///
+/// Blocks retain order and duplicates; no cascade or animation interpolation is applied.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssKeyframesRule {
     name: CssKeyframesName,
@@ -27,29 +30,36 @@ impl CssKeyframesRule {
         }
     }
 
+    /// Returns the animation name that follows `@keyframes`.
     #[must_use]
     pub const fn name(&self) -> &CssKeyframesName {
         &self.name
     }
 
+    /// Returns the keyframe blocks in authored order, including duplicates and empty blocks.
     #[must_use]
     pub fn blocks(&self) -> &[CssKeyframeBlock] {
         &self.blocks
     }
 
+    /// Returns the source position of the rule's `@keyframes` at-keyword.
     #[must_use]
     pub const fn position(&self) -> CssSourcePosition {
         self.position
     }
 }
 
+/// The animation name of a `@keyframes` rule: a `<custom-ident>` or a string.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssKeyframesName {
+    /// A `<custom-ident>` name that is not `none`.
     Ident(CssKeyframesIdent),
+    /// A quoted string name, which may be empty.
     String(CssKeyframesString),
 }
 
+/// A decoded string animation name of a `@keyframes` rule.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssKeyframesString {
     value: String,
@@ -64,6 +74,7 @@ impl CssKeyframesString {
         Self { value }
     }
 
+    /// Returns the decoded string contents without quotes or escapes.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.value
@@ -95,28 +106,33 @@ impl CssKeyframeBlock {
         }
     }
 
+    /// Returns the validated selector list of this block.
     #[must_use]
     pub const fn selectors(&self) -> &CssKeyframeSelectorList {
         &self.selectors
     }
 
+    /// Returns the keyframe-only declarations of this block.
     #[must_use]
     pub const fn declarations(&self) -> &CssKeyframeDeclarationList {
         &self.declarations
     }
 
+    /// Returns the source position of the start of the block's selector list.
     #[must_use]
     pub const fn position(&self) -> CssSourcePosition {
         self.position
     }
 }
 
+/// A non-empty list of keyframe selectors, in authored order with duplicates retained.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssKeyframeSelectorList {
     selectors: Vec<CssKeyframeSelector>,
 }
 
 impl CssKeyframeSelectorList {
+    /// Creates a selector list, or returns `None` when `selectors` is empty.
     #[must_use]
     pub fn try_new(selectors: Vec<CssKeyframeSelector>) -> Option<Self> {
         if selectors.is_empty() {
@@ -132,17 +148,22 @@ impl CssKeyframeSelectorList {
         Self { selectors }
     }
 
+    /// Returns the selectors in authored order; the slice is never empty.
     #[must_use]
     pub fn selectors(&self) -> &[CssKeyframeSelector] {
         &self.selectors
     }
 }
 
+/// One `<keyframe-selector>` entry of a keyframe block.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssKeyframeSelector {
+    /// `from`: the start of the animation, equivalent to `0%`.
     From,
+    /// `to`: the end of the animation, equivalent to `100%`.
     To,
+    /// A `<percentage>` offset between `0%` and `100%` inclusive, or a percentage calculation.
     Percent(CssKeyframePercent),
 }
 
@@ -419,11 +440,13 @@ impl CssKeyframeDeclaration {
 pub struct CssKeyframesIdent(CssCustomIdent);
 
 impl CssKeyframesIdent {
+    /// Creates a name from a `<custom-ident>`, or returns `None` when it is `none` (compared ASCII case-insensitively).
     #[must_use]
     pub fn try_new(value: CssCustomIdent) -> Option<Self> {
         (!value.as_str().eq_ignore_ascii_case("none")).then_some(Self(value))
     }
 
+    /// Returns the decoded identifier text.
     #[must_use]
     pub fn as_str(&self) -> &str {
         self.0.as_str()

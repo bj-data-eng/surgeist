@@ -9,21 +9,39 @@ use crate::values::image::CssImageValue;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum CssBlendMode {
+    /// `normal`: no blending; the blending function selects the source color.
     Normal,
+    /// `darken`: selects the darker of the backdrop and source colors.
     Darken,
+    /// `multiply`: multiplies the source color by the backdrop color; the result is at least as
+    /// dark as either.
     Multiply,
+    /// `color-burn`: darkens the backdrop to reflect the source color.
     ColorBurn,
+    /// `lighten`: selects the lighter of the backdrop and source colors.
     Lighten,
+    /// `screen`: multiplies the complements of the backdrop and source colors, then complements
+    /// the result; the result is at least as light as either.
     Screen,
+    /// `color-dodge`: brightens the backdrop to reflect the source color.
     ColorDodge,
+    /// `overlay`: multiplies or screens depending on the backdrop color, preserving its highlights and shadows.
     Overlay,
+    /// `soft-light`: darkens or lightens depending on the source color, like a diffused spotlight.
     SoftLight,
+    /// `hard-light`: multiplies or screens depending on the source color, like a harsh spotlight.
     HardLight,
+    /// `difference`: subtracts the darker of the colors from the lighter.
     Difference,
+    /// `exclusion`: like `difference` with lower contrast.
     Exclusion,
+    /// `hue`: takes the hue of the source with the saturation and luminosity of the backdrop.
     Hue,
+    /// `saturation`: takes the saturation of the source with the hue and luminosity of the backdrop.
     Saturation,
+    /// `color`: takes the hue and saturation of the source with the luminosity of the backdrop.
     Color,
+    /// `luminosity`: takes the luminosity of the source with the hue and saturation of the backdrop.
     Luminosity,
 }
 
@@ -87,11 +105,13 @@ pub struct CssBlendModeList {
 }
 
 impl CssBlendModeList {
+    /// Returns the list, or `None` when `modes` is empty.
     #[must_use]
     pub fn try_new(modes: Vec<CssBlendMode>) -> Option<Self> {
         (!modes.is_empty()).then_some(Self { modes })
     }
 
+    /// Returns the authored blend modes in comma order, including duplicates.
     #[must_use]
     pub fn modes(&self) -> &[CssBlendMode] {
         &self.modes
@@ -107,9 +127,13 @@ use crate::values::background::CssBackgroundPosition;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBackgroundLayerBoxes {
+    /// A single `<visual-box>` that supplies both `background-origin` and `background-clip`.
     One(CssBackgroundBox),
+    /// Two `<visual-box>` values, the first for `background-origin` and the second for `background-clip`.
     OriginAndClip {
+        /// The authored `background-origin` box.
         origin: CssBackgroundBox,
+        /// The authored `background-clip` box.
         clip: CssBackgroundBox,
     },
 }
@@ -325,13 +349,19 @@ impl CssBackground {
     }
 }
 
+/// An authored `<bg-size>` for one layer.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssBackgroundSize {
+    /// `cover`: scales the image to the smallest size that covers the positioning area.
     Cover,
+    /// `contain`: scales the image to the largest size that fits inside the positioning area.
     Contain,
+    /// One or two explicit sizes, each a non-negative `<length-percentage>` or `auto`.
     Explicit {
+        /// The authored width.
         width: CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>,
+        /// The authored height, or `None` when only one value was given.
         height: Option<CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>>,
     },
 }
@@ -345,6 +375,7 @@ pub struct CssBackgroundSizeList {
 }
 
 impl CssBackgroundSizeList {
+    /// Returns the list, or `None` when `sizes` is empty.
     #[must_use]
     pub fn try_new(sizes: Vec<CssBackgroundSize>) -> Option<Self> {
         if sizes.is_empty() {
@@ -359,28 +390,40 @@ impl CssBackgroundSizeList {
         Self { sizes }
     }
 
+    /// Returns the authored sizes in comma order.
     #[must_use]
     pub fn sizes(&self) -> &[CssBackgroundSize] {
         &self.sizes
     }
 }
 
+/// One axis of an authored `<repeat-style>`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBackgroundRepeatStyle {
+    /// `repeat`: the image is tiled along the axis until the area is covered.
     Repeat,
+    /// `space`: the image is tiled without clipping, with the leftover space distributed between tiles.
     Space,
+    /// `round`: the image is tiled and rescaled so a whole number of tiles fits.
     Round,
+    /// `no-repeat`: the image is not tiled along the axis.
     NoRepeat,
 }
 
+/// An authored `<repeat-style>` value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBackgroundRepeat {
+    /// `repeat-x`: shorthand for `repeat no-repeat`.
     RepeatX,
+    /// `repeat-y`: shorthand for `no-repeat repeat`.
     RepeatY,
+    /// Two axis styles, horizontal then vertical, as authored.
     Axes {
+        /// The horizontal repeat style.
         x: CssBackgroundRepeatStyle,
+        /// The vertical repeat style.
         y: CssBackgroundRepeatStyle,
     },
 }
@@ -394,6 +437,7 @@ pub struct CssBackgroundRepeatList {
 }
 
 impl CssBackgroundRepeatList {
+    /// Returns the list, or `None` when `repeats` is empty.
     #[must_use]
     pub fn try_new(repeats: Vec<CssBackgroundRepeat>) -> Option<Self> {
         if repeats.is_empty() {
@@ -408,17 +452,22 @@ impl CssBackgroundRepeatList {
         Self { repeats }
     }
 
+    /// Returns the authored repeat styles in comma order.
     #[must_use]
     pub fn repeats(&self) -> &[CssBackgroundRepeat] {
         &self.repeats
     }
 }
 
+/// An authored `<visual-box>` value used by `background-origin` and `background-clip`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBackgroundBox {
+    /// `border-box`: the border box.
     BorderBox,
+    /// `padding-box`: the padding box.
     PaddingBox,
+    /// `content-box`: the content box.
     ContentBox,
 }
 
@@ -446,11 +495,15 @@ impl CssBackgroundBoxList {
     }
 }
 
+/// An authored `<attachment>` value for `background-attachment`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBackgroundAttachment {
+    /// `scroll`: the background is fixed relative to the element itself and does not scroll with its contents.
     Scroll,
+    /// `fixed`: the background is fixed relative to the viewport.
     Fixed,
+    /// `local`: the background is fixed relative to the element's contents and scrolls with them.
     Local,
 }
 
@@ -463,6 +516,7 @@ pub struct CssBackgroundAttachmentList {
 }
 
 impl CssBackgroundAttachmentList {
+    /// Returns the list, or `None` when `attachments` is empty.
     #[must_use]
     pub fn try_new(attachments: Vec<CssBackgroundAttachment>) -> Option<Self> {
         if attachments.is_empty() {
@@ -477,6 +531,7 @@ impl CssBackgroundAttachmentList {
         Self { attachments }
     }
 
+    /// Returns the authored attachments in comma order.
     #[must_use]
     pub fn attachments(&self) -> &[CssBackgroundAttachment] {
         &self.attachments

@@ -33,16 +33,27 @@ pub(crate) enum CounterStyleValueData {
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterStyleDescriptorValueRef<'a> {
+    /// A `system` value.
     System(&'a CssCounterStyleSystem),
+    /// A `negative` value.
     Negative(&'a CssCounterStyleNegative),
+    /// A `symbols` value.
     Symbols(&'a CssCounterSymbols),
+    /// A `prefix` value.
     Prefix(&'a CssCounterSymbol),
+    /// A `suffix` value.
     Suffix(&'a CssCounterSymbol),
+    /// A `range` value.
     Range(&'a CssCounterStyleRange),
+    /// A `pad` value.
     Pad(&'a CssCounterStylePad),
+    /// A `fallback` value: the name of the fallback counter style.
     Fallback(&'a CssCounterStyleName),
+    /// An `additive-symbols` value.
     AdditiveSymbols(&'a CssCounterAdditiveSymbols),
+    /// A `speak-as` value.
     SpeakAs(&'a CssCounterStyleSpeakAs),
+    /// A value whose grammar depends on later substitution and is still symbolic.
     Pending(&'a CssSubstitutionDependentValue),
 }
 

@@ -5,18 +5,31 @@ use crate::numeric::{
 use crate::values::border::CssLineWidth;
 use crate::values::image::CssImageValue;
 
+/// An authored `<line-style>` keyword for border styles.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssLineStyle {
+    /// `none`: no border; color and width are ignored, so the border has width 0.
     None,
+    /// `hidden`: the same as `none`, but with different behavior in the border conflict
+    /// resolution rules for border-collapsed tables.
     Hidden,
+    /// `dotted`: a series of round dots.
     Dotted,
+    /// `dashed`: a series of square-ended dashes.
     Dashed,
+    /// `solid`: a single line segment.
     Solid,
+    /// `double`: two parallel solid lines with some space between them.
     Double,
+    /// `groove`: looks as if it were carved in the canvas.
     Groove,
+    /// `ridge`: looks as if it were coming out of the canvas.
     Ridge,
+    /// `inset`: looks as if the content on the inside of the border is sunken into the canvas.
     Inset,
+    /// `outset`: looks as if the content on the inside of the border is raised out of the
+    /// canvas.
     Outset,
 }
 
@@ -24,9 +37,11 @@ pub enum CssLineStyle {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssBorderImageSliceComponent {
+    /// A non-negative `<number>` slice offset, in image pixels for raster images.
     Number(CssNumeric<CssNumber, CssNonNegative>),
     /// A Number result retaining a percentage basis; math range handling is deferred.
     HintedNumberCalculation(CssCalculation<CssHintedNumber>),
+    /// A non-negative `<percentage>` slice offset, relative to the image's size in that dimension.
     Percentage(CssNumeric<CssPercentage, CssNonNegative>),
 }
 
@@ -56,16 +71,20 @@ pub struct CssBorderImageSlice {
 }
 
 impl CssBorderImageSlice {
+    /// Expands one to four components to the four edges using the usual top, right, bottom, left rules and records whether `fill` was authored.
+    /// Returns `None` when `values` is empty or holds more than four components.
     #[must_use]
     pub fn try_new(values: Vec<CssBorderImageSliceComponent>, fill: bool) -> Option<Self> {
         expand_border_image_sides(values).map(|values| Self { values, fill })
     }
 
+    /// Returns the four expanded edge components in top, right, bottom, left order.
     #[must_use]
     pub const fn values(&self) -> &[CssBorderImageSliceComponent; 4] {
         &self.values
     }
 
+    /// Returns whether the `fill` keyword was authored.
     #[must_use]
     pub const fn fill(&self) -> bool {
         self.fill
@@ -76,8 +95,11 @@ impl CssBorderImageSlice {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssBorderImageWidthComponent {
+    /// `auto`: the border image width is the intrinsic width or height of the corresponding slice.
     Auto,
+    /// A non-negative `<length-percentage>` used as the border image width.
     LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>),
+    /// A non-negative `<number>` multiplier of the corresponding `border-width`.
     Number(CssNumeric<CssNumber, CssNonNegative>),
     /// A contextual Number multiplier, before computed-value range handling.
     HintedNumberCalculation(CssCalculation<CssHintedNumber>),
@@ -109,11 +131,14 @@ pub struct CssBorderImageWidth {
 }
 
 impl CssBorderImageWidth {
+    /// Expands one to four components to the four edges using the usual top, right, bottom, left rules.
+    /// Returns `None` when `values` is empty or holds more than four components.
     #[must_use]
     pub fn try_new(values: Vec<CssBorderImageWidthComponent>) -> Option<Self> {
         expand_border_image_sides(values).map(|values| Self { values })
     }
 
+    /// Returns the four expanded edge components in top, right, bottom, left order.
     #[must_use]
     pub const fn values(&self) -> &[CssBorderImageWidthComponent; 4] {
         &self.values
@@ -124,7 +149,9 @@ impl CssBorderImageWidth {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssBorderImageOutsetComponent {
+    /// A non-negative `<length>` outset.
     Length(CssNumeric<CssLength, CssNonNegative>),
+    /// A non-negative `<number>` multiplier of the corresponding `border-width`.
     Number(CssNumeric<CssNumber, CssNonNegative>),
 }
 
@@ -150,11 +177,14 @@ pub struct CssBorderImageOutset {
 }
 
 impl CssBorderImageOutset {
+    /// Expands one to four components to the four edges using the usual top, right, bottom, left rules.
+    /// Returns `None` when `values` is empty or holds more than four components.
     #[must_use]
     pub fn try_new(values: Vec<CssBorderImageOutsetComponent>) -> Option<Self> {
         expand_border_image_sides(values).map(|values| Self { values })
     }
 
+    /// Returns the four expanded edge components in top, right, bottom, left order.
     #[must_use]
     pub const fn values(&self) -> &[CssBorderImageOutsetComponent; 4] {
         &self.values
@@ -187,9 +217,15 @@ fn expand_border_image_sides<T: Clone>(values: Vec<T>) -> Option<[T; 4]> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssBorderImageRepeatKeyword {
+    /// `stretch`: the image is stretched to fill its corresponding region.
     Stretch,
+    /// `repeat`: the image is tiled (repeated) to fill its corresponding region.
     Repeat,
+    /// `round`: the image is tiled to fill its corresponding region, rescaled if needed so that
+    /// a whole number of tiles fills it.
     Round,
+    /// `space`: the image is tiled to fill its corresponding region; if it does not fill the
+    /// region with a whole number of tiles, the extra space is distributed around the tiles.
     Space,
 }
 
@@ -206,6 +242,7 @@ pub struct CssBorderImageRepeat {
 }
 
 impl CssBorderImageRepeat {
+    /// Creates a repeat value from the horizontal and vertical repeat keywords.
     #[must_use]
     pub const fn new(
         horizontal: CssBorderImageRepeatKeyword,
@@ -217,11 +254,13 @@ impl CssBorderImageRepeat {
         }
     }
 
+    /// Returns the horizontal repeat keyword.
     #[must_use]
     pub const fn horizontal(self) -> CssBorderImageRepeatKeyword {
         self.horizontal
     }
 
+    /// Returns the vertical repeat keyword.
     #[must_use]
     pub const fn vertical(self) -> CssBorderImageRepeatKeyword {
         self.vertical
@@ -244,6 +283,7 @@ pub struct CssBorderImage {
 }
 
 impl CssBorderImage {
+    /// Returns the shorthand, or `None` when `source`, `slice` and `repeat` are all omitted, or when `width` or `outset` is given without `slice`.
     #[must_use]
     pub fn try_new(
         source: Option<CssImageValue>,
@@ -266,26 +306,31 @@ impl CssBorderImage {
         })
     }
 
+    /// Returns the authored `border-image-source`, or `None` when omitted.
     #[must_use]
     pub const fn source(&self) -> Option<&CssImageValue> {
         self.source.as_ref()
     }
 
+    /// Returns the authored `border-image-slice`, or `None` when omitted.
     #[must_use]
     pub const fn slice(&self) -> Option<&CssBorderImageSlice> {
         self.slice.as_ref()
     }
 
+    /// Returns the authored `border-image-width`, or `None` when omitted.
     #[must_use]
     pub const fn width(&self) -> Option<&CssBorderImageWidth> {
         self.width.as_ref()
     }
 
+    /// Returns the authored `border-image-outset`, or `None` when omitted.
     #[must_use]
     pub const fn outset(&self) -> Option<&CssBorderImageOutset> {
         self.outset.as_ref()
     }
 
+    /// Returns the authored `border-image-repeat`, or `None` when omitted.
     #[must_use]
     pub const fn repeat(&self) -> Option<CssBorderImageRepeat> {
         self.repeat
@@ -293,18 +338,33 @@ impl CssBorderImage {
 }
 
 /// Authored UI4 outline styles. Hidden is excluded from this semantic domain.
+/// Apart from `auto`, each keyword has the same meaning as the `<line-style>` keyword of the
+/// same name.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssOutlineStyle {
+    /// `auto`: permits the user agent to render a custom outline style.
     Auto,
+    /// `none`: as the `<line-style>` value of the same name: no outline; color and width are
+    /// ignored.
     None,
+    /// `dotted`: a series of round dots.
     Dotted,
+    /// `dashed`: a series of square-ended dashes.
     Dashed,
+    /// `solid`: a single line segment.
     Solid,
+    /// `double`: two parallel solid lines with some space between them.
     Double,
+    /// `groove`: looks as if it were carved in the canvas.
     Groove,
+    /// `ridge`: looks as if it were coming out of the canvas.
     Ridge,
+    /// `inset`: as the `<line-style>` value of the same name: looks as if the content on the
+    /// inside of the outline is sunken into the canvas.
     Inset,
+    /// `outset`: as the `<line-style>` value of the same name: looks as if the content on the
+    /// inside of the outline is raised out of the canvas.
     Outset,
 }
 
@@ -314,9 +374,12 @@ pub enum CssOutlineStyle {
 #[derive(Clone, Debug, Default, PartialEq)]
 #[non_exhaustive]
 pub enum CssOutlineColor {
+    /// `auto`: the automatic outline color, kept symbolic.
     #[default]
     Auto,
+    /// An authored `<color>`.
     Color(Box<CssColor>),
+    /// An authored `<image-1D>`.
     Image1D(Box<crate::values::image::CssImage1D>),
 }
 
@@ -338,6 +401,7 @@ impl CssOutlineColor {
     }
 }
 
+/// The authored components of the `outline` shorthand, each retained only when supplied.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssOutline {
     width: Option<CssLineWidth>,
@@ -346,6 +410,7 @@ pub struct CssOutline {
 }
 
 impl CssOutline {
+    /// Returns the shorthand, or `None` when width, style and color are all omitted.
     #[must_use]
     pub fn try_new(
         width: Option<CssLineWidth>,
@@ -371,16 +436,19 @@ impl CssOutline {
         }
     }
 
+    /// Returns the authored `outline-width`, or `None` when omitted.
     #[must_use]
     pub const fn width(&self) -> Option<&CssLineWidth> {
         self.width.as_ref()
     }
 
+    /// Returns the authored `outline-style`, or `None` when omitted.
     #[must_use]
     pub const fn style(&self) -> Option<CssOutlineStyle> {
         self.style
     }
 
+    /// Returns the authored `outline-color`, or `None` when omitted.
     #[must_use]
     pub const fn color(&self) -> Option<&CssOutlineColor> {
         self.color.as_ref()

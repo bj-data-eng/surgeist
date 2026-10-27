@@ -14,7 +14,9 @@ use crate::source::CssSourcePosition;
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssStyleQueryLeaf {
+    /// A style feature test, such as `--theme: dark` or `color`.
     Feature(CssContainerStyleFeature),
+    /// A `<general-enclosed>` production that is not a recognized style feature.
     GeneralEnclosed(CssContainerGeneralEnclosed),
 }
 
@@ -22,7 +24,9 @@ pub enum CssStyleQueryLeaf {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssContainerStyleFeatureName {
+    /// A recognized CSS property, identified by its grammar entry.
     Property(CssPropertyGrammar),
+    /// A custom property name, which is case-sensitive.
     Custom(CssCustomPropertyName),
 }
 
@@ -30,11 +34,16 @@ pub enum CssContainerStyleFeatureName {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssContainerStyleFeature {
+    /// A feature name alone, such as `style(--flag)`, with no value or comparison.
     Boolean(CssContainerStyleFeatureName),
+    /// A feature name followed by `:` and a value, such as `--theme: dark`.
     Plain {
+        /// The property or custom property being tested.
         name: CssContainerStyleFeatureName,
+        /// The authored value after the colon.
         value: CssContainerStyleValue,
     },
+    /// A range-syntax comparison, such as `--a < --b` or `1 <= --n < 3`.
     Range(CssContainerStyleRange),
 }
 
@@ -55,7 +64,9 @@ pub struct CssContainerStyleRangeOperand {
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssContainerStyleRangeOperandRef<'a> {
+    /// A complete bare custom-property name used as an implicit reference to that property's value.
     CustomProperty(&'a CssCustomPropertyName),
+    /// Any other operand, kept as authored lexical syntax.
     Value(&'a CssContainerStyleValue),
 }
 impl CssContainerStyleRangeOperand {
@@ -65,6 +76,7 @@ impl CssContainerStyleRangeOperand {
     ) -> Self {
         Self { value, reference }
     }
+    /// Returns the referenced custom property when the operand is a complete bare custom-property name, and otherwise the authored value.
     pub fn view(&self) -> CssContainerStyleRangeOperandRef<'_> {
         match &self.reference {
             Some(name) => CssContainerStyleRangeOperandRef::CustomProperty(name),
@@ -104,26 +116,43 @@ pub(crate) enum StyleRangeKind {
         right: CssContainerStyleRangeOperand,
     },
 }
+/// Borrowed view of a [`CssContainerStyleRange`], retaining the authored operand order and the comparison operators as written.
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum CssContainerStyleRangeRef<'a> {
+    /// Two operands joined by one comparison, such as `--a < --b`.
     Binary {
+        /// The operand written before the comparison.
         left: &'a CssContainerStyleRangeOperand,
+        /// The comparison operator as written between the operands.
         comparison: CssQueryComparison,
+        /// The operand written after the comparison.
         right: &'a CssContainerStyleRangeOperand,
     },
+    /// Three operands joined by two `<` or `<=` comparisons, such as `1 <= --n < 3`.
     Ascending {
+        /// The operand written first.
         left: &'a CssContainerStyleRangeOperand,
+        /// Whether the first comparison is `<=` rather than `<`.
         left_inclusive: bool,
+        /// The operand written between the two comparisons.
         middle: &'a CssContainerStyleRangeOperand,
+        /// Whether the second comparison is `<=` rather than `<`.
         right_inclusive: bool,
+        /// The operand written last.
         right: &'a CssContainerStyleRangeOperand,
     },
+    /// Three operands joined by two `>` or `>=` comparisons, such as `3 > --n >= 1`.
     Descending {
+        /// The operand written first.
         left: &'a CssContainerStyleRangeOperand,
+        /// Whether the first comparison is `>=` rather than `>`.
         left_inclusive: bool,
+        /// The operand written between the two comparisons.
         middle: &'a CssContainerStyleRangeOperand,
+        /// Whether the second comparison is `>=` rather than `>`.
         right_inclusive: bool,
+        /// The operand written last.
         right: &'a CssContainerStyleRangeOperand,
     },
 }
@@ -131,6 +160,7 @@ impl CssContainerStyleRange {
     pub(crate) fn new(kind: StyleRangeKind) -> Self {
         Self { kind }
     }
+    /// Returns the range as a borrowed view that preserves operand order and comparison forms.
     pub fn view(&self) -> CssContainerStyleRangeRef<'_> {
         match &self.kind {
             StyleRangeKind::Binary {
@@ -181,9 +211,11 @@ impl CssContainerStyleValue {
 macro_rules! lexical_access {
     ($ty:ty) => {
         impl $ty {
+            /// Returns the authored component values, including any trivia.
             pub fn components(&self) -> &[CssComponentValue] {
                 self.lexical.items()
             }
+            /// Returns the origin of the first non-trivia component, or of the first component when all are trivia.
             pub fn origin(&self) -> &CssValueOrigin {
                 self.components()
                     .iter()
@@ -192,6 +224,7 @@ macro_rules! lexical_access {
                     .expect("admitted nonempty lexical region")
                     .origin()
             }
+            /// Returns the source position of the value, or `None` when its origin was not parsed from source.
             pub fn position(&self) -> Option<CssSourcePosition> {
                 crate::query::media::construction::parsed_position(self.origin())
             }

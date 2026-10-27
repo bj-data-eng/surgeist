@@ -5,6 +5,7 @@
 pub struct CssCustomIdent(CssIdent);
 
 impl CssCustomIdent {
+    /// Returns a custom identifier, or `None` when `value` is not a valid identifier or is a CSS-wide keyword or `default` (ASCII case-insensitive).
     #[must_use]
     pub fn try_new(value: impl Into<String>) -> Option<Self> {
         Self::try_from_ident(CssIdent::try_new(value).ok()?)
@@ -14,6 +15,7 @@ impl CssCustomIdent {
         (!is_reserved_custom_ident(value.as_str())).then_some(Self(value))
     }
 
+    /// Returns the decoded identifier text, preserving authored case.
     #[must_use]
     pub fn as_str(&self) -> &str {
         self.0.as_str()
@@ -39,12 +41,19 @@ pub(crate) fn is_reserved_custom_ident(value: &str) -> bool {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum CssBoxEdgeKeyword {
+    /// `content-box`: the content box edge.
     ContentBox,
+    /// `padding-box`: the padding box edge.
     PaddingBox,
+    /// `border-box`: the border box edge.
     BorderBox,
+    /// `margin-box`: the margin box edge.
     MarginBox,
+    /// `fill-box`: the object bounding box edge.
     FillBox,
+    /// `stroke-box`: the stroke bounding box edge.
     StrokeBox,
+    /// `view-box`: the nearest SVG viewport box edge.
     ViewBox,
 }
 

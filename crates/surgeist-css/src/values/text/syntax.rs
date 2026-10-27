@@ -10,7 +10,9 @@ use crate::numeric::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssDirection {
+    /// `ltr`: the inline base direction (bidi directionality) is line-left to line-right.
     Ltr,
+    /// `rtl`: the inline base direction (bidi directionality) is line-right to line-left.
     Rtl,
 }
 
@@ -21,10 +23,15 @@ pub enum CssDirection {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssWritingMode {
+    /// `horizontal-tb`: top-to-bottom block flow direction; both the writing mode and the typographic mode are horizontal.
     HorizontalTb,
+    /// `vertical-rl`: right-to-left block flow direction; both the writing mode and the typographic mode are vertical.
     VerticalRl,
+    /// `vertical-lr`: left-to-right block flow direction; both the writing mode and the typographic mode are vertical.
     VerticalLr,
+    /// `sideways-rl`: right-to-left block flow direction; the writing mode is vertical while the typographic mode is horizontal.
     SidewaysRl,
+    /// `sideways-lr`: left-to-right block flow direction; the writing mode is vertical while the typographic mode is horizontal.
     SidewaysLr,
 }
 
@@ -38,7 +45,9 @@ pub enum CssWritingMode {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextCombineUpright {
+    /// `none`: no special processing.
     None,
+    /// `all`: attempts to typeset horizontally all consecutive typographic character units in the box so that they take up the space of a single typographic character unit.
     All,
     /// An omitted count computes to two later; specified values retain omission.
     Digits(Option<CssTextCombineDigitCount>),
@@ -58,6 +67,9 @@ pub struct CssTextCombineDigitCount {
 }
 
 impl CssTextCombineDigitCount {
+    /// Checks a literal digit count.
+    ///
+    /// Returns `None` unless `value` is from `2` through `4`.
     #[must_use]
     pub const fn try_literal(value: i32) -> Option<Self> {
         if value >= 2 && value <= 4 {
@@ -69,6 +81,7 @@ impl CssTextCombineDigitCount {
         }
     }
 
+    /// Wraps an authored integer calculation as a digit count, without range checking.
     #[must_use]
     pub const fn from_calculation(value: CssCalculation<CssInteger>) -> Self {
         Self {
@@ -76,6 +89,7 @@ impl CssTextCombineDigitCount {
         }
     }
 
+    /// Returns the literal count, or `None` when the count is a calculation.
     #[must_use]
     pub const fn literal(&self) -> Option<i32> {
         match self.value {
@@ -84,6 +98,7 @@ impl CssTextCombineDigitCount {
         }
     }
 
+    /// Returns the calculation, or `None` when the count is a literal.
     #[must_use]
     pub const fn calculation(&self) -> Option<&CssCalculation<CssInteger>> {
         match &self.value {
@@ -102,8 +117,11 @@ impl CssTextCombineDigitCount {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextOrientation {
+    /// `mixed`: in vertical writing modes, characters from horizontal-only scripts are typeset sideways and characters from vertical scripts keep their intrinsic orientation.
     Mixed,
+    /// `upright`: in vertical writing modes, characters from horizontal-only scripts are typeset upright and characters from vertical scripts keep their intrinsic orientation; the used `direction` is `ltr`.
     Upright,
+    /// `sideways`: in vertical writing modes, all text is typeset sideways, as in a horizontal layout rotated 90 degrees clockwise.
     Sideways,
 }
 
@@ -116,23 +134,37 @@ pub enum CssTextOrientation {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssUnicodeBidi {
+    /// `normal`: the element opens no additional level of embedding.
     Normal,
+    /// `embed`: on an inline box, opens an additional level of embedding whose direction is given by `direction`; no effect on other boxes.
     Embed,
+    /// `isolate`: on an inline box, isolates its contents from the surrounding text for bidirectional processing; no effect on other boxes.
     Isolate,
+    /// `bidi-override`: puts the box's immediate inline content in a directional override, reordered strictly in sequence according to `direction`.
     BidiOverride,
+    /// `isolate-override`: combines the isolation of `isolate` with the directional override of `bidi-override`.
     IsolateOverride,
+    /// `plaintext`: behaves as `isolate`, except that the base directionality of each bidi paragraph or isolated sequence is determined from its content (rules P2 and P3 of the Unicode bidirectional algorithm) rather than from `direction`.
     Plaintext,
 }
 
+/// A `text-align` keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextAlign {
+    /// `start`: inline-level content is aligned to the start edge of the line box.
     Start,
+    /// `end`: inline-level content is aligned to the end edge of the line box.
     End,
+    /// `left`: inline-level content is aligned to the line-left edge of the line box.
     Left,
+    /// `right`: inline-level content is aligned to the line-right edge of the line box.
     Right,
+    /// `center`: inline-level content is centered within the line box.
     Center,
+    /// `justify`: text is justified, by the method of `text-justify`, to exactly fill the line box.
     Justify,
+    /// `match-parent`: as `inherit`, except that an inherited `start` or `end` is interpreted against the parent's `direction` and computes to `left` or `right`.
     MatchParent,
 }
 
@@ -169,12 +201,15 @@ impl CssTextIndent {
             each_line,
         }
     }
+    /// Returns the indent as an authored `<length-percentage>`.
     pub const fn length(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.length
     }
+    /// Returns whether the `hanging` keyword was written, inverting which lines are indented.
     pub const fn hanging(&self) -> bool {
         self.hanging
     }
+    /// Returns whether the `each-line` keyword was written, also indenting lines after forced breaks.
     pub const fn each_line(&self) -> bool {
         self.each_line
     }
@@ -188,14 +223,23 @@ impl CssTextIndent {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssVerticalAlign {
+    /// `baseline`: aligns the box baseline with the parent's baseline.
     Baseline,
+    /// `sub`: lowers the baseline to the parent's subscript position.
     Sub,
+    /// `super`: raises the baseline to the parent's superscript position.
     Super,
+    /// `text-top`: aligns the top of the box with the top of the parent's content area.
     TextTop,
+    /// `text-bottom`: aligns the bottom of the box with the bottom of the parent's content area.
     TextBottom,
+    /// `middle`: aligns the vertical midpoint of the box with the parent's baseline plus half its x-height.
     Middle,
+    /// `top`: aligns the top of the aligned subtree with the top of the line box.
     Top,
+    /// `bottom`: aligns the bottom of the aligned subtree with the bottom of the line box.
     Bottom,
+    /// A `<length-percentage>` that raises (positive) or lowers (negative) the box; a percentage is relative to the element's `line-height`.
     Length(CssNumeric<CssLengthPercentage>),
 }
 
@@ -220,7 +264,9 @@ impl PartialEq for CssVerticalAlign {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextWrapMode {
+    /// `wrap`: lines may wrap at allowed soft wrap opportunities.
     Wrap,
+    /// `nowrap`: lines break only at forced line breaks.
     NoWrap,
 }
 
@@ -228,10 +274,15 @@ pub enum CssTextWrapMode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextWrapStyle {
+    /// `auto`: the algorithm for selecting the soft wrap opportunity to break at is user-agent defined.
     Auto,
+    /// `balance`: line breaks are chosen to balance the remaining (empty) space in each line box, if better balance than `auto` is possible.
     Balance,
+    /// `stable`: content on subsequent lines should not be considered when making break decisions; otherwise as `auto`.
     Stable,
+    /// `pretty`: the user agent should bias for better layout over speed; otherwise as `auto`.
     Pretty,
+    /// `avoid-short-last-line`: the user agent should avoid an excessively short last line.
     AvoidShortLastLine,
 }
 
@@ -270,11 +321,17 @@ impl CssTextWrap {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssWhiteSpaceCollapse {
+    /// `collapse`: sequences of white space are collapsed into a single character (or, in some cases, no character).
     Collapse,
+    /// `discard`: all white space in the element is discarded.
     Discard,
+    /// `preserve`: sequences of white space are not collapsed; segment breaks are preserved as forced line breaks.
     Preserve,
+    /// `preserve-breaks`: as `collapse`, except that segment breaks are preserved as forced line breaks.
     PreserveBreaks,
+    /// `preserve-spaces`: sequences of white space are not collapsed, and tabs and segment breaks are converted to spaces.
     PreserveSpaces,
+    /// `break-spaces`: as `preserve`, except that preserved white space and other space separators always take up space, including at the end of a line, and a soft wrap opportunity exists after each of them.
     BreakSpaces,
 }
 
@@ -300,17 +357,17 @@ impl CssWhiteSpaceTrim {
     pub const fn none() -> Self {
         Self::new(false, false, false)
     }
-    /// Whether leading whitespace is marked for discarding.
+    /// Whether `discard-before` was written, collapsing collapsible white space immediately before the start of the element.
     #[must_use]
     pub const fn discard_before(&self) -> bool {
         self.discard_before
     }
-    /// Whether trailing whitespace is marked for discarding.
+    /// Whether `discard-after` was written, collapsing collapsible white space immediately after the end of the element.
     #[must_use]
     pub const fn discard_after(&self) -> bool {
         self.discard_after
     }
-    /// Whether inner whitespace is marked for discarding.
+    /// Whether `discard-inner` was written, discarding white space at the beginning and end of the element (in a block container, the leading run up to and including the last segment break before the first non-white-space character, and the trailing run starting at the first segment break after the last non-white-space character).
     #[must_use]
     pub const fn discard_inner(&self) -> bool {
         self.discard_inner
@@ -326,9 +383,13 @@ impl CssWhiteSpaceTrim {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssWhiteSpaceKeyword {
+    /// `normal`: collapses white space and wraps lines; equivalent to `collapse wrap`.
     Normal,
+    /// `pre`: preserves white space and does not wrap; equivalent to `preserve nowrap`.
     Pre,
+    /// `pre-wrap`: preserves white space and wraps lines; equivalent to `preserve wrap`.
     PreWrap,
+    /// `pre-line`: preserves segment breaks, collapses other white space and wraps lines; equivalent to `preserve-breaks wrap`.
     PreLine,
 }
 
@@ -408,14 +469,21 @@ impl CssWhiteSpace {
     }
 }
 
+/// The value of `word-break`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssWordBreak {
+    /// `normal`: words break according to their customary rules.
     Normal,
+    /// `break-all`: breaking is allowed within words; typographic letter units, and units of line-breaking class `NU`, `AL` or `SA`, are treated as `ID` (ideographic) for line breaking, and hyphenation is not applied.
     BreakAll,
+    /// `keep-all`: breaking is forbidden within words; implicit soft wrap opportunities between typographic letter units, and units of line-breaking class `NU`, `AL`, `AI` or `ID`, are suppressed, except where lexical word breaking provides them.
     KeepAll,
+    /// `manual`: as `normal`, except that lexical word breaking is not performed.
     Manual,
+    /// `auto-phrase`: as `normal`, except that language-specific content analysis keeps natural phrases together; behaves as `normal` when the content language is unknown or phrase boundaries cannot be detected for it.
     AutoPhrase,
+    /// `break-word`: the deprecated keyword, with the same effect as `word-break: normal` and `overflow-wrap: anywhere` regardless of the actual `overflow-wrap` value.
     BreakWord,
 }
 
@@ -425,8 +493,11 @@ pub enum CssWordBreak {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssOverflowWrap {
+    /// `normal`: lines break only at allowed break points.
     Normal,
+    /// `break-word`: an otherwise unbreakable sequence may break at an arbitrary point if the line has no other acceptable break point; those breaks are not counted for min-content sizes.
     BreakWord,
+    /// `anywhere`: an otherwise unbreakable sequence may break at an arbitrary point if the line has no other acceptable break point; those breaks are counted for min-content sizes.
     Anywhere,
 }
 
@@ -436,7 +507,9 @@ pub enum CssOverflowWrap {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextOverflow {
+    /// `clip`: inline content that overflows its block container is clipped; characters may be only partially rendered.
     Clip,
+    /// `ellipsis`: an ellipsis character (U+2026) is rendered to represent clipped inline content.
     Ellipsis,
 }
 
@@ -487,21 +560,25 @@ impl CssTextDecoration {
         }
     }
 
+    /// Returns the authored line component, or `None` when it was omitted.
     #[must_use]
     pub const fn line(&self) -> Option<&CssTextDecorationLine> {
         self.line.as_ref()
     }
 
+    /// Returns the authored color component, or `None` when it was omitted.
     #[must_use]
     pub fn color(&self) -> Option<&CssColor> {
         self.color.as_deref()
     }
 
+    /// Returns the authored style component, or `None` when it was omitted.
     #[must_use]
     pub const fn style(&self) -> Option<CssTextDecorationStyle> {
         self.style
     }
 
+    /// Returns the authored thickness component, or `None` when it was omitted.
     #[must_use]
     pub const fn thickness(&self) -> Option<&CssTextDecorationThickness> {
         self.thickness.as_ref()
@@ -531,11 +608,16 @@ enum CssTextDecorationLineKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextDecorationErrorLine {
+    /// `spelling-error`: the text decoration the user agent uses to highlight spelling mistakes; its appearance is user-agent defined.
     SpellingError,
+    /// `grammar-error`: the text decoration the user agent uses to highlight grammar mistakes; its appearance is user-agent defined.
     GrammarError,
 }
 
 impl CssTextDecorationLine {
+    /// Checks a list of line keywords.
+    ///
+    /// Returns `None` when `components` is empty or contains the same keyword twice.
     #[must_use]
     pub fn try_new(components: Vec<CssTextDecorationLineComponent>) -> Option<Self> {
         if components.is_empty() || has_duplicate_decoration_line_components(&components) {
@@ -553,6 +635,7 @@ impl CssTextDecorationLine {
         }
     }
 
+    /// Creates the `none` value, with no lines.
     #[must_use]
     pub fn none() -> Self {
         Self {
@@ -578,11 +661,13 @@ impl CssTextDecorationLine {
         }
     }
 
+    /// Returns whether this is the `none` keyword.
     #[must_use]
     pub const fn is_none(&self) -> bool {
         matches!(self.kind, CssTextDecorationLineKind::None)
     }
 
+    /// Returns the ordinary line keywords in authored order; the slice is empty for `none` and for an error line.
     #[must_use]
     pub fn components(&self) -> &[CssTextDecorationLineComponent] {
         &self.components
@@ -598,22 +683,33 @@ fn has_duplicate_decoration_line_components(components: &[CssTextDecorationLineC
     })
 }
 
+/// A line keyword of `text-decoration-line`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextDecorationLineComponent {
+    /// `underline`: each line of text is underlined.
     Underline,
+    /// `overline`: each line of text has a line over it, on the side opposite an underline.
     Overline,
+    /// `line-through`: each line of text has a line through its middle.
     LineThrough,
+    /// `blink`: the text blinks (alternates between visible and invisible); user agents may simply not blink it, and the value is deprecated in favor of animations.
     Blink,
 }
 
+/// The `text-decoration-style` keyword.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextDecorationStyle {
+    /// `solid`: a single line segment.
     Solid,
+    /// `double`: two parallel solid lines with some space between them.
     Double,
+    /// `dotted`: a series of round dots.
     Dotted,
+    /// `dashed`: a series of square-ended dashes.
     Dashed,
+    /// `wavy`: a wavy line.
     Wavy,
 }
 
@@ -625,7 +721,9 @@ pub enum CssTextDecorationStyle {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssTextDecorationThickness {
+    /// `auto`: the user agent chooses the thickness.
     Auto,
+    /// `from-font`: the thickness comes from the font's metrics, otherwise as `auto`.
     FromFont,
     /// A signed authored thickness, before the actual value's device-pixel floor.
     Length(CssNumeric<CssLengthPercentage>),
@@ -641,11 +739,15 @@ impl PartialEq for CssTextDecorationThickness {
     }
 }
 
+/// The value of `text-transform`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextTransform {
+    /// `none`: no effects.
     None,
+    /// `math-auto`: the MathML Core `math-auto` transform.
     MathAuto,
+    /// A nonempty combination of case, `full-width` and `full-size-kana` transformations.
     Transforms(CssTextTransformSet),
 }
 
@@ -653,8 +755,11 @@ pub enum CssTextTransform {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTextTransformCase {
+    /// `capitalize`: the first typographic letter unit of each word, if lowercase, is put in titlecase; other characters are unaffected.
     Capitalize,
+    /// `uppercase`: all letters are put in uppercase.
     Uppercase,
+    /// `lowercase`: all letters are put in lowercase.
     Lowercase,
 }
 
@@ -683,12 +788,15 @@ impl CssTextTransformSet {
             })
         }
     }
+    /// Returns the case transformation, or `None` when none was written.
     pub const fn case(&self) -> Option<CssTextTransformCase> {
         self.case
     }
+    /// Returns whether `full-width` was written, putting characters in full-width form.
     pub const fn full_width(&self) -> bool {
         self.full_width
     }
+    /// Returns whether `full-size-kana` was written, converting small kana to full-size kana.
     pub const fn full_size_kana(&self) -> bool {
         self.full_size_kana
     }
@@ -698,7 +806,9 @@ impl CssTextTransformSet {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssWrapInside {
+    /// `auto`: lines may break at allowed break points within the box.
     Auto,
+    /// `avoid`: line breaking within the box is suppressed where other break points exist.
     Avoid,
 }
 
@@ -706,11 +816,17 @@ pub enum CssWrapInside {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssWrapBoundary {
+    /// `auto`: lines may break at allowed break points before or after the box.
     Auto,
+    /// `avoid`: line breaking before or after the box is suppressed where other break points exist.
     Avoid,
+    /// `avoid-line`: as `avoid`, but only for line breaks.
     AvoidLine,
+    /// `avoid-flex`: as `avoid`, but only for flex line breaks.
     AvoidFlex,
+    /// `line`: forces a line break before or after the box if it is an inline-level box.
     Line,
+    /// `flex`: forces a flex line break before or after the box if it is a flex item in a multi-line flex container.
     Flex,
 }
 
@@ -718,10 +834,15 @@ pub enum CssWrapBoundary {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssLineBreak {
+    /// `auto`: the user agent determines the line-breaking restrictions.
     Auto,
+    /// `loose`: the least restrictive set of line-breaking rules.
     Loose,
+    /// `normal`: the most common set of line-breaking rules.
     Normal,
+    /// `strict`: the most stringent set of line-breaking rules.
     Strict,
+    /// `anywhere`: a soft wrap opportunity exists around every typographic character unit.
     Anywhere,
 }
 
@@ -729,9 +850,18 @@ pub enum CssLineBreak {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssWordSpaceTransform {
+    /// `none`: the property has no effect.
     None,
-    Space { auto_phrase: bool },
-    IdeographicSpace { auto_phrase: bool },
+    /// `space`: expandable separators are replaced by U+0020 SPACE.
+    Space {
+        /// Whether `auto-phrase` was written: where the content language is known and supported, a virtual expandable separator is inserted at each detected phrase boundary that lacks one.
+        auto_phrase: bool,
+    },
+    /// `ideographic-space`: expandable separators are replaced by U+3000 IDEOGRAPHIC SPACE.
+    IdeographicSpace {
+        /// Whether `auto-phrase` was written: where the content language is known and supported, a virtual expandable separator is inserted at each detected phrase boundary that lacks one.
+        auto_phrase: bool,
+    },
 }
 
 /// An authored tab interval: a space-advance multiplier or an exact length.
@@ -745,7 +875,9 @@ pub enum CssWordSpaceTransform {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssTabSize {
+    /// A non-negative `<number>` multiple of the advance width of a space character.
     Number(CssNumeric<CssNumber, CssNonNegative>),
+    /// A non-negative `<length>`.
     Length(CssNumeric<CssLength, CssNonNegative>),
 }
 

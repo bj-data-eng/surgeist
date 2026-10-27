@@ -15,17 +15,29 @@ type SerializationResult<T> = Result<T, CssSerializationError>;
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssFontSize {
+    /// `xx-small`: the smallest `<absolute-size>` keyword, mapped to a size by the user agent's font-size table.
     XxSmall,
+    /// `x-small`: an `<absolute-size>` keyword between `xx-small` and `small`.
     XSmall,
+    /// `small`: an `<absolute-size>` keyword just below `medium`.
     Small,
+    /// `medium`: the reference middle `<absolute-size>` keyword, and the initial `font-size`.
     Medium,
+    /// `large`: an `<absolute-size>` keyword just above `medium`.
     Large,
+    /// `x-large`: an `<absolute-size>` keyword between `large` and `xx-large`.
     XLarge,
+    /// `xx-large`: an `<absolute-size>` keyword above `x-large`.
     XxLarge,
+    /// `xxx-large`: the largest `<absolute-size>` keyword.
     XxxLarge,
+    /// `larger`: a `<relative-size>` keyword, interpreted relative to the parent's computed `font-size` and possibly the table of font sizes; the next larger entry, or a ratio of about 1.2 to 1.5.
     Larger,
+    /// `smaller`: a `<relative-size>` keyword, interpreted relative to the parent's computed `font-size` and possibly the table of font sizes; the previous entry, or a ratio of about 1.2 to 1.5.
     Smaller,
+    /// `math`: special mathematical scaling rules are applied when determining the computed value.
     Math,
+    /// A non-negative `<length-percentage>`; a percentage is relative to the parent's computed `font-size`. It stays unresolved.
     LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>),
 }
 

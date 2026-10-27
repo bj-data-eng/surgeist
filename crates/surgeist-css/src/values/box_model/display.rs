@@ -7,8 +7,11 @@ use crate::values::box_model::{CssContentVisibility, CssVisibility};
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssDisplayOutside {
+    /// `block`: the element generates a box that is block-level when placed in flow layout.
     Block,
+    /// `inline`: the element generates a box that is inline-level when placed in flow layout.
     Inline,
+    /// `run-in`: the box is a run-in box, an inline-level box that attempts to merge into a subsequent block container.
     RunIn,
 }
 
@@ -16,11 +19,17 @@ pub enum CssDisplayOutside {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssDisplayInside {
+    /// `flow`: the box lays out its contents using flow layout (block-and-inline layout).
     Flow,
+    /// `flow-root`: the box is a block container that lays out its contents using flow layout and always establishes a new block formatting context.
     FlowRoot,
+    /// `table`: the box is a principal table wrapper box that establishes a block formatting context and contains a table grid box, which establishes a table formatting context.
     Table,
+    /// `flex`: the box is a principal flex container that establishes a flex formatting context.
     Flex,
+    /// `grid`: the box is a principal grid container that establishes a grid formatting context (a subgrid might not).
     Grid,
+    /// `ruby`: the box is a ruby container that establishes a ruby formatting context.
     Ruby,
 }
 
@@ -28,7 +37,9 @@ pub enum CssDisplayInside {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssDisplayListItemInside {
+    /// `flow`: the list item's principal box lays out its contents using flow layout.
     Flow,
+    /// `flow-root`: the list item's principal box is a block container that always establishes a new block formatting context for its contents.
     FlowRoot,
 }
 
@@ -36,17 +47,29 @@ pub enum CssDisplayListItemInside {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssDisplayInternal {
+    /// `table-row-group`: an internal table element that groups one or more rows.
     TableRowGroup,
+    /// `table-header-group`: like `table-row-group`, but displayed before all other rows and row groups and after any top captions.
     TableHeaderGroup,
+    /// `table-footer-group`: like `table-row-group`, but displayed after all other rows and row groups and before any bottom captions.
     TableFooterGroup,
+    /// `table-row`: an internal table element that is a row of cells.
     TableRow,
+    /// `table-cell`: an internal table element that represents a table cell; its inner display type is `flow-root`.
     TableCell,
+    /// `table-column-group`: an internal table element that groups one or more columns.
     TableColumnGroup,
+    /// `table-column`: an internal table element that describes a column of cells.
     TableColumn,
+    /// `table-caption`: a table caption box, a block box with special behavior with respect to table and table wrapper boxes; its inner display type is `flow-root`.
     TableCaption,
+    /// `ruby-base`: an internal ruby element; its inner display type is `flow`.
     RubyBase,
+    /// `ruby-text`: an internal ruby element; its inner display type is `flow`.
     RubyText,
+    /// `ruby-base-container`: an internal ruby element.
     RubyBaseContainer,
+    /// `ruby-text-container`: an internal ruby element.
     RubyTextContainer,
 }
 
@@ -54,7 +77,9 @@ pub enum CssDisplayInternal {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssDisplayBox {
+    /// `contents`: the element generates no box of its own; for box generation and layout it is treated as replaced by its children and pseudo-elements.
     Contents,
+    /// `none`: the element and its descendants generate no boxes or text sequences.
     None,
 }
 
@@ -62,9 +87,13 @@ pub enum CssDisplayBox {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssDisplayLegacy {
+    /// `inline-block`: computes to `inline flow-root`, but keeps a distinct specified value.
     InlineBlock,
+    /// `inline-table`: computes to `inline table`, but keeps a distinct specified value.
     InlineTable,
+    /// `inline-flex`: computes to `inline flex`, but keeps a distinct specified value.
     InlineFlex,
+    /// `inline-grid`: computes to `inline grid`, but keeps a distinct specified value.
     InlineGrid,
 }
 
@@ -80,18 +109,29 @@ pub enum CssDisplayLegacy {
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssDisplayValue {
+    /// An ordinary `<display-outside> || <display-inside>` value; omitted components hold their intrinsic defaults.
     OutsideInside {
+        /// The outer display type.
         outside: CssDisplayOutside,
+        /// The inner display type.
         inside: CssDisplayInside,
     },
+    /// A `list-item` value with its outer display type and flow mode.
     ListItem {
+        /// The outer display type.
         outside: CssDisplayOutside,
+        /// The flow mode of the list item's contents.
         inside: CssDisplayListItemInside,
     },
+    /// An exclusive `<display-internal>` keyword.
     Internal(CssDisplayInternal),
+    /// An exclusive `<display-box>` keyword.
     Box(CssDisplayBox),
+    /// A precomposed `<display-legacy>` keyword.
     Legacy(CssDisplayLegacy),
+    /// `grid-lanes`: the element generates a block-level grid lanes container box.
     GridLanes,
+    /// `inline-grid-lanes`: the element generates an inline-level grid lanes container box.
     InlineGridLanes,
 }
 

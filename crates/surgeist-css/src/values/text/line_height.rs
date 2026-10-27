@@ -17,10 +17,13 @@ type SerializationResult<T> = Result<T, CssSerializationError>;
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssLineHeight {
+    /// `normal`: the line height is chosen by the user agent from the font's metrics.
     Normal,
+    /// A non-negative `<number>` multiplier of the element's font size, inherited as the number itself.
     Number(CssNumeric<CssNumber, CssNonNegative>),
     /// A contextual Number before font or percentage basis and math range resolution.
     HintedNumberCalculation(CssCalculation<CssHintedNumber>),
+    /// A non-negative `<length-percentage>`; a percentage is relative to the element's font size. It stays unresolved.
     LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>),
 }
 

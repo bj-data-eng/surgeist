@@ -48,6 +48,7 @@ impl CssFontNamedInstanceString {
         })
     }
 
+    /// Returns the decoded string text.
     #[must_use]
     pub fn as_str(&self) -> &str {
         let CssComponentValueRef::Token(CssValueTokenRef::String(value)) = self.component.view()
@@ -57,11 +58,13 @@ impl CssFontNamedInstanceString {
         value
     }
 
+    /// Returns the checked string component, including its original source.
     #[must_use]
     pub const fn component(&self) -> &CssComponentValue {
         &self.component
     }
 
+    /// Returns the provenance of the string component.
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
         self.component.origin()
@@ -98,7 +101,9 @@ impl Eq for CssFontNamedInstanceString {}
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontNamedInstance {
+    /// `auto`: no named instance is selected.
     Auto,
+    /// A literal `<string>` naming the instance.
     String(CssFontNamedInstanceString),
 }
 
@@ -132,7 +137,9 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontMetricOverride {
+    /// `normal`: no metric override; the font's own metric is used.
     Normal,
+    /// A non-negative `<percentage>`, possibly a symbolic calculation, giving the metric as a fraction of the used font size.
     Percentage(CssNumeric<CssPercentage, CssNonNegative>),
 }
 

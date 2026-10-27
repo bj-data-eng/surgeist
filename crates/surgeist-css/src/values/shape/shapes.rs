@@ -9,8 +9,11 @@ use crate::values::position::CssPosition;
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssCircleRadius {
+    /// The radius was omitted; no default is inserted.
     Default,
+    /// A radial extent keyword.
     Extent(CssRadialExtent),
+    /// A non-negative `<length-percentage>` radius.
     LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>),
 }
 
@@ -40,9 +43,11 @@ impl CssEllipseRadii {
             vertical,
         }
     }
+    /// Returns the horizontal radius component.
     pub const fn horizontal(&self) -> &CssEllipseRadius {
         &self.horizontal
     }
+    /// Returns the vertical radius component.
     pub const fn vertical(&self) -> &CssEllipseRadius {
         &self.vertical
     }
@@ -52,7 +57,9 @@ impl CssEllipseRadii {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssEllipseRadius {
+    /// A radial extent keyword.
     Extent(CssRadialExtent),
+    /// A non-negative `<length-percentage>` radius.
     LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>),
 }
 
@@ -74,16 +81,19 @@ pub struct CssCircleShape {
 }
 
 impl CssCircleShape {
+    /// Creates a circle from its radius branch and optional center position.
     #[must_use]
     pub const fn new(radius: CssCircleRadius, position: Option<CssPosition>) -> Self {
         Self { radius, position }
     }
 
+    /// Returns the authored radius branch.
     #[must_use]
     pub const fn radius(&self) -> &CssCircleRadius {
         &self.radius
     }
 
+    /// Returns the authored center position, or `None` when `at <position>` was omitted.
     #[must_use]
     pub const fn position(&self) -> Option<&CssPosition> {
         self.position.as_ref()
@@ -99,6 +109,7 @@ pub struct CssEllipseShape {
 }
 
 impl CssEllipseShape {
+    /// Creates an ellipse from an optional radius pair and an optional center position.
     #[must_use]
     pub const fn new(radii: Option<CssEllipseRadii>, position: Option<CssPosition>) -> Self {
         Self { radii, position }
@@ -110,6 +121,7 @@ impl CssEllipseShape {
         self.radii.as_ref()
     }
 
+    /// Returns the authored center position, or `None` when `at <position>` was omitted.
     #[must_use]
     pub const fn position(&self) -> Option<&CssPosition> {
         self.position.as_ref()
@@ -134,11 +146,13 @@ impl PartialEq for CssInsetShapeOffsets {
 }
 
 impl CssInsetShapeOffsets {
+    /// Returns the offsets, or `None` unless `values` holds one to four offsets.
     #[must_use]
     pub fn try_new(values: Vec<CssNumeric<CssLengthPercentage>>) -> Option<Self> {
         (1..=4).contains(&values.len()).then_some(Self { values })
     }
 
+    /// Returns the authored offsets, one to four, in source order.
     #[must_use]
     pub fn values(&self) -> &[CssNumeric<CssLengthPercentage>] {
         &self.values
@@ -153,6 +167,7 @@ pub struct CssInsetShape {
 }
 
 impl CssInsetShape {
+    /// Creates an inset from its offsets and optional `round` radii.
     #[must_use]
     pub const fn new(
         offsets: CssInsetShapeOffsets,
@@ -161,11 +176,13 @@ impl CssInsetShape {
         Self { offsets, round }
     }
 
+    /// Returns the authored offsets.
     #[must_use]
     pub const fn offsets(&self) -> &CssInsetShapeOffsets {
         &self.offsets
     }
 
+    /// Returns the authored `round` corner radii, or `None` when omitted.
     #[must_use]
     pub const fn round(&self) -> Option<&crate::values::border::CssBorderRadiusShorthand> {
         self.round.as_ref()
@@ -176,7 +193,11 @@ impl CssInsetShape {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFillRule {
+    /// `nonzero`: the `nonzero` filling rule of the SVG `fill-rule` property, used to determine
+    /// the interior.
     Nonzero,
+    /// `evenodd`: the `evenodd` filling rule of the SVG `fill-rule` property, used to determine
+    /// the interior.
     Evenodd,
 }
 
@@ -195,9 +216,11 @@ impl CssPolygonPoint {
     ) -> Self {
         Self { x, y }
     }
+    /// Returns the horizontal coordinate.
     pub const fn x(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.x
     }
+    /// Returns the vertical coordinate.
     pub const fn y(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.y
     }
@@ -210,11 +233,13 @@ pub struct CssPolygonPointList {
 }
 
 impl CssPolygonPointList {
+    /// Returns the list, or `None` when `points` is empty.
     #[must_use]
     pub fn try_new(points: Vec<CssPolygonPoint>) -> Option<Self> {
         (!points.is_empty()).then_some(Self { points })
     }
 
+    /// Returns the points in authored order.
     #[must_use]
     pub fn points(&self) -> &[CssPolygonPoint] {
         &self.points
@@ -230,6 +255,7 @@ pub struct CssPolygonShape {
 }
 
 impl CssPolygonShape {
+    /// Creates a polygon from an optional fill rule, an optional corner-rounding length and its points.
     #[must_use]
     pub const fn new(
         fill_rule: Option<CssFillRule>,
@@ -243,16 +269,19 @@ impl CssPolygonShape {
         }
     }
 
+    /// Returns the authored fill rule, or `None` when omitted.
     #[must_use]
     pub const fn fill_rule(&self) -> Option<CssFillRule> {
         self.fill_rule
     }
 
+    /// Returns the authored corner-rounding length, or `None` when omitted.
     #[must_use]
     pub const fn round(&self) -> Option<&CssNumeric<CssLength>> {
         self.round.as_ref()
     }
 
+    /// Returns the authored points.
     #[must_use]
     pub const fn points(&self) -> &CssPolygonPointList {
         &self.points
@@ -287,22 +316,27 @@ impl CssRectShape {
             round,
         }
     }
+    /// Returns the authored top edge, a `<length-percentage>` or `auto`.
     #[must_use]
     pub const fn top(&self) -> &CssAutoOr<CssNumeric<CssLengthPercentage>> {
         &self.top
     }
+    /// Returns the authored right edge, a `<length-percentage>` or `auto`.
     #[must_use]
     pub const fn right(&self) -> &CssAutoOr<CssNumeric<CssLengthPercentage>> {
         &self.right
     }
+    /// Returns the authored bottom edge, a `<length-percentage>` or `auto`.
     #[must_use]
     pub const fn bottom(&self) -> &CssAutoOr<CssNumeric<CssLengthPercentage>> {
         &self.bottom
     }
+    /// Returns the authored left edge, a `<length-percentage>` or `auto`.
     #[must_use]
     pub const fn left(&self) -> &CssAutoOr<CssNumeric<CssLengthPercentage>> {
         &self.left
     }
+    /// Returns the authored `round` corner radii, or `None` when omitted.
     #[must_use]
     pub const fn round(&self) -> Option<&crate::values::border::CssBorderRadiusShorthand> {
         self.round.as_ref()
@@ -337,22 +371,27 @@ impl CssXywhShape {
             round,
         }
     }
+    /// Returns the authored horizontal coordinate of the top-left corner.
     #[must_use]
     pub const fn x(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.x
     }
+    /// Returns the authored vertical coordinate of the top-left corner.
     #[must_use]
     pub const fn y(&self) -> &CssNumeric<CssLengthPercentage> {
         &self.y
     }
+    /// Returns the authored non-negative width.
     #[must_use]
     pub const fn width(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
         &self.width
     }
+    /// Returns the authored non-negative height.
     #[must_use]
     pub const fn height(&self) -> &CssNumeric<CssLengthPercentage, CssNonNegative> {
         &self.height
     }
+    /// Returns the authored `round` corner radii, or `None` when omitted.
     #[must_use]
     pub const fn round(&self) -> Option<&crate::values::border::CssBorderRadiusShorthand> {
         self.round.as_ref()
@@ -390,13 +429,21 @@ impl CssPathShape {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssBasicShape {
+    /// A `shape()` function.
     Shape(CssShapeFunction),
+    /// An `inset()` function, boxed to keep the enum small.
     Inset(Box<CssInsetShape>),
+    /// A `circle()` function.
     Circle(CssCircleShape),
+    /// An `ellipse()` function.
     Ellipse(CssEllipseShape),
+    /// A `polygon()` function.
     Polygon(CssPolygonShape),
+    /// A `path()` function.
     Path(CssPathShape),
+    /// A `rect()` function.
     Rect(CssRectShape),
+    /// An `xywh()` function.
     Xywh(CssXywhShape),
 }
 
@@ -409,9 +456,13 @@ pub enum CssBasicShape {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum CssShapeBox {
+    /// `content-box`: the content box edge.
     ContentBox,
+    /// `padding-box`: the padding box edge.
     PaddingBox,
+    /// `border-box`: the border box edge.
     BorderBox,
+    /// `margin-box`: the margin box edge.
     MarginBox,
 }
 
@@ -450,9 +501,14 @@ impl CssShapeBox {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssShapeOutside {
+    /// `none`: the float area is unaffected.
     None,
+    /// A bare `<shape-box>`, whose box, including curvature from `border-radius`, defines the
+    /// shape.
     ShapeBox(CssShapeBox),
+    /// A `<basic-shape>` with an optional reference box.
     BasicShape(CssShapeOutsideShape),
+    /// An `<image>` whose alpha channel defines the shape.
     Image(crate::values::image::CssImage),
 }
 
@@ -499,6 +555,7 @@ pub struct CssShapeFunction {
     commands: super::CssShapeCommandList,
 }
 impl CssShapeFunction {
+    /// Creates a shape function from an optional fill rule, a starting position and its commands.
     pub const fn new(
         fill_rule: Option<super::CssFillRule>,
         start: CssPosition,
@@ -510,12 +567,15 @@ impl CssShapeFunction {
             commands,
         }
     }
+    /// Returns the authored fill rule, or `None` when omitted.
     pub const fn fill_rule(&self) -> Option<super::CssFillRule> {
         self.fill_rule
     }
+    /// Returns the authored starting position.
     pub const fn start(&self) -> &CssPosition {
         &self.start
     }
+    /// Returns the commands, which are never empty.
     pub const fn commands(&self) -> &super::CssShapeCommandList {
         &self.commands
     }

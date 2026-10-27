@@ -36,21 +36,25 @@ impl CssFontSynthesisValues {
         }
     }
 
+    /// Returns whether `weight` was written, setting `font-synthesis-weight` to `auto`.
     #[must_use]
     pub const fn weight(self) -> bool {
         self.weight
     }
 
+    /// Returns whether `style` was written, setting `font-synthesis-style` to `auto`.
     #[must_use]
     pub const fn style(self) -> bool {
         self.style
     }
 
+    /// Returns whether `small-caps` was written, setting `font-synthesis-small-caps` to `auto`.
     #[must_use]
     pub const fn small_caps(self) -> bool {
         self.small_caps
     }
 
+    /// Returns whether `position` was written, setting `font-synthesis-position` to `auto`.
     #[must_use]
     pub const fn position(self) -> bool {
         self.position
@@ -61,7 +65,9 @@ impl CssFontSynthesisValues {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontSynthesis {
+    /// `none`: sets all four `font-synthesis-*` longhands to `none`.
     None,
+    /// A nonempty set of `weight`, `style`, `small-caps` and `position` keywords; each written keyword sets its longhand to `auto` and each omitted one sets it to `none`.
     Values(CssFontSynthesisValues),
 }
 
@@ -69,7 +75,9 @@ pub enum CssFontSynthesis {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontSynthesisWeight {
+    /// `auto`: synthesis of bold faces is allowed.
     Auto,
+    /// `none`: synthesis of bold faces is not allowed.
     None,
 }
 
@@ -77,9 +85,11 @@ pub enum CssFontSynthesisWeight {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontSynthesisStyle {
+    /// `auto`: synthesis of oblique faces is allowed.
     Auto,
+    /// `none`: synthesis of oblique faces is not allowed.
     None,
-    /// Allows oblique synthesis without using it as an italic fallback.
+    /// `oblique-only`: synthesis of oblique faces is allowed, but they must not be used as a fallback if italic is specified.
     ObliqueOnly,
 }
 
@@ -87,7 +97,9 @@ pub enum CssFontSynthesisStyle {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontSynthesisSmallCaps {
+    /// `auto`: synthesis of small-caps faces is allowed.
     Auto,
+    /// `none`: synthesis of small-caps faces is not allowed.
     None,
 }
 
@@ -95,7 +107,9 @@ pub enum CssFontSynthesisSmallCaps {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssFontSynthesisPosition {
+    /// `auto`: synthesis of superscript and subscript forms for `font-variant-position` is required when the font lacks them.
     Auto,
+    /// `none`: synthesis of superscript and subscript forms is not allowed.
     None,
 }
 

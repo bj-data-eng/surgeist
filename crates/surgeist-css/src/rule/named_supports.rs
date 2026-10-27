@@ -44,6 +44,11 @@ struct SupportsConditionRuleData {
 }
 
 impl CssSupportsConditionRule {
+    /// Constructs a programmatic definition from a name and a test body.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CssSupportsConstructionError`] when the body contains recovered input, or when the serialized definition exceeds `limits`.
     pub fn try_new(
         name: CssSupportsConditionName,
         body: CssSupportsTestBody,
@@ -86,18 +91,22 @@ impl CssSupportsConditionRule {
         }
     }
 
+    /// Returns the name the definition declares.
     pub fn name(&self) -> &CssSupportsConditionName {
         &self.data.name
     }
 
+    /// Returns the non-rendering test body of the definition.
     pub fn body(&self) -> &CssSupportsTestBody {
         &self.data.body
     }
 
+    /// Returns the origin of the whole definition.
     pub fn origin(&self) -> &CssValueOrigin {
         &self.data.origin
     }
 
+    /// Returns the source position of the definition, or `None` when its origin was not parsed from source.
     pub fn position(&self) -> Option<CssSourcePosition> {
         crate::query::media::construction::parsed_position(self.origin())
     }

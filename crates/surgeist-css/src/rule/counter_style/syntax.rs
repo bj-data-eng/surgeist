@@ -290,23 +290,33 @@ impl CssCounterStyleDescriptor {
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterStyleDescriptorRef<'a> {
+    /// A `system` descriptor occurrence.
     System(&'a CssDescriptorOccurrence<crate::rule::counter_style::CssCounterStyleDescriptorValue>),
+    /// A `negative` descriptor occurrence.
     Negative(
         &'a CssDescriptorOccurrence<crate::rule::counter_style::CssCounterStyleDescriptorValue>,
     ),
+    /// A `symbols` descriptor occurrence.
     Symbols(
         &'a CssDescriptorOccurrence<crate::rule::counter_style::CssCounterStyleDescriptorValue>,
     ),
+    /// A `prefix` descriptor occurrence.
     Prefix(&'a CssDescriptorOccurrence<crate::rule::counter_style::CssCounterStyleDescriptorValue>),
+    /// A `suffix` descriptor occurrence.
     Suffix(&'a CssDescriptorOccurrence<crate::rule::counter_style::CssCounterStyleDescriptorValue>),
+    /// A `range` descriptor occurrence.
     Range(&'a CssDescriptorOccurrence<crate::rule::counter_style::CssCounterStyleDescriptorValue>),
+    /// A `pad` descriptor occurrence.
     Pad(&'a CssDescriptorOccurrence<crate::rule::counter_style::CssCounterStyleDescriptorValue>),
+    /// A `fallback` descriptor occurrence.
     Fallback(
         &'a CssDescriptorOccurrence<crate::rule::counter_style::CssCounterStyleDescriptorValue>,
     ),
+    /// An `additive-symbols` descriptor occurrence.
     AdditiveSymbols(
         &'a CssDescriptorOccurrence<crate::rule::counter_style::CssCounterStyleDescriptorValue>,
     ),
+    /// A `speak-as` descriptor occurrence.
     SpeakAs(
         &'a CssDescriptorOccurrence<crate::rule::counter_style::CssCounterStyleDescriptorValue>,
     ),
@@ -316,12 +326,19 @@ pub enum CssCounterStyleDescriptorRef<'a> {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterStyleSystem {
+    /// `cyclic`: cycles repeatedly through the symbols.
     Cyclic,
+    /// `numeric`: interprets the symbols as digits of a positional numeral system.
     Numeric,
+    /// `alphabetic`: interprets the symbols as digits of a numbering system without a zero digit, such as `a`, `b`, ..., `aa`, `ab`.
     Alphabetic,
+    /// `symbolic`: cycles through the symbols, repeating each symbol more times on every pass.
     Symbolic,
+    /// `additive`: builds the representation by summing the weighted symbols of `additive-symbols`.
     Additive,
+    /// `fixed`: runs through the symbols once, starting at the optional first symbol value, then falls back.
     Fixed(CssCounterStyleFixedSystem),
+    /// `extends <counter-style-name>`: uses the algorithm of the named counter style, with this rule's other descriptors modifying it.
     Extends(CssCounterStyleName),
 }
 
@@ -333,11 +350,13 @@ pub struct CssCounterStyleFixedSystem {
 }
 
 impl CssCounterStyleFixedSystem {
+    /// Creates a `fixed` system with an optional first symbol value; `None` means the value was omitted.
     #[must_use]
     pub const fn new(first_symbol_value: Option<CssNumeric<CssInteger>>) -> Self {
         Self { first_symbol_value }
     }
 
+    /// Returns the authored first symbol value, or `None` when it was omitted.
     #[must_use]
     pub const fn first_symbol_value(&self) -> Option<&CssNumeric<CssInteger>> {
         self.first_symbol_value.as_ref()
@@ -376,7 +395,9 @@ impl CssCounterStyleNegative {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterStyleRange {
+    /// `auto`: the range depends on the counter system.
     Auto,
+    /// An explicit comma-separated list of inclusive ranges.
     Ranges(CssCounterStyleRanges),
 }
 
@@ -387,6 +408,7 @@ pub struct CssCounterStyleRanges {
 }
 
 impl CssCounterStyleRanges {
+    /// Creates a range list, or returns `None` when `ranges` is empty.
     #[must_use]
     pub fn try_new(ranges: Vec<CssCounterStyleRangeInterval>) -> Option<Self> {
         (!ranges.is_empty()).then_some(Self { ranges })
@@ -408,6 +430,9 @@ pub struct CssCounterStyleRangeInterval {
 }
 
 impl CssCounterStyleRangeInterval {
+    /// Creates an interval from its bounds, or returns `None` when both bounds are literal integers and the lower bound is greater than the upper bound.
+    ///
+    /// Intervals involving calculations are accepted without comparison.
     #[must_use]
     pub fn try_new(
         lower: CssCounterStyleRangeBound,
@@ -442,7 +467,9 @@ impl CssCounterStyleRangeInterval {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterStyleRangeBound {
+    /// A finite `<integer>` bound, possibly a symbolic calculation.
     Integer(CssNumeric<CssInteger>),
+    /// `infinite`: negative infinity as a lower bound, positive infinity as an upper bound.
     Infinite,
 }
 
@@ -454,6 +481,9 @@ pub struct CssCounterStylePad {
 }
 
 impl CssCounterStylePad {
+    /// Creates a pad descriptor, or returns `None` when `minimum_length` is a literal negative integer.
+    ///
+    /// A symbolic calculation is accepted without evaluation.
     #[must_use]
     pub fn try_new(
         minimum_length: CssNumeric<CssInteger>,
@@ -490,6 +520,9 @@ pub struct CssCounterAdditiveSymbols {
 }
 
 impl CssCounterAdditiveSymbols {
+    /// Creates an additive symbols list, or returns `None` when `tuples` is empty or two adjacent literal weights do not strictly descend.
+    ///
+    /// Comparisons involving calculations are left to downstream resolution.
     #[must_use]
     pub fn try_new(tuples: Vec<CssCounterAdditiveTuple>) -> Option<Self> {
         (!tuples.is_empty() && Self::weights_strictly_descend(&tuples)).then_some(Self { tuples })
@@ -524,6 +557,9 @@ pub struct CssCounterAdditiveTuple {
 }
 
 impl CssCounterAdditiveTuple {
+    /// Creates a tuple, or returns `None` when `weight` is a literal negative integer.
+    ///
+    /// A symbolic calculation is accepted without evaluation.
     #[must_use]
     pub fn try_new(weight: CssNumeric<CssInteger>, symbol: CssCounterSymbol) -> Option<Self> {
         (!weight.literal().is_some_and(CssNumericLiteral::is_negative))
@@ -547,11 +583,17 @@ impl CssCounterAdditiveTuple {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterStyleSpeakAs {
+    /// `auto`: the speech behavior follows the counter style's system.
     Auto,
+    /// `bullets`: speaks a user-agent-defined phrase or audio cue for an unordered list item.
     Bullets,
+    /// `numbers`: speaks the counter's numeric value as a number.
     Numbers,
+    /// `words`: speaks the generated representation as normal text.
     Words,
+    /// `spell-out`: spells the generated representation out letter by letter.
     SpellOut,
+    /// A `<counter-style-name>`: speaks the counter value in the named counter style.
     CounterStyle(CssCounterStyleName),
 }
 
@@ -568,6 +610,7 @@ impl CssCounterSymbols {
         Self { symbols }
     }
 
+    /// Returns the symbols in authored order; the slice is never empty.
     #[must_use]
     pub fn symbols(&self) -> &[CssCounterSymbol] {
         &self.symbols
@@ -578,8 +621,11 @@ impl CssCounterSymbols {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterSymbol {
+    /// A `<string>` symbol.
     String(CssContentString),
+    /// A `<custom-ident>` symbol.
     Ident(CssCounterSymbolIdent),
+    /// An `<image>` symbol.
     Image(CssImage),
 }
 
@@ -606,6 +652,9 @@ impl CssCounterSymbolIdent {
     }
 }
 
+/// A checked `<counter-style-name>`.
+///
+/// Predefined names are normalized to lowercase; custom names keep their case.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssCounterStyleName {
     name: crate::values::content::CssCounterStyleReference,
@@ -621,6 +670,7 @@ impl CssCounterStyleName {
         crate::values::content::CssCounterStyleReference::try_new(ident).map(|name| Self { name })
     }
 
+    /// Returns the decoded name text.
     #[must_use]
     pub fn as_str(&self) -> &str {
         self.name.as_str()
@@ -631,15 +681,25 @@ impl CssCounterStyleName {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssCounterStyleDescriptorKind {
+    /// The `system` descriptor, which selects the algorithm that builds representations.
     System,
+    /// The `negative` descriptor, which gives the symbols added around the representation of negative values.
     Negative,
+    /// The `prefix` descriptor, which gives the symbol prepended to the marker representation, before any negative sign.
     Prefix,
+    /// The `suffix` descriptor, which gives the symbol appended to the marker representation, after negative signs.
     Suffix,
+    /// The `range` descriptor, which gives the counter values the style is defined over.
     Range,
+    /// The `pad` descriptor, which gives the minimum representation length and the padding symbol.
     Pad,
+    /// The `fallback` descriptor, which names the counter style used when this style cannot represent a value.
     Fallback,
+    /// The `symbols` descriptor, which gives the symbols used by the system.
     Symbols,
+    /// The `additive-symbols` descriptor, which gives the weighted symbols of the `additive` system.
     AdditiveSymbols,
+    /// The `speak-as` descriptor, which chooses how the representation is spoken.
     SpeakAs,
 }
 

@@ -20,9 +20,13 @@ use crate::values::image::CssImageValue;
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssOpacityValue {
+    /// An exact authored `<number>` or `<percentage>` token.
     Scalar(crate::values::effects::CssOpacityScalar),
+    /// A `calc()` expression resolving to a `<number>`.
     NumberCalculation(CssCalculation<CssNumber>),
+    /// A `calc()` expression resolving to a `<number>` with an unresolved percentage basis; no opacity range is applied here.
     HintedNumberCalculation(CssCalculation<CssHintedNumber>),
+    /// A `calc()` expression resolving to a `<percentage>`.
     PercentageCalculation(CssCalculation<CssPercentage>),
 }
 
@@ -30,7 +34,10 @@ pub enum CssOpacityValue {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssIsolation {
+    /// `auto`: the default; the element is not isolated, although operations that create a
+    /// stacking context isolate it.
     Auto,
+    /// `isolate`: in CSS, turns the element into a stacking context.
     Isolate,
 }
 
@@ -48,6 +55,7 @@ pub struct CssClipRect {
 }
 
 impl CssClipRect {
+    /// Creates a clipping rectangle from its four authored edges in top, right, bottom, left order; each edge is a `<length>` or `auto`.
     #[must_use]
     pub const fn new(
         top: CssAutoOr<CssNumeric<CssLength>>,
@@ -63,21 +71,25 @@ impl CssClipRect {
         }
     }
 
+    /// Returns the authored top edge.
     #[must_use]
     pub const fn top(&self) -> &CssAutoOr<CssNumeric<CssLength>> {
         &self.top
     }
 
+    /// Returns the authored right edge.
     #[must_use]
     pub const fn right(&self) -> &CssAutoOr<CssNumeric<CssLength>> {
         &self.right
     }
 
+    /// Returns the authored bottom edge.
     #[must_use]
     pub const fn bottom(&self) -> &CssAutoOr<CssNumeric<CssLength>> {
         &self.bottom
     }
 
+    /// Returns the authored left edge.
     #[must_use]
     pub const fn left(&self) -> &CssAutoOr<CssNumeric<CssLength>> {
         &self.left
@@ -92,7 +104,9 @@ impl CssClipRect {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssClip {
+    /// `auto`: the element does not clip.
     Auto,
+    /// A `rect()` clipping rectangle.
     Rect(CssClipRect),
 }
 
@@ -102,7 +116,9 @@ pub enum CssClip {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssBoxShadow {
+    /// `none`: the element has no box shadow.
     None,
+    /// One or more comma-separated shadows.
     Shadows(CssBoxShadowList),
 }
 
@@ -126,6 +142,7 @@ impl CssBoxShadowList {
         }
     }
 
+    /// Returns the authored shadows in comma order.
     #[must_use]
     pub fn shadows(&self) -> &[CssShadow] {
         &self.shadows
@@ -205,21 +222,27 @@ impl CssShadow {
             color: color.map(Box::new),
         }
     }
+    /// Returns whether the shadow was authored with the `inset` keyword.
     pub const fn inset(&self) -> bool {
         self.inset
     }
+    /// Returns the authored horizontal offset.
     pub const fn offset_x(&self) -> &CssNumeric<CssLength> {
         &self.offset_x
     }
+    /// Returns the authored vertical offset.
     pub const fn offset_y(&self) -> &CssNumeric<CssLength> {
         &self.offset_y
     }
+    /// Returns the authored blur radius, or `None` when it was omitted.
     pub const fn blur_radius(&self) -> Option<&CssNumeric<CssLength, CssNonNegative>> {
         self.blur_radius.as_ref()
     }
+    /// Returns the authored spread distance, or `None` when it was omitted.
     pub const fn spread_radius(&self) -> Option<&CssNumeric<CssLength>> {
         self.spread_radius.as_ref()
     }
+    /// Returns the authored color, or `None` when it was omitted.
     pub fn color(&self) -> Option<&CssColor> {
         self.color.as_deref()
     }
@@ -235,8 +258,14 @@ use crate::values::position::CssPosition;
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssColorInterpolationFilters {
+    /// `auto`: the user agent can choose either `sRGB` or `linearRGB` for filter effects color
+    /// operations; the author does not require a particular color space.
     Auto,
+    /// `sRGB`: filter effects color operations should occur in the gamma-encoded sRGB color
+    /// space.
     Srgb,
+    /// `linearRGB`: filter effects color operations should occur in the linear-light sRGB
+    /// color space.
     #[default]
     LinearRgb,
 }
@@ -245,10 +274,13 @@ pub enum CssColorInterpolationFilters {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssFilterAmount {
+    /// The amount was omitted, so the function uses its own default.
     Default,
+    /// A non-negative `<number>` amount.
     Number(CssNumeric<CssNumber, CssNonNegative>),
     /// A Number with an unresolved percentage basis; no filter range is applied here.
     HintedNumberCalculation(CssCalculation<CssHintedNumber>),
+    /// A non-negative `<percentage>` amount.
     Percentage(CssNumeric<CssPercentage, CssNonNegative>),
 }
 
@@ -383,9 +415,11 @@ impl CssDropShadow {
             color: color.map(Box::new),
         }
     }
+    /// Returns the authored horizontal offset.
     pub const fn offset_x(&self) -> &CssNumeric<CssLength> {
         &self.offset_x
     }
+    /// Returns the authored vertical offset.
     pub const fn offset_y(&self) -> &CssNumeric<CssLength> {
         &self.offset_y
     }
@@ -393,6 +427,7 @@ impl CssDropShadow {
     pub const fn standard_deviation(&self) -> Option<&CssNumeric<CssLength, CssNonNegative>> {
         self.standard_deviation.as_ref()
     }
+    /// Returns the authored color, or `None` when it was omitted.
     pub fn color(&self) -> Option<&CssColor> {
         self.color.as_deref()
     }
@@ -407,16 +442,27 @@ impl CssDropShadow {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFilterFunction {
+    /// The `blur()` filter function.
     Blur(CssFilterBlur),
+    /// The `brightness()` filter function.
     Brightness(CssFilterAmount),
+    /// The `contrast()` filter function.
     Contrast(CssFilterAmount),
+    /// The `drop-shadow()` filter function.
     DropShadow(CssDropShadow),
+    /// The `grayscale()` filter function.
     Grayscale(CssFilterAmount),
+    /// The `hue-rotate()` filter function.
     HueRotate(CssFilterHueRotate),
+    /// The `invert()` filter function.
     Invert(CssFilterAmount),
+    /// The `opacity()` filter function.
     Opacity(CssFilterAmount),
+    /// The `saturate()` filter function.
     Saturate(CssFilterAmount),
+    /// The `sepia()` filter function.
     Sepia(CssFilterAmount),
+    /// A `<url>` referencing an SVG filter element.
     Url(CssUrl),
 }
 
@@ -432,11 +478,13 @@ pub struct CssFilterFunctionList {
 }
 
 impl CssFilterFunctionList {
+    /// Returns the list, or `None` when `functions` is empty.
     #[must_use]
     pub fn try_new(functions: Vec<CssFilterFunction>) -> Option<Self> {
         (!functions.is_empty()).then_some(Self { functions })
     }
 
+    /// Returns the authored filter functions in order.
     #[must_use]
     pub fn functions(&self) -> &[CssFilterFunction] {
         &self.functions
@@ -452,12 +500,15 @@ impl CssFilterFunctionList {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssFilter {
+    /// `none`: no filter is applied.
     None,
+    /// One or more filter functions.
     Functions(CssFilterFunctionList),
 }
 
 use crate::values::effects::masking::*;
 
+/// One authored layer of the `mask` shorthand, retaining only the components that were supplied.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssMaskLayer {
     pub(crate) image: Option<CssImageValue>,
@@ -503,30 +554,37 @@ impl CssMaskLayer {
             })
         }
     }
+    /// Returns the authored `mask-image`, or `None` when omitted.
     #[must_use]
     pub const fn image(&self) -> Option<&CssImageValue> {
         self.image.as_ref()
     }
+    /// Returns the authored `mask-position`, or `None` when omitted.
     #[must_use]
     pub const fn position(&self) -> Option<&CssPosition> {
         self.position.as_ref()
     }
+    /// Returns the authored `mask-size`, or `None` when omitted.
     #[must_use]
     pub const fn size(&self) -> Option<&CssBackgroundSize> {
         self.size.as_ref()
     }
+    /// Returns the authored `mask-repeat`, or `None` when omitted.
     #[must_use]
     pub const fn repeat(&self) -> Option<CssBackgroundRepeat> {
         self.repeat
     }
+    /// Returns the authored `mask-origin` and `mask-clip` boxes, or `None` when omitted.
     #[must_use]
     pub const fn boxes(&self) -> Option<CssMaskLayerBoxes> {
         self.boxes
     }
+    /// Returns the authored `mask-composite` operator, or `None` when omitted.
     #[must_use]
     pub const fn composite(&self) -> Option<CssMaskComposite> {
         self.composite
     }
+    /// Returns the authored `mask-mode`, or `None` when omitted.
     #[must_use]
     pub const fn mode(&self) -> Option<CssMaskMode> {
         self.mode
@@ -544,6 +602,7 @@ pub struct CssMaskList {
 }
 
 impl CssMaskList {
+    /// Returns the list, or `None` when `layers` is empty.
     #[must_use]
     pub fn try_new(layers: Vec<CssMaskLayer>) -> Option<Self> {
         if layers.is_empty() {
@@ -558,6 +617,7 @@ impl CssMaskList {
         Self { layers }
     }
 
+    /// Returns the authored mask layers in comma order.
     #[must_use]
     pub fn layers(&self) -> &[CssMaskLayer] {
         &self.layers

@@ -12,26 +12,36 @@ use crate::color::{
     CssColorFactIdentity, CssColorFacts, CssColorOrdinaryResource, CssColorResolveError,
 };
 
+/// Ordinary logical ceilings for resolving an authored color; no shared controller is created.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssAuthoredColorOrdinaryLimits {
+    /// Maximum number of records in the algorithm bank.
     pub algorithm_records: usize,
+    /// Maximum number of records in the arithmetic bank.
     pub arithmetic_records: usize,
+    /// Maximum number of records in the evaluation bank.
     pub evaluation_records: usize,
+    /// Maximum number of steps in the component path of a failure.
     pub path_steps: usize,
+    /// Maximum number of serviced parse actions.
     pub actions: usize,
 }
+/// The outcome of resolving one authored color, borrowing the authored color and the fact set.
 pub struct CssAuthoredColorResult<'authored, 'facts> {
     root: &'authored CssColor,
     facts: &'facts CssColorFacts<'facts>,
     outcome: CssAuthoredColorOutcome,
 }
 impl<'authored, 'facts> CssAuthoredColorResult<'authored, 'facts> {
+    /// Returns the authored color that was resolved.
     pub const fn authored(&self) -> &'authored CssColor {
         self.root
     }
+    /// Returns the fact set the color was resolved against.
     pub const fn facts(&self) -> &'facts CssColorFacts<'facts> {
         self.facts
     }
+    /// Returns whether the authored color resolved to a used color or is standard-invalid.
     pub const fn outcome(&self) -> &CssAuthoredColorOutcome {
         &self.outcome
     }

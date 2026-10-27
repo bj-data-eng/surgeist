@@ -16,11 +16,16 @@ type SerializationResult<T> = Result<T, CssSerializationError>;
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssItemDirection {
+    /// `auto`: the direction is chosen by the layout mode.
     #[default]
     Auto,
+    /// `row`: items are placed in the inline axis, start to end.
     Row,
+    /// `column`: items are placed in the block axis, start to end.
     Column,
+    /// `row-reverse`: like `row` but in end-to-start placement order.
     RowReverse,
+    /// `column-reverse`: like `column` but in end-to-start placement order.
     ColumnReverse,
 }
 
@@ -41,8 +46,11 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssItemWrapMode {
+    /// `auto`: the wrapping mode is chosen by the layout mode.
     Auto,
+    /// `nowrap`: items keep being placed along the primary placement axis even when they run out of room.
     NoWrap,
+    /// `wrap`: items wrap when the primary placement axis runs out of space.
     Wrap,
 }
 
@@ -60,7 +68,9 @@ impl CssItemWrapMode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssItemWrapOrder {
+    /// `normal`: items are placed in start-to-end order in the axis opposite to the primary track axis.
     Normal,
+    /// `reverse`: items are placed in end-to-start order in that axis.
     Reverse,
 }
 
@@ -82,9 +92,13 @@ impl CssItemWrapOrder {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssItemWrap {
+    /// A wrapping mode keyword alone.
     Mode(CssItemWrapMode),
+    /// A wrapping order keyword alone.
     Order(CssItemWrapOrder),
+    /// A wrapping mode keyword followed by a wrapping order keyword.
     Both(CssItemWrapMode, CssItemWrapOrder),
+    /// `wrap-reverse`: the keyword that computes to `wrap reverse`; it remains distinct from `Both` when authored.
     WrapReverse,
 }
 
@@ -114,10 +128,14 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssItemPack {
+    /// `normal`: the default packing strategy for the layout mode.
     #[default]
     Normal,
+    /// `dense`: items may backtrack to fill earlier spaces that were skipped.
     Dense,
+    /// `balance`: in flex layout, balances the amount of content on each line, including the last line.
     Balance,
+    /// `dense balance`: both dense and balance packing.
     DenseBalance,
 }
 
@@ -202,21 +220,25 @@ impl CssItemFlow {
         }
     }
 
+    /// Returns the placement direction.
     #[must_use]
     pub const fn direction(&self) -> CssItemDirection {
         self.direction
     }
 
+    /// Returns the wrapping value.
     #[must_use]
     pub const fn wrap(&self) -> CssItemWrap {
         self.wrap
     }
 
+    /// Returns the packing strategy.
     #[must_use]
     pub const fn pack(&self) -> CssItemPack {
         self.pack
     }
 
+    /// Returns the flow tolerance.
     #[must_use]
     pub const fn tolerance(&self) -> &CssFlowTolerance {
         &self.tolerance

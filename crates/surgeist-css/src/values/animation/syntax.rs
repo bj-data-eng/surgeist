@@ -10,6 +10,7 @@ use crate::values::common::CssCustomIdent;
 pub struct CssTransitionPropertyName(CssCustomIdent);
 
 impl CssTransitionPropertyName {
+    /// Returns the checked name, or `None` when the identifier is `none` or `all` (ASCII case-insensitive), which use [`CssTransitionProperty::None`] and [`CssTransitionProperty::All`] instead.
     #[must_use]
     pub fn try_new(value: CssCustomIdent) -> Option<Self> {
         (!value.as_str().eq_ignore_ascii_case("none")
@@ -17,6 +18,7 @@ impl CssTransitionPropertyName {
         .then_some(Self(value))
     }
 
+    /// Returns the retained authored property name, preserving unknown names and case.
     #[must_use]
     pub fn as_str(&self) -> &str {
         self.0.as_str()
@@ -53,6 +55,7 @@ impl CssDurationList {
         Self { values }
     }
 
+    /// Returns the authored non-negative durations in list order.
     #[must_use]
     pub fn values(&self) -> &[CssNumeric<CssTime, CssNonNegative>] {
         &self.values
@@ -89,6 +92,7 @@ impl CssDelayList {
         Self { values }
     }
 
+    /// Returns the authored delays in list order.
     #[must_use]
     pub fn values(&self) -> &[CssNumeric<CssTime>] {
         &self.values
@@ -99,12 +103,20 @@ impl CssDelayList {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssEasingKeyword {
+    /// `ease`: equivalent to `cubic-bezier(0.25, 0.1, 0.25, 1)`.
     Ease,
+    /// `linear`: the identity easing function, whose output progress equals its input
+    /// progress; the same result as `linear(0, 1)`.
     Linear,
+    /// `ease-in`: equivalent to `cubic-bezier(0.42, 0, 1, 1)`.
     EaseIn,
+    /// `ease-out`: equivalent to `cubic-bezier(0, 0, 0.58, 1)`.
     EaseOut,
+    /// `ease-in-out`: equivalent to `cubic-bezier(0.42, 0, 0.58, 1)`.
     EaseInOut,
+    /// `step-start`: computes to `steps(1, start)`.
     StepStart,
+    /// `step-end`: computes to `steps(1, end)`.
     StepEnd,
 }
 
@@ -115,6 +127,8 @@ pub struct CssCubicBezierX {
 }
 
 impl CssCubicBezierX {
+    /// Returns the checked coordinate, or `None` when a literal number is outside the range 0 to 1.
+    /// Calculations are retained unresolved and are not range-checked.
     #[must_use]
     pub fn try_new(value: CssNumeric<CssNumber>) -> Option<Self> {
         if let Some(component) = value.literal_component() {
@@ -133,6 +147,7 @@ impl CssCubicBezierX {
         Some(Self { value })
     }
 
+    /// Returns the authored number or calculation.
     #[must_use]
     pub const fn value(&self) -> &CssNumeric<CssNumber> {
         &self.value
@@ -155,6 +170,8 @@ pub struct CssCubicBezier {
 }
 
 impl CssCubicBezier {
+    /// Returns a `cubic-bezier()` value, or `None` when either x coordinate is a literal number outside the range 0 to 1.
+    /// The y coordinates are not range-limited.
     #[must_use]
     pub fn try_new(
         x1: CssNumeric<CssNumber>,
@@ -170,21 +187,25 @@ impl CssCubicBezier {
         })
     }
 
+    /// Returns the first control point's x coordinate.
     #[must_use]
     pub const fn x1(&self) -> &CssCubicBezierX {
         &self.x1
     }
 
+    /// Returns the first control point's y coordinate.
     #[must_use]
     pub const fn y1(&self) -> &CssNumeric<CssNumber> {
         &self.y1
     }
 
+    /// Returns the second control point's x coordinate.
     #[must_use]
     pub const fn x2(&self) -> &CssCubicBezierX {
         &self.x2
     }
 
+    /// Returns the second control point's y coordinate.
     #[must_use]
     pub const fn y2(&self) -> &CssNumeric<CssNumber> {
         &self.y2
@@ -235,11 +256,13 @@ impl CssLinearStop {
             })
     }
 
+    /// Returns the authored output value of the stop.
     #[must_use]
     pub const fn output(&self) -> &CssNumeric<CssNumber> {
         &self.output
     }
 
+    /// Returns the authored input positions of the stop, in source order; the list holds zero, one or two percentages.
     #[must_use]
     pub fn inputs(&self) -> &[CssNumeric<CssPercentage>] {
         &self.inputs
@@ -277,6 +300,7 @@ impl CssLinearEasing {
         (stops.len() >= 2).then_some(Self { stops })
     }
 
+    /// Returns the authored stops in source order; there are always at least two.
     #[must_use]
     pub fn stops(&self) -> &[CssLinearStop] {
         &self.stops
@@ -287,11 +311,18 @@ impl CssLinearEasing {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssStepPosition {
+    /// `jump-start`: the first rise occurs at input progress value 0.
     JumpStart,
+    /// `jump-end`: the last rise occurs at input progress value 1.
     JumpEnd,
+    /// `jump-none`: all rises occur within the range (0, 1).
     JumpNone,
+    /// `jump-both`: the first rise occurs at input progress value 0 and the last at input
+    /// progress value 1.
     JumpBoth,
+    /// `start`: behaves as `jump-start`.
     Start,
+    /// `end`: behaves as `jump-end`.
     End,
 }
 
@@ -309,6 +340,7 @@ pub struct CssSteps {
 }
 
 impl CssSteps {
+    /// Returns a `steps()` value, or `None` when the position is `jump-none` and the step count is the literal integer 1.
     #[must_use]
     pub fn try_new(
         count: CssNumeric<CssInteger, CssPositive>,
@@ -328,11 +360,13 @@ impl CssSteps {
         }
     }
 
+    /// Returns the authored step count.
     #[must_use]
     pub const fn count(&self) -> &CssNumeric<CssInteger, CssPositive> {
         &self.count
     }
 
+    /// Returns the authored step position, or `None` when it was omitted.
     #[must_use]
     pub const fn position(&self) -> Option<CssStepPosition> {
         self.position
@@ -349,9 +383,13 @@ impl CssSteps {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CssEasing {
+    /// A keyword easing function such as `ease` or `step-end`.
     Keyword(CssEasingKeyword),
+    /// A `cubic-bezier()` function.
     CubicBezier(CssCubicBezier),
+    /// A `linear()` function.
     Linear(CssLinearEasing),
+    /// A `steps()` function.
     Steps(CssSteps),
 }
 
@@ -368,22 +406,28 @@ pub struct CssEasingList {
 }
 
 impl CssEasingList {
+    /// Returns the list, or `None` when `values` is empty.
     #[must_use]
     pub fn try_new(values: Vec<CssEasing>) -> Option<Self> {
         (!values.is_empty()).then_some(Self { values })
     }
 
+    /// Returns the authored easing functions in list order.
     #[must_use]
     pub fn values(&self) -> &[CssEasing] {
         &self.values
     }
 }
 
+/// One item of a `transition-property` list.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssTransitionProperty {
+    /// `all`: all properties are to be transitioned.
     All,
+    /// `none`: no property transitions.
     None,
+    /// A property name other than `none` and `all`, retained as authored.
     Custom(CssTransitionPropertyName),
 }
 
@@ -403,6 +447,7 @@ impl CssTransitionPropertyList {
         transition_properties_are_valid(properties.iter().map(Some)).then_some(Self { properties })
     }
 
+    /// Returns the authored items in list order.
     #[must_use]
     pub fn properties(&self) -> &[CssTransitionProperty] {
         &self.properties
@@ -418,11 +463,15 @@ fn transition_properties_are_valid<'a>(
             || !properties.any(|property| matches!(property, Some(CssTransitionProperty::None))))
 }
 
+/// An authored `animation-name` item, a `<keyframes-name>` or `none`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAnimationName {
+    /// `none`: no animation.
     None,
+    /// A `<custom-ident>` keyframes name.
     Custom(CssKeyframesIdent),
+    /// A `<string>` keyframes name.
     String(CssKeyframesString),
 }
 
@@ -436,6 +485,7 @@ pub struct CssAnimationNameList {
 }
 
 impl CssAnimationNameList {
+    /// Returns the list, or `None` when `names` is empty.
     #[must_use]
     pub fn try_new(names: Vec<CssAnimationName>) -> Option<Self> {
         if names.is_empty() {
@@ -450,6 +500,7 @@ impl CssAnimationNameList {
         Self { names }
     }
 
+    /// Returns the authored names in list order.
     #[must_use]
     pub fn names(&self) -> &[CssAnimationName] {
         &self.names
@@ -460,7 +511,9 @@ impl CssAnimationNameList {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum CssAnimationIterationCount {
+    /// `infinite`: the animation repeats forever.
     Infinite,
+    /// A non-negative `<number>` or calculation giving the repeat count.
     Number(CssNumeric<CssNumber, CssNonNegative>),
 }
 
@@ -486,6 +539,7 @@ pub struct CssAnimationIterationCountList {
 }
 
 impl CssAnimationIterationCountList {
+    /// Returns the list, or `None` when `values` is empty.
     #[must_use]
     pub fn try_new(values: Vec<CssAnimationIterationCount>) -> Option<Self> {
         if values.is_empty() {
@@ -495,18 +549,26 @@ impl CssAnimationIterationCountList {
         }
     }
 
+    /// Returns the authored iteration counts in list order.
     #[must_use]
     pub fn values(&self) -> &[CssAnimationIterationCount] {
         &self.values
     }
 }
 
+/// An authored `animation-direction` item.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAnimationDirection {
+    /// `normal`: all iterations are played as specified.
     Normal,
+    /// `reverse`: all iterations are played in the reverse direction from the way they were specified.
     Reverse,
+    /// `alternate`: odd-numbered iterations (counting from 1) play in the normal direction and
+    /// even-numbered iterations in the reverse direction.
     Alternate,
+    /// `alternate-reverse`: odd-numbered iterations (counting from 1) play in the reverse
+    /// direction and even-numbered iterations in the normal direction.
     AlternateReverse,
 }
 
@@ -520,6 +582,7 @@ pub struct CssAnimationDirectionList {
 }
 
 impl CssAnimationDirectionList {
+    /// Returns the list, or `None` when `directions` is empty.
     #[must_use]
     pub fn try_new(directions: Vec<CssAnimationDirection>) -> Option<Self> {
         if directions.is_empty() {
@@ -534,18 +597,26 @@ impl CssAnimationDirectionList {
         Self { directions }
     }
 
+    /// Returns the authored directions in list order.
     #[must_use]
     pub fn directions(&self) -> &[CssAnimationDirection] {
         &self.directions
     }
 }
 
+/// An authored `animation-fill-mode` item.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAnimationFillMode {
+    /// `none`: the animation has no effect when it is applied but not executing.
     None,
+    /// `forwards`: after the animation ends, it applies the property values for the time the
+    /// animation ended.
     Forwards,
+    /// `backwards`: during the delay, the animation applies the property values of the keyframe
+    /// that will start the first iteration.
     Backwards,
+    /// `both`: the effects of both `forwards` and `backwards` fill apply.
     Both,
 }
 
@@ -559,6 +630,7 @@ pub struct CssAnimationFillModeList {
 }
 
 impl CssAnimationFillModeList {
+    /// Returns the list, or `None` when `modes` is empty.
     #[must_use]
     pub fn try_new(modes: Vec<CssAnimationFillMode>) -> Option<Self> {
         if modes.is_empty() {
@@ -573,16 +645,20 @@ impl CssAnimationFillModeList {
         Self { modes }
     }
 
+    /// Returns the authored fill modes in list order.
     #[must_use]
     pub fn modes(&self) -> &[CssAnimationFillMode] {
         &self.modes
     }
 }
 
+/// An authored `animation-play-state` item.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CssAnimationPlayState {
+    /// `running`: the animation proceeds as normal.
     Running,
+    /// `paused`: the animation is paused; it keeps the progress it had made before being paused.
     Paused,
 }
 
@@ -596,6 +672,7 @@ pub struct CssAnimationPlayStateList {
 }
 
 impl CssAnimationPlayStateList {
+    /// Returns the list, or `None` when `states` is empty.
     #[must_use]
     pub fn try_new(states: Vec<CssAnimationPlayState>) -> Option<Self> {
         if states.is_empty() {
@@ -610,6 +687,7 @@ impl CssAnimationPlayStateList {
         Self { states }
     }
 
+    /// Returns the authored play states in list order.
     #[must_use]
     pub fn states(&self) -> &[CssAnimationPlayState] {
         &self.states
@@ -664,21 +742,25 @@ impl CssTransition {
         }
     }
 
+    /// Returns the authored property, or `None` when the item omitted it.
     #[must_use]
     pub const fn property(&self) -> Option<&CssTransitionProperty> {
         self.property.as_ref()
     }
 
+    /// Returns the authored duration, or `None` when the item omitted it.
     #[must_use]
     pub const fn duration(&self) -> Option<&CssNumeric<CssTime, CssNonNegative>> {
         self.duration.as_ref()
     }
 
+    /// Returns the authored delay, or `None` when the item omitted it.
     #[must_use]
     pub const fn delay(&self) -> Option<&CssNumeric<CssTime>> {
         self.delay.as_ref()
     }
 
+    /// Returns the authored timing function, or `None` when the item omitted it.
     #[must_use]
     pub const fn timing_function(&self) -> Option<&CssEasing> {
         self.timing_function.as_ref()
@@ -717,6 +799,7 @@ impl CssTransitionList {
             .then_some(Self { values })
     }
 
+    /// Returns the authored transitions in list order.
     #[must_use]
     pub fn values(&self) -> &[CssTransition] {
         &self.values
@@ -739,13 +822,21 @@ pub struct CssAnimation {
 /// Checked input components for one authored animation.
 #[derive(Clone, Debug, Default)]
 pub struct CssAnimationComponents {
+    /// The authored `<keyframes-name>` or `none`, or `None` when omitted.
     pub name: Option<CssAnimationName>,
+    /// The authored non-negative duration, or `None` when omitted.
     pub duration: Option<CssNumeric<CssTime, CssNonNegative>>,
+    /// The authored delay, or `None` when omitted.
     pub delay: Option<CssNumeric<CssTime>>,
+    /// The authored easing function, or `None` when omitted.
     pub timing_function: Option<CssEasing>,
+    /// The authored iteration count, or `None` when omitted.
     pub iteration_count: Option<CssAnimationIterationCount>,
+    /// The authored direction, or `None` when omitted.
     pub direction: Option<CssAnimationDirection>,
+    /// The authored fill mode, or `None` when omitted.
     pub fill_mode: Option<CssAnimationFillMode>,
+    /// The authored play state, or `None` when omitted.
     pub play_state: Option<CssAnimationPlayState>,
 }
 
@@ -791,41 +882,49 @@ impl CssAnimation {
         }
     }
 
+    /// Returns the authored name, or `None` when the item omitted it.
     #[must_use]
     pub const fn name(&self) -> Option<&CssAnimationName> {
         self.name.as_ref()
     }
 
+    /// Returns the authored duration, or `None` when the item omitted it.
     #[must_use]
     pub const fn duration(&self) -> Option<&CssNumeric<CssTime, CssNonNegative>> {
         self.duration.as_ref()
     }
 
+    /// Returns the authored delay, or `None` when the item omitted it.
     #[must_use]
     pub const fn delay(&self) -> Option<&CssNumeric<CssTime>> {
         self.delay.as_ref()
     }
 
+    /// Returns the authored timing function, or `None` when the item omitted it.
     #[must_use]
     pub const fn timing_function(&self) -> Option<&CssEasing> {
         self.timing_function.as_ref()
     }
 
+    /// Returns the authored iteration count, or `None` when the item omitted it.
     #[must_use]
     pub const fn iteration_count(&self) -> Option<&CssAnimationIterationCount> {
         self.iteration_count.as_ref()
     }
 
+    /// Returns the authored direction, or `None` when the item omitted it.
     #[must_use]
     pub const fn direction(&self) -> Option<CssAnimationDirection> {
         self.direction
     }
 
+    /// Returns the authored fill mode, or `None` when the item omitted it.
     #[must_use]
     pub const fn fill_mode(&self) -> Option<CssAnimationFillMode> {
         self.fill_mode
     }
 
+    /// Returns the authored play state, or `None` when the item omitted it.
     #[must_use]
     pub const fn play_state(&self) -> Option<CssAnimationPlayState> {
         self.play_state
@@ -865,6 +964,7 @@ impl CssAnimationList {
         Self { values }
     }
 
+    /// Returns the authored animations in list order.
     #[must_use]
     pub fn values(&self) -> &[CssAnimation] {
         &self.values
