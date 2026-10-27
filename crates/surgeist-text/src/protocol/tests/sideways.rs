@@ -1,6 +1,8 @@
 //! Independent whole-paragraph clockwise composition witnesses.
 //! Literal geometry uses horizontal Ahem10 metrics8/2 and the exact CW map;
 //! the qualified GSUB fixture supplies real distinct retained outlines.
+mod constraints;
+
 use super::*;
 use crate::{Affinity, Cursor, Hit, Id, Movement, Point, Range, Rect, Selection, Size};
 
