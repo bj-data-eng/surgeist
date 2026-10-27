@@ -32,6 +32,7 @@ root:
 
 ```sh
 cargo check --offline --locked -j 1 -p surgeist-css-parser
+cargo test --offline --locked -j 1 -p surgeist-css-parser
 cargo clippy --offline --locked -j 1 -p surgeist-css-parser --all-targets -- -F unsafe-code -D warnings
 cargo fmt -p surgeist-css-parser -- --check
 ```

@@ -25,6 +25,29 @@
 //!
 //! # Current state
 //!
-//! The crate is newly created and exposes no items yet. Its public API is
-//! introduced module by module, with the specification-derived tests for each
-//! clause, and the coverage map claims only what those tests establish.
+//! The crate's public API is introduced module by module, with the
+//! specification-derived tests for each clause, and the coverage map claims
+//! only what those tests establish. Today it offers:
+//!
+//! - [`lexical`]: the code-point classes of Syntax 3 section 4.2 and the
+//!   checks of sections 4.3.8 to 4.3.11, as `const fn`s;
+//! - [`Offset`]: a byte offset into the text a tokenizer reads;
+//! - [`limits`]: the depth, node and byte limits of a build, the [`Meter`]
+//!   contract through which a host admits work and storage, and the growth
+//!   and copy helpers that charge it;
+//! - [`match_ignore_ascii_case!`], ASCII case-insensitive matching of a string
+//!   against literal arms.
+//!
+//! No tokenizer, document or parser exists yet.
+//!
+//! [`Meter`]: limits::Meter
+
+#[macro_use]
+mod macros;
+mod match_ascii;
+mod offset;
+
+pub mod lexical;
+pub mod limits;
+
+pub use offset::Offset;
