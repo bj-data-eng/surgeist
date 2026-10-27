@@ -80,6 +80,12 @@ impl RunView<'_> {
     pub const fn line(&self) -> usize {
         self.line
     }
+    /// Admitted physical basis. Raw glyph offsets and pens stay in the
+    /// horizontal provider frame and are transformed exactly once by consumers.
+    #[must_use]
+    pub const fn orientation(&self) -> crate::LineOrientation {
+        self.placed.orientation
+    }
     /// Actual shaped-run ordinal within this finalized line.
     #[must_use]
     pub const fn run_index(&self) -> usize {
@@ -107,7 +113,8 @@ impl RunView<'_> {
     pub fn face(&self) -> FontFace<'_> {
         self.shaped.font.face()
     }
-    /// Logical origin added separately to canonical run-local glyph coordinates.
+    /// Physical origin of this run's baseline. Combine canonical glyph pen/x/y
+    /// in the local horizontal frame, then apply orientation about this origin.
     #[must_use]
     pub fn origin(&self) -> Point {
         crate::layout::line_point(
@@ -177,12 +184,14 @@ impl GlyphPlacement {
     pub const fn id(self) -> u32 {
         self.id
     }
-    /// Raw canonical horizontal provider offset, added to the logical pen and run origin.
+    /// Raw canonical horizontal provider offset. Add the logical pen locally,
+    /// then apply the actual RunView orientation at its physical origin.
     #[must_use]
     pub const fn x(self) -> f32 {
         self.x
     }
-    /// Raw canonical vertical provider offset, positive downward from the run baseline.
+    /// Raw canonical provider offset, positive downward in the local horizontal
+    /// frame. Physical coordinates also consume the RunView orientation.
     #[must_use]
     pub const fn y(self) -> f32 {
         self.y
@@ -236,8 +245,27 @@ fn run_decorations(run: &RunView<'_>) -> [Option<DecorationRun>; 2] {
             } else {
                 0.0
             };
+        let rect = if run.orientation() == crate::LineOrientation::Horizontal {
+            Rect::new(origin.x, top, run.run.advance, thickness)
+        } else {
+            crate::layout::line_rect(
+                run.placed,
+                Rect::new(
+                    run.run.x,
+                    run.placed.finalized.data.metrics.baseline
+                        - offset
+                        - if kind == DecorationKind::Strikethrough {
+                            thickness * 0.5
+                        } else {
+                            0.0
+                        },
+                    run.run.advance,
+                    thickness,
+                ),
+            )
+        };
         Some(DecorationRun::new(
-            Rect::new(origin.x, top, run.run.advance, thickness),
+            rect,
             match decoration.brush() {
                 crate::DecorationBrush::TextColor => style.brush,
                 crate::DecorationBrush::Color(brush) => brush,

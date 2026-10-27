@@ -428,8 +428,41 @@ fn line_rect(line: &PlacedLine, x: f64) -> Rect {
     )
 }
 
-pub(super) fn from_point(layout: &PlacedLayout, point: Point) -> Cursor {
-    let line_index = layout
+// The new sideways profile uses actual physical metric rectangles, not an
+// assumed left/right paragraph stack. Source ordinal resolves exact ties.
+pub(super) fn line_at_point(layout: &PlacedLayout, point: Point) -> Option<usize> {
+    if layout.prepared.options.orientation() == crate::LineOrientation::Sideways {
+        return layout
+            .lines
+            .iter()
+            .enumerate()
+            .min_by(|(a, left), (b, right)| {
+                let distance = |line: &PlacedLine| {
+                    let metrics = line.finalized.data.metrics;
+                    let rect = crate::layout::line_rect(
+                        line,
+                        Rect::new(
+                            metrics.inline_min,
+                            metrics.block_min,
+                            metrics.inline_max - metrics.inline_min,
+                            metrics.block_max - metrics.block_min,
+                        ),
+                    );
+                    let dx = (rect.origin.x - point.x)
+                        .max(0.0)
+                        .max(point.x - (rect.origin.x + rect.size.width));
+                    let dy = (rect.origin.y - point.y)
+                        .max(0.0)
+                        .max(point.y - (rect.origin.y + rect.size.height));
+                    dx.hypot(dy)
+                };
+                distance(left)
+                    .total_cmp(&distance(right))
+                    .then_with(|| a.cmp(b))
+            })
+            .map(|(index, _)| index);
+    }
+    layout
         .lines
         .iter()
         .position(|line| {
@@ -454,55 +487,70 @@ pub(super) fn from_point(layout: &PlacedLayout, point: Point) -> Cursor {
                     )
                     .y
             })
-        });
-    if let Some(line_index) = line_index {
-        let line = &layout.lines[line_index];
-        let data = &line.finalized.data;
-        let x = point.x - line.anchor.x;
-        let mut visual = 0;
-        while visual < data.visual_order.len() {
-            let FinalizedVisualItem::Cluster(first) = data.visual_order[visual] else {
-                visual += 1;
-                continue;
+        })
+}
+
+fn cursor_at_inline(layout: &PlacedLayout, line_index: usize, x: f64) -> Option<Cursor> {
+    let line = &layout.lines[line_index];
+    let data = &line.finalized.data;
+    let mut visual = 0;
+    while visual < data.visual_order.len() {
+        let FinalizedVisualItem::Cluster(first) = data.visual_order[visual] else {
+            visual += 1;
+            continue;
+        };
+        let first_cluster = &data.clusters[first];
+        let mut end = visual + 1;
+        while let Some(FinalizedVisualItem::Cluster(next)) = data.visual_order.get(end) {
+            let next = &data.clusters[*next];
+            if next.content != first_cluster.content || next.level != first_cluster.level {
+                break;
+            }
+            end += 1;
+        }
+        let last = match data.visual_order[end - 1] {
+            FinalizedVisualItem::Cluster(index) => &data.clusters[index],
+            FinalizedVisualItem::InlineBox(_) | FinalizedVisualItem::Anchor(_) => {
+                unreachable!()
+            }
+        };
+        if x > last.x + last.advance && end != data.visual_order.len() {
+            visual = end;
+            continue;
+        }
+        while visual < end {
+            let FinalizedVisualItem::Cluster(cluster) = data.visual_order[visual] else {
+                unreachable!()
             };
-            let first_cluster = &data.clusters[first];
-            let mut end = visual + 1;
-            while let Some(FinalizedVisualItem::Cluster(next)) = data.visual_order.get(end) {
-                let next = &data.clusters[*next];
-                if next.content != first_cluster.content || next.level != first_cluster.level {
-                    break;
-                }
-                end += 1;
-            }
-            let last = match data.visual_order[end - 1] {
-                FinalizedVisualItem::Cluster(index) => &data.clusters[index],
-                FinalizedVisualItem::InlineBox(_) | FinalizedVisualItem::Anchor(_) => {
-                    unreachable!()
-                }
+            let path = ClusterPath {
+                line: line_index,
+                cluster,
+                visual,
             };
-            if x > last.x + last.advance && end != data.visual_order.len() {
-                visual = end;
-                continue;
+            let cluster = path.get(layout);
+            if x <= cluster.x + cluster.advance || visual + 1 == data.visual_order.len() {
+                return Some(point_edge(
+                    layout,
+                    path,
+                    x > cluster.x + cluster.advance * 0.5,
+                ));
             }
-            while visual < end {
-                let FinalizedVisualItem::Cluster(cluster) = data.visual_order[visual] else {
-                    unreachable!()
-                };
-                let path = ClusterPath {
-                    line: line_index,
-                    cluster,
-                    visual,
-                };
-                let cluster = path.get(layout);
-                if x <= cluster.x + cluster.advance || visual + 1 == data.visual_order.len() {
-                    return point_edge(layout, path, x > cluster.x + cluster.advance * 0.5);
-                }
-                visual += 1;
-            }
+            visual += 1;
+        }
+    }
+    None
+}
+
+pub(super) fn from_point(layout: &PlacedLayout, point: Point) -> Cursor {
+    if let Some(line_index) = line_at_point(layout, point) {
+        let x = crate::layout::local_point(&layout.lines[line_index], point).x;
+        if let Some(cursor) = cursor_at_inline(layout, line_index, x) {
+            return cursor;
         }
     }
     // The provider's non-exact query above the layout clamps to its first cluster.
-    if point.y <= layout.bounds.origin.y
+    if layout.prepared.options.orientation() == crate::LineOrientation::Horizontal
+        && point.y <= layout.bounds.origin.y
         && let Some(first) = layout.lines.first()
         && let Some((visual, cluster)) = first
             .finalized
@@ -612,6 +660,15 @@ pub(crate) fn move_cursor(
             target.map_or(value, |index| {
                 let line = &layout.lines[index];
                 let metrics = line.finalized.data.metrics;
+                if line.orientation == crate::LineOrientation::Sideways {
+                    let (current, rect) = geometry(layout, value);
+                    let inline = crate::layout::local_point(&layout.lines[current], rect.origin).x;
+                    // Use the same eligible target rows as exact placed
+                    // movement, including real control-only Forced lines.
+                    // The final source validator below owns lossy ambiguity.
+                    return super::position::nearest_inline(layout, index, inline)
+                        .map_or(value, |target| layout.interaction.positions[target].source);
+                }
                 from_point(
                     layout,
                     Point::new(

@@ -165,8 +165,14 @@ pub(crate) fn place_request(
                 let numerical = LinePlacement {
                     line,
                     anchor: super::LineAnchor {
-                        inline_origin: placement.origin.x,
-                        baseline: placement.origin.y,
+                        inline_origin: crate::layout::inline_coordinate(
+                            placement.orientation,
+                            placement.origin,
+                        ),
+                        baseline: crate::layout::cross_coordinate(
+                            placement.orientation,
+                            placement.origin,
+                        ),
                     },
                     orientation: placement.orientation,
                     atomics: placement.atomics.clone(),
@@ -234,15 +240,27 @@ pub(crate) fn place_request(
             }));
         }
         next = selected.request.end.clone();
-        if placement.orientation != LineOrientation::Horizontal {
+        if placement.orientation == LineOrientation::Vertical {
             return Err(protocol_error(ProtocolError::UnsupportedContext {
+                field: ProtocolContextField::Orientation,
+            }));
+        }
+        if placement.orientation != prepared.options.orientation()
+            || placement.orientation != selected.request.context.orientation
+        {
+            return Err(protocol_error(ProtocolError::MismatchedContext {
                 field: ProtocolContextField::Orientation,
             }));
         }
         finite("placed inline anchor", placement.anchor.inline_origin)?;
         finite("placed baseline anchor", placement.anchor.baseline)?;
         let placed = PlacedLine {
-            anchor: Point::new(placement.anchor.inline_origin, placement.anchor.baseline),
+            anchor: crate::layout::physical_origin(
+                placement.orientation,
+                placement.anchor.inline_origin,
+                placement.anchor.baseline,
+            ),
+            orientation: placement.orientation,
             finalized: Arc::clone(&placement.line.inner),
             atomics: placement.atomics.clone(),
         };

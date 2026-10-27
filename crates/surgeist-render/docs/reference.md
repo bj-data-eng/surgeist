@@ -103,8 +103,12 @@ The optional `prepare_text_layout` adapter consumes the actual placed Text
 snapshot without reshaping or choosing lines. Its complete `TextLayoutLimits`
 budget also covers font copies, mapping buffers and decoration commands. Font
 copies are shared within one invocation; the original Text storage remains an
-input loan. Glyph placement already includes Text's offsets and baselines;
-decorations in paragraph coordinates receive caller placement once.
+input loan. The adapter consumes each run's retained orientation and physical
+origin while preserving canonical glyph pens and offsets. Clockwise sideways
+runs receive their exact right-angle basis before caller placement. Existing
+horizontal synthesis operates in that canonical frame before rotation;
+decorations are already physical and receive caller placement once. An
+unqualified run orientation returns a typed `UnsupportedOrientation` refusal.
 
 ## Outline admission
 

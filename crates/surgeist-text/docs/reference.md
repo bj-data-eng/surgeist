@@ -154,6 +154,40 @@ while retaining fitting, scalar width/metric reduction, float feedback and physi
 placement. This front supplies no preparation/finalized-line identity and does not
 replace the standalone paragraph path.
 
+## Clockwise sideways placement
+
+Native preparation accepts `PreparationOptions::with_orientation(LineOrientation::Sideways)`
+for a whole paragraph composed horizontally and placed 90 degrees clockwise.
+The default remains Horizontal. Retain that same orientation in line selection
+and placement: a supported-profile mismatch returns `MismatchedContext` for
+Orientation. Vertical preparation remains unsupported. Standalone stacked layout
+uses Horizontal; CSS writing-mode interpretation belongs to its caller.
+
+Sideways preparation enables the font's `vrtr` feature below authored settings.
+Explicit settings retain last-same-tag precedence, including `vrtr=0`; authored
+`vert` or `vrt2` settings execute their actual lookup composition. They do not
+choose physical orientation. A font without sideways alternates retains its
+actual glyphs. Horizontal metrics, kerning and positioning remain the provider
+frame, including for replacements, indications and tabs.
+
+`LineAnchor` supplies inline-axis origin and cross-axis baseline coordinates.
+For Sideways these are physical y and x respectively. Every line has its own
+explicit anchor. Glyph pens and offsets remain canonical horizontal data;
+borrowed and owned run readback retain the actual orientation and physical
+origin. Physical bounds, decorations, carets, selection, hit testing, adjacent-line
+movement and accessibility consume the same basis. Explicit layout metrics keep
+their physical flow-hull size and `full_width`; logical advances remain line
+measurements. Point hits choose the nearest actual line metric rectangle, with
+line ordinal breaking ties.
+
+The profile supports text, controls, line breaks, replacements, spacing and tabs.
+Any actual Atomic occurrence, including out-of-flow content, returns
+`UnsupportedSidewaysAtomic` during preparation. Upright/mixed typography,
+sideways-lr progression, combined upright content and independent child-content
+rotation remain separate capabilities. Nominal vertical font metrics do not
+enable them. See the [composed-line guide](composed-lines.md) for retained
+source, receipt and placement custody.
+
 ## Borrowed paint readback
 
 `Layout::run_views` and `decoration_views` traverse actual positioned output
@@ -164,6 +198,9 @@ validated all-zero default axes omitted by the provider. Malformed instance
 metadata and unresolved faux-bold/skew return typed failures. These views retain
 no independent layout or preparation identity; their lifetime comes from the
 original immutable Layout.
+`RunView::origin()` is physical; its raw glyph pens and x/y offsets remain in
+the horizontal provider frame. Consumers apply `RunView::orientation()` once
+about that origin. Decoration rectangles are already physical.
 
 ## Source-local whitespace processing
 

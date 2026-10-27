@@ -282,30 +282,50 @@ pub(super) fn deleted_position(layout: &PlacedLayout, value: Cursor) -> Option<u
 }
 pub(crate) fn hit(layout: &PlacedLayout, point: Point) -> Option<usize> {
     let source = super::cursor::from_point(layout, point);
+    let sideways_line = if layout.prepared.options.orientation() == crate::LineOrientation::Sideways
+    {
+        super::cursor::line_at_point(layout, point)
+    } else {
+        None
+    };
     let matching = layout
         .interaction
         .positions
         .iter()
-        .any(|row| row.source == source);
+        .any(|row| row.source == source && sideways_line.is_none_or(|line| row.line == line));
     layout
         .interaction
         .positions
         .iter()
         .enumerate()
-        .filter(|(_, row)| !matching || row.source == source)
+        .filter(|(_, row)| {
+            sideways_line.is_none_or(|line| row.line == line) && (!matching || row.source == source)
+        })
         .min_by(|(a, _), (b, _)| {
             distance(
                 geometry(layout, *a).expect("owned interaction row").rect(),
                 point,
+                layout.prepared.options.orientation(),
             )
             .total_cmp(&distance(
                 geometry(layout, *b).expect("owned interaction row").rect(),
                 point,
+                layout.prepared.options.orientation(),
             ))
         })
         .map(|(index, _)| index)
 }
-fn distance(rect: Rect, point: Point) -> f64 {
+fn distance(rect: Rect, point: Point, orientation: crate::LineOrientation) -> f64 {
+    if orientation == crate::LineOrientation::Sideways {
+        let dx = if point.x < rect.origin.x {
+            rect.origin.x - point.x
+        } else if point.x > rect.origin.x + rect.size.width {
+            point.x - (rect.origin.x + rect.size.width)
+        } else {
+            0.0
+        };
+        return (point.y - rect.origin.y).hypot(dx);
+    }
     let dy = if point.y < rect.origin.y {
         rect.origin.y - point.y
     } else if point.y > rect.origin.y + rect.size.height {
@@ -317,6 +337,24 @@ fn distance(rect: Rect, point: Point) -> f64 {
     // otherwise admitted finite placement coordinates.
     (point.x - rect.origin.x).hypot(dy)
 }
+/// Selects an actual eligible interaction row on the requested formatted line.
+/// Anchors and genuine struts participate alongside cluster edges; this does
+/// not reconstruct a caret from a source offset or a guessed rectangle.
+pub(super) fn nearest_inline(layout: &PlacedLayout, line: usize, inline: f64) -> Option<usize> {
+    layout
+        .interaction
+        .positions
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row.line == line)
+        .min_by(|(_, a), (_, b)| {
+            (local_x(&layout.lines[line], a.target) - inline)
+                .abs()
+                .total_cmp(&(local_x(&layout.lines[line], b.target) - inline).abs())
+        })
+        .map(|(index, _)| index)
+}
+
 pub(crate) fn movement(layout: &PlacedLayout, index: usize, movement: Movement) -> Result<usize> {
     let current = row(layout, index)?;
     let rows = &layout.interaction.positions;
@@ -346,19 +384,27 @@ pub(crate) fn movement(layout: &PlacedLayout, index: usize, movement: Movement) 
             match target {
                 None => index,
                 Some(target) => {
-                    let x = geometry(layout, index)?.rect().origin.x;
-                    rows.iter()
-                        .enumerate()
-                        .filter(|(_, row)| row.line == target)
-                        .min_by(|(a, _), (b, _)| {
-                            (geometry(layout, *a).expect("owned row").rect().origin.x - x)
-                                .abs()
-                                .total_cmp(
-                                    &(geometry(layout, *b).expect("owned row").rect().origin.x - x)
-                                        .abs(),
-                                )
-                        })
-                        .map_or(index, |(index, _)| index)
+                    let sideways =
+                        layout.prepared.options.orientation() == crate::LineOrientation::Sideways;
+                    if sideways {
+                        let inline = local_x(&layout.lines[current.line], current.target);
+                        nearest_inline(layout, target, inline).unwrap_or(index)
+                    } else {
+                        let x = geometry(layout, index)?.rect().origin.x;
+                        rows.iter()
+                            .enumerate()
+                            .filter(|(_, row)| row.line == target)
+                            .min_by(|(a, _), (b, _)| {
+                                (geometry(layout, *a).expect("owned row").rect().origin.x - x)
+                                    .abs()
+                                    .total_cmp(
+                                        &(geometry(layout, *b).expect("owned row").rect().origin.x
+                                            - x)
+                                            .abs(),
+                                    )
+                            })
+                            .map_or(index, |(index, _)| index)
+                    }
                 }
             }
         }

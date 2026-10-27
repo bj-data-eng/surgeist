@@ -159,6 +159,7 @@ pub(crate) fn prepare(
                 catalogue.collection_mut(),
                 &block,
                 options.scale(),
+                options.orientation(),
             )?;
             let block_styles = [block_style];
             let input = crate::engine::ShapingInput {

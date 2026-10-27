@@ -28,6 +28,7 @@ mod raw_automatic_hyphenation;
 mod scope_incidence_locality;
 mod separators;
 mod shared_unit_endpoints;
+mod sideways;
 mod tab_stops;
 mod vertical_metrics_orientation;
 mod wbr;
