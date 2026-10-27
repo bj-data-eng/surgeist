@@ -1972,3 +1972,470 @@ fn named_source_vertical_lr_empty_scroll_uses_block_end_for_both_names_f32() {
 fn named_source_vertical_lr_empty_scroll_uses_block_end_for_both_names_f64() {
     source_vertical_lr::<f64>();
 }
+
+fn packet_child<S: l::LayoutScalar>(host: &mut Host<S>, parent: u32) -> (u32, u32) {
+    let child = host.push(
+        Some(parent),
+        l::LayoutInputOf::box_input(source_block(l::BaselineName::Alphabetic, None)),
+    );
+    let mut inner = atomic(
+        l::WritingMode::HorizontalTb,
+        l::Direction::Ltr,
+        10.0,
+        (0.0, 0.0),
+    );
+    inner.size.width = px(10.0);
+    let inner = host.push(Some(child), l::LayoutInputOf::box_input(inner));
+    (child, inner)
+}
+fn packet_producer_control<S: l::LayoutScalar>() {
+    // A genuine root writer exposes the same actual native Block producer.
+    // Its sole real10-high baseline-less atom synthesizes under-edge Alpha10.
+    let mut host = Host::<S>::new(source_block(l::BaselineName::Alphabetic, None));
+    let mut inner = atomic(
+        l::WritingMode::HorizontalTb,
+        l::Direction::Ltr,
+        10.0,
+        (0.0, 0.0),
+    );
+    inner.size.width = px(10.0);
+    host.push(Some(0), l::LayoutInputOf::box_input(inner));
+    let batch = host.compute(l::WritingMode::HorizontalTb, &[]).unwrap();
+    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        assert_eq!(node(entries, 0).size, l::Size::new(n(20.0), n(10.0)));
+        assert_eq!(node(entries, 1).location, l::Point::ZERO);
+        assert_eq!(node(entries, 1).size, l::Size::new(n(10.0), n(10.0)));
+        absent(node(entries, 1).named_baselines);
+        named(
+            node(entries, 0).named_baselines,
+            l::BaselineName::Alphabetic,
+            l::PhysicalAxis::Vertical,
+            10.0,
+        );
+    }
+}
+fn packet_computed_alpha<S: l::LayoutScalar>(
+    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    child: u32,
+) {
+    // Check every receipt actually published, without requiring a particular
+    // cache/probe strategy. The real root-producer control independently
+    // establishes Alpha10 even if a future valid optimization omits storage.
+    for row in batch
+        .cache_store_entries()
+        .iter()
+        .filter(|row| row.node() == child)
+    {
+        // Flex also owns intrinsic ContentSize requests that intentionally
+        // ignore authored inline20. Cache rows need not have the performed
+        // packet's20x10 border size; the actual10-high line still owns Alpha10.
+        named(
+            row.output().named_baselines,
+            l::BaselineName::Alphabetic,
+            l::PhysicalAxis::Vertical,
+            10.0,
+        );
+    }
+}
+
+fn packet_alpha<S: l::LayoutScalar>(batch: &l::CompletedLayoutBatchOf<u32, S>, child: u32) {
+    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        named(
+            node(entries, child).named_baselines,
+            l::BaselineName::Alphabetic,
+            l::PhysicalAxis::Vertical,
+            10.0,
+        );
+    }
+}
+fn packet_writer<S: l::LayoutScalar>(display: l::Display, positioned: bool, floating: bool) {
+    packet_producer_control::<S>();
+    let mode = l::WritingMode::HorizontalTb;
+    let mut input = root(mode, l::Direction::Ltr, l::InlineBaselineContext::Physical);
+    input.display = display;
+    input.align_items = Some(l::AlignItems::Start);
+    if positioned {
+        input.size.height = px(40.0);
+    }
+    let mut host = Host::<S>::new(input);
+    let (child, inner) = packet_child(&mut host, 0);
+    host.change(child, |input| {
+        if positioned {
+            input.position = l::Position::Absolute;
+            input.inset.left = l::LengthAutoOf::value(l::LengthPercentageOf::px(n(9.0)).unwrap());
+            input.inset.top = l::LengthAutoOf::value(l::LengthPercentageOf::px(n(7.0)).unwrap());
+        }
+        if floating {
+            input.float = l::Float::Left;
+        }
+    });
+    let cold = host.compute(mode, &[]).unwrap();
+    // Geometry and authentic child ComputeOutput facts qualify the producer
+    // BEFORE the packet's missing named-field assertion, separately per writer.
+    for entries in [cold.unrounded_entries(), cold.final_entries()] {
+        assert_eq!(entries.len(), 3);
+        assert_eq!(
+            node(entries, 0).size,
+            l::Size::new(n(100.0), n(if positioned { 40.0 } else { 10.0 }))
+        );
+        assert_eq!(
+            node(entries, child).location,
+            if positioned {
+                l::Point::new(n(9.0), n(7.0))
+            } else {
+                l::Point::ZERO
+            }
+        );
+        assert_eq!(node(entries, child).size, l::Size::new(n(20.0), n(10.0)));
+        assert_eq!(node(entries, inner).location, l::Point::ZERO);
+        assert_eq!(node(entries, inner).size, l::Size::new(n(10.0), n(10.0)));
+        assert_eq!(node(entries, child).source_index, l::SourceIndex::new(0));
+        assert_eq!(node(entries, inner).source_index, l::SourceIndex::new(0));
+        absent(node(entries, inner).named_baselines);
+    }
+    packet_computed_alpha(&cold, child);
+    packet_alpha(&cold, child);
+    assert!(cold.placed_text().is_empty());
+    let prior = semantic(&cold);
+    cold.apply_to(&mut host).unwrap();
+    let warm = host.compute(mode, &[]).unwrap();
+    assert_eq!(semantic(&warm), prior);
+    assert_eq!(warm.final_entries(), cold.final_entries());
+    packet_alpha(&warm, child);
+    warm.apply_to(&mut host).unwrap();
+    // Replace genuine baseline absence by a real Physical line inside the
+    // formerly empty inner atomic. Its Unknown cannot satisfy the named child.
+    let mut nested = atomic(mode, l::Direction::Ltr, 6.0, (0.0, 0.0));
+    nested.size.width = px(6.0);
+    host.push(Some(inner), l::LayoutInputOf::box_input(nested));
+    let counts = (host.prepares.get(), host.commits);
+    missing(host.compute(mode, &[inner]));
+    assert_eq!((host.prepares.get(), host.commits), counts);
+    assert_eq!(semantic(host.published.batch.as_ref().unwrap()), prior);
+    assert_eq!(semantic(&cold), prior);
+}
+#[test]
+fn flex_in_flow_packet_retains_actual_child_named_baselines_f32() {
+    packet_writer::<f32>(l::Display::Flex, false, false);
+}
+#[test]
+fn flex_in_flow_packet_retains_actual_child_named_baselines_f64() {
+    packet_writer::<f64>(l::Display::Flex, false, false);
+}
+#[test]
+fn flex_absolute_packet_retains_actual_child_named_baselines_f32() {
+    packet_writer::<f32>(l::Display::Flex, true, false);
+}
+#[test]
+fn flex_absolute_packet_retains_actual_child_named_baselines_f64() {
+    packet_writer::<f64>(l::Display::Flex, true, false);
+}
+#[test]
+fn block_absolute_packet_retains_actual_child_named_baselines_f32() {
+    packet_writer::<f32>(l::Display::Block, true, false);
+}
+#[test]
+fn block_absolute_packet_retains_actual_child_named_baselines_f64() {
+    packet_writer::<f64>(l::Display::Block, true, false);
+}
+#[test]
+fn block_normal_float_packet_retains_actual_child_named_baselines_f32() {
+    packet_writer::<f32>(l::Display::Block, false, true);
+}
+#[test]
+fn block_normal_float_packet_retains_actual_child_named_baselines_f64() {
+    packet_writer::<f64>(l::Display::Block, false, true);
+}
+
+fn packet_grid_known_size<S: l::LayoutScalar>() {
+    let mode = l::WritingMode::HorizontalTb;
+    let mut host = Host::<S>::new(root(
+        mode,
+        l::Direction::Ltr,
+        l::InlineBaselineContext::Physical,
+    ));
+    let mut float = source_block(l::BaselineName::Alphabetic, Some(10.0));
+    float.inline_baseline_context = l::InlineBaselineContext::Physical;
+    float.size.width = px(10.0);
+    float.float = l::Float::Left;
+    assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(float)), 1);
+    let mut child = source_block(l::BaselineName::Alphabetic, Some(20.0));
+    child.inline_baseline_context = l::InlineBaselineContext::Physical;
+    child.block_flow_context = l::BlockFlowContext::Independent;
+    assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(child)), 2);
+    let grid = l::NodeInputOf {
+        display: l::Display::Grid,
+        size: l::Size::new(px(10.0), px(10.0)),
+        ..l::NodeInputOf::default()
+    };
+    assert_eq!(host.push(Some(2), l::LayoutInputOf::box_input(grid)), 3);
+    let batch = host.compute(mode, &[]).unwrap();
+    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        assert_eq!(entries.len(), 4);
+        assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(20.0)));
+        assert_eq!(node(entries, 1).location, l::Point::ZERO);
+        assert_eq!(node(entries, 1).size, l::Size::new(n(10.0), n(10.0)));
+        assert_eq!(node(entries, 2).location, l::Point::new(n(10.0), S::ZERO));
+        assert_eq!(node(entries, 2).size, l::Size::new(n(20.0), n(20.0)));
+        assert_eq!(node(entries, 3).location, l::Point::ZERO);
+        assert_eq!(node(entries, 3).size, l::Size::new(n(10.0), n(10.0)));
+        for (id, source) in [(0, 0), (1, 0), (2, 1), (3, 0)] {
+            assert_eq!(node(entries, id).source_index, l::SourceIndex::new(source));
+        }
+        for id in [2, 3] {
+            for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+                let pair = node(entries, id).named_baselines.get(name);
+                assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
+                assert_eq!(pair.last(), l::BaselineFactOf::Unknown);
+            }
+        }
+    }
+    // Every actual published receipt must be truthful; no particular probe
+    // count, query pattern, or private run-mode representation is required.
+    for row in batch
+        .cache_store_entries()
+        .iter()
+        .filter(|row| row.node() == 2)
+    {
+        assert_eq!(row.output().size, l::Size::new(n(20.0), n(20.0)));
+        assert_eq!(
+            row.output().named_baselines,
+            node(batch.unrounded_entries(), 2).named_baselines,
+            "a real compute/cache packet must retain the actual Grid descendant's Unknown authority, not affirmative absence; request={:?}",
+            row.input()
+        );
+    }
+    let prior = semantic(&batch);
+    batch.apply_to(&mut host).unwrap();
+    let warm = host.compute(mode, &[]).unwrap();
+    assert_eq!(semantic(&warm), prior);
+    assert_eq!(warm.final_entries(), batch.final_entries());
+    assert_eq!(semantic(&batch), prior);
+}
+#[test]
+fn known_size_float_avoidance_cache_preserves_real_grid_unknown_baselines_f32() {
+    packet_grid_known_size::<f32>();
+}
+#[test]
+fn known_size_float_avoidance_cache_preserves_real_grid_unknown_baselines_f64() {
+    packet_grid_known_size::<f64>();
+}
+
+fn packet_text_float_binding() -> l::TextParagraphBinding<u32> {
+    const AHEM: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
+    ));
+    let style = t::Style {
+        font: t::Font::new().family("Ahem"),
+        size: 10.0,
+        line_height: t::LineHeight::Absolute(10.0),
+        white_space: t::WhiteSpace::Preserve,
+        wrap: t::Wrap::Word,
+        ..t::Style::default()
+    };
+    let source = t::Source::identified("AA", t::Id::from_u64(1489041), 1);
+    let origins = [0, 1]
+        .map(|index| t::ParagraphOrigin {
+            text_node: None,
+            source: t::Source::new("A"),
+            local: t::Range::new(0, 1),
+            aggregate: t::Range::new(index, index + 1),
+            kind: t::ParagraphOriginKind::Authored,
+        })
+        .to_vec();
+    use t::SourceProcessingEvent as E;
+    let capture = Arc::new(
+        t::process_contextual_source(t::ContextualSourceInput {
+            source,
+            segment_breaks: t::DocumentSegmentBreaks::LineFeedDefault,
+            envelope: t::SourceProcessingEnvelope::Complete,
+            origins,
+            controls: vec![],
+            connections: vec![t::SourceProcessingConnection {
+                before_origin: 0,
+                after_origin: 1,
+                kind: t::ParagraphConnectionKind::Continuous,
+            }],
+            boundary_policies: vec![t::ParagraphBoundaryPolicy {
+                definition: t::ParagraphBoundaryDefinition::Connection(0),
+                preceding_wrap: t::Wrap::Word,
+                following_wrap: t::Wrap::Word,
+                ancestor_wrap: t::Wrap::Word,
+            }],
+            replacements: vec![],
+            computed_line_boundaries: vec![],
+            scopes: vec![t::SourceProcessingScope::Block {
+                topology: t::SourceProcessingTopology::Complete,
+                trim: Default::default(),
+                base_style: style,
+                used_direction: t::ParagraphBaseDirection::LeftToRight,
+            }],
+            paragraphs: vec![t::SourceProcessingParagraph {
+                base_direction: t::ParagraphBaseDirection::LeftToRight,
+                paragraph_strut: t::ParagraphStrut::DefaultFont,
+            }],
+            events: vec![
+                E::EnterScope(0),
+                E::EnterParagraph(0),
+                E::Origin {
+                    origin: 0,
+                    affinity: t::Affinity::After,
+                },
+                E::Connection(0),
+                E::Origin {
+                    origin: 1,
+                    affinity: t::Affinity::After,
+                },
+                E::ExitParagraph(0),
+                E::ExitScope(0),
+            ],
+        })
+        .unwrap(),
+    );
+    let analyzed =
+        t::AnalyzedSource::from_processed_paragraph(capture.paragraphs().next().unwrap()).unwrap();
+    let wrapping = analyzed
+        .wrapping_relations()
+        .filter(|relation| relation.ancestor_wrap().is_none())
+        .map(|relation| t::WrappingPolicy {
+            relation: relation.handle(),
+            ancestor_wrap: t::Wrap::Word,
+        })
+        .collect();
+    let mut system = t::System::new(t::SystemOptions {
+        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
+    })
+    .unwrap();
+    system.register_fonts(AHEM.to_vec()).unwrap();
+    let prepared = system
+        .prepare(
+            &analyzed.with_wrapping_policies(wrapping).unwrap(),
+            t::PreparationOptions::default(),
+        )
+        .unwrap();
+    let origins = prepared
+        .origin_views()
+        .zip([1, 3])
+        .map(|(view, node)| l::TextOriginBinding {
+            origin: view.handle(),
+            node,
+        })
+        .collect();
+    // The real transparent floating box belongs in the captured native window,
+    // not in Text's atomic/origin tables. Its own actual child stays native.
+    l::TextParagraphBinding {
+        prepared,
+        container: 0,
+        nodes: vec![1, 2, 3],
+        origins,
+        controls: vec![],
+        atomics: vec![],
+        line_strut: None,
+    }
+}
+fn packet_text_float<S: l::LayoutScalar>() {
+    packet_producer_control::<S>();
+    let mode = l::WritingMode::HorizontalTb;
+    let binding = packet_text_float_binding();
+    assert_eq!(binding.origins.len(), 2);
+    let mut host = Host::<S>::new(root(
+        mode,
+        l::Direction::Ltr,
+        l::InlineBaselineContext::Physical,
+    ));
+    assert_eq!(
+        host.push(
+            Some(0),
+            l::LayoutInputOf::inline_text(l::TextParticipation::new(
+                binding.origins[0].origin.clone()
+            ))
+        ),
+        1
+    );
+    let mut float = source_block(l::BaselineName::Alphabetic, None);
+    float.float = l::Float::Left;
+    assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(float)), 2);
+    assert_eq!(
+        host.push(
+            Some(0),
+            l::LayoutInputOf::inline_text(l::TextParticipation::new(
+                binding.origins[1].origin.clone()
+            ))
+        ),
+        3
+    );
+    let mut inner = atomic(mode, l::Direction::Ltr, 10.0, (0.0, 0.0));
+    inner.size.width = px(10.0);
+    assert_eq!(host.push(Some(2), l::LayoutInputOf::box_input(inner)), 4);
+    let compute = |host: &Host<S>, changed: &[u32]| {
+        let flow = l::LayoutFlowInput::try_new(
+            host,
+            0,
+            vec![binding.clone()],
+            l::WrappingInput::default(),
+        )
+        .unwrap();
+        l::compute_layout_with_flow_invalidated(&flow, 0, request(mode), changed)
+    };
+    let cold = compute(&host, &[]).unwrap();
+    assert_eq!(cold.placed_text().len(), 1);
+    let text = cold.placed_text()[0].layout();
+    assert_eq!(text.source(), binding.prepared.analyzed_source().source());
+    assert_eq!(text.source().text().code_units(), [65, 65]);
+    assert_eq!(text.lines().len(), 1);
+    assert_eq!(text.lines()[0].range(), t::Range::new(0, 2));
+    assert_eq!(text.lines()[0].baseline(), 8.0);
+    assert_eq!(
+        text.glyph_runs()
+            .iter()
+            .map(|run| run.advance())
+            .sum::<f64>(),
+        20.0
+    );
+    assert_eq!(
+        text.run_views()
+            .flat_map(|run| run.glyphs().map(|glyph| glyph.id()).collect::<Vec<_>>())
+            .collect::<Vec<_>>(),
+        [35, 35]
+    );
+    for entries in [cold.unrounded_entries(), cold.final_entries()] {
+        assert_eq!(entries.len(), 5);
+        assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(10.0)));
+        assert_eq!(node(entries, 2).location, l::Point::ZERO);
+        assert_eq!(node(entries, 2).size, l::Size::new(n(20.0), n(10.0)));
+        assert_eq!(node(entries, 4).location, l::Point::ZERO);
+        assert_eq!(node(entries, 4).size, l::Size::new(n(10.0), n(10.0)));
+        absent(node(entries, 4).named_baselines);
+        for (id, source) in [(0, 0), (1, 0), (2, 1), (3, 2), (4, 0)] {
+            assert_eq!(node(entries, id).source_index, l::SourceIndex::new(source));
+        }
+    }
+    packet_computed_alpha(&cold, 2);
+    packet_alpha(&cold, 2);
+    let prior = semantic(&cold);
+    let positions = text.positions().collect::<Vec<_>>();
+    cold.apply_to(&mut host).unwrap();
+    let warm = compute(&host, &[]).unwrap();
+    assert_eq!(warm.final_entries(), cold.final_entries());
+    packet_alpha(&warm, 2);
+    warm.apply_to(&mut host).unwrap();
+    let mut nested = atomic(mode, l::Direction::Ltr, 6.0, (0.0, 0.0));
+    nested.size.width = px(6.0);
+    host.push(Some(4), l::LayoutInputOf::box_input(nested));
+    let counts = (host.prepares.get(), host.commits);
+    missing(compute(&host, &[4]));
+    assert_eq!((host.prepares.get(), host.commits), counts);
+    assert_eq!(semantic(host.published.batch.as_ref().unwrap()), prior);
+    assert_eq!(semantic(&cold), prior);
+    assert_eq!(text.positions().collect::<Vec<_>>(), positions);
+    assert_eq!(text.source().text().code_units(), [65, 65]);
+}
+#[test]
+fn captured_text_float_packet_retains_actual_child_named_baselines_f32() {
+    packet_text_float::<f32>();
+}
+#[test]
+fn captured_text_float_packet_retains_actual_child_named_baselines_f64() {
+    packet_text_float::<f64>();
+}
