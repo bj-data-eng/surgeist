@@ -2795,11 +2795,24 @@ unchanged, matching WPT `css/css-transforms/parsing/rotate-parsing-valid.html`.
 Calculated angles use the [calculation output policy](#calculated-number-output),
 so the property agrees with the `transform: rotate()` function path.
 Identity classification for rendering or interpolation belongs to the
-downstream computed and used-value owner. This revision covers the `rotate`
-property only: the `rotate3d()` function path still replaces a zero or whole-turn angle
-(literal, or a calculation whose projected degrees are a multiple of 360)
-or an unnormalizable zero axis with `0, 0, 1, 0deg`, pending a separate
-decision. Both paths share axis classification, so an operation-free calculated
+downstream computed and used-value owner. The `transform: rotate3d()` function
+path follows the same decision
+([#1416](https://github.com/bj-data-eng/surgeist/issues/1416)). The governing
+function clause is
+[Transforms 1 §4.1](https://www.w3.org/TR/2019/CR-css-transforms-1-20190214/#serialization-of-transform-functions):
+serialize each function as its individual grammar, in grammar order, omitting
+components only "when possible without changing the meaning". All four
+`rotate3d()` arguments are mandatory in its grammar, and neither that clause,
+Transforms 2 nor the CSSOM serialization rules replaces a function with another
+form, so a zero or whole-turn angle (literal or calculated, in its authored unit)
+and an unnormalizable zero axis keep their authored form. (Calculated angles keep
+their `calc()` wrapper under the crate's calculation output policy.)
+`rotate3d(0, 0, 0, 30deg)`, `rotate3d(1, 2, 3, 400grad)` and
+`rotate3d(1, 2, 3, calc(180deg + 180deg))` emit
+`rotate3d(0, 0, 0, 30deg)`, `rotate3d(1, 2, 3, 400grad)` and
+`rotate3d(1, 2, 3, calc(360deg))`. As for the property, a proved nonzero axis
+component that rounds to zero returns `UnrepresentableValue` even when the angle
+is zero. Both paths share axis classification, so an operation-free calculated
 axis leaf is classified from its exact coefficient (#1297):
 `rotate3d(calc(1e-400), 0, 0, 30deg)` emits `rotate3d(1, 0, 0, 30deg)` and
 `rotate3d(calc(5e-7), 1, 0, 30deg)` emits `rotate3d(calc(0.000001), 1, 0, 30deg)`.
@@ -2822,8 +2835,10 @@ All authored numeric children are checked once before choosing output.
 
 The rotation costs one input and projection node; an explicit axis adds one of
 each. Each ordinary vector/angle literal adds one of each, while calculation
-children use their existing projection costs. Identity replacement and ordinary
-angle inversion each add one projection node. Calculation inversion uses the
+children use their existing projection costs. The `rotate3d()` function adds
+three projection nodes for a reduced parallel axis; a general or zero axis adds
+none beyond its operands. Ordinary
+angle inversion adds one projection node. Calculation inversion uses the
 existing numeric negation cost. Omitted implicit axes add no synthetic input,
 and punctuation costs bytes only. Deferred projection keeps the existing bounded
 numeric work and formats surviving operands through the same cumulative context.

@@ -557,7 +557,6 @@ fn rotate3d_classifies_operation_free_axis_leaves_from_their_exact_coefficients(
     // Transforms 2 §12.2 normalizes the direction vector [x, y, z]: the exact
     // authored 1e-400 is a positive x-only vector, hence the unit x axis, and
     // 5e-7 is a nonzero component emitted with its exact six-place text (#1297).
-    // rotate3d()'s own zero-axis and full-turn replacement is unchanged here.
     fn declaration(source: &str) -> String {
         let report = CssDeclaration::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
@@ -582,6 +581,41 @@ fn rotate3d_classifies_operation_free_axis_leaves_from_their_exact_coefficients(
             declaration(&format!("transform:{input}")),
             format!("transform: {expected};"),
             "{input}"
+        );
+    }
+}
+
+#[test]
+fn rotate3d_and_rotate_keep_the_same_authored_zero_axes_and_full_turns() {
+    // Transforms 1 §4.1 serializes a function as its individual grammar, and
+    // Transforms 2 §12.2 keeps a function whose direction vector cannot be
+    // normalized; §5.1 gives `rotate` no folding clause either (#1298).
+    // Equivalent rotations therefore keep their zero axis and full-turn angle
+    // on both paths; only the axis spelling differs by grammar.
+    fn function(source: &str) -> String {
+        let report = CssDeclaration::parse(&CssParser::default(), format!("transform:{source}"));
+        assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
+        report
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap()
+    }
+    for (property, function_source) in [
+        ("0 0 0 400grad", "rotate3d(0, 0, 0, 400grad)"),
+        ("0 0 0 30deg", "rotate3d(0, 0, 0, 30deg)"),
+        ("1 2 3 360deg", "rotate3d(1, 2, 3, 360deg)"),
+        ("1 2 3 calc(720deg)", "rotate3d(1, 2, 3, calc(720deg))"),
+        ("x 400grad", "rotate3d(1, 0, 0, 400grad)"),
+        ("y -720deg", "rotate3d(0, 1, 0, -720deg)"),
+        ("360deg", "rotate3d(0, 0, 1, 360deg)"),
+    ] {
+        output(property, property);
+        assert_eq!(
+            function(function_source),
+            format!("transform: {function_source};"),
+            "{function_source}"
         );
     }
 }
