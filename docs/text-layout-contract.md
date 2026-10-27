@@ -2012,8 +2012,12 @@ actual placed result. Its ordered observations retain selected source
 intersections, expanded typographic-unit coverage where applicable, finalized
 line/fragment and placement identities, advance edges and associated font-metric
 extent. Native `Layout::source_range_fragments` implements this observation
-boundary for admitted horizontal placements; the complete web consumer remains
-separate. Generic source slots and caret affinities are distinct.
+boundary for admitted Horizontal and clockwise Sideways placements; the complete
+web consumer remains separate. Piece rectangles use the actual physical placed
+basis. Directed advance edges are physical inline coordinates; the baseline is
+the physical cross coordinate. Font ascent/descent retain their unrotated
+before/after distances, interpreted through the query's actual Layout orientation.
+Generic source slots and caret affinities are distinct.
 The selected evidence is the [current CSSOM View §9 capture](../references/cssom-view-range--editor-capture-20261022.md),
 checked with the [bounded CSSWG and browser-test audit](../references/range-geometry-csswg-tests--20261022.md).
 That audit found no adopted resolution for the remaining endpoint choices in

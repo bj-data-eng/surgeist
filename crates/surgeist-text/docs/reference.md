@@ -174,11 +174,19 @@ frame, including for replacements, indications and tabs.
 For Sideways these are physical y and x respectively. Every line has its own
 explicit anchor. Glyph pens and offsets remain canonical horizontal data;
 borrowed and owned run readback retain the actual orientation and physical
-origin. Physical bounds, decorations, carets, selection, hit testing, adjacent-line
-movement and accessibility consume the same basis. Explicit layout metrics keep
-their physical flow-hull size and `full_width`; logical advances remain line
+origin. Physical bounds, source-range pieces, decorations, carets, selection,
+hit testing, adjacent-line movement and accessibility consume the same basis.
+Explicit layout metrics keep their physical flow-hull size and `full_width`;
+logical advances remain line
 measurements. Point hits choose the nearest actual line metric rectangle, with
 line ordinal breaking ties.
+
+`source_range_fragments` uses that same placed basis. Piece rectangles are
+physical; directed advance edges use the physical inline coordinate and the
+baseline uses the physical cross coordinate. For clockwise placement these are
+y and x respectively. Font ascent/descent keep their unrotated before/after
+distances; the query's retained `layout().orientation()` identifies their physical
+placement frame.
 
 The profile supports text, controls, line breaks, replacements, spacing and tabs.
 Any actual Atomic occurrence, including out-of-flow content, returns

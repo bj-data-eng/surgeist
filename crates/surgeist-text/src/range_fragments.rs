@@ -782,18 +782,28 @@ impl Layout {
                         &font.coords,
                         font.synthesis,
                     )?;
-                    let start = add("source range advance start", placed.anchor.x, metric.start)?;
-                    let local_end = metric.end;
-                    let end = add("source range advance end", placed.anchor.x, local_end)?;
+                    let inline_anchor =
+                        crate::layout::inline_coordinate(placed.orientation, placed.anchor);
+                    let baseline = crate::layout::line_baseline(placed);
+                    let start = add("source range advance start", inline_anchor, metric.start)?;
+                    let end = add("source range advance end", inline_anchor, metric.end)?;
+                    let over = crate::layout::line_vector(
+                        placed,
+                        crate::Point::new(0.0, -font.metrics.ascent),
+                    );
+                    let under = crate::layout::line_vector(
+                        placed,
+                        crate::Point::new(0.0, font.metrics.descent),
+                    );
                     let top = add(
                         "source range font top",
-                        placed.anchor.y,
-                        -font.metrics.ascent,
+                        baseline,
+                        crate::layout::cross_coordinate(placed.orientation, over),
                     )?;
                     let bottom = add(
                         "source range font bottom",
-                        placed.anchor.y,
-                        font.metrics.descent,
+                        baseline,
+                        crate::layout::cross_coordinate(placed.orientation, under),
                     )?;
                     let width = add("source range width", start.max(end), -start.min(end))?;
                     let height = add(
@@ -801,7 +811,13 @@ impl Layout {
                         font.metrics.ascent,
                         font.metrics.descent,
                     )?;
-                    let bounds = Rect::new(start.min(end), top, width, height);
+                    let origin = crate::layout::physical_origin(
+                        placed.orientation,
+                        start.min(end),
+                        top.min(bottom),
+                    );
+                    let size = crate::layout::physical_origin(placed.orientation, width, height);
+                    let bounds = Rect::new(origin.x, origin.y, size.x, size.y);
                     add(
                         "source range rectangle right",
                         bounds.origin.x,
@@ -812,7 +828,7 @@ impl Layout {
                         bounds.origin.y,
                         bounds.size.height,
                     )?;
-                    if bottom < top {
+                    if height < 0.0 {
                         return Err(crate::error::text_numeric_error(
                             "source range font extent",
                             TextNumericPhase::SourceRangeFragments,
@@ -828,7 +844,7 @@ impl Layout {
                         instance,
                         ascent: font.metrics.ascent,
                         descent: font.metrics.descent,
-                        baseline: placed.anchor.y,
+                        baseline,
                     });
                 }
                 if pieces.is_empty() {
