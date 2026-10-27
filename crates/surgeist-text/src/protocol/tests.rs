@@ -11,6 +11,7 @@ mod casing;
 mod computed_boundaries;
 mod conditional;
 mod count_admission;
+mod horizontal_control_movement;
 mod hyphenation_limits;
 mod hyphenation_policy;
 mod incidence_cost;
