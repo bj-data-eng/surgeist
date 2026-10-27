@@ -986,13 +986,58 @@ is the correctly rounded binary64 value of its exact canonical magnitude. Equal
 absolute lengths in different units therefore project identically, so
 `calc(round(down, 1cm / 10mm, 1))` emits `calc(1)`, `calc(sign(10mm - 1cm))`
 emits `calc(0)` and `mod(1cm, 10mm)` emits `calc(0px)`. Radians use `180/π`.
-Arithmetic after projection remains binary64. Correctly rounded canonical
-values of different multiples of one unit are not always exact multiples of
-each other, so some same-unit remainders are inexact: `rem(10mm, 1mm)`,
-`rem(3mm, 1mm)` and `rem(1cm, 1mm)` emit `calc(3.779528px)` rather than
-`calc(0px)`, and division multiplies by a binary64 reciprocal, so
-`calc(round(down, 3cm / 3cm, 1))` emits `calc(0)`. Exact evaluation of these
-operators is tracked separately.
+
+Correctly rounded canonical values of different multiples of one unit are not
+always exact multiples of each other, so arithmetic after projection would turn
+`rem(10mm, 1mm)` into a nonzero remainder
+([#1433](https://github.com/bj-data-eng/surgeist/issues/1433)). Specified
+output therefore keeps each absolute dimension leaf's authored coefficient and
+unit alongside its canonical value, and evaluates on the coefficients while
+every operand still has one:
+
+- Sums accumulate in source order in a common unit, so `sign(3mm - 1mm - 2mm)`,
+  `sign(1in - 1pc - 5pc)` and `sign(4px - 3pt)` are exactly zero.
+- A product multiplies Number factors into a coefficient, and dividing one
+  dimension by another of its dimension divides their coefficients in a common
+  unit, so `round(down, 3cm / 3cm, 1)` and `round(down, 1in / 1pt, 1)` emit
+  `calc(1)` and `calc(72)`. Values 4's calculation tree represents `a / b` as a
+  Product with an Invert node ([§10.10](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-internal));
+  the specification leaves the numerical evaluation order to the implementation,
+  and dividing the coefficients is the deliberate exact evaluation that #1433
+  asks for.
+- `mod()`, `rem()` and `round()` evaluate on the coefficients in a common unit,
+  so `rem(10mm, 1mm)`, `rem(1cm, 1mm)` and `round(up, 96px, 1pt)` emit
+  `calc(0px)`, `calc(0px)` and `calc(96px)`. `abs()`, `min()`, `max()` and
+  `clamp()` return one of their operands, so their value is unchanged, but the
+  result keeps the operand's authored unit; otherwise a following remainder,
+  such as `rem(min(10mm, 20mm), 1mm)`, would again see only the rounded
+  canonical value.
+
+Operands that share a unit are combined as authored. Operands in different
+units combine in the coarsest unit of which each is a whole multiple, found from
+the registry's exact rational ratios (`n/d` canonical units per unit) as
+`gcd(n)/lcm(d)` canonical units, with an integer multiplier per operand. `px`
+and `pt` (4/3) therefore combine in thirds of a pixel with multipliers 3 and 4,
+`cm` and `mm` in millimetres with multipliers 10 and 1, and `px` and `cm`
+(4800/127) in 127ths of a pixel. The results are exact rational arithmetic
+whenever every scaled coefficient is exactly representable in binary64:
+integer coefficients, and decimals with a short binary expansion such as `0.5`,
+qualify as long as the scaled value stays an exact binary64 value.
+
+The exact path never replaces the shared range rule below, and it does not
+guarantee more than that. It applies only when every authored coefficient,
+scaled coefficient, intermediate and result, and its canonical value, is
+finite, and when the units have an exact ratio (lengths, time, frequency,
+resolution and the non-radian angles; a radian converts only to itself). A
+scaled coefficient that would need rounding, such as `0.1px` against `1pt`, or
+one beyond the exact-integer range of binary64, makes the whole operation keep
+binary64 arithmetic on canonical values, as do overflowing, infinite and NaN
+outcomes, operands with a context-dependent unit, every other function and
+keyframe selector matching. Decimal coefficients are binary64 approximations of
+their authored text, so same-unit arithmetic on them is as exact as binary64
+allows and makes no decimal claim: `0.1mm + 0.2mm` projects the binary64 sum of
+`0.1` and `0.2` once. Dividing by a plain Number still multiplies by its binary64
+reciprocal.
 
 [#1297](https://github.com/bj-data-eng/surgeist/issues/1297) revises the
 [#735](https://github.com/bj-data-eng/surgeist/issues/735) precision and phase
