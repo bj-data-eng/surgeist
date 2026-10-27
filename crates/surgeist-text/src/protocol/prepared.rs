@@ -923,6 +923,7 @@ fn issue_opportunities(
             && wrapping_allowed(analyzed, boundary)?)
             || standalone_opportunity(analyzed, tables, boundary)
             || (boundary.participant < tables.participants.len()
+                && analyzed.analysis.line_units.permits_edge(boundary.atom)
                 && analyzed
                     .analysis
                     .infos
@@ -1229,7 +1230,9 @@ fn break_spaces_opportunity(
         CodePointMapData,
         props::{GeneralCategory, LineBreak},
     };
-    if analyzed.paragraph.base_direction.is_none() {
+    if !analyzed.analysis.line_units.permits_edge(boundary.atom)
+        || analyzed.paragraph.base_direction.is_none()
+    {
         return false;
     }
     let Some(ParticipantData::Text(unit)) = boundary
@@ -1287,6 +1290,9 @@ fn automatic_cut(
     boundary_index: usize,
 ) -> crate::Result<Option<(usize, usize, usize)>> {
     let boundary = tables.boundaries[boundary_index];
+    if !analyzed.analysis.line_units.permits_edge(boundary.atom) {
+        return Ok(None);
+    }
     let Some(word_index) = analyzed.words.word_at(boundary.atom) else {
         return Ok(None);
     };
@@ -1376,6 +1382,9 @@ fn ordinary_after_source_shy(
     tables: &PreparedTables,
     boundary: &BoundaryData,
 ) -> crate::Result<bool> {
+    if !analyzed.analysis.line_units.permits_edge(boundary.atom) {
+        return Ok(false);
+    }
     let Some(ParticipantData::Text(unit)) = boundary
         .participant
         .checked_sub(1)
@@ -1487,6 +1496,9 @@ fn ordinary_text_opportunity(
     boundary: &BoundaryData,
 ) -> crate::Result<bool> {
     use crate::engine::analysis::wrapping::Influence;
+    if !analyzed.analysis.line_units.permits_edge(boundary.atom) {
+        return Ok(false);
+    }
     let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]];
     let (
         Some(Influence::Text {
@@ -1581,7 +1593,13 @@ pub(crate) fn conditional_boundaries(
             .iter()
             .copied()
             .filter(|index| {
-                if *index <= start || *index >= ceiling {
+                if *index <= start
+                    || *index >= ceiling
+                    || !analyzed
+                        .analysis
+                        .line_units
+                        .permits_edge(tables.boundaries[*index].atom)
+                {
                     return false;
                 }
                 let atom = tables.boundaries[*index].atom;
@@ -1605,6 +1623,9 @@ pub(crate) fn conditional_boundaries(
             continue;
         }
         let boundary = &tables.boundaries[index];
+        if !analyzed.analysis.line_units.permits_edge(boundary.atom) {
+            continue;
+        }
         let relation = &analyzed.logical.relations[analyzed.logical.cuts[boundary.participant]];
         let (
             Some(Influence::Text {
@@ -1661,7 +1682,9 @@ fn standalone_atomic_opportunity(
     tables: &PreparedTables,
     boundary: &BoundaryData,
 ) -> bool {
-    if analyzed.paragraph.base_direction.is_some() {
+    if !analyzed.analysis.line_units.permits_edge(boundary.atom)
+        || analyzed.paragraph.base_direction.is_some()
+    {
         return false;
     }
     let previous = boundary
@@ -1680,7 +1703,9 @@ fn standalone_opportunity(
     tables: &PreparedTables,
     boundary: &BoundaryData,
 ) -> bool {
-    if analyzed.paragraph.base_direction.is_some() {
+    if !analyzed.analysis.line_units.permits_edge(boundary.atom)
+        || analyzed.paragraph.base_direction.is_some()
+    {
         return false;
     }
     let previous = boundary
@@ -1866,6 +1891,7 @@ pub(crate) fn prepare_indication_fonts(
                 control_levels: analysis.control_levels.clone(),
                 computed_levels: analysis.computed_levels.clone(),
                 graphemes,
+                line_units: crate::engine::analysis::line_units::LineBreakUnits::new(&projection)?,
             };
             let inserted_atoms = inserted_atoms.start - offset..inserted_atoms.end - offset;
             let catalogue_identity = catalogue.identity().clone();

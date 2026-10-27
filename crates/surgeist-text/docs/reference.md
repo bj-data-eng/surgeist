@@ -82,12 +82,15 @@ admitted manual-priority measurements for a restored automatic variant.
 variants, and alternative readback returns an optional ordinary opportunity.
 A retained suppressed variant does not gain ordinary selection authority.
 
-The current non-complex provider lacks Thai/Lao lexical models and uses AL/CM
+The current non-complex provider lacks Thai/Lao/Khmer lexical models and uses AL/CM
 ordinary SA context. Normal and KeepAll separately supply fallback cuts between
 qualified whole letter units,
 without declaring detected word boundaries or changing locale metadata. See
 the [missing-capability contract](../../../docs/text-layout-contract.md#missing-lexical-capability)
 for wrapping, intrinsic sizing and the bounded writing-system support.
+The shared [Khmer line-unit profile](../../../references/text-khmer-line-units--determination-20261027.md)
+protects post-vowel COENG sequences across automatic wrapping modes while
+preserving the retained Unicode 17 editing EGCs.
 
 ## Native line breaking
 

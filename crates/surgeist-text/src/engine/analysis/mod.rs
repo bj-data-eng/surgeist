@@ -8,6 +8,7 @@ pub(crate) mod direction;
 pub(crate) mod hyphenation;
 mod lexical_fallback;
 mod line_break;
+pub(crate) mod line_units;
 pub(crate) mod phrase;
 pub(crate) mod scope;
 pub(crate) mod unit_properties;
@@ -180,6 +181,8 @@ pub(crate) struct Analysis {
     pub(crate) base_level: u8,
     /// Actual segmentation boundaries expressed as half-open atom intervals.
     pub(crate) graphemes: Vec<Range<usize>>,
+    /// Operation-specific restrictions; editing/shaping EGCs stay unchanged.
+    pub(crate) line_units: line_units::LineBreakUnits,
     pub(crate) line_candidates: Vec<LineCandidate>,
     pub(crate) phrases: phrase::PhraseCatalog,
 }
@@ -263,6 +266,7 @@ pub(crate) fn analyze(
         .windows(2)
         .map(|pair| pair[0]..pair[1])
         .collect();
+    let line_units = line_units::LineBreakUnits::new(projection)?;
     let mut boundaries = vec![Boundary::None; projection.atoms.len() + 1];
     let mut word_ranges = Vec::new();
     let mut line_candidates = Vec::new();
@@ -294,7 +298,10 @@ pub(crate) fn analyze(
         let missing_lexical = line_break::apply(
             projection,
             styles,
-            &line_policies,
+            line_break::LineRules {
+                policies: &line_policies,
+                units: &line_units,
+            },
             &offsets,
             component_start..component_end,
             &mut boundaries,
@@ -308,7 +315,7 @@ pub(crate) fn analyze(
             missing_lexical,
             projection,
             styles,
-            &graphemes[grapheme_cursor..grapheme_end],
+            line_units.ranges(&graphemes[grapheme_cursor..grapheme_end]),
             &mut lexical_fallbacks,
         );
         grapheme_cursor = grapheme_end;
@@ -471,6 +478,7 @@ pub(crate) fn analyze(
             computed_levels,
             base_level,
             graphemes,
+            line_units,
             line_candidates,
             phrases,
         },
