@@ -35,7 +35,7 @@ use crate::numeric::{
     CssAngle, CssCalculation, CssCalculationType, CssHintedNumber, CssNumber,
     CssNumericConstructionError, CssPercentage,
 };
-use crate::tokenization::tokenizer::{NameKind, NumberKind, Span, Token, TokenKind};
+use surgeist_css_parser::lexer::protocol::{NameKind, NumberKind, RawToken, RawTokenKind, Span};
 
 type Result<T> = std::result::Result<T, ColorInputFailure>;
 
@@ -148,8 +148,8 @@ impl<'a, 'owner> Events<'a, 'owner> {
         value: CssNumericTokenRef<'_>,
         kind: NumberKind,
         unit: &str,
-    ) -> std::result::Result<TokenKind, ColorProtocolError> {
-        use crate::tokenization::number::{NumberCursor, Part, Step};
+    ) -> std::result::Result<RawTokenKind, ColorProtocolError> {
+        use surgeist_css_parser::lexer::protocol::{NumberCursor, NumberPart, NumberStep};
         let spelling = value.representation().as_bytes();
         let start = self.slots.len();
         let mut cursor = NumberCursor::new();
@@ -166,9 +166,9 @@ impl<'a, 'owner> Events<'a, 'owner> {
                 .step(window)
                 .map_err(|_| ColorProtocolError::Overflow)?
             {
-                Step::Consume(part) => {
+                NumberStep::Consume(part) => {
                     match part {
-                        Part::Mantissa(value) => {
+                        NumberPart::Mantissa(value) => {
                             self.append(
                                 Data::NumberDigit {
                                     exponent: false,
@@ -177,7 +177,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
                                 None,
                             )?;
                         }
-                        Part::ExponentDigit(value) => {
+                        NumberPart::ExponentDigit(value) => {
                             self.append(
                                 Data::NumberDigit {
                                     exponent: true,
@@ -186,12 +186,15 @@ impl<'a, 'owner> Events<'a, 'owner> {
                                 None,
                             )?;
                         }
-                        Part::Sign | Part::Point | Part::Exponent | Part::ExponentSign => {}
+                        NumberPart::Sign
+                        | NumberPart::Point
+                        | NumberPart::Exponent
+                        | NumberPart::ExponentSign => {}
                     }
                     offset = offset.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
                 }
-                Step::Transition => {}
-                Step::Done(layout) => break layout,
+                NumberStep::Transition => {}
+                NumberStep::Done(layout) => break layout,
             }
         };
         if offset != spelling.len() {
@@ -202,7 +205,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
             end: self.slots.len(),
         };
         let unit = self.name(unit)?;
-        Ok(TokenKind::Number {
+        Ok(RawTokenKind::Number {
             kind,
             layout,
             digits,
@@ -211,7 +214,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
     }
     fn token(
         &mut self,
-        kind: TokenKind,
+        kind: RawTokenKind,
         original: &'a CssComponentValue,
         path: &[usize],
     ) -> std::result::Result<(), ColorProtocolError> {
@@ -223,7 +226,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
             .map_err(|_| ColorProtocolError::Overflow)?;
         retained.extend_from_slice(path);
         self.append(
-            Data::Token(Token {
+            Data::Token(RawToken {
                 kind,
                 source: Span { start, end },
             }),
@@ -267,7 +270,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
                 Visit::Close(item, delimiter, closed) => {
                     if closed {
                         let site = self.slots.len();
-                        self.token(TokenKind::Delimiter(delimiter), item, &path)?;
+                        self.token(RawTokenKind::Delim(delimiter), item, &path)?;
                         self.closing[site] = true;
                     } else if self.eof.is_none() {
                         let mut retained = Vec::new();
@@ -295,7 +298,7 @@ impl<'a, 'owner> Events<'a, 'owner> {
                                 ),
                             ));
                             pending.push(Visit::Items(function.values().items(), 0));
-                            TokenKind::Name {
+                            RawTokenKind::Name {
                                 kind: NameKind::Function,
                                 units,
                             }
@@ -318,19 +321,19 @@ impl<'a, 'owner> Events<'a, 'owner> {
                                 ),
                             ));
                             pending.push(Visit::Items(block.values().items(), 0));
-                            TokenKind::Delimiter(open)
+                            RawTokenKind::Delim(open)
                         }
-                        CssComponentValueRef::Comment(_) => TokenKind::Comment { closed: true },
+                        CssComponentValueRef::Comment(_) => RawTokenKind::Comment { closed: true },
                         CssComponentValueRef::Token(token) => match token {
-                            CssValueTokenRef::Ident(name) => TokenKind::Name {
+                            CssValueTokenRef::Ident(name) => RawTokenKind::Name {
                                 kind: NameKind::Ident,
                                 units: self.name(name)?,
                             },
-                            CssValueTokenRef::AtKeyword(name) => TokenKind::Name {
-                                kind: NameKind::At,
+                            CssValueTokenRef::AtKeyword(name) => RawTokenKind::Name {
+                                kind: NameKind::AtKeyword,
                                 units: self.name(name)?,
                             },
-                            CssValueTokenRef::Hash { value, flag } => TokenKind::Name {
+                            CssValueTokenRef::Hash { value, flag } => RawTokenKind::Name {
                                 kind: NameKind::Hash {
                                     identifier: flag == CssHashFlag::Id,
                                 },
@@ -345,14 +348,14 @@ impl<'a, 'owner> Events<'a, 'owner> {
                             CssValueTokenRef::Dimension { number, unit } => {
                                 self.number(number, NumberKind::Dimension, unit)?
                             }
-                            CssValueTokenRef::Whitespace(_) => TokenKind::Whitespace,
-                            CssValueTokenRef::Delim(unit) => TokenKind::Delimiter(unit),
-                            CssValueTokenRef::Comma => TokenKind::Delimiter(','),
-                            CssValueTokenRef::Colon => TokenKind::Delimiter(':'),
-                            CssValueTokenRef::Semicolon => TokenKind::Delimiter(';'),
-                            CssValueTokenRef::Cdo => TokenKind::Cdo,
-                            CssValueTokenRef::Cdc => TokenKind::Cdc,
-                            CssValueTokenRef::String(value) => TokenKind::String {
+                            CssValueTokenRef::Whitespace(_) => RawTokenKind::Whitespace,
+                            CssValueTokenRef::Delim(unit) => RawTokenKind::Delim(unit),
+                            CssValueTokenRef::Comma => RawTokenKind::Delim(','),
+                            CssValueTokenRef::Colon => RawTokenKind::Delim(':'),
+                            CssValueTokenRef::Semicolon => RawTokenKind::Delim(';'),
+                            CssValueTokenRef::Cdo => RawTokenKind::Cdo,
+                            CssValueTokenRef::Cdc => RawTokenKind::Cdc,
+                            CssValueTokenRef::String(value) => RawTokenKind::String {
                                 units: self.name(value)?,
                                 closed: true,
                             },

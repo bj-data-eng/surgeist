@@ -562,8 +562,8 @@ mod tests {
         CssColorSchemeFact, CssDeviceColorFact,
     };
     use crate::rule::color_profile::CssColorProfileRenderingIntent as Intent;
-    use crate::tokenization::bounded::InputKind;
     use surgeist_color::PredefinedColorSpace;
+    use surgeist_css_parser::input::InputKind;
     fn lex<'a>(operation: &mut LexicalOperation<'a>, input: &str) -> Vec<CssColorSlot<'a>> {
         let mut slots = Vec::new();
         loop {

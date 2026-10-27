@@ -10,7 +10,7 @@ use crate::color::controlled::protocol::{
 use crate::color::controlled::{CssColorBank, CssColorOperationOwner, CssColorSlot};
 use crate::component::CssNumericTokenRef;
 use crate::numeric::CssNumericUnit;
-use crate::tokenization::number::{Layout, NumberCursor, Part, Step};
+use surgeist_css_parser::lexer::protocol::{NumberCursor, NumberLayout, NumberPart, NumberStep};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Action {
@@ -24,7 +24,7 @@ enum NumberState {
     Fill,
     Compute,
     Digit { exponent: bool, value: u8 },
-    Header(Layout),
+    Header(NumberLayout),
     Done { record: usize },
 }
 pub(super) struct NumberSpelling<'css> {
@@ -116,8 +116,8 @@ impl<'css> NumberSpelling<'css> {
             .step(self.lookahead)
             .map_err(|_| ColorProtocolError::Overflow)?
         {
-            Step::Transition => self.state = NumberState::Compute,
-            Step::Consume(part) => {
+            NumberStep::Transition => self.state = NumberState::Compute,
+            NumberStep::Consume(part) => {
                 let next = self
                     .offset
                     .checked_add(1)
@@ -129,18 +129,18 @@ impl<'css> NumberSpelling<'css> {
                 self.lookahead = [self.lookahead[1], self.lookahead[2], None];
                 self.filled -= 1;
                 self.state = match part {
-                    Part::Mantissa(value) => NumberState::Digit {
+                    NumberPart::Mantissa(value) => NumberState::Digit {
                         exponent: false,
                         value,
                     },
-                    Part::ExponentDigit(value) => NumberState::Digit {
+                    NumberPart::ExponentDigit(value) => NumberState::Digit {
                         exponent: true,
                         value,
                     },
                     _ => NumberState::Fill,
                 };
             }
-            Step::Done(layout) => {
+            NumberStep::Done(layout) => {
                 if self.offset != self.representation.len() || layout.mantissa_digits == 0 {
                     return Err(ColorProtocolError::Input);
                 }

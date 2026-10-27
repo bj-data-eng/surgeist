@@ -1,119 +1,221 @@
-//! The crate's bounded CSS Syntax 3 §4 tokenizer over preprocessed scalars.
+//! The bounded CSS Syntax 3 section 4.3 tokenizer over preprocessed scalars.
 //!
-//! The cssparser provider tokenizes `&str` without a work bound. This cursor is
-//! the general tokenizer for input that needs bounded, caller-admitted work or
-//! did not arrive as `&str`. Both [`InputKind`](super::bounded::InputKind)
-//! feeders are live: UTF-16 DOM input (`prepare_utf16` and
-//! `CssColorInputKind::Utf16`) and UTF-8 input (`CssColorInputKind::Utf8` and
-//! decoded `attr()` strings through `CssSourceSnapshot::try_from_decoded_utf8`).
-//! Its consumers are the color protocol and bounded component-value
-//! construction, whose results equal direct cssparser collection over the same
-//! preprocessed text (`component_values::tokenizer_agreement_tests`).
-//!
-//! Every scalar has already been preprocessed (§3.3), so U+0000, CR and FF
-//! never arrive. The shared lexical predicates still name them because the
-//! provider corrections also apply them to authored, unpreprocessed text.
+//! This cursor is the tokenizer for input that needs bounded, caller-admitted
+//! work or did not arrive as `&str`. Every scalar it reads has already been
+//! preprocessed (section 3.3, [`InputCursor`](crate::input::InputCursor)), so
+//! U+0000, U+000D and U+000C never arrive; the lexical predicates it uses
+//! describe preprocessed input.
 //!
 //! Each input observation, grammar transition, decoded name/digit append and
 //! token append is distinct. All variable storage belongs to the caller.
 
-use super::bounded::Scalar;
-use super::name::{NameCursor, Step as NameStep, whitespace};
-use super::number::{Layout, NumberCursor, Part, Step as NumberStep, number_start};
-use super::{identifier_start, name_point, valid_escape};
+use super::name::{NameCursor, Step as NameStep};
+use super::number::{NumberCursor, NumberLayout, NumberPart, NumberStep};
+use crate::input::Scalar;
+use crate::lexical::{
+    is_ident_code_point, is_non_printable, is_whitespace, valid_escape, would_start_ident,
+    would_start_number,
+};
 
+/// A half-open interval `start..end`.
+///
+/// In [`RawToken::source`] it counts the original input's units, as a
+/// [`Scalar`] does. Everywhere else in a [`RawTokenKind`] it counts slots of
+/// the caller's flat record bank: the [`Record`]s the cursor asked the host to
+/// store, in the order it asked.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct Span {
-    pub(crate) start: usize,
-    pub(crate) end: usize,
+pub struct Span {
+    /// The first unit or slot.
+    pub start: usize,
+    /// One past the last unit or slot.
+    pub end: usize,
 }
 
+/// Which name-like token a [`RawTokenKind::Name`] is.
+///
+/// The set is closed: it mirrors the name-like tokens of Syntax 3 section 4.1,
+/// and a new edition would be a deliberate breaking change.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum NameKind {
+pub enum NameKind {
+    /// An `<ident-token>`.
     Ident,
+    /// A `<function-token>`: an ident followed by U+0028 LEFT PARENTHESIS,
+    /// which the token includes.
     Function,
-    Hash { identifier: bool },
-    At,
+    /// A `<hash-token>`; `identifier` is true when its type flag is `id`,
+    /// that is, when the name would start an ident sequence.
+    Hash {
+        /// Whether the type flag is `id` rather than `unrestricted`.
+        identifier: bool,
+    },
+    /// An `<at-keyword-token>`.
+    AtKeyword,
 }
 
+/// Which numeric token a [`RawTokenKind::Number`] is.
+///
+/// The set is closed: it mirrors the numeric tokens of Syntax 3 section 4.1,
+/// and a new edition would be a deliberate breaking change.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum NumberKind {
+pub enum NumberKind {
+    /// A `<number-token>`.
     Number,
+    /// A `<percentage-token>`; its `unit` span is empty.
     Percentage,
+    /// A `<dimension-token>`; its `unit` span names the decoded unit.
     Dimension,
 }
 
+/// What a [`RawToken`] is, with the record-bank spans of its decoded parts.
+///
+/// The decoded text of a name, string or URL is not in the token: it is the
+/// run of [`Record::NameUnit`]s the host stored in the named span. The digits
+/// of a number are the run of [`Record::Digit`]s in `digits`, counted by
+/// `layout`; the lexer never converts them to a value.
+///
+/// The set is closed: it mirrors the token list of Syntax 3 section 4.1 (plus
+/// the comment the cursor reports), and a new edition would be a deliberate
+/// breaking change.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum TokenKind {
+pub enum RawTokenKind {
+    /// An ident, function, hash or at-keyword token.
     Name {
+        /// Which of those it is.
         kind: NameKind,
+        /// The record slots of its decoded name units.
         units: Span,
     },
+    /// A number, percentage or dimension token.
     Number {
+        /// Which of those it is.
         kind: NumberKind,
-        layout: Layout,
+        /// The counts of its spelling.
+        layout: NumberLayout,
+        /// The record slots of its digits: mantissa digits, then exponent
+        /// digits.
         digits: Span,
+        /// The record slots of its decoded unit; empty unless a dimension.
         unit: Span,
     },
+    /// A `<whitespace-token>`.
     Whitespace,
+    /// A comment. Syntax 3 discards comments; the cursor reports them so a
+    /// host can keep source positions and spellings.
     Comment {
+        /// Whether the comment ended at `*/` rather than at EOF.
         closed: bool,
     },
+    /// A `<string-token>`.
     String {
+        /// The record slots of its decoded units.
         units: Span,
+        /// Whether the closing quote was present rather than EOF.
         closed: bool,
     },
+    /// A `<bad-string-token>`.
     BadString,
+    /// A `<url-token>`.
     Url {
+        /// The record slots of its decoded units.
         units: Span,
+        /// Whether the closing U+0029 RIGHT PARENTHESIS was present rather
+        /// than EOF.
         closed: bool,
     },
+    /// A `<bad-url-token>`.
     BadUrl {
+        /// Whether the closing U+0029 RIGHT PARENTHESIS was present rather
+        /// than EOF.
         closed: bool,
     },
-    Delimiter(char),
+    /// A `<delim-token>`.
+    Delim(char),
+    /// A `<CDO-token>`.
     Cdo,
+    /// A `<CDC-token>`.
     Cdc,
 }
 
+/// A token together with the original input interval it covers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct Token {
-    pub(crate) kind: TokenKind,
-    pub(crate) source: Span,
+pub struct RawToken {
+    /// What the token is.
+    pub kind: RawTokenKind,
+    /// The original input units the token covers, as in [`Scalar::start`]
+    /// and [`Scalar::end`].
+    pub source: Span,
 }
 
-/// Each payload is fixed. Names/digits are caller-owned ordered flat records.
+/// One fixed value the host stores in its flat record bank.
+///
+/// Each payload is fixed-size. Names and digits are caller-owned, ordered,
+/// flat records; the spans of a [`RawTokenKind`] index them.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Record {
+pub enum Record {
+    /// One decoded unit of a name, string or URL.
     NameUnit(char),
-    Digit { exponent: bool, value: u8 },
-    Token(Token),
+    /// One digit of a number's spelling.
+    Digit {
+        /// Whether it is an exponent digit rather than a mantissa digit.
+        exponent: bool,
+        /// Its value, 0 to 9.
+        value: u8,
+    },
+    /// A complete token.
+    Token(RawToken),
 }
 
+/// What a [`TokenCursor`] needs its host to do next.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Request {
-    ReadScalar { index: usize },
+pub enum TokenRequest {
+    /// Read the scalar at `index` and pass it to
+    /// [`TokenCursor::read_scalar`].
+    ReadScalar {
+        /// The position of the scalar in the preprocessed scalar stream.
+        index: usize,
+    },
+    /// Admit one bounded grammar decision, then call
+    /// [`TokenCursor::compute`].
     Compute,
-    Append { index: usize, record: Record },
+    /// Admit storage for `record` at slot `index`, store it, then call
+    /// [`TokenCursor::appended`] with `index`. A refused append is simply not
+    /// acknowledged: the same request stays pending.
+    Append {
+        /// The slot of the record bank the record takes.
+        index: usize,
+        /// The record to store.
+        record: Record,
+    },
+    /// The input is exhausted and every record was appended.
     Done,
 }
 
+/// A protocol violation by the host of a [`TokenCursor`].
+///
+/// Every error leaves the cursor unchanged, so the pending request remains
+/// valid.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Error {
+pub enum ProtocolError {
+    /// The call does not answer the pending [`TokenRequest`].
     WrongReply,
+    /// The slot index differs from the pending append's.
     WrongIndex,
+    /// A scalar is empty or does not continue the previous scalar's
+    /// interval, or a consumption exceeds the cached lookahead.
     Boundary,
+    /// A position, slot or digit count does not fit `usize`.
     Overflow,
+    /// The cursor already finished.
     Complete,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum NamePurpose {
     Name(NameKind),
-    Dimension { layout: Layout, digits: Span },
+    Dimension { layout: NumberLayout, digits: Span },
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum EscapeTarget {
     String { quote: char, units_start: usize },
     Url { units_start: usize },
@@ -129,7 +231,7 @@ impl EscapeTarget {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum State {
     Start,
     Whitespace,
@@ -145,7 +247,7 @@ enum State {
         digits_start: usize,
     },
     Suffix {
-        layout: Layout,
+        layout: NumberLayout,
         digits: Span,
     },
     String {
@@ -181,7 +283,7 @@ enum State {
     Done,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Pending {
     record: Record,
     state: State,
@@ -189,9 +291,18 @@ struct Pending {
     next_slot: usize,
 }
 
+/// The tokenizer as a sans-IO state machine.
+///
+/// The host asks [`request`](Self::request) and answers each request in turn:
+/// it reads preprocessed scalars, admits each bounded decision, and stores
+/// each record the cursor generates. A refused append leaves the cursor
+/// unchanged and resumable. The host owns every bank; the cursor holds only
+/// fixed registers.
+///
 /// Cached lookahead is four fixed registers (CDO needs four code points).
 /// It is neither a copied source nor a second lexical backing store.
-pub(crate) struct TokenCursor {
+#[derive(Debug)]
+pub struct TokenCursor {
     length: usize,
     read: usize,
     window: [Option<Scalar>; 4],
@@ -204,7 +315,10 @@ pub(crate) struct TokenCursor {
 }
 
 impl TokenCursor {
-    pub(crate) const fn new(scalar_length: usize, first_slot: usize) -> Self {
+    /// Creates a cursor over `scalar_length` preprocessed scalars whose first
+    /// generated record takes slot `first_slot` of the host's record bank.
+    #[must_use]
+    pub const fn new(scalar_length: usize, first_slot: usize) -> Self {
         Self {
             length: scalar_length,
             read: 0,
@@ -218,41 +332,52 @@ impl TokenCursor {
         }
     }
 
-    pub(crate) fn request(&self) -> Request {
+    /// What the cursor needs from its host next. Reads only fixed registers;
+    /// the host admits this observation like any other action.
+    #[must_use]
+    pub fn request(&self) -> TokenRequest {
         if let Some(pending) = self.pending {
-            return Request::Append {
+            return TokenRequest::Append {
                 index: self.next_slot,
                 record: pending.record,
             };
         }
         if matches!(self.state, State::Done) {
-            return Request::Done;
+            return TokenRequest::Done;
         }
         if self.cached < 4 && self.read < self.length {
-            return Request::ReadScalar { index: self.read };
+            return TokenRequest::ReadScalar { index: self.read };
         }
-        Request::Compute
+        TokenRequest::Compute
     }
 
     /// One actual qualified scalar slot observation, not a borrowed source slice.
-    pub(crate) fn read_scalar(&mut self, index: usize, scalar: Scalar) -> Result<(), Error> {
-        if self.request() != (Request::ReadScalar { index }) {
-            return Err(Error::WrongReply);
+    ///
+    /// # Errors
+    ///
+    /// [`ProtocolError::WrongReply`] unless the pending request is
+    /// [`TokenRequest::ReadScalar`] for `index`; [`ProtocolError::Boundary`]
+    /// when the scalar is empty or does not start where the previous one
+    /// ended; [`ProtocolError::Overflow`] when the count of scalars read would
+    /// exceed `usize`.
+    pub fn read_scalar(&mut self, index: usize, scalar: Scalar) -> Result<(), ProtocolError> {
+        if self.request() != (TokenRequest::ReadScalar { index }) {
+            return Err(ProtocolError::WrongReply);
         }
         if scalar.end <= scalar.start {
-            return Err(Error::Boundary);
+            return Err(ProtocolError::Boundary);
         }
         let previous_end = if self.cached == 0 {
             self.consumed_end
         } else {
             self.window[usize::from(self.cached - 1)]
-                .ok_or(Error::Boundary)?
+                .ok_or(ProtocolError::Boundary)?
                 .end
         };
         if scalar.start != previous_end {
-            return Err(Error::Boundary);
+            return Err(ProtocolError::Boundary);
         }
-        let next = self.read.checked_add(1).ok_or(Error::Overflow)?;
+        let next = self.read.checked_add(1).ok_or(ProtocolError::Overflow)?;
         self.window[usize::from(self.cached)] = Some(scalar);
         self.cached += 1;
         self.read = next;
@@ -261,10 +386,15 @@ impl TokenCursor {
 
     /// Commit only after the actual caller push succeeded. A refused push never
     /// calls this, so the same record/index remains available for cleanup/retry.
-    pub(crate) fn appended(&mut self, index: usize) -> Result<(), Error> {
-        let pending = self.pending.ok_or(Error::WrongReply)?;
+    ///
+    /// # Errors
+    ///
+    /// [`ProtocolError::WrongReply`] unless an append is pending;
+    /// [`ProtocolError::WrongIndex`] unless `index` is the pending slot.
+    pub fn appended(&mut self, index: usize) -> Result<(), ProtocolError> {
+        let pending = self.pending.ok_or(ProtocolError::WrongReply)?;
         if index != self.next_slot {
-            return Err(Error::WrongIndex);
+            return Err(ProtocolError::WrongIndex);
         }
         self.consume(pending.consume)?;
         self.state = pending.state;
@@ -275,9 +405,16 @@ impl TokenCursor {
 
     /// One bounded grammar decision over cached lookahead. It can request one
     /// append, or perform one fixed transition; it never loops to a next token.
-    pub(crate) fn compute(&mut self) -> Result<(), Error> {
-        if self.request() != Request::Compute {
-            return Err(Error::WrongReply);
+    ///
+    /// # Errors
+    ///
+    /// [`ProtocolError::WrongReply`] unless the pending request is
+    /// [`TokenRequest::Compute`]; [`ProtocolError::Overflow`] when a slot or
+    /// digit count would exceed `usize`; [`ProtocolError::Boundary`] and
+    /// [`ProtocolError::Complete`] only if the cursor's own invariants fail.
+    pub fn compute(&mut self) -> Result<(), ProtocolError> {
+        if self.request() != TokenRequest::Compute {
+            return Err(ProtocolError::WrongReply);
         }
         let [a, b, c, d] = self.window.map(|point| point.map(|point| point.value));
         match self.state {
@@ -287,42 +424,43 @@ impl TokenCursor {
                     self.state = State::Done;
                     return Ok(());
                 };
-                if whitespace(value) {
+                if is_whitespace(value) {
                     self.state = State::Whitespace;
                 } else if [a, b] == [Some('/'), Some('*')] {
                     self.consume(2)?;
                     self.state = State::Comment;
                 } else if [a, b, c, d] == [Some('<'), Some('!'), Some('-'), Some('-')] {
-                    self.token(TokenKind::Cdo, 4)?;
+                    self.token(RawTokenKind::Cdo, 4)?;
                 } else if [a, b, c] == [Some('-'), Some('-'), Some('>')] {
-                    self.token(TokenKind::Cdc, 3)?;
-                } else if number_start([a, b, c]) {
+                    self.token(RawTokenKind::Cdc, 3)?;
+                } else if would_start_number(a, b, c) {
                     self.state = State::Number {
                         cursor: NumberCursor::new(),
                         digits_start: self.next_slot,
                     };
-                } else if identifier_start([a, b, c]) {
+                } else if would_start_ident(a, b, c) {
                     self.state = State::Name {
                         cursor: NameCursor::new(),
                         purpose: NamePurpose::Name(NameKind::Ident),
                         units_start: self.next_slot,
                         url_match: 0,
                     };
-                } else if value == '#' && (b.is_some_and(name_point) || valid_escape(b, c)) {
+                } else if value == '#' && (b.is_some_and(is_ident_code_point) || valid_escape(b, c))
+                {
                     self.consume(1)?;
                     self.state = State::Name {
                         cursor: NameCursor::new(),
                         purpose: NamePurpose::Name(NameKind::Hash {
-                            identifier: identifier_start([b, c, d]),
+                            identifier: would_start_ident(b, c, d),
                         }),
                         units_start: self.next_slot,
                         url_match: 0,
                     };
-                } else if value == '@' && identifier_start([b, c, d]) {
+                } else if value == '@' && would_start_ident(b, c, d) {
                     self.consume(1)?;
                     self.state = State::Name {
                         cursor: NameCursor::new(),
-                        purpose: NamePurpose::Name(NameKind::At),
+                        purpose: NamePurpose::Name(NameKind::AtKeyword),
                         units_start: self.next_slot,
                         url_match: 0,
                     };
@@ -333,21 +471,21 @@ impl TokenCursor {
                         units_start: self.next_slot,
                     };
                 } else {
-                    self.token(TokenKind::Delimiter(value), 1)?;
+                    self.token(RawTokenKind::Delim(value), 1)?;
                 }
             }
             State::Whitespace => {
-                if a.is_some_and(whitespace) {
+                if a.is_some_and(is_whitespace) {
                     self.consume(1)?;
                 } else {
-                    self.token(TokenKind::Whitespace, 0)?;
+                    self.token(RawTokenKind::Whitespace, 0)?;
                 }
             }
             State::Comment => {
                 if [a, b] == [Some('*'), Some('/')] {
-                    self.token(TokenKind::Comment { closed: true }, 2)?;
+                    self.token(RawTokenKind::Comment { closed: true }, 2)?;
                 } else if a.is_none() {
-                    self.token(TokenKind::Comment { closed: false }, 0)?;
+                    self.token(RawTokenKind::Comment { closed: false }, 0)?;
                 } else {
                     self.consume(1)?;
                 }
@@ -404,15 +542,15 @@ impl TokenCursor {
                         }
                         let (kind, consume) = match purpose {
                             NamePurpose::Name(NameKind::Ident) if a == Some('(') => (
-                                TokenKind::Name {
+                                RawTokenKind::Name {
                                     kind: NameKind::Function,
                                     units,
                                 },
                                 1,
                             ),
-                            NamePurpose::Name(kind) => (TokenKind::Name { kind, units }, 0),
+                            NamePurpose::Name(kind) => (RawTokenKind::Name { kind, units }, 0),
                             NamePurpose::Dimension { layout, digits } => (
-                                TokenKind::Number {
+                                RawTokenKind::Number {
                                     kind: NumberKind::Dimension,
                                     layout,
                                     digits,
@@ -428,8 +566,11 @@ impl TokenCursor {
             State::Number {
                 mut cursor,
                 digits_start,
-            } => match cursor.step([a, b, c]).map_err(|_| Error::Overflow)? {
-                NumberStep::Consume(Part::Mantissa(value)) => {
+            } => match cursor
+                .step([a, b, c])
+                .map_err(|_| ProtocolError::Overflow)?
+            {
+                NumberStep::Consume(NumberPart::Mantissa(value)) => {
                     self.append(
                         Record::Digit {
                             exponent: false,
@@ -442,7 +583,7 @@ impl TokenCursor {
                         1,
                     )?;
                 }
-                NumberStep::Consume(Part::ExponentDigit(value)) => {
+                NumberStep::Consume(NumberPart::ExponentDigit(value)) => {
                     self.append(
                         Record::Digit {
                             exponent: true,
@@ -481,7 +622,7 @@ impl TokenCursor {
             State::Suffix { layout, digits } => {
                 if a == Some('%') {
                     self.token(
-                        TokenKind::Number {
+                        RawTokenKind::Number {
                             kind: NumberKind::Percentage,
                             layout,
                             digits,
@@ -492,7 +633,7 @@ impl TokenCursor {
                         },
                         1,
                     )?;
-                } else if identifier_start([a, b, c]) {
+                } else if would_start_ident(a, b, c) {
                     self.state = State::Name {
                         cursor: NameCursor::new(),
                         purpose: NamePurpose::Dimension { layout, digits },
@@ -501,7 +642,7 @@ impl TokenCursor {
                     };
                 } else {
                     self.token(
-                        TokenKind::Number {
+                        RawTokenKind::Number {
                             kind: NumberKind::Number,
                             layout,
                             digits,
@@ -516,7 +657,7 @@ impl TokenCursor {
             }
             State::String { quote, units_start } => match a {
                 Some(value) if value == quote => self.token(
-                    TokenKind::String {
+                    RawTokenKind::String {
                         units: Span {
                             start: units_start,
                             end: self.next_slot,
@@ -526,7 +667,7 @@ impl TokenCursor {
                     1,
                 )?,
                 None => self.token(
-                    TokenKind::String {
+                    RawTokenKind::String {
                         units: Span {
                             start: units_start,
                             end: self.next_slot,
@@ -535,7 +676,7 @@ impl TokenCursor {
                     },
                     0,
                 )?,
-                Some('\n') => self.token(TokenKind::BadString, 0)?,
+                Some('\n') => self.token(RawTokenKind::BadString, 0)?,
                 Some('\\') => {
                     self.consume(1)?;
                     self.state = State::Escape {
@@ -545,7 +686,7 @@ impl TokenCursor {
                 Some(value) => self.append(Record::NameUnit(value), self.state, 1)?,
             },
             State::UrlStart { name, opening_end } => {
-                if a.is_some_and(whitespace) {
+                if a.is_some_and(is_whitespace) {
                     self.consume(1)?;
                 } else if matches!(a, Some('\'' | '"')) {
                     // Recognition may cross arbitrary whitespace, but the
@@ -562,8 +703,8 @@ impl TokenCursor {
                         }
                     };
                     self.append(
-                        Record::Token(Token {
-                            kind: TokenKind::Name {
+                        Record::Token(RawToken {
+                            kind: RawTokenKind::Name {
                                 kind: NameKind::Function,
                                 units: name,
                             },
@@ -583,8 +724,8 @@ impl TokenCursor {
             }
             State::QuotedUrlWhitespace { source } => {
                 self.append(
-                    Record::Token(Token {
-                        kind: TokenKind::Whitespace,
+                    Record::Token(RawToken {
+                        kind: RawTokenKind::Whitespace,
                         source,
                     }),
                     State::Start,
@@ -593,7 +734,7 @@ impl TokenCursor {
             }
             State::Url { units_start } => match a {
                 Some(')') | None => self.token(
-                    TokenKind::Url {
+                    RawTokenKind::Url {
                         units: Span {
                             start: units_start,
                             end: self.next_slot,
@@ -602,13 +743,11 @@ impl TokenCursor {
                     },
                     u8::from(a.is_some()),
                 )?,
-                Some(value) if whitespace(value) => {
+                Some(value) if is_whitespace(value) => {
                     self.consume(1)?;
                     self.state = State::UrlWhitespace { units_start };
                 }
-                Some(
-                    '"' | '\'' | '(' | '\u{0}'..='\u{8}' | '\u{b}' | '\u{e}'..='\u{1f}' | '\u{7f}',
-                ) => {
+                Some(value) if matches!(value, '"' | '\'' | '(') || is_non_printable(value) => {
                     self.consume(1)?;
                     self.state = State::BadUrl;
                 }
@@ -625,11 +764,11 @@ impl TokenCursor {
                 Some(value) => self.append(Record::NameUnit(value), self.state, 1)?,
             },
             State::UrlWhitespace { units_start } => {
-                if a.is_some_and(whitespace) {
+                if a.is_some_and(is_whitespace) {
                     self.consume(1)?;
                 } else if matches!(a, Some(')') | None) {
                     self.token(
-                        TokenKind::Url {
+                        RawTokenKind::Url {
                             units: Span {
                                 start: units_start,
                                 end: self.next_slot,
@@ -645,7 +784,7 @@ impl TokenCursor {
             State::BadUrl => {
                 if matches!(a, Some(')') | None) {
                     self.token(
-                        TokenKind::BadUrl {
+                        RawTokenKind::BadUrl {
                             closed: a.is_some(),
                         },
                         u8::from(a.is_some()),
@@ -698,7 +837,7 @@ impl TokenCursor {
                         digits: digits + 1,
                     };
                 } else {
-                    self.consume(u8::from(a.is_some_and(whitespace)))?;
+                    self.consume(u8::from(a.is_some_and(is_whitespace)))?;
                     self.state = State::HexEmit { target, value };
                 }
             }
@@ -719,16 +858,19 @@ impl TokenCursor {
                     0,
                 )?;
             }
-            State::Done => return Err(Error::Complete),
+            State::Done => return Err(ProtocolError::Complete),
         }
         Ok(())
     }
 
-    fn append(&mut self, record: Record, state: State, consume: u8) -> Result<(), Error> {
+    fn append(&mut self, record: Record, state: State, consume: u8) -> Result<(), ProtocolError> {
         if consume > self.cached {
-            return Err(Error::Boundary);
+            return Err(ProtocolError::Boundary);
         }
-        let next_slot = self.next_slot.checked_add(1).ok_or(Error::Overflow)?;
+        let next_slot = self
+            .next_slot
+            .checked_add(1)
+            .ok_or(ProtocolError::Overflow)?;
         self.pending = Some(Pending {
             record,
             state,
@@ -738,16 +880,16 @@ impl TokenCursor {
         Ok(())
     }
 
-    fn token(&mut self, kind: TokenKind, consume: u8) -> Result<(), Error> {
+    fn token(&mut self, kind: RawTokenKind, consume: u8) -> Result<(), ProtocolError> {
         let end = if consume == 0 {
             self.consumed_end
         } else {
             self.window[usize::from(consume - 1)]
-                .ok_or(Error::Boundary)?
+                .ok_or(ProtocolError::Boundary)?
                 .end
         };
         self.append(
-            Record::Token(Token {
+            Record::Token(RawToken {
                 kind,
                 source: Span {
                     start: self.token_start,
@@ -759,15 +901,15 @@ impl TokenCursor {
         )
     }
 
-    fn consume(&mut self, count: u8) -> Result<(), Error> {
+    fn consume(&mut self, count: u8) -> Result<(), ProtocolError> {
         if count > self.cached {
-            return Err(Error::Boundary);
+            return Err(ProtocolError::Boundary);
         }
         if count == 0 {
             return Ok(());
         }
         self.consumed_end = self.window[usize::from(count - 1)]
-            .ok_or(Error::Boundary)?
+            .ok_or(ProtocolError::Boundary)?
             .end;
         let count = usize::from(count);
         self.window = [
@@ -798,14 +940,16 @@ mod tests {
         let mut records = Vec::new();
         loop {
             match cursor.request() {
-                Request::ReadScalar { index } => cursor.read_scalar(index, points[index]).unwrap(),
-                Request::Compute => cursor.compute().unwrap(),
-                Request::Append { index, record } => {
+                TokenRequest::ReadScalar { index } => {
+                    cursor.read_scalar(index, points[index]).unwrap()
+                }
+                TokenRequest::Compute => cursor.compute().unwrap(),
+                TokenRequest::Append { index, record } => {
                     assert_eq!(index, records.len());
                     records.push(record);
                     cursor.appended(index).unwrap();
                 }
-                Request::Done => return records,
+                TokenRequest::Done => return records,
             }
         }
     }
@@ -820,7 +964,7 @@ mod tests {
             .collect()
     }
 
-    fn token_records(records: &[Record]) -> Vec<Token> {
+    fn token_records(records: &[Record]) -> Vec<RawToken> {
         records
             .iter()
             .filter_map(|record| match record {
@@ -838,7 +982,7 @@ mod tests {
         let records = tokens(text);
         let actual = token_records(&records);
         assert_eq!(actual.len(), 1);
-        let TokenKind::Url {
+        let RawTokenKind::Url {
             units,
             closed: true,
         } = actual[0].kind
@@ -857,7 +1001,7 @@ mod tests {
             let records = tokens(text);
             let actual = token_records(&records);
             assert_eq!(actual.len(), 1);
-            let TokenKind::Url {
+            let RawTokenKind::Url {
                 units,
                 closed: true,
             } = actual[0].kind
@@ -891,7 +1035,7 @@ mod tests {
             let records = tokens(text);
             let actual = token_records(&records);
             assert_eq!(actual.len(), 1, "{text:?}");
-            let TokenKind::Url {
+            let RawTokenKind::Url {
                 units,
                 closed: false,
             } = actual[0].kind
@@ -915,7 +1059,7 @@ mod tests {
         let records = tokens(text);
         let actual = token_records(&records);
         assert_eq!(actual.len(), 4);
-        let TokenKind::Name {
+        let RawTokenKind::Name {
             kind: NameKind::Function,
             units,
         } = actual[0].kind
@@ -926,12 +1070,12 @@ mod tests {
         assert_eq!(actual[0].source, Span { start: 0, end: 4 });
         assert_eq!(
             actual[1],
-            Token {
-                kind: TokenKind::Whitespace,
+            RawToken {
+                kind: RawTokenKind::Whitespace,
                 source: Span { start: 4, end: 8 },
             }
         );
-        let TokenKind::String {
+        let RawTokenKind::String {
             units,
             closed: true,
         } = actual[2].kind
@@ -942,8 +1086,8 @@ mod tests {
         assert_eq!(actual[2].source, Span { start: 8, end: 11 });
         assert_eq!(
             actual[3],
-            Token {
-                kind: TokenKind::Delimiter(')'),
+            RawToken {
+                kind: RawTokenKind::Delim(')'),
                 source: Span { start: 11, end: 12 },
             }
         );
@@ -954,8 +1098,8 @@ mod tests {
         assert_eq!(actual[0].source, Span { start: 0, end: 4 });
         assert_eq!(
             actual[1],
-            Token {
-                kind: TokenKind::Whitespace,
+            RawToken {
+                kind: RawTokenKind::Whitespace,
                 source: Span { start: 4, end: 304 },
             }
         );
@@ -981,7 +1125,7 @@ mod tests {
             assert!(
                 !token_records(&tokens(text)).iter().any(|token| matches!(
                     token.kind,
-                    TokenKind::Url { .. } | TokenKind::BadUrl { .. }
+                    RawTokenKind::Url { .. } | RawTokenKind::BadUrl { .. }
                 )),
                 "{text:?}"
             );
@@ -991,7 +1135,7 @@ mod tests {
         assert_eq!(actual.len(), 3);
         assert!(matches!(
             actual[0].kind,
-            TokenKind::Name {
+            RawTokenKind::Name {
                 kind: NameKind::Function,
                 ..
             }
@@ -1016,8 +1160,8 @@ mod tests {
             let actual = token_records(&tokens(text));
             assert_eq!(
                 actual,
-                [Token {
-                    kind: TokenKind::BadUrl { closed },
+                [RawToken {
+                    kind: RawTokenKind::BadUrl { closed },
                     source: Span {
                         start: 0,
                         end: text.len()
@@ -1032,15 +1176,15 @@ mod tests {
             assert_eq!(actual.len(), 2);
             assert_eq!(
                 actual[0],
-                Token {
-                    kind: TokenKind::BadUrl { closed: true },
+                RawToken {
+                    kind: RawTokenKind::BadUrl { closed: true },
                     source: Span {
                         start: 0,
                         end: text.len() - 4
                     },
                 }
             );
-            let TokenKind::Name {
+            let RawTokenKind::Name {
                 kind: NameKind::Ident,
                 units,
             } = actual[1].kind
@@ -1068,21 +1212,21 @@ mod tests {
             let mut done = false;
             for _ in 0..(text.len() * 32 + 32) {
                 match cursor.request() {
-                    Request::ReadScalar { index } => {
+                    TokenRequest::ReadScalar { index } => {
                         assert_eq!(index, reads);
                         cursor.read_scalar(index, points[index]).unwrap();
                         reads += 1;
                     }
-                    Request::Compute => cursor.compute().unwrap(),
-                    request @ Request::Append { index, record } => {
+                    TokenRequest::Compute => cursor.compute().unwrap(),
+                    request @ TokenRequest::Append { index, record } => {
                         assert_eq!(index, records.len());
-                        assert_eq!(cursor.appended(index + 1), Err(Error::WrongIndex));
-                        assert_eq!(cursor.compute(), Err(Error::WrongReply));
+                        assert_eq!(cursor.appended(index + 1), Err(ProtocolError::WrongIndex));
+                        assert_eq!(cursor.compute(), Err(ProtocolError::WrongReply));
                         assert_eq!(cursor.request(), request);
                         records.push(record);
                         cursor.appended(index).unwrap();
                     }
-                    Request::Done => {
+                    TokenRequest::Done => {
                         done = true;
                         break;
                     }
@@ -1110,7 +1254,7 @@ mod tests {
                 }
             })
             .collect();
-        let TokenKind::Name {
+        let RawTokenKind::Name {
             kind: NameKind::Function,
             units,
         } = tokens[0].kind
@@ -1119,7 +1263,7 @@ mod tests {
         };
         assert_eq!(names(&records, units), "rgb");
         assert_eq!(tokens[0].source, Span { start: 0, end: 7 });
-        let TokenKind::Name {
+        let RawTokenKind::Name {
             kind: NameKind::Hash { identifier: true },
             units,
         } = tokens[2].kind
@@ -1128,7 +1272,7 @@ mod tests {
         };
         assert_eq!(names(&records, units), "f00");
         assert_eq!(tokens[2].source, Span { start: 8, end: 12 });
-        assert_eq!(tokens[4].kind, TokenKind::Delimiter(')'));
+        assert_eq!(tokens[4].kind, RawTokenKind::Delim(')'));
     }
 
     #[test]
@@ -1144,7 +1288,7 @@ mod tests {
                 }
             })
             .collect();
-        let TokenKind::Number {
+        let RawTokenKind::Number {
             kind: NumberKind::Dimension,
             layout,
             digits,
@@ -1155,7 +1299,7 @@ mod tests {
         };
         assert_eq!(
             layout,
-            Layout {
+            NumberLayout {
                 negative: true,
                 mantissa_digits: 4,
                 fraction_digits: 2,
@@ -1195,12 +1339,12 @@ mod tests {
         assert_eq!(names(&records, unit), "deg");
         assert!(matches!(
             tokens[2].kind,
-            TokenKind::Number {
+            RawTokenKind::Number {
                 kind: NumberKind::Percentage,
                 ..
             }
         ));
-        let TokenKind::Number {
+        let RawTokenKind::Number {
             kind: NumberKind::Dimension,
             layout,
             unit,
@@ -1228,12 +1372,12 @@ mod tests {
             .collect();
         assert_eq!(
             tokens[0],
-            Token {
-                kind: TokenKind::Comment { closed: true },
+            RawToken {
+                kind: RawTokenKind::Comment { closed: true },
                 source: Span { start: 0, end: 7 }
             }
         );
-        let TokenKind::String {
+        let RawTokenKind::String {
             units,
             closed: true,
         } = tokens[1].kind
@@ -1241,12 +1385,12 @@ mod tests {
             panic!("string")
         };
         assert_eq!(names(&records, units), "ab");
-        assert_eq!(tokens[3].kind, TokenKind::BadString);
-        assert!(tokens.iter().any(|token| token.kind == TokenKind::Cdo));
-        assert!(tokens.iter().any(|token| token.kind == TokenKind::Cdc));
+        assert_eq!(tokens[3].kind, RawTokenKind::BadString);
+        assert!(tokens.iter().any(|token| token.kind == RawTokenKind::Cdo));
+        assert!(tokens.iter().any(|token| token.kind == RawTokenKind::Cdc));
         assert_eq!(
             tokens.last().unwrap().kind,
-            TokenKind::Comment { closed: false }
+            RawTokenKind::Comment { closed: false }
         );
     }
 
@@ -1268,19 +1412,19 @@ mod tests {
         let before = cursor.request();
         assert_eq!(
             before,
-            Request::Append {
+            TokenRequest::Append {
                 index: 7,
                 record: Record::NameUnit('r')
             }
         );
-        assert_eq!(cursor.appended(6), Err(Error::WrongIndex));
-        assert_eq!(cursor.compute(), Err(Error::WrongReply));
+        assert_eq!(cursor.appended(6), Err(ProtocolError::WrongIndex));
+        assert_eq!(cursor.compute(), Err(ProtocolError::WrongReply));
         assert_eq!(cursor.request(), before);
         cursor.appended(7).unwrap();
         cursor.compute().unwrap();
         assert!(matches!(
             cursor.request(),
-            Request::Append {
+            TokenRequest::Append {
                 index: 8,
                 record: Record::Token(_)
             }

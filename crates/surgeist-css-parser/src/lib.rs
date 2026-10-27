@@ -28,6 +28,12 @@
 //! specification-derived tests for each clause, and the coverage map claims
 //! only what those tests establish. Today it offers:
 //!
+//! - [`input`]: the stepwise [`InputCursor`](input::InputCursor), which decodes
+//!   UTF-8 or UTF-16 units and applies the preprocessing of section 3.3 while
+//!   keeping each scalar's original unit interval;
+//! - [`lexer::protocol`]: the stepwise tokenizer of section 4.3 for hosts that
+//!   admit each action, a narrow host-only contract rather than a general
+//!   lexer API;
 //! - [`lexical`]: the code-point classes of Syntax 3 section 4.2 and the
 //!   checks of sections 4.3.8 to 4.3.11, as `const fn`s;
 //! - [`Offset`]: a byte offset into the text a tokenizer reads;
@@ -37,7 +43,7 @@
 //! - [`match_ignore_ascii_case!`], ASCII case-insensitive matching of a string
 //!   against literal arms.
 //!
-//! No tokenizer, document or parser exists yet.
+//! No free-running lexer, document or parser exists yet.
 //!
 //! [`Meter`]: limits::Meter
 
@@ -46,6 +52,8 @@ mod macros;
 mod match_ascii;
 mod offset;
 
+pub mod input;
+pub mod lexer;
 pub mod lexical;
 pub mod limits;
 

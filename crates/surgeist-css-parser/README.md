@@ -5,7 +5,7 @@ decoding and preprocessing the input stream, tokenization, the parsing results
 and token streams, the parser entry points and algorithms, the `An+B`
 microsyntax and token serialization. It gives syntax no CSS meaning. Grammars,
 property values, rules, selectors, queries and recovery diagnostics belong to
-[surgeist-css](../surgeist-css/README.md), which is to build CSS language
+[surgeist-css](../surgeist-css/README.md), which builds CSS language
 interpretation on this crate.
 
 ## Status
@@ -13,6 +13,14 @@ interpretation on this crate.
 The crate is being built module by module, each with the specification-derived
 tests for the clauses it implements. It currently offers:
 
+- `input`: the stepwise `InputCursor` for section 3.3. It decodes UTF-8 bytes
+  or UTF-16 units, applies the preprocessing, and reports each scalar with the
+  interval of original units it came from.
+- `lexer::protocol`: the stepwise tokenizer of section 4.3 as a sans-IO state
+  machine, `TokenCursor`, for hosts that admit each scalar, decision and stored
+  record. It is a narrow host-only contract, not a general lexer API. The sizes
+  of its cursors and records are pinned because hosts charge them
+  (`tests/layout_pins.rs`).
 - `lexical`: the code-point classes of Syntax 3 section 4.2 and the checks of
   sections 4.3.8 to 4.3.11 (valid escape, would start an ident sequence, a
   number or a unicode-range) as `const fn`s. The non-ASCII ident code point
@@ -25,7 +33,7 @@ tests for the clauses it implements. It currently offers:
 - `match_ignore_ascii_case!`: ASCII case-insensitive matching of a string
   against lowercase literal arms.
 
-There is no tokenizer, document or parser yet. The
+There is no free-running lexer, document or parser yet. The
 [coverage map](docs/conformance-coverage.md) lists the clauses of the pinned
 edition with their tests and claims only what those tests establish.
 

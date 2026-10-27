@@ -19,7 +19,7 @@ use crate::color::controlled::{CssColorBank, CssColorSlot};
 use crate::numeric::CssNumericDimension as Dimension;
 use crate::numeric::CssNumericType;
 use crate::numeric::bounded_expression::FailureKind;
-use crate::tokenization::tokenizer::{NameKind, TokenKind};
+use surgeist_css_parser::lexer::protocol::{NameKind, RawTokenKind};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Expectation {
@@ -541,14 +541,14 @@ impl<'owner> ComponentSyntax<'owner> {
                         self.state = State::Done(CheckedComponent::Literal(Component::MISSING))
                     }
                     RawComponent::Atom(_)
-                        if matches!(token.token.kind, TokenKind::Number { .. }) =>
+                        if matches!(token.token.kind, RawTokenKind::Number { .. }) =>
                     {
                         self.state = State::Header(token)
                     }
                     RawComponent::Atom(_)
                         if matches!(
                             token.token.kind,
-                            TokenKind::Name {
+                            RawTokenKind::Name {
                                 kind: NameKind::Ident,
                                 ..
                             }
@@ -559,7 +559,8 @@ impl<'owner> ComponentSyntax<'owner> {
                                 reader.relative_channel(environment)?.map(Variable::Channel)
                             }
                             Variables::Profile => {
-                                let TokenKind::Name { units: name, .. } = token.token.kind else {
+                                let RawTokenKind::Name { units: name, .. } = token.token.kind
+                                else {
                                     unreachable!()
                                 };
                                 Some(Variable::Profile {
@@ -670,7 +671,7 @@ mod tests {
     use super::*;
     use crate::color::controlled::CssColorOperationOwner;
     use crate::color::controlled::protocol::{ActionDescription, Data, LexicalOperation};
-    use crate::tokenization::bounded::InputKind;
+    use surgeist_css_parser::input::InputKind;
 
     #[derive(Debug, PartialEq)]
     enum Shape {

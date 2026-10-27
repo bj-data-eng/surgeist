@@ -137,8 +137,8 @@ pub(crate) enum Word {
 
 /// The input is already decoded by the shared CSS Syntax name owner. This
 /// fixed keyword dispatch is also available to ordinary authored adapters.
-pub(crate) fn word(name: &str, kind: crate::tokenization::tokenizer::NameKind) -> Word {
-    use crate::tokenization::tokenizer::NameKind;
+pub(crate) fn word(name: &str, kind: surgeist_css_parser::lexer::protocol::NameKind) -> Word {
+    use surgeist_css_parser::lexer::protocol::NameKind;
     if kind == NameKind::Function {
         if let Some(value) = ColorFunction::parse(name) {
             return Word::Function(value);
@@ -203,7 +203,7 @@ pub(crate) const fn canonical_system(value: CssSystemColor) -> CssSystemColor {
 #[cfg(test)]
 mod namespace_tests {
     use super::*;
-    use crate::tokenization::tokenizer::NameKind;
+    use surgeist_css_parser::lexer::protocol::NameKind;
     #[test]
     fn named_identifiers_and_math_functions_keep_distinct_namespaces() {
         assert_eq!(word("tan", NameKind::Ident), Word::Named([210, 180, 140]));

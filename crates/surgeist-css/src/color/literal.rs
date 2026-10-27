@@ -8,7 +8,7 @@ use crate::color::controlled::protocol::{
 };
 use crate::numeric::bounded_decimal::DecimalOutcome;
 use crate::numeric::{CssAngleUnit, CssNumericType, CssNumericUnit};
-use crate::tokenization::tokenizer::NumberKind;
+use surgeist_css_parser::lexer::protocol::NumberKind;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LiteralValue {
@@ -26,7 +26,7 @@ mod tests {
     use super::*;
     use crate::color::controlled::CssColorOperationOwner;
     use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
-    use crate::tokenization::bounded::InputKind;
+    use surgeist_css_parser::input::InputKind;
 
     fn lexical<'a>(operation: &mut LexicalOperation<'a>, input: &[u8]) -> Vec<CssColorSlot<'a>> {
         let mut slots = Vec::new();
@@ -265,7 +265,8 @@ impl<'owner> LiteralConversion<'owner> {
         if actual != token.token {
             return Err(ColorProtocolError::WrongSlot);
         }
-        let crate::tokenization::tokenizer::TokenKind::Number { kind, .. } = actual.kind else {
+        let surgeist_css_parser::lexer::protocol::RawTokenKind::Number { kind, .. } = actual.kind
+        else {
             return Err(ColorProtocolError::Input);
         };
         if kind == NumberKind::Dimension && token.unit.is_none() {

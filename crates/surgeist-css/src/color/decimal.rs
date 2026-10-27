@@ -377,7 +377,7 @@ pub(crate) struct ScaledNumber<'owner> {
     digits: RecordRange,
     source_digits: RecordRange,
     source_mantissa: usize,
-    layout: crate::tokenization::number::Layout,
+    layout: surgeist_css_parser::lexer::protocol::NumberLayout,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ScaleAction {
@@ -571,7 +571,7 @@ mod tests {
     use super::*;
     use crate::color::controlled::CssColorOperationOwner;
     use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
-    use crate::tokenization::bounded::InputKind;
+    use surgeist_css_parser::input::InputKind;
 
     fn lexical<'a>(operation: &mut LexicalOperation<'a>, input: &[u8]) -> Vec<CssColorSlot<'a>> {
         let mut slots = Vec::new();

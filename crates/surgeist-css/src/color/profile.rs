@@ -7,7 +7,7 @@ use crate::color::controlled::protocol::{
 use crate::color::{CssColorFactIdentity, CssColorFacts, CssColorProfileAvailability};
 use crate::rule::color_profile::CssColorProfileRenderingIntent;
 #[cfg(test)]
-use crate::tokenization::tokenizer::{NameKind, TokenKind};
+use surgeist_css_parser::lexer::protocol::{NameKind, RawTokenKind};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ProfileError {
@@ -613,7 +613,7 @@ mod tests {
     use crate::color::{
         CssColorProfileBinding, CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
     };
-    use crate::tokenization::bounded::InputKind;
+    use surgeist_css_parser::input::InputKind;
     fn lex<'a>(operation: &mut LexicalOperation<'a>, input: &str) -> Vec<CssColorSlot<'a>> {
         let mut slots = Vec::new();
         loop {
@@ -662,7 +662,7 @@ mod tests {
         let table = operation.finish().unwrap();
         // The extra space terminates the identifier; use the first token, not
         // an assumed source-character or node ordinal.
-        let token = (table.first_token_record()..table.length()).find(|index| matches!(table.observe(*index, &slots[*index]), Ok(LexicalRecord::Token(token)) if matches!(token.kind, TokenKind::Name { kind: NameKind::Ident, .. }))).unwrap();
+        let token = (table.first_token_record()..table.length()).find(|index| matches!(table.observe(*index, &slots[*index]), Ok(LexicalRecord::Token(token)) if matches!(token.kind, RawTokenKind::Name { kind: NameKind::Ident, .. }))).unwrap();
         let matching = CssColorProfileName::try_new("--é").unwrap();
         let wrong_case = CssColorProfileName::try_new("--É").unwrap();
         let id = CssColorFactIdentity::new(1, 2);
@@ -799,7 +799,7 @@ mod tests {
             LexicalOperation::start(&mut owner, InputKind::Utf8, input.len()).unwrap();
         let slots = lex(&mut operation, input);
         let table = operation.finish().unwrap();
-        let tokens: Vec<_> = (table.first_token_record()..table.length()).filter(|index| matches!(table.observe(*index, &slots[*index]), Ok(LexicalRecord::Token(token)) if matches!(token.kind, TokenKind::Name { kind: NameKind::Ident, .. }))).collect();
+        let tokens: Vec<_> = (table.first_token_record()..table.length()).filter(|index| matches!(table.observe(*index, &slots[*index]), Ok(LexicalRecord::Token(token)) if matches!(token.kind, RawTokenKind::Name { kind: NameKind::Ident, .. }))).collect();
         assert_eq!(tokens.len(), 4);
         let name = CssColorProfileName::try_new("--p").unwrap();
         let names = [
@@ -938,7 +938,7 @@ mod tests {
             LexicalOperation::start(&mut owner, InputKind::Utf8, input.len()).unwrap();
         let slots = lex(&mut operation, input);
         let table = operation.finish().unwrap();
-        let tokens: Vec<_> = (table.first_token_record()..table.length()).filter(|index| matches!(table.observe(*index, &slots[*index]), Ok(LexicalRecord::Token(token)) if matches!(token.kind, TokenKind::Name { kind: NameKind::Ident, .. }))).collect();
+        let tokens: Vec<_> = (table.first_token_record()..table.length()).filter(|index| matches!(table.observe(*index, &slots[*index]), Ok(LexicalRecord::Token(token)) if matches!(token.kind, RawTokenKind::Name { kind: NameKind::Ident, .. }))).collect();
         let name = CssColorProfileName::try_new("--p").unwrap();
         let id = CssColorFactIdentity::new(5, 6);
         let bindings = [CssColorProfileBinding::new(
