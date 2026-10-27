@@ -9,6 +9,7 @@ use crate::geometry::FlowAxes;
 #[cfg(test)]
 use crate::geometry::{LogicalPointOf, LogicalSizeOf};
 use crate::inline_wrapping::balance::{BalanceGoal, NaturalResidual};
+use crate::inline_wrapping::tail::{LineQualityGoal, LineQualityKey};
 #[cfg(test)]
 use std::cell::Cell;
 use std::ops::Range;
@@ -1350,7 +1351,7 @@ fn resolve_numeric_candidate<S: LayoutScalar>(
 
 #[derive(Clone, Copy)]
 struct NumericLineQuery<'a, S: LayoutScalar> {
-    goal: Option<BalanceGoal>,
+    goal: Option<LineQualityGoal>,
     indent: S,
     run: ProjectedInlineRun<'a, S>,
     cursor: InlineSourceCursor,
@@ -1362,50 +1363,61 @@ struct NumericLineQuery<'a, S: LayoutScalar> {
 }
 enum NumericCandidatePreference<S: LayoutScalar> {
     Auto(NumericCandidateReceiptOf<S>),
-    Balance {
+    Quality {
         receipt: NumericCandidateReceiptOf<S>,
-        residual: NaturalResidual,
+        key: LineQualityKey,
     },
 }
 impl<S: LayoutScalar> NumericCandidatePreference<S> {
     fn new(
         receipt: NumericCandidateReceiptOf<S>,
-        goal: Option<BalanceGoal>,
+        goal: Option<LineQualityGoal>,
         indent: S,
     ) -> Result<Self, crate::inline_wrapping::NumericWrappingError> {
-        let Some(_) = goal else {
+        let Some(goal) = goal else {
             return Ok(Self::Auto(receipt));
         };
-        let invalid = crate::inline_wrapping::NumericWrappingError::InvalidBalanceBasis;
-        let capacity = receipt.capacity.ok_or(invalid)?;
-        let residual = NaturalResidual::from_components(
-            capacity.to_f64(),
-            indent.to_f64(),
-            receipt.summary.used_inline_extent.to_f64(),
-        )
-        .ok_or(invalid)?;
-        Ok(Self::Balance { receipt, residual })
+        let invalid = match goal {
+            LineQualityGoal::Balance(_) => {
+                crate::inline_wrapping::NumericWrappingError::InvalidBalanceBasis
+            }
+            LineQualityGoal::Tail(_) => {
+                crate::inline_wrapping::NumericWrappingError::InvalidTailBasis
+            }
+        };
+        let key = match receipt.capacity {
+            Some(capacity) => goal
+                .key(
+                    capacity.to_f64(),
+                    indent.to_f64(),
+                    receipt.summary.used_inline_extent.to_f64(),
+                )
+                .ok_or(invalid)?,
+            None => match goal {
+                LineQualityGoal::Balance(_) => return Err(invalid),
+                // A nonformatted completion has no optional quality measure;
+                // it still retains its genuine ordinary completion semantics.
+                LineQualityGoal::Tail(_) => LineQualityKey::Tail(None),
+            },
+        };
+        Ok(Self::Quality { receipt, key })
     }
     fn receipt(&self) -> &NumericCandidateReceiptOf<S> {
         match self {
-            Self::Auto(receipt) | Self::Balance { receipt, .. } => receipt,
+            Self::Auto(receipt) | Self::Quality { receipt, .. } => receipt,
         }
     }
     fn into_receipt(self) -> NumericCandidateReceiptOf<S> {
         match self {
-            Self::Auto(receipt) | Self::Balance { receipt, .. } => receipt,
+            Self::Auto(receipt) | Self::Quality { receipt, .. } => receipt,
         }
     }
-    fn compare(&self, other: &Self, goal: Option<BalanceGoal>) -> std::cmp::Ordering {
+    fn compare(&self, other: &Self, goal: Option<LineQualityGoal>) -> std::cmp::Ordering {
         match (self, other, goal) {
             (Self::Auto(_), Self::Auto(_), None) => std::cmp::Ordering::Equal,
-            (
-                Self::Balance { residual: left, .. },
-                Self::Balance {
-                    residual: right, ..
-                },
-                Some(goal),
-            ) => goal.compare_distance(*left, *right),
+            (Self::Quality { key: left, .. }, Self::Quality { key: right, .. }, Some(goal)) => {
+                goal.compare(*left, *right)
+            }
             _ => unreachable!("one numeric candidate walk has one actual preference mode"),
         }
     }
@@ -2026,6 +2038,7 @@ struct NumericSequence<S: LayoutScalar> {
     state: NumericFlowState<S>,
     selected_lines: Vec<SelectedInlineLineOf<S>>,
     formatted_lines: Option<Vec<crate::text_layout::formatted::NumericFormattedLine>>,
+    tail_frontier: Option<NumericFlowState<S>>,
 }
 
 #[derive(Clone, Copy)]
@@ -2053,6 +2066,7 @@ impl<S: LayoutScalar> NumericSequence<S> {
             },
             selected_lines: Vec::new(),
             formatted_lines: observe.then(Vec::new),
+            tail_frontier: None,
         }
     }
     fn checkpoint(&self) -> NumericGroupEntry<S> {
@@ -2064,6 +2078,7 @@ impl<S: LayoutScalar> NumericSequence<S> {
     }
     fn restore(&mut self, entry: NumericGroupEntry<S>) {
         self.state = entry.state;
+        self.tail_frontier = None;
         self.selected_lines.truncate(entry.selected_len);
         if let Some(lines) = &mut self.formatted_lines {
             lines.truncate(entry.formatted_len);
@@ -2073,7 +2088,9 @@ impl<S: LayoutScalar> NumericSequence<S> {
 
 #[derive(Clone, Copy)]
 struct NumericWalkControl {
-    goal: Option<BalanceGoal>,
+    goal: Option<LineQualityGoal>,
+    goal_start: usize,
+    observe_frontier: Option<usize>,
     stop_at_group: bool,
     max_formatted: Option<usize>,
 }
@@ -2081,13 +2098,17 @@ impl NumericWalkControl {
     fn auto() -> Self {
         Self {
             goal: None,
+            goal_start: 0,
+            observe_frontier: None,
             stop_at_group: false,
             max_formatted: None,
         }
     }
-    fn group(goal: Option<BalanceGoal>, max_formatted: Option<usize>) -> Self {
+    fn group(goal: Option<LineQualityGoal>, max_formatted: Option<usize>) -> Self {
         Self {
             goal,
+            goal_start: 0,
+            observe_frontier: None,
             stop_at_group: true,
             max_formatted,
         }
@@ -2137,6 +2158,7 @@ where
         state,
         selected_lines,
         formatted_lines,
+        tail_frontier,
     } = sequence;
     let NumericFlowState {
         mut cursor,
@@ -2155,6 +2177,24 @@ where
     let mut formatted_count = 0;
     let mut outcome = NumericWalkOutcome::Exhausted;
     'lines: loop {
+        if control.observe_frontier == Some(formatted_count) && tail_frontier.is_none() {
+            *tail_frontier = Some(NumericFlowState {
+                cursor,
+                boundary_index,
+                pending_strut,
+                indent_state,
+                line_box_context,
+                block_cursor,
+                float_strut,
+                continuation_inline_cursor,
+                advanced_phase_transition,
+                resolved_terminal_block_extent,
+                float_edge_phase,
+            });
+        }
+        let goal = control
+            .goal
+            .filter(|_| formatted_count >= control.goal_start);
         let line_indent = input.indent.at(indent_state);
         let next_boundary_descriptor = line_boundaries
             .peek()
@@ -2162,7 +2202,7 @@ where
         let provisional = loop {
             let step = select_scope_inline_line(
                 NumericLineQuery {
-                    goal: control.goal,
+                    goal,
                     indent: line_indent,
                     run,
                     cursor,
@@ -2268,7 +2308,7 @@ where
         } else {
             let selected = select_scope_inline_line(
                 NumericLineQuery {
-                    goal: control.goal,
+                    goal,
                     indent: line_indent,
                     run,
                     cursor,
@@ -2568,7 +2608,7 @@ where
         request,
         sequence,
         &mut remaining,
-        NumericWalkControl::group(goal, Some(reference.count)),
+        NumericWalkControl::group(goal.map(LineQualityGoal::Balance), Some(reference.count)),
         band_source,
         clear_source,
     )?;
@@ -2908,8 +2948,11 @@ where
         crate::TextWrapStyle::Balance => {
             matches!(input.available_inline_extent, AvailableOf::Definite(_))
         }
+        crate::TextWrapStyle::AvoidShortLastLine => false,
     };
-    let mut sequence = NumericSequence::new(&input, observe_formatted || balance);
+    let repair_tail = input.text_wrap_style == crate::TextWrapStyle::AvoidShortLastLine
+        && matches!(input.available_inline_extent, AvailableOf::Definite(_));
+    let mut sequence = NumericSequence::new(&input, observe_formatted || balance || repair_tail);
     let receiver_source = std::cell::RefCell::new(receiver_source);
     let request = NumericWalkInput {
         input: &input,
@@ -2920,6 +2963,15 @@ where
     if balance {
         let boundaries = line_boundaries.collect::<Vec<_>>();
         balance_numeric_sequence(
+            request,
+            &boundaries,
+            &mut sequence,
+            &mut band_source,
+            &mut clear_source,
+        )?;
+    } else if repair_tail {
+        let boundaries = line_boundaries.collect::<Vec<_>>();
+        tail::repair_numeric_tail(
             request,
             &boundaries,
             &mut sequence,
@@ -2940,6 +2992,7 @@ where
         state,
         selected_lines,
         formatted_lines,
+        ..
     } = sequence;
     let NumericFlowState {
         line_box_context,
@@ -3627,6 +3680,7 @@ mod balance_tests;
 mod bidi_order_tests;
 #[cfg(test)]
 mod phantom_completion_tests;
+mod tail;
 
 fn participant_has_named_baseline<S: LayoutScalar>(
     participant: MixedInlineParticipantOf<S>,

@@ -74,7 +74,9 @@
 //! indentation, and font-advance or CSS-stop tabs. [`TextAlign`] and
 //! [`TextAlignLast`] select line alignment. [`TextWrapStyle`] selects ordinary
 //! or balanced breaks; [`TextWrapStyle::Stable`] retains ordinary line-local
-//! quality selection. These choices do not change the real containing geometry
+//! quality selection. [`TextWrapStyle::AvoidShortLastLine`] attempts bounded
+//! final-pair repair in a genuinely Paragraph-ending group. These choices do not
+//! change the real containing geometry
 //! or wrapping permission. [`TextJustification::Spaces`] permits
 //! explicit expansion of actual retained U+0020 slots during justification;
 //! [`TextJustification::None`]

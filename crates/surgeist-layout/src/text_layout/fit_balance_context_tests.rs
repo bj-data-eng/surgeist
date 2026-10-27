@@ -380,9 +380,11 @@ fn balancing_real_phrase_suffix_never_restores_normal_or_emergency_while_ordinar
     assert_eq!(paragraph.prepared.phrases().count(), 1);
     let auto = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Auto);
     let stable = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Stable);
+    let repaired = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::AvoidShortLastLine);
     let balanced = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Balance);
     assert_eq!(ordinary_facts(&auto), [(7, 60.0), (10, 30.0)]);
     assert_eq!(ordinary_facts(&stable), [(7, 60.0), (10, 30.0)]);
+    assert_eq!(ordinary_facts(&repaired), [(5, 40.0), (10, 50.0)]);
     assert_eq!(ordinary_facts(&balanced), [(5, 40.0), (10, 50.0)]);
     assert_eq!(ordinary_facts(&auto), [(7, 60.0), (10, 30.0)]);
 }
@@ -451,7 +453,7 @@ fn assert_retained_selection_mode<S: crate::LayoutScalar>() {
         assert_eq!(pending.prepared, paragraph.prepared);
         assert_eq!(pending.wrap_style, mode);
         let has_portfolio = mode == crate::TextWrapStyle::Balance;
-        assert_eq!(pending.balance.is_some(), has_portfolio);
+        assert_eq!(pending.program.is_some(), has_portfolio);
         let finalized = pending
             .entries
             .iter()
@@ -477,7 +479,7 @@ fn assert_retained_selection_mode<S: crate::LayoutScalar>() {
         let (container, retained_mode, portfolio) = &basis.selections[0];
         assert_eq!(*container, pending.container);
         assert_eq!(*retained_mode, mode);
-        assert_eq!(portfolio, &pending.balance);
+        assert_eq!(portfolio, &pending.program);
         assert_eq!(portfolio.is_some(), has_portfolio);
     }
 }
@@ -534,4 +536,26 @@ fn balancing_fitting_words_keeps_ordinary_hyphen_trials_out_of_conditional_stage
     assert_eq!(ordinary_facts(&auto), [(13, 60.0), (22, 45.0)]);
     assert_eq!(ordinary_facts(&balanced), [(11, 50.0), (22, 55.0)]);
     assert_eq!(ordinary_facts(&auto), [(13, 60.0), (22, 45.0)]);
+}
+
+#[test]
+fn paragraph_tail_repairs_only_its_pair_and_rejects_transferring_the_shortness() {
+    for (source, expected) in [
+        ("AAA BB C", vec![(4, 30.0), (8, 40.0)]),
+        ("A BBBB C", vec![(7, 60.0), (8, 10.0)]),
+        ("AAA BB C CCCCC", vec![(7, 60.0), (9, 10.0), (14, 50.0)]),
+    ] {
+        let paragraph = PreparedParagraph::plain(
+            1,
+            text::Source::new(source),
+            text::Style {
+                white_space: text::WhiteSpace::Collapse,
+                wrap: text::Wrap::Word,
+                hyphens: text::Hyphens::None,
+                ..ahem_style(10.0, 10.0)
+            },
+        );
+        let lines = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::AvoidShortLastLine);
+        assert_eq!(ordinary_facts(&lines), expected, "{source}");
+    }
 }

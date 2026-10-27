@@ -3,6 +3,7 @@
 use std::{cmp::Ordering, collections::BTreeMap, sync::Arc};
 pub(crate) mod balance;
 mod declarations;
+pub(crate) mod tail;
 pub use declarations::{
     ChildOrderCompleteness, GeneratedBoxParticipation, GeneratedBoxRef, GeneratedChildBoxInput,
     InlineBoxMetricContribution, InlineBoxRef, InlineChildOrderInput, WrapEdge, WrapEdges,
@@ -138,6 +139,7 @@ pub(crate) enum NumericWrappingError {
     Scope(WrappingScopeError),
     FeedbackCycle,
     InvalidBalanceBasis,
+    InvalidTailBasis,
     InvalidAtomicReceiverBasis,
 }
 impl From<crate::group_alignment::NumericError> for NumericWrappingError {
@@ -174,6 +176,13 @@ pub(crate) fn numeric_wrapping_error<Node, S: crate::LayoutScalar, M>(
             crate::LayoutOperation::InlineWrapping,
             crate::LayoutErrorKindOf::InternalInvariant(
                 crate::LayoutInternalInvariant::InvalidInlineBalance,
+            ),
+        ),
+        NumericWrappingError::InvalidTailBasis => crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(node),
+            crate::LayoutOperation::InlineWrapping,
+            crate::LayoutErrorKindOf::InternalInvariant(
+                crate::LayoutInternalInvariant::InvalidInlineTailSelection,
             ),
         ),
         NumericWrappingError::InvalidAtomicReceiverBasis => crate::LayoutErrorOf::new(

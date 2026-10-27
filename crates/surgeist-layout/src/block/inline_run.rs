@@ -988,8 +988,10 @@ where
             .collect::<Result<Vec<_>, LayoutErrorOf<Tree::Node, S, M>>>()?;
         let intrinsic_max =
             !float_events.is_empty() && matches!(available, AvailableOf::MaxContent);
-        let balance = constants.wrap_style == crate::TextWrapStyle::Balance
-            && matches!(available, AvailableOf::Definite(_));
+        let quality_replay = matches!(
+            constants.wrap_style,
+            crate::TextWrapStyle::Balance | crate::TextWrapStyle::AvoidShortLastLine
+        ) && matches!(available, AvailableOf::Definite(_));
         let encounters = std::cell::RefCell::new(super::float_text::Encounters::new(
             float_events,
             exclusions.clone(),
@@ -999,10 +1001,10 @@ where
             } else {
                 super::floats::FloatInlineSpace::Finite
             },
-            balance
+            quality_replay
                 || tail == crate::text_layout::fit::TailContext::CompleteBlock
                     && matches!(available, AvailableOf::Definite(_)),
-            balance,
+            quality_replay,
         ));
         let result = crate::text_layout::run::layout(
             binding,
@@ -1169,8 +1171,10 @@ where
             margin = InlineRunMargin::Adjoins;
             cursor_block = uncollapsed_cursor_block;
         }
-        let observe_formatted = constants.wrap_style == crate::TextWrapStyle::Balance
-            && matches!(available_inline_extent, AvailableOf::Definite(_))
+        let observe_formatted = matches!(
+            constants.wrap_style,
+            crate::TextWrapStyle::Balance | crate::TextWrapStyle::AvoidShortLastLine
+        ) && matches!(available_inline_extent, AvailableOf::Definite(_))
             || tree
                 .text_computation()
                 .is_some_and(|state| state.formatted_active());
@@ -1258,7 +1262,7 @@ where
             },
         );
         // Child/provider errors retain their exact context even if provisional
-        // geometry makes a rejected Balance trial fail its private replay proof.
+        // geometry makes a rejected quality trial fail its private replay proof.
         if let Some(error) = provider_error.borrow_mut().take() {
             return Err(error);
         }
@@ -2003,6 +2007,11 @@ pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(
         crate::text_layout::fit::FitError::InvalidGeometry => LayoutErrorKindOf::InternalInvariant(
             crate::LayoutInternalInvariant::InvalidRoundedInlineFragmentGeometry,
         ),
+        crate::text_layout::fit::FitError::InvalidTailBasis => {
+            LayoutErrorKindOf::InternalInvariant(
+                crate::LayoutInternalInvariant::InvalidInlineTailSelection,
+            )
+        }
         crate::text_layout::fit::FitError::MissingBlockTail => {
             LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::TextBlockTail)
         }
