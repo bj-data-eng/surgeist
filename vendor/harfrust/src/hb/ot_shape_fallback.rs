@@ -243,6 +243,7 @@ fn position_around_base(
     }
 
     let mut math = buffer.position_math;
+    let base_x_offset = base_pos.x_offset;
     let baseline_offset = math.raw(base_pos.y_offset);
     base_extents.y_bearing = math.add(base_extents.y_bearing, baseline_offset);
     base_extents.x_bearing = 0;
@@ -325,6 +326,11 @@ fn position_around_base(
                 &mut math,
             ) {
                 pos.x_offset = math.encode(raw_x);
+                if buffer.direction.is_vertical() {
+                    // Raw centering is relative to the base's font origin;
+                    // keep its actual translated origin in the active domain.
+                    pos.x_offset = math.add(pos.x_offset, base_x_offset);
+                }
                 pos.y_offset = math.encode(raw_y);
             }
 
