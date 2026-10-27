@@ -2903,8 +2903,12 @@ where
         }
     })
     .peekable();
-    let balance = input.text_wrap_style == crate::TextWrapStyle::Balance
-        && matches!(input.available_inline_extent, AvailableOf::Definite(_));
+    let balance = match input.text_wrap_style {
+        crate::TextWrapStyle::Auto | crate::TextWrapStyle::Stable => false,
+        crate::TextWrapStyle::Balance => {
+            matches!(input.available_inline_extent, AvailableOf::Definite(_))
+        }
+    };
     let mut sequence = NumericSequence::new(&input, observe_formatted || balance);
     let receiver_source = std::cell::RefCell::new(receiver_source);
     let request = NumericWalkInput {

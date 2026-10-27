@@ -379,10 +379,117 @@ fn balancing_real_phrase_suffix_never_restores_normal_or_emergency_while_ordinar
     );
     assert_eq!(paragraph.prepared.phrases().count(), 1);
     let auto = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Auto);
+    let stable = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Stable);
     let balanced = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Balance);
     assert_eq!(ordinary_facts(&auto), [(7, 60.0), (10, 30.0)]);
+    assert_eq!(ordinary_facts(&stable), [(7, 60.0), (10, 30.0)]);
     assert_eq!(ordinary_facts(&balanced), [(5, 40.0), (10, 50.0)]);
     assert_eq!(ordinary_facts(&auto), [(7, 60.0), (10, 30.0)]);
+}
+
+fn assert_retained_selection_mode<S: crate::LayoutScalar>() {
+    use crate::engine::contracts::Compute;
+
+    // Ahem10: ordinary AAA SPACE BB occupies60; the final C occupies10.
+    // Balance can improve residual variance with AAA / BB SPACE C =30/40.
+    // Stable intentionally has the same real requests as Auto, while retaining
+    // its own mode in the pending paragraph and convergence basis.
+    let paragraph = PreparedParagraph::plain(
+        1,
+        text::Source::new("AAA BB C"),
+        text::Style {
+            white_space: text::WhiteSpace::Collapse,
+            wrap: text::Wrap::Word,
+            hyphens: text::Hyphens::None,
+            ..ahem_style(10.0, 10.0)
+        },
+    );
+    for mode in [
+        crate::TextWrapStyle::Auto,
+        crate::TextWrapStyle::Stable,
+        crate::TextWrapStyle::Balance,
+    ] {
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(0, [1])
+            .children(1, [])
+            .style(
+                0,
+                crate::NodeInputOf {
+                    display: crate::Display::Block,
+                    text_wrap_style: mode,
+                    size: crate::Size::new(
+                        crate::PreferredSizeOf::px(S::from_f64(60.0)),
+                        crate::PreferredSizeOf::AUTO,
+                    ),
+                    ..crate::NodeInputOf::default()
+                },
+            )
+            .input(1, paragraph.text_input(1));
+        let flow = crate::LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding(0)],
+            crate::WrappingInput::default(),
+        )
+        .unwrap();
+        let mut session = crate::engine::ComputeSession::with_flow(&flow, Vec::new());
+        crate::engine::compute_root(
+            &mut session,
+            0,
+            crate::Size::new(
+                crate::AvailableOf::Definite(S::from_f64(60.0)),
+                crate::AvailableOf::MAX_CONTENT,
+            ),
+        )
+        .unwrap();
+
+        let state = session.text_computation().unwrap();
+        assert_eq!(state.pending.len(), 1);
+        let pending = &state.pending[0];
+        assert_eq!(pending.container, 0);
+        assert_eq!(pending.nodes, [1]);
+        assert_eq!(pending.prepared, paragraph.prepared);
+        assert_eq!(pending.wrap_style, mode);
+        let has_portfolio = mode == crate::TextWrapStyle::Balance;
+        assert_eq!(pending.balance.is_some(), has_portfolio);
+        let finalized = pending
+            .entries
+            .iter()
+            .map(|entry| {
+                assert!(matches!(entry, text::PlacementEntry::Formatted(_)));
+                entry.finalized_line().clone()
+            })
+            .collect::<Vec<_>>();
+        let expected = if has_portfolio {
+            [(4, 30.0), (8, 40.0)]
+        } else {
+            [(7, 60.0), (8, 10.0)]
+        };
+        assert_eq!(ordinary_facts(&finalized), expected, "{mode:?}");
+        assert_eq!(
+            pending.natural_advances,
+            expected.map(|(_, advance)| advance),
+            "{mode:?}"
+        );
+
+        let basis = state.basis(state.frames.to_vec());
+        assert_eq!(basis.selections.len(), 1);
+        let (container, retained_mode, portfolio) = &basis.selections[0];
+        assert_eq!(*container, pending.container);
+        assert_eq!(*retained_mode, mode);
+        assert_eq!(portfolio, &pending.balance);
+        assert_eq!(portfolio.is_some(), has_portfolio);
+    }
+}
+
+#[test]
+fn stable_real_run_retains_mode_without_a_balance_portfolio_in_f32() {
+    assert_retained_selection_mode::<f32>();
+}
+
+#[test]
+fn stable_real_run_retains_mode_without_a_balance_portfolio_in_f64() {
+    assert_retained_selection_mode::<f64>();
 }
 
 #[test]

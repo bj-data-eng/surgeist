@@ -104,6 +104,15 @@ struct Advanced<S: l::LayoutScalar> {
 }
 impl<S: l::LayoutScalar> Advanced<S> {
     fn new(groups: &[&str], width: f64, tall: Option<t::Range>, with_float: bool) -> Self {
+        Self::with_revision(groups, width, tall, with_float, 3)
+    }
+    fn with_revision(
+        groups: &[&str],
+        width: f64,
+        tall: Option<t::Range>,
+        with_float: bool,
+        revision: u64,
+    ) -> Self {
         use t::SourceProcessingEvent as E;
         let raw = groups.concat();
         let base = t::Style {
@@ -117,7 +126,7 @@ impl<S: l::LayoutScalar> Advanced<S> {
             hyphens: t::Hyphens::None,
             ..t::Style::default()
         };
-        let mut source = t::Source::identified(raw.as_str(), t::Id::from_u64(147104), 3);
+        let mut source = t::Source::identified(raw.as_str(), t::Id::from_u64(147104), revision);
         source.span(t::Range::new(0, raw.len()), base.clone());
         if let Some(range) = tall {
             source.span(
@@ -613,3 +622,5 @@ fn changed_font_height_replays_its_real_float_bands_through_publication_and_inva
     float_replay::<f32>();
     float_replay::<f64>();
 }
+
+mod stable;

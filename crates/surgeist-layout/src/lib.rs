@@ -73,8 +73,9 @@
 //! The prepared-text profile supports horizontal LTR and RTL flow, signed
 //! indentation, and font-advance or CSS-stop tabs. [`TextAlign`] and
 //! [`TextAlignLast`] select line alignment. [`TextWrapStyle`] selects ordinary
-//! or balanced breaks within each forced-break group without changing its real
-//! containing geometry or wrapping permission. [`TextJustification::Spaces`] permits
+//! or balanced breaks; [`TextWrapStyle::Stable`] retains ordinary line-local
+//! quality selection. These choices do not change the real containing geometry
+//! or wrapping permission. [`TextJustification::Spaces`] permits
 //! explicit expansion of actual retained U+0020 slots during justification;
 //! [`TextJustification::None`]
 //! adds no expansion. Text owns line-edge and trailing-space decisions.

@@ -16,6 +16,12 @@ fn lines<S: LayoutScalar>(
     policy: HyphenateLimitLast,
 ) -> Vec<(Range, f64, bool)> {
     let batch = batch::<S>(p, AvailableOf::definite(S::from_f64(width)), policy);
+    line_facts(p, &batch)
+}
+fn line_facts<S: LayoutScalar>(
+    p: &PreparedParagraph,
+    batch: &CompletedLayoutBatchOf<u32, S>,
+) -> Vec<(Range, f64, bool)> {
     let layout = batch.placed_text()[0].layout();
     assert_eq!(
         layout.source().text().code_units(),
@@ -97,6 +103,14 @@ fn batch<S: LayoutScalar>(
     width: AvailableOf<S>,
     policy: HyphenateLimitLast,
 ) -> CompletedLayoutBatchOf<u32, S> {
+    batch_with_style(p, width, policy, TextWrapStyle::Auto)
+}
+fn batch_with_style<S: LayoutScalar>(
+    p: &PreparedParagraph,
+    width: AvailableOf<S>,
+    policy: HyphenateLimitLast,
+    wrap_style: TextWrapStyle,
+) -> CompletedLayoutBatchOf<u32, S> {
     let binding = p.binding(0);
     let mut tree = PublicLayoutTreeOf::<S>::new()
         .children(0, binding.nodes.clone())
@@ -105,6 +119,7 @@ fn batch<S: LayoutScalar>(
             NodeInputOf {
                 display: Display::Block,
                 hyphenate_limit_last: policy,
+                text_wrap_style: wrap_style,
                 ..NodeInputOf::default()
             },
         );
@@ -799,3 +814,6 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
     check::<f32>();
     check::<f64>();
 }
+
+#[path = "last_tail/stable.rs"]
+mod stable;

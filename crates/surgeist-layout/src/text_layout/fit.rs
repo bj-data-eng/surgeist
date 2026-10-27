@@ -1764,9 +1764,13 @@ pub(crate) fn fit(
         accept: accept_encounters,
         clear: clear_source,
     };
-    if runner.input.wrap_style == crate::TextWrapStyle::Balance
-        && matches!(runner.input.available, Available::Definite(_))
-    {
+    let balance = match runner.input.wrap_style {
+        crate::TextWrapStyle::Auto | crate::TextWrapStyle::Stable => false,
+        crate::TextWrapStyle::Balance => {
+            matches!(runner.input.available, Available::Definite(_))
+        }
+    };
+    if balance {
         return balance::fit(&mut runner, entry, checkpoint_group);
     }
     let mut result = Vec::new();
