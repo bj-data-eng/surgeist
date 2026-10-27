@@ -337,6 +337,24 @@ fn distance(rect: Rect, point: Point, orientation: crate::LineOrientation) -> f6
     // otherwise admitted finite placement coordinates.
     (point.x - rect.origin.x).hypot(dy)
 }
+/// Selects an actual eligible interaction row on the requested formatted line.
+/// Anchors and genuine struts participate alongside cluster edges; this does
+/// not reconstruct a caret from a source offset or a guessed rectangle.
+pub(super) fn nearest_inline(layout: &PlacedLayout, line: usize, inline: f64) -> Option<usize> {
+    layout
+        .interaction
+        .positions
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row.line == line)
+        .min_by(|(_, a), (_, b)| {
+            (local_x(&layout.lines[line], a.target) - inline)
+                .abs()
+                .total_cmp(&(local_x(&layout.lines[line], b.target) - inline).abs())
+        })
+        .map(|(index, _)| index)
+}
+
 pub(crate) fn movement(layout: &PlacedLayout, index: usize, movement: Movement) -> Result<usize> {
     let current = row(layout, index)?;
     let rows = &layout.interaction.positions;
@@ -368,25 +386,25 @@ pub(crate) fn movement(layout: &PlacedLayout, index: usize, movement: Movement) 
                 Some(target) => {
                     let sideways =
                         layout.prepared.options.orientation() == crate::LineOrientation::Sideways;
-                    let x = if sideways {
-                        local_x(&layout.lines[current.line], current.target)
+                    if sideways {
+                        let inline = local_x(&layout.lines[current.line], current.target);
+                        nearest_inline(layout, target, inline).unwrap_or(index)
                     } else {
-                        geometry(layout, index)?.rect().origin.x
-                    };
-                    let inline = |index: usize| {
-                        if sideways {
-                            local_x(&layout.lines[rows[index].line], rows[index].target)
-                        } else {
-                            geometry(layout, index).expect("owned row").rect().origin.x
-                        }
-                    };
-                    rows.iter()
-                        .enumerate()
-                        .filter(|(_, row)| row.line == target)
-                        .min_by(|(a, _), (b, _)| {
-                            (inline(*a) - x).abs().total_cmp(&(inline(*b) - x).abs())
-                        })
-                        .map_or(index, |(index, _)| index)
+                        let x = geometry(layout, index)?.rect().origin.x;
+                        rows.iter()
+                            .enumerate()
+                            .filter(|(_, row)| row.line == target)
+                            .min_by(|(a, _), (b, _)| {
+                                (geometry(layout, *a).expect("owned row").rect().origin.x - x)
+                                    .abs()
+                                    .total_cmp(
+                                        &(geometry(layout, *b).expect("owned row").rect().origin.x
+                                            - x)
+                                            .abs(),
+                                    )
+                            })
+                            .map_or(index, |(index, _)| index)
+                    }
                 }
             }
         }

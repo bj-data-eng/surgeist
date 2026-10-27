@@ -663,7 +663,11 @@ pub(crate) fn move_cursor(
                 if line.orientation == crate::LineOrientation::Sideways {
                     let (current, rect) = geometry(layout, value);
                     let inline = crate::layout::local_point(&layout.lines[current], rect.origin).x;
-                    return cursor_at_inline(layout, index, inline).unwrap_or(value);
+                    // Use the same eligible target rows as exact placed
+                    // movement, including real control-only Forced lines.
+                    // The final source validator below owns lossy ambiguity.
+                    return super::position::nearest_inline(layout, index, inline)
+                        .map_or(value, |target| layout.interaction.positions[target].source);
                 }
                 from_point(
                     layout,
