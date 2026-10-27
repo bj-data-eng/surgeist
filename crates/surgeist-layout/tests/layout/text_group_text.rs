@@ -210,6 +210,21 @@ impl Paragraph {
         body: t::ParagraphBaseDirection,
         css_tabs: bool,
     ) -> Self {
+        let options = if css_tabs {
+            t::PreparationOptions::try_new(1.0, t::TabPreparation::CssStops).unwrap()
+        } else {
+            t::PreparationOptions::default()
+        };
+        Self::with_preparation(host, container, parts, style, body, options)
+    }
+    fn with_preparation<S: l::LayoutScalar>(
+        host: &mut Host<S>,
+        container: u32,
+        parts: &[Part<'_>],
+        style: t::Style,
+        body: t::ParagraphBaseDirection,
+        options: t::PreparationOptions,
+    ) -> Self {
         use t::SourceProcessingEvent as E;
         let direction = host.inputs[container as usize].as_box().unwrap().direction;
         let raw = parts
@@ -430,11 +445,6 @@ impl Paragraph {
         })
         .unwrap();
         system.register_fonts(AHEM.to_vec()).unwrap();
-        let options = if css_tabs {
-            t::PreparationOptions::try_new(1.0, t::TabPreparation::CssStops).unwrap()
-        } else {
-            t::PreparationOptions::default()
-        };
         let prepared = system
             .prepare(&analyzed.with_wrapping_policies(wrapping).unwrap(), options)
             .unwrap();
@@ -586,3 +596,4 @@ fn node_output<S: l::LayoutScalar>(
 mod geometry;
 mod hierarchy;
 mod shared_floats;
+mod sideways;
