@@ -15,6 +15,23 @@ struct Host<S: l::LayoutScalar> {
     tree: Tree<S>,
     published: Published<S>,
     hits: Vec<Cell<usize>>,
+    triangle: Option<u32>,
+}
+impl<S: l::LayoutScalar> Host<S> {
+    fn new(tree: Tree<S>) -> Self {
+        let count = tree.inputs.len();
+        Self {
+            tree,
+            published: Published {
+                caches: vec![l::CacheOf::new(); count],
+                unrounded: vec![None; count],
+                final_output: vec![None; count],
+                batch: None,
+            },
+            hits: (0..count).map(|_| Cell::new(0)).collect(),
+            triangle: None,
+        }
+    }
 }
 impl<S: l::LayoutScalar> l::Traverse for Host<S> {
     type Node = u32;
@@ -52,6 +69,36 @@ impl<S: l::LayoutScalar> l::LayoutTree for Host<S> {
             self.hits[node as usize].set(self.hits[node as usize].get() + 1);
         }
         answer
+    }
+    fn float_exclusion_interval(
+        &self,
+        node: u32,
+        query: l::FloatExclusionQueryOf<S>,
+    ) -> Option<Result<Option<l::FloatExclusionIntervalOf<S>>, Self::MeasureError>> {
+        if self.triangle != Some(node) {
+            return None;
+        }
+        assert_eq!(query.margin_box().origin(), l::Point::ZERO);
+        assert_eq!(
+            query.margin_box().size(),
+            l::Size::new(S::from_f64(20.0), S::from_f64(20.0))
+        );
+        assert_eq!(
+            query.flow_axes(),
+            l::FlowAxes::new(l::WritingMode::HorizontalTb, l::Direction::Ltr)
+        );
+        if query.band_minimum() >= S::from_f64(20.0) || query.band_maximum() <= S::ZERO {
+            return Some(Ok(None));
+        }
+        // Fixed contour (0,0),(0,20),(20,20): its greatest x over the
+        // actual intersected vertical band is min(band maximum,20).
+        let right = query.band_maximum().min(S::from_f64(20.0)).max(S::ZERO);
+        Some(Ok(l::FloatExclusionIntervalOf::try_new(
+            query,
+            S::ZERO,
+            right,
+        )
+        .unwrap()))
     }
     fn unrounded_layout(&self, node: u32) -> Option<l::NodeOutputOf<S>> {
         self.published.unrounded[node as usize]
@@ -321,20 +368,11 @@ impl<S: l::LayoutScalar> Advanced<S> {
                 atomics: vec![],
                 line_strut: None,
             },
-            host: Host {
-                tree: Tree {
-                    inputs,
-                    non_box: l::NodeInputOf::non_box(),
-                    children: child_lists,
-                },
-                published: Published {
-                    caches: vec![l::CacheOf::new(); count],
-                    unrounded: vec![None; count],
-                    final_output: vec![None; count],
-                    batch: None,
-                },
-                hits: (0..count).map(|_| Cell::new(0)).collect(),
-            },
+            host: Host::new(Tree {
+                inputs,
+                non_box: l::NodeInputOf::non_box(),
+                children: child_lists,
+            }),
             width,
             float,
         }
@@ -626,3 +664,5 @@ fn changed_font_height_replays_its_real_float_bands_through_publication_and_inva
 mod stable;
 
 mod avoid_short_last_line;
+
+mod pretty;

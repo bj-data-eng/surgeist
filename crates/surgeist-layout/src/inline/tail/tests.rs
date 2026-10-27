@@ -249,12 +249,12 @@ fn equal_improved_real_programs_keep_the_first_incumbent() {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ContourFailure {
+pub(in crate::inline) enum ContourFailure {
     CrossesBottomFromWithin,
 }
 
-struct TriangleTree<S: LayoutScalar> {
-    inner: PublicLayoutTreeOf<S>,
+pub(in crate::inline) struct TriangleTree<S: LayoutScalar> {
+    pub(in crate::inline) inner: PublicLayoutTreeOf<S>,
     fail: bool,
     queries: RefCell<Vec<crate::FloatExclusionQueryOf<S>>>,
 }
@@ -317,7 +317,7 @@ impl<S: LayoutScalar> LayoutTree for TriangleTree<S> {
 }
 
 impl<S: LayoutScalar> TriangleTree<S> {
-    fn new(style: crate::TextWrapStyle, fail: bool) -> Self {
+    pub(in crate::inline) fn new(style: crate::TextWrapStyle, fail: bool) -> Self {
         let mut inner = PublicLayoutTreeOf::new()
             .children(0, [1, 2, 3, 4])
             .style(
@@ -373,7 +373,7 @@ impl<S: LayoutScalar> TriangleTree<S> {
             queries: RefCell::new(Vec::new()),
         }
     }
-    fn compute(
+    pub(in crate::inline) fn compute(
         &self,
     ) -> Result<crate::CompletedLayoutBatchOf<u32, S>, crate::LayoutErrorOf<u32, S, ContourFailure>>
     {

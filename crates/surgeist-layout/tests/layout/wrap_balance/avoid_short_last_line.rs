@@ -2,6 +2,9 @@
 use super::*;
 
 fn direction_and_hard_groups<S: l::LayoutScalar>() {
+    with_style::<S>(l::TextWrapStyle::AvoidShortLastLine);
+}
+pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
         for forced in [false, true] {
             let mut fixture = Fixture::<S>::new(direction, t::Wrap::Word, forced);
@@ -23,7 +26,7 @@ fn direction_and_hard_groups<S: l::LayoutScalar>() {
                 ),
             ]);
             let before = fixture.prepared.captured_paragraph();
-            set_normalized_wrap_style(&mut fixture, l::TextWrapStyle::AvoidShortLastLine);
+            set_normalized_wrap_style(&mut fixture, style);
             let actual = compute_changed_wrap_style(&fixture);
             fixture.assert_lines(&actual, &expected, direction);
             assert_real_capacity_and_tab_basis(&fixture, &actual, expected.len());
@@ -47,7 +50,7 @@ fn direction_and_hard_groups<S: l::LayoutScalar>() {
         }
         let mut nowrap = Fixture::<S>::new(direction, t::Wrap::None, false);
         let auto = nowrap.compute();
-        set_normalized_wrap_style(&mut nowrap, l::TextWrapStyle::AvoidShortLastLine);
+        set_normalized_wrap_style(&mut nowrap, style);
         let selected = compute_changed_wrap_style(&nowrap);
         let expected = [(t::Range::new(0, 8), 80.0, t::LineEnd::Paragraph)];
         nowrap.assert_lines(&auto, &expected, direction);

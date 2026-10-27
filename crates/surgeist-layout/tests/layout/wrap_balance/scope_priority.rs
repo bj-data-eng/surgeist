@@ -256,3 +256,5 @@ fn native_scope_priority_precedes_balanced_numeric_line_lengths() {
 }
 
 mod avoid_short_last_line;
+
+mod pretty;

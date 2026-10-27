@@ -3,7 +3,7 @@ mod stable;
 
 use super::*;
 
-fn numeric_atomic<S: l::LayoutScalar>(
+pub(super) fn numeric_atomic<S: l::LayoutScalar>(
     direction: l::Direction,
     width: f64,
     height: f64,
@@ -24,7 +24,7 @@ fn numeric_atomic<S: l::LayoutScalar>(
         ..l::NodeInputOf::default()
     })
 }
-fn numeric_forced<S: l::LayoutScalar>(
+pub(super) fn numeric_forced<S: l::LayoutScalar>(
     direction: l::Direction,
     baseline: f64,
     height: f64,
@@ -60,7 +60,7 @@ fn numeric_boundary<S: l::LayoutScalar>(
         .with_direction(direction),
     )
 }
-fn numeric_tree<S: l::LayoutScalar>(
+pub(super) fn numeric_tree<S: l::LayoutScalar>(
     direction: l::Direction,
     participants: Vec<l::LayoutInputOf<S>>,
 ) -> Tree<S> {
@@ -132,7 +132,7 @@ fn numeric_style<S: l::LayoutScalar>(
     assert_eq!(tree.inputs[0].as_box().unwrap().text_wrap_style, style);
     numeric_compute(tree, available, &[0])
 }
-fn numeric_node<S: l::LayoutScalar>(
+pub(super) fn numeric_node<S: l::LayoutScalar>(
     entries: &[l::LayoutOutputEntryOf<u32, S>],
     id: u32,
 ) -> l::NodeOutputOf<S> {
@@ -425,3 +425,5 @@ fn balance_leaves_true_auto_width_numeric_min_and_max_content_unchanged() {
 }
 
 mod avoid_short_last_line;
+
+mod pretty;

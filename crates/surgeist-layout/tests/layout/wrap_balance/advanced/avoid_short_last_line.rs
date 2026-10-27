@@ -1,7 +1,7 @@
 //! Actual source/cut witnesses for threshold-free paragraph-tail repair.
 use super::*;
 
-fn rows<S: l::LayoutScalar>(
+pub(super) fn rows<S: l::LayoutScalar>(
     fixture: &Advanced<S>,
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     expected: &[(usize, f64)],

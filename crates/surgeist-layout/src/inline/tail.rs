@@ -1,6 +1,7 @@
 //! Terminal-pair preference over the existing native group walk.
 use super::*;
-use crate::inline_wrapping::tail::{TailGoal, TailLine, TailPair, TailTrial, choose_tail};
+use crate::inline_wrapping::quality::NaturalLine;
+use crate::inline_wrapping::tail::{TailAdmission, TailGoal, TailPair, TailTrial, choose_tail};
 
 struct NumericTailReference<S: LayoutScalar> {
     terminal: NumericGroupTerminal<S>,
@@ -23,8 +24,8 @@ struct NumericTailTarget<S: LayoutScalar> {
     auto: NumericTailBasis<S>,
 }
 
-fn line_measure<S: LayoutScalar>(line: &SelectedInlineLineOf<S>) -> Option<TailLine> {
-    TailLine::from_components(
+pub(super) fn line_measure<S: LayoutScalar>(line: &SelectedInlineLineOf<S>) -> Option<NaturalLine> {
+    NaturalLine::from_components(
         (line.band.inline_end - line.band.inline_start).to_f64(),
         line.indent.to_f64(),
         line.used_inline_extent.to_f64(),
@@ -65,6 +66,7 @@ where
         NumericWalkControl {
             goal: goal.map(LineQualityGoal::Tail),
             goal_start: reference.count - 2,
+            goal_end: None,
             observe_frontier: Some(reference.count - 2),
             stop_at_group: true,
             max_formatted: Some(reference.count),
@@ -157,6 +159,22 @@ where
     let Some(entry) = final_entry else {
         return Ok(None);
     };
+    prepare_group_target(request, boundaries, sequence, entry, band, clear)
+}
+
+fn prepare_group_target<S, B, C>(
+    request: NumericWalkInput<'_, S>,
+    boundaries: &[InlineSourceCursor],
+    sequence: &mut NumericSequence<S>,
+    entry: NumericGroupEntry<S>,
+    band: &mut B,
+    clear: &mut C,
+) -> Result<Option<NumericTailTarget<S>>, crate::inline_wrapping::NumericWrappingError>
+where
+    S: LayoutScalar,
+    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    C: FnMut(S, PostLineClearIntent) -> S,
+{
     let lines = &sequence.selected_lines[entry.selected_len..];
     let Some(last) = lines.last() else {
         return Ok(None);
@@ -245,6 +263,22 @@ where
     let Some(target) = prepare_target(request, boundaries, sequence, band, clear)? else {
         return Ok(());
     };
+    repair_target(request, boundaries, sequence, target, band, clear).map(|_| ())
+}
+
+fn repair_target<S, B, C>(
+    request: NumericWalkInput<'_, S>,
+    boundaries: &[InlineSourceCursor],
+    sequence: &mut NumericSequence<S>,
+    target: NumericTailTarget<S>,
+    band: &mut B,
+    clear: &mut C,
+) -> Result<Option<TailGoal>, crate::inline_wrapping::NumericWrappingError>
+where
+    S: LayoutScalar,
+    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    C: FnMut(S, PostLineClearIntent) -> S,
+{
     let winner = choose_tail(target.pair, |goal| {
         let candidate = trial(
             request,
@@ -263,7 +297,7 @@ where
     })?;
     let Some(winner) = winner else {
         restore_program(sequence, target.entry, &target.auto);
-        return Ok(());
+        return Ok(None);
     };
     let replay = trial(
         request,
@@ -278,8 +312,62 @@ where
     if replay.value != winner.trial.value || replay.pair != winner.trial.pair {
         return Err(crate::inline_wrapping::NumericWrappingError::InvalidTailBasis);
     }
-    Ok(())
+    Ok(Some(winner.goal))
+}
+
+/// The same Tail phase at the current group's authentic ordinary entry.
+pub(super) fn repair_group_from_auto<S, B, C>(
+    request: NumericWalkInput<'_, S>,
+    boundaries: &[InlineSourceCursor],
+    sequence: &mut NumericSequence<S>,
+    entry: NumericGroupEntry<S>,
+    band: &mut B,
+    clear: &mut C,
+) -> Result<Option<TailGoal>, crate::inline_wrapping::NumericWrappingError>
+where
+    S: LayoutScalar,
+    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    C: FnMut(S, PostLineClearIntent) -> S,
+{
+    let Some(target) = prepare_group_target(request, boundaries, sequence, entry, band, clear)?
+    else {
+        return Ok(None);
+    };
+    repair_target(request, boundaries, sequence, target, band, clear)
+}
+
+pub(super) fn replay_group_from_auto<S, B, C>(
+    request: NumericWalkInput<'_, S>,
+    boundaries: &[InlineSourceCursor],
+    sequence: &mut NumericSequence<S>,
+    phase: (NumericGroupEntry<S>, TailGoal),
+    band: &mut B,
+    clear: &mut C,
+) -> Result<bool, crate::inline_wrapping::NumericWrappingError>
+where
+    S: LayoutScalar,
+    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    C: FnMut(S, PostLineClearIntent) -> S,
+{
+    let (entry, goal) = phase;
+    let Some(target) = prepare_group_target(request, boundaries, sequence, entry, band, clear)?
+    else {
+        return Ok(false);
+    };
+    let Some(replay) = trial(
+        request,
+        boundaries,
+        sequence,
+        (&entry, &target.reference),
+        Some(goal),
+        band,
+        clear,
+    )?
+    else {
+        return Ok(false);
+    };
+    Ok(replay.pair.admission(target.pair) == TailAdmission::Improved)
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;

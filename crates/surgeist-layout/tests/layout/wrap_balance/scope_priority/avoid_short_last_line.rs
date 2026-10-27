@@ -2,10 +2,13 @@
 use super::*;
 
 fn scope_before_quality<S: l::LayoutScalar>() {
+    with_style::<S>(l::TextWrapStyle::AvoidShortLastLine);
+}
+pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
         // Existing authentic source: Start,A30,B20,End,C10,D10. Desired
         // repair A/BCD crosses inside the real pair; ordinary ABC/D is outside.
-        let tree = fixture::<S>(direction, l::TextWrapStyle::AvoidShortLastLine);
+        let tree = fixture::<S>(direction, style);
         for inside in [l::WrapInside::Auto, l::WrapInside::Avoid] {
             let repaired = inside == l::WrapInside::Auto;
             let batch = compute(&tree, inside);
