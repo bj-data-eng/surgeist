@@ -346,7 +346,11 @@ pub(crate) fn admit_geometry(
     request: super::input::RequestInput<'_>,
 ) -> Result<super::prepared::SelectedPresentation> {
     let tables = &prepared.inner.tables;
-    validate_context(request.context, prepared.inner.analyzed.analysis.base_level)?;
+    validate_context(
+        request.context,
+        prepared.inner.analyzed.analysis.base_level,
+        prepared.orientation(),
+    )?;
     let mut expected_atomics = BTreeSet::new();
     for participant in request.participants {
         if let PreparedParticipant::Atomic(atomic) = participant
@@ -528,7 +532,11 @@ pub(super) fn require_prepared(
     }
 }
 
-fn validate_context(context: &LineContext, base_level: u8) -> Result<()> {
+fn validate_context(
+    context: &LineContext,
+    base_level: u8,
+    orientation: LineOrientation,
+) -> Result<()> {
     let actual = if base_level & 1 == 0 {
         ParagraphBaseDirection::LeftToRight
     } else {
@@ -539,8 +547,13 @@ fn validate_context(context: &LineContext, base_level: u8) -> Result<()> {
             field: ProtocolContextField::BaseDirection,
         }));
     }
-    if context.orientation != LineOrientation::Horizontal {
+    if context.orientation == LineOrientation::Vertical {
         return Err(protocol_error(ProtocolError::UnsupportedContext {
+            field: ProtocolContextField::Orientation,
+        }));
+    }
+    if context.orientation != orientation {
+        return Err(protocol_error(ProtocolError::MismatchedContext {
             field: ProtocolContextField::Orientation,
         }));
     }

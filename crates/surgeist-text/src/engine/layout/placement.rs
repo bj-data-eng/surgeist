@@ -46,6 +46,7 @@ pub(super) fn place(finalized: Vec<Arc<FinalizedLine>>) -> Result<PlacedLayout> 
         let placed = crate::engine::PlacedLine {
             finalized: Arc::clone(&line),
             anchor,
+            orientation: LineOrientation::Horizontal,
             atomics: Vec::new(),
         };
         let atomics = line

@@ -109,6 +109,7 @@ pub(crate) struct FinalizedLine {
 pub(crate) struct PlacedLine {
     pub(crate) finalized: Arc<FinalizedLine>,
     pub(crate) anchor: Point,
+    pub(crate) orientation: crate::LineOrientation,
     pub(crate) atomics: Vec<crate::AtomicPlacement>,
 }
 
@@ -232,10 +233,34 @@ pub(crate) fn prepare(
     profile: PreparationProfile,
     scratch: &mut shape::ShapeContext,
 ) -> crate::Result<Arc<PreparedData>> {
+    match options.orientation() {
+        crate::LineOrientation::Vertical => {
+            return Err(crate::protocol::protocol_error(
+                crate::ProtocolError::UnsupportedContext {
+                    field: crate::ProtocolContextField::Orientation,
+                },
+            ));
+        }
+        crate::LineOrientation::Sideways => {
+            if let Some(occurrence) = analyzed.paragraph.anchor_order.iter().find_map(|anchor| {
+                if let crate::protocol::paragraph::SemanticAnchorItem::Atomic(i) = anchor.item {
+                    Some(i)
+                } else {
+                    None
+                }
+            }) {
+                return Err(crate::protocol::protocol_error(
+                    crate::ProtocolError::UnsupportedSidewaysAtomic { occurrence },
+                ));
+            }
+        }
+        crate::LineOrientation::Horizontal => {}
+    }
     let mut styles = resolve::resolve(
         catalogue.collection_mut(),
         &analyzed.styles,
         options.scale(),
+        options.orientation(),
     )?;
     let default_style_index = if profile == PreparationProfile::Native
         && analyzed.paragraph.paragraph_strut == crate::ParagraphStrut::DefaultFont
@@ -253,6 +278,7 @@ pub(crate) fn prepare(
             catalogue.collection_mut(),
             &base,
             options.scale(),
+            options.orientation(),
         )?);
         Some(index)
     } else {

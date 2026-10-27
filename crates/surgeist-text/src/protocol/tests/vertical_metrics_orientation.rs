@@ -73,8 +73,14 @@ fn successful_nominal_vertical_metrics_do_not_enable_nonhorizontal_selection() {
         let error = p.select(rejected).unwrap_err();
         assert_eq!(
             reason(&error),
-            &ProtocolError::UnsupportedContext {
-                field: ProtocolContextField::Orientation
+            &if orientation == LineOrientation::Vertical {
+                ProtocolError::UnsupportedContext {
+                    field: ProtocolContextField::Orientation,
+                }
+            } else {
+                ProtocolError::MismatchedContext {
+                    field: ProtocolContextField::Orientation,
+                }
             }
         );
     }
@@ -127,8 +133,14 @@ fn successful_nominal_vertical_metrics_do_not_enable_nonhorizontal_placement() {
         .unwrap_err();
         assert_eq!(
             reason(&error),
-            &ProtocolError::UnsupportedContext {
-                field: ProtocolContextField::Orientation
+            &if orientation == LineOrientation::Vertical {
+                ProtocolError::UnsupportedContext {
+                    field: ProtocolContextField::Orientation,
+                }
+            } else {
+                ProtocolError::MismatchedContext {
+                    field: ProtocolContextField::Orientation,
+                }
             }
         );
     }
