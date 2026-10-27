@@ -194,8 +194,12 @@ fn a_later_real_empty_forced_child_disproves_last_for_earlier_text() {
                 3,
                 LayoutInputOf::line_break(
                     LineBreakInputOf::new().with_metrics(
-                        InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0))
-                            .unwrap(),
+                        InlineMetricsOf::from_ascent_descent(
+                            crate::InlineBaselineContext::Physical,
+                            S::from_f64(8.0),
+                            S::from_f64(2.0),
+                        )
+                        .unwrap(),
                     ),
                 ),
             );
@@ -429,8 +433,14 @@ fn warm_geometry_only_numeric_child_cache_cannot_supply_formatted_tail_truth() {
             .input(
                 5,
                 LayoutInputOf::line_break(
-                    LineBreakInputOf::new()
-                        .with_metrics(InlineMetricsOf::from_ascent_descent(8.0, 2.0).unwrap()),
+                    LineBreakInputOf::new().with_metrics(
+                        InlineMetricsOf::from_ascent_descent(
+                            crate::InlineBaselineContext::Physical,
+                            8.0,
+                            2.0,
+                        )
+                        .unwrap(),
+                    ),
                 ),
             ),
         caches: Default::default(),

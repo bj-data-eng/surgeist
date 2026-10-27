@@ -3,6 +3,50 @@ use surgeist_text::BidiLevel;
 use super::super::{DefaultScalar, LayoutScalar};
 use super::{Clear, Direction};
 
+/// Resolved alignment reference of a native inline formatting context.
+/// Physical coordinates do not assert a font or named baseline origin.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum InlineBaselineContext {
+    #[default]
+    Physical,
+    Named(crate::BaselineName),
+}
+
+/// The child's own, non-inherited choice of alignment baseline set.
+/// This preference applies to named matching, not raw Physical projections.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum BaselineSource {
+    #[default]
+    Auto,
+    First,
+    Last,
+}
+
+impl BaselineSource {
+    pub(crate) fn prefers_last(self, display: super::Display) -> bool {
+        match self {
+            Self::Auto => display == super::Display::InlineBlock,
+            Self::First => false,
+            Self::Last => true,
+        }
+    }
+}
+
+/// A supplied baseline fact cannot be used in this containing context.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InlineBaselineError {
+    /// A finite named coordinate cannot be represented in its output frame.
+    UnrepresentableCoordinate,
+    AxisMismatch {
+        expected: crate::PhysicalAxis,
+        actual: crate::PhysicalAxis,
+    },
+    ReferenceMismatch {
+        expected: InlineBaselineContext,
+        actual: InlineBaselineContext,
+    },
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum LineBreakDisplay {
     #[default]
@@ -163,6 +207,7 @@ impl WritingMode {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct InlineMetricsOf<S: LayoutScalar = DefaultScalar> {
+    reference: InlineBaselineContext,
     baseline: S,
     line_extent: S,
 }
@@ -212,7 +257,11 @@ pub enum InlineMetricsError<S: LayoutScalar = DefaultScalar> {
 }
 
 impl<S: LayoutScalar> InlineMetricsOf<S> {
-    pub fn try_new(baseline: S, line_extent: S) -> Result<Self, InlineMetricsError<S>> {
+    pub fn try_new(
+        reference: InlineBaselineContext,
+        baseline: S,
+        line_extent: S,
+    ) -> Result<Self, InlineMetricsError<S>> {
         validate_non_negative_finite(baseline)?;
         validate_non_negative_finite(line_extent)?;
 
@@ -224,18 +273,24 @@ impl<S: LayoutScalar> InlineMetricsOf<S> {
         }
 
         Ok(Self {
+            reference,
             baseline,
             line_extent,
         })
     }
 
-    pub fn from_ascent_descent(ascent: S, descent: S) -> Result<Self, InlineMetricsError<S>> {
+    pub fn from_ascent_descent(
+        reference: InlineBaselineContext,
+        ascent: S,
+        descent: S,
+    ) -> Result<Self, InlineMetricsError<S>> {
         validate_non_negative_finite(ascent)?;
         validate_non_negative_finite(descent)?;
-        Self::try_new(ascent, ascent + descent)
+        Self::try_new(reference, ascent, ascent + descent)
     }
 
     pub fn from_line_height_and_baseline(
+        reference: InlineBaselineContext,
         line_height: S,
         baseline: S,
     ) -> Result<Self, InlineMetricsError<S>> {
@@ -250,9 +305,15 @@ impl<S: LayoutScalar> InlineMetricsOf<S> {
         }
 
         Ok(Self {
+            reference,
             baseline,
             line_extent: line_height,
         })
+    }
+
+    #[must_use]
+    pub const fn reference(self) -> InlineBaselineContext {
+        self.reference
     }
 
     #[must_use]
@@ -273,8 +334,12 @@ impl<S: LayoutScalar> InlineMetricsOf<S> {
 
 impl<S: LayoutScalar> Default for InlineMetricsOf<S> {
     fn default() -> Self {
-        Self::from_line_height_and_baseline(S::from_f64(16.0), S::from_f64(12.0))
-            .expect("default inline metrics are valid")
+        Self::from_line_height_and_baseline(
+            InlineBaselineContext::Physical,
+            S::from_f64(16.0),
+            S::from_f64(12.0),
+        )
+        .expect("default inline metrics are valid")
     }
 }
 

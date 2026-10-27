@@ -191,7 +191,12 @@ fn fixture<S: l::LayoutScalar>() -> (
     ] {
         inputs[node] = l::LayoutInputOf::inline_boundary(l::InlineBoundaryInputOf::new(
             kind,
-            l::InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+            l::InlineMetricsOf::try_new(
+                surgeist_layout::InlineBaselineContext::Physical,
+                S::from_f64(8.0),
+                S::from_f64(10.0),
+            )
+            .unwrap(),
             l::InlineBoundaryEdgeOf::ZERO,
         ));
     }

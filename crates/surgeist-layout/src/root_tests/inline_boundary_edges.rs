@@ -42,7 +42,12 @@ fn tree<S: LayoutScalar>(
                 } else {
                     InlineBoundaryKind::End
                 },
-                InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                InlineMetricsOf::try_new(
+                    crate::InlineBaselineContext::Physical,
+                    S::from_f64(8.0),
+                    S::from_f64(10.0),
+                )
+                .unwrap(),
                 if row.node == 20 {
                     start
                 } else {
@@ -93,7 +98,12 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
             20,
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 InlineBoundaryKind::Start,
-                InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                InlineMetricsOf::try_new(
+                    crate::InlineBaselineContext::Physical,
+                    S::from_f64(8.0),
+                    S::from_f64(10.0),
+                )
+                .unwrap(),
                 edge,
             )),
         );
@@ -145,7 +155,12 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
             20,
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 InlineBoundaryKind::Start,
-                InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                InlineMetricsOf::try_new(
+                    crate::InlineBaselineContext::Physical,
+                    S::from_f64(8.0),
+                    S::from_f64(10.0),
+                )
+                .unwrap(),
                 overflow,
             )),
         );
@@ -153,7 +168,12 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
             21,
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 InlineBoundaryKind::End,
-                InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                InlineMetricsOf::try_new(
+                    crate::InlineBaselineContext::Physical,
+                    S::from_f64(8.0),
+                    S::from_f64(10.0),
+                )
+                .unwrap(),
                 overflow,
             )),
         );
@@ -176,7 +196,12 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
             20,
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 InlineBoundaryKind::Start,
-                InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                InlineMetricsOf::try_new(
+                    crate::InlineBaselineContext::Physical,
+                    S::from_f64(8.0),
+                    S::from_f64(10.0),
+                )
+                .unwrap(),
                 edge,
             )),
         );
@@ -184,7 +209,12 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
             21,
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 InlineBoundaryKind::End,
-                InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                InlineMetricsOf::try_new(
+                    crate::InlineBaselineContext::Physical,
+                    S::from_f64(8.0),
+                    S::from_f64(10.0),
+                )
+                .unwrap(),
                 InlineBoundaryEdgeOf::ZERO,
             )),
         );
@@ -195,7 +225,12 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
             20,
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 InlineBoundaryKind::Start,
-                InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                InlineMetricsOf::try_new(
+                    crate::InlineBaselineContext::Physical,
+                    S::from_f64(8.0),
+                    S::from_f64(10.0),
+                )
+                .unwrap(),
                 InlineBoundaryEdgeOf::ZERO,
             )),
         );

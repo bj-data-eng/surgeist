@@ -9,7 +9,9 @@ use super::sizing::{
 };
 use super::*;
 
-pub(super) fn normal_flow_children_can_establish_baseline<'input, Tree, M>(
+/// Raw baseline or float work needed even by an otherwise definite size query.
+/// This does not establish named absence or discharge a named-fact demand.
+pub(super) fn normal_flow_children_need_physical_sizing_work<'input, Tree, M>(
     tree: &Tree,
     children: &[<Tree as Traverse>::Node],
 ) -> bool
@@ -30,14 +32,11 @@ where
                 return input.metrics().line_extent() > Tree::Scalar::ZERO;
             }
         };
-        if style.display == crate::Display::None
-            || style.common.position == Position::Absolute
-            || style.float != Float::None
-        {
+        if style.display == crate::Display::None || style.common.position == Position::Absolute {
             return false;
         }
-
-        style.display.is_inline_level()
+        !style.float.is_none()
+            || style.display.is_inline_level()
             || style.display.inner_display() == crate::Display::Block
             || tree.child_count(child) > 0 && style.display.inner_display() == crate::Display::Flex
     })
@@ -54,6 +53,7 @@ pub(super) struct InFlowResult<Node, S: LayoutScalar> {
     pub(super) resolved_terminal_float_block_end: Option<S>,
     pub(super) contributions: ScrollContributionAccumulatorOf<S>,
     pub(super) baselines: BaselinesOf<S>,
+    pub(super) named_baselines: crate::NamedBaselinesOf<S>,
     pub(super) static_positions: Vec<(Node, Point<S>)>,
     pub(super) pending_floats: Vec<PendingFloat<Node, S>>,
     pub(super) cursor_block: S,
@@ -140,6 +140,7 @@ where
     let mut owned_float_block_end = constants.logical_content_box_inset().block_start;
     let mut resolved_terminal_float_block_end = None;
     let mut baselines = BaselinesOf::NONE;
+    let mut named_baselines = crate::NamedBaselinesOf::absent();
     let mut static_positions = Vec::new();
     let mut active_margin = CollapsibleMarginOf::<S>::ZERO;
     let mut top_margin = CollapsibleMarginOf::<S>::ZERO;
@@ -449,6 +450,7 @@ where
                         content_size: &mut content_size,
                         scroll_content_size: &mut scroll_content_size,
                         baselines: &mut baselines,
+                        named_baselines: &mut named_baselines,
                         static_positions: &mut static_positions,
                         resolved_terminal_float_block_end: &mut resolved_terminal_float_block_end,
                         active_margin: &mut active_margin,
@@ -546,7 +548,12 @@ where
             )),
         )
         .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
-        .with_block_indent_context(child_indent_context);
+        .with_block_indent_context(child_indent_context)
+        .with_named_baseline_demand(if child_style.float.is_none() {
+            input.named_baseline_demand().for_following(named_baselines)
+        } else {
+            crate::output::NamedBaselineDemand::None
+        });
         let avoids_float_exclusions = block_child_avoids_float_exclusions(&child_style);
         let inherits_float_exclusions = (input.run_mode().is_perform_layout()
             || sizes_float_context)
@@ -736,7 +743,8 @@ where
                     band_available,
                 )
                 .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
-                .with_block_indent_context(child_indent_context);
+                .with_block_indent_context(child_indent_context)
+                .with_named_baseline_demand(child_input.named_baseline_demand());
             }
 
             output = tree.compute_child(child, child_input)?;
@@ -766,6 +774,7 @@ where
                 clear: child_style.clear,
                 block_start: cursor_block,
                 size: output.size,
+                named_baselines: output.named_baselines,
                 content_size: output.content_size,
                 border: child_border,
                 padding: child_padding,
@@ -951,6 +960,7 @@ where
                     source_index: crate::SourceIndex::new(source_index),
                     location,
                     size: output.size,
+                    named_baselines: output.named_baselines,
                     content_size: output.content_size,
                     border: child_border,
                     padding: child_padding,
@@ -990,6 +1000,18 @@ where
         content_size.block = content_size.block.max(child_block_content);
         scroll_content_size.inline = scroll_content_size.inline.max(child_inline_content);
         scroll_content_size.block = scroll_content_size.block.max(child_block_content);
+        let child_named = output.named_baselines.translated(location).map_err(
+            |crate::FiniteScalarErrorOf::NonFinite { value }| {
+                crate::LayoutErrorOf::new(
+                    crate::LayoutErrorSiteOf::Node(child),
+                    crate::LayoutOperation::ChildLayout,
+                    crate::LayoutErrorKindOf::InvalidInput(
+                        crate::LayoutInvalidInputOf::InvalidNumeric { value },
+                    ),
+                )
+            },
+        )?;
+        named_baselines.record(child_named);
         if let Some(baseline) = output.baselines().first_block_baseline(child_flow_axes) {
             baselines.record_first(baseline.translated(location));
         }
@@ -1041,6 +1063,7 @@ where
         resolved_terminal_float_block_end,
         contributions,
         baselines,
+        named_baselines,
         static_positions,
         pending_floats,
         cursor_block,

@@ -68,6 +68,7 @@ pub(super) enum MixedInlineParticipantOf<S: LayoutScalar = DefaultScalar> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunInputOf<S: LayoutScalar = DefaultScalar> {
+    pub inline_baseline_context: crate::InlineBaselineContext,
     pub groups: crate::group_alignment::Snapshot,
     pub text_wrap_style: crate::TextWrapStyle,
     pub line_box_context: crate::line_box::LineBoxContext,
@@ -179,6 +180,9 @@ impl<S: LayoutScalar> InlineEndpointOf<S> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
+    pub inline_baseline_context: crate::InlineBaselineContext,
+    pub first_named_baseline: bool,
+    pub last_named_baseline: bool,
     pub group_lines: Vec<crate::group_alignment::NaturalLine<S>>,
     pub formatted_lines: Option<Vec<crate::text_layout::formatted::NumericFormattedLine>>,
     pub line_box_context: crate::line_box::LineBoxContext,
@@ -311,6 +315,7 @@ struct SelectedInlineLineOf<S: LayoutScalar> {
     split_baseline_edge_phase: Option<S>,
     inline_start_override: Option<S>,
     uses_float_strut_phase: bool,
+    carried_named_baseline: bool,
     scope_band: Option<LogicalLineBandQueryResultOf<S>>,
     band: LogicalLineBandOf<S>,
 }
@@ -401,13 +406,20 @@ struct SelectedInlineLineCandidateOf<S: LayoutScalar> {
     end: SelectedInlineLineEnd,
     line: SelectedInlineLineOf<S>,
     next_cursor: InlineSourceCursor,
-    pending_strut: Option<InlineMetricContributionOf<S>>,
+    pending_strut: Option<ReferencedInlineStrutOf<S>>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
 struct InlineMetricContributionOf<S: LayoutScalar> {
     baseline: S,
     after_baseline: S,
+}
+
+/// The actual reference travels with carried geometry through checkpoints.
+#[derive(Clone, Copy, PartialEq)]
+struct ReferencedInlineStrutOf<S: LayoutScalar> {
+    metrics: InlineMetricContributionOf<S>,
+    reference: crate::InlineBaselineContext,
 }
 
 impl<S: LayoutScalar> InlineMetricContributionOf<S> {
@@ -514,6 +526,18 @@ impl<S: LayoutScalar> MixedInlineParticipantOf<S> {
             }
             Self::ForcedLineBreak(_) => S::ZERO,
             Self::Boundary(control) => control.edge().advance(),
+        }
+    }
+
+    fn referenced_strut(self, flow_axes: FlowAxes) -> ReferencedInlineStrutOf<S> {
+        let reference = match self {
+            Self::Atomic { item, .. } => item.baseline_reference,
+            Self::ForcedLineBreak(control) => control.metrics().reference(),
+            Self::Boundary(control) => control.metrics().reference(),
+        };
+        ReferencedInlineStrutOf {
+            metrics: self.metrics(flow_axes),
+            reference,
         }
     }
 
@@ -693,6 +717,7 @@ fn selected_from_summary<S: LayoutScalar>(
         split_baseline_edge_phase: summary.split_baseline_edge_phase,
         inline_start_override: None,
         uses_float_strut_phase: false,
+        carried_named_baseline: false,
         scope_band: None,
         band: LogicalLineBandOf {
             inline_start: S::ZERO,
@@ -897,7 +922,7 @@ fn select_next_inline_line<S: LayoutScalar>(
     next_boundary_descriptor: usize,
     available_inline_extent: S,
     wraps: bool,
-    pending_strut: Option<InlineMetricContributionOf<S>>,
+    pending_strut: Option<ReferencedInlineStrutOf<S>>,
     flow_axes: FlowAxes,
 ) -> Option<SelectedInlineLineCandidateOf<S>> {
     let participants = run.participants;
@@ -908,7 +933,7 @@ fn select_next_inline_line<S: LayoutScalar>(
             line: select_inline_line(
                 run.line(source_cursor..source_cursor, cursor.descriptor),
                 None,
-                Some(strut),
+                Some(strut.metrics),
                 flow_axes,
             ),
             next_cursor: cursor,
@@ -933,7 +958,7 @@ fn select_next_inline_line<S: LayoutScalar>(
                 line: select_inline_line(
                     run.line(source_cursor..scan, cursor.descriptor),
                     Some(control),
-                    pending_strut,
+                    pending_strut.map(|strut| strut.metrics),
                     flow_axes,
                 ),
                 next_cursor: InlineSourceCursor {
@@ -941,7 +966,7 @@ fn select_next_inline_line<S: LayoutScalar>(
                     source: scan + 1,
                     descriptor: cursor.descriptor + scan - source_cursor,
                 },
-                pending_strut: Some(participant.metrics(flow_axes)),
+                pending_strut: Some(participant.referenced_strut(flow_axes)),
             });
         }
 
@@ -960,7 +985,7 @@ fn select_next_inline_line<S: LayoutScalar>(
                 line: select_inline_line(
                     run.line(source_cursor..break_end, cursor.descriptor),
                     None,
-                    pending_strut,
+                    pending_strut.map(|strut| strut.metrics),
                     flow_axes,
                 ),
                 next_cursor: InlineSourceCursor {
@@ -986,7 +1011,7 @@ fn select_next_inline_line<S: LayoutScalar>(
                     line: select_inline_line(
                         run.line(source_cursor..scan, cursor.descriptor),
                         None,
-                        pending_strut,
+                        pending_strut.map(|strut| strut.metrics),
                         flow_axes,
                     ),
                     next_cursor: InlineSourceCursor {
@@ -994,7 +1019,7 @@ fn select_next_inline_line<S: LayoutScalar>(
                         source: scan,
                         descriptor: cursor.descriptor + scan - source_cursor,
                     },
-                    pending_strut: Some(participant.metrics(flow_axes)),
+                    pending_strut: Some(participant.referenced_strut(flow_axes)),
                 });
             }
             InlineBreakOpportunity::Prohibited => {}
@@ -1006,7 +1031,7 @@ fn select_next_inline_line<S: LayoutScalar>(
         line: select_inline_line(
             run.line(source_cursor..participants.len(), cursor.descriptor),
             None,
-            pending_strut,
+            pending_strut.map(|strut| strut.metrics),
             flow_axes,
         ),
         next_cursor: InlineSourceCursor {
@@ -1022,7 +1047,7 @@ fn select_next_inline_line<S: LayoutScalar>(
 struct NumericCandidateReceiptOf<S: LayoutScalar> {
     end: SelectedInlineLineEnd,
     next_cursor: InlineSourceCursor,
-    pending_strut: Option<InlineMetricContributionOf<S>>,
+    pending_strut: Option<ReferencedInlineStrutOf<S>>,
     summary: InlineLineSummaryOf<S>,
     groups: InlineLineMetricGroupsOf<S>,
     phase_groups: InlineLineMetricGroupsOf<S>,
@@ -1049,7 +1074,8 @@ struct NumericReceiptAccumulatorOf<S: LayoutScalar> {
     fallback: Option<InlineMetricContributionOf<S>>,
 }
 impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
-    fn new(strut: Option<InlineMetricContributionOf<S>>) -> Self {
+    fn new(strut: Option<ReferencedInlineStrutOf<S>>) -> Self {
+        let strut = strut.map(|strut| strut.metrics);
         let groups = InlineLineMetricGroupsOf::from_strut(strut);
         Self {
             groups,
@@ -1097,7 +1123,7 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
         end: SelectedInlineLineEnd,
         cursor: InlineSourceCursor,
         control: Option<ForcedLineBreakControlOf<S>>,
-        pending: Option<InlineMetricContributionOf<S>>,
+        pending: Option<ReferencedInlineStrutOf<S>>,
         length: usize,
     ) -> NumericCandidateReceiptOf<S> {
         let mut groups = self.groups;
@@ -1110,7 +1136,8 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
             };
             groups.include(control.alignment(), metrics);
             phase_groups.include(control.alignment(), metrics);
-            let mut initial = InlineLineMetricGroupsOf::from_strut(pending);
+            let mut initial =
+                InlineLineMetricGroupsOf::from_strut(pending.map(|strut| strut.metrics));
             initial.include(control.alignment(), metrics);
             fallback = Some(initial.resolve());
         }
@@ -1306,7 +1333,7 @@ struct NumericLineQuery<'a, S: LayoutScalar> {
     next_boundary_descriptor: usize,
     available: S,
     wraps: bool,
-    pending: Option<InlineMetricContributionOf<S>>,
+    pending: Option<ReferencedInlineStrutOf<S>>,
     axes: FlowAxes,
 }
 enum NumericCandidatePreference<S: LayoutScalar> {
@@ -1445,10 +1472,10 @@ fn select_scope_inline_line<S: LayoutScalar>(
         stop - cursor.source,
     );
     completion.pending_strut = if let Some(control) = forced {
-        Some(MixedInlineParticipantOf::ForcedLineBreak(control).metrics(axes))
+        Some(MixedInlineParticipantOf::ForcedLineBreak(control).referenced_strut(axes))
     } else if mandatory {
         stop.checked_sub(1)
-            .map(|i| run.participants[i].metrics(axes))
+            .map(|i| run.participants[i].referenced_strut(axes))
     } else {
         None
     };
@@ -1893,7 +1920,7 @@ struct NumericWalkInput<'a, S: LayoutScalar> {
 struct NumericFlowState<S: LayoutScalar> {
     cursor: InlineSourceCursor,
     boundary_index: usize,
-    pending_strut: Option<InlineMetricContributionOf<S>>,
+    pending_strut: Option<ReferencedInlineStrutOf<S>>,
     indent_state: crate::text_indent::IndentLineState,
     line_box_context: crate::line_box::LineBoxContext,
     block_cursor: S,
@@ -2054,6 +2081,12 @@ where
             },
             input.wrapping.as_ref(),
             |receipt| {
+                validate_carried_reference(
+                    pending_strut,
+                    input.inline_baseline_context,
+                    receipt.end.line_end(),
+                    receipt.summary.has_in_flow_content,
+                )?;
                 resolve_numeric_candidate(
                     receipt,
                     float_strut,
@@ -2093,6 +2126,12 @@ where
             }
             continue;
         }
+        validate_carried_reference(
+            pending_strut,
+            input.inline_baseline_context,
+            provisional.end.line_end(),
+            provisional.line.has_in_flow_content,
+        )?;
         if float_strut.is_some() {
             resolve_float_strut_phase(&mut provisional.line, float_strut, input.flow_axes);
         }
@@ -2133,6 +2172,12 @@ where
                 },
                 input.wrapping.as_ref(),
                 |receipt| {
+                    validate_carried_reference(
+                        pending_strut,
+                        input.inline_baseline_context,
+                        receipt.end.line_end(),
+                        receipt.summary.has_in_flow_content,
+                    )?;
                     resolve_numeric_candidate(
                         receipt,
                         float_strut,
@@ -2198,6 +2243,8 @@ where
         }
 
         let mut line = selected.line;
+        line.carried_named_baseline = pending_strut
+            .is_some_and(|strut| matches!(strut.reference, crate::InlineBaselineContext::Named(_)));
         line.indent = line_indent;
         if advanced_phase_transition && continuation_inline_cursor.is_some() {
             line.inline_start_override = Some(band_inline_start + line_indent);
@@ -2771,6 +2818,8 @@ where
     let mut inline_extent = S::ZERO;
     let mut first_baseline = None;
     let mut last_baseline = None;
+    let mut first_named_baseline = false;
+    let mut last_named_baseline = false;
     let mut atomics = Vec::new();
     let mut controls = Vec::new();
     let mut nonformatted_controls = Vec::new();
@@ -2822,6 +2871,22 @@ where
         }
         let block_start = line.band.block_start;
         let line_baseline = block_start + line.baseline;
+        let named_authority = matches!(
+            input.inline_baseline_context,
+            crate::InlineBaselineContext::Named(_)
+        ) && (line.units.iter().any(|unit| {
+            !unit.discarded
+                && participant_has_named_baseline(unit.participant, input.inline_baseline_context)
+        }) || line.line_break.is_some_and(|control| {
+            participant_has_named_baseline(
+                MixedInlineParticipantOf::ForcedLineBreak(control),
+                input.inline_baseline_context,
+            )
+        }) || line.carried_named_baseline);
+        if first_baseline.is_none() {
+            first_named_baseline = named_authority;
+        }
+        last_named_baseline = named_authority;
         first_baseline.get_or_insert(line_baseline);
         last_baseline = Some(line_baseline);
         let (line_inline_start, visual_indices, inline_starts) = resolved_inline_unit_slots(
@@ -2941,6 +3006,9 @@ where
     }
 
     Ok(MixedInlineRunReportOf {
+        inline_baseline_context: input.inline_baseline_context,
+        first_named_baseline,
+        last_named_baseline,
         group_lines,
         formatted_lines,
         line_box_context,
@@ -2962,6 +3030,7 @@ where
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct AtomicInlineBoxParticipant<S: LayoutScalar = DefaultScalar> {
+    pub baseline_reference: crate::InlineBaselineContext,
     pub source_index: usize,
     pub size: Size<S>,
     pub content_size: Size<S>,
@@ -3209,6 +3278,7 @@ impl<S: LayoutScalar> InlineParticipant<S> {
         first_baseline: Option<S>,
     ) -> Self {
         Self::Box(AtomicInlineBoxParticipant {
+            baseline_reference: crate::InlineBaselineContext::Physical,
             source_index,
             size,
             content_size: size,
@@ -3303,6 +3373,7 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
         })
         .collect();
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+        inline_baseline_context: crate::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
@@ -3408,3 +3479,44 @@ mod balance_tests;
 mod bidi_order_tests;
 #[cfg(test)]
 mod phantom_completion_tests;
+
+fn participant_has_named_baseline<S: LayoutScalar>(
+    participant: MixedInlineParticipantOf<S>,
+    reference: crate::InlineBaselineContext,
+) -> bool {
+    match participant {
+        MixedInlineParticipantOf::Atomic { item, .. } => {
+            item.alignment == InlineControlAlignment::Baseline && item.first_baseline.is_some()
+        }
+        MixedInlineParticipantOf::Boundary(control) => {
+            control.alignment() == InlineControlAlignment::Baseline
+                && control.metrics().reference() == reference
+        }
+        MixedInlineParticipantOf::ForcedLineBreak(control) => {
+            control.alignment() == InlineControlAlignment::Baseline
+                && control.metrics().reference() == reference
+        }
+    }
+}
+
+fn validate_carried_reference<S: LayoutScalar>(
+    strut: Option<ReferencedInlineStrutOf<S>>,
+    expected: crate::InlineBaselineContext,
+    ending: surgeist_text::LineEnd,
+    content: bool,
+) -> Result<(), crate::inline_wrapping::NumericWrappingError> {
+    if NumericLineDisposition::for_line(ending, content) == NumericLineDisposition::NonFormatted {
+        return Ok(());
+    }
+    if let Some(strut) = strut
+        && strut.reference != expected
+    {
+        return Err(crate::inline_wrapping::NumericWrappingError::Baseline(
+            crate::InlineBaselineError::ReferenceMismatch {
+                expected,
+                actual: strut.reference,
+            },
+        ));
+    }
+    Ok(())
+}

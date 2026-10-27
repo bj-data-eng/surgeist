@@ -263,7 +263,12 @@ fn capture(
             inputs.push(layout::LayoutInput::InlineBoundary(
                 layout::InlineBoundaryInput::new(
                     kind,
-                    layout::InlineMetrics::try_new(16.0, 20.0).unwrap(),
+                    layout::InlineMetrics::try_new(
+                        surgeist_layout::InlineBaselineContext::Physical,
+                        16.0,
+                        20.0,
+                    )
+                    .unwrap(),
                     layout::InlineBoundaryEdge::ZERO,
                 ),
             ));

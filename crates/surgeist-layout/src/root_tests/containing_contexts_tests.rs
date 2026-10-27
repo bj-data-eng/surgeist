@@ -311,6 +311,7 @@ fn fri06_c03_clear_all_values_accept_all_containing_flows_without_exclusions_bot
             for direction in directions {
                 for clear in clears {
                     let metrics = InlineMetricsOf::from_line_height_and_baseline(
+                        crate::InlineBaselineContext::Physical,
                         S::from_f64(10.0),
                         S::from_f64(7.0),
                     )
@@ -522,9 +523,12 @@ fn fri06_c07_logical_clear_vertical_control_and_float_projection_both_scalars() 
             ..NodeInputOf::default()
         };
         let text = LayoutInputOf::box_input(adjacent);
-        let metrics =
-            InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(15.0))
-                .unwrap();
+        let metrics = InlineMetricsOf::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(20.0),
+            S::from_f64(15.0),
+        )
+        .unwrap();
 
         let break_input = LineBreakInputOf::new()
             .with_writing_mode(WritingMode::VerticalRl)
@@ -815,6 +819,7 @@ fn fri06_c04_line_clear_all_flows_values_and_matching_sides_both_scalars() {
                     let first = atomic_style(InlineBreakOpportunity::Prohibited);
                     let second = atomic_style(InlineBreakOpportunity::Prohibited);
                     let metrics = InlineMetricsOf::from_line_height_and_baseline(
+                        crate::InlineBaselineContext::Physical,
                         S::from_f64(10.0),
                         S::from_f64(8.0),
                     )
@@ -925,6 +930,7 @@ fn fri06_c04_line_alignment_legacy_values_use_each_final_band_all_flows_both_sca
                                     .with_direction(direction)
                                     .with_metrics(
                                         InlineMetricsOf::from_line_height_and_baseline(
+                                            crate::InlineBaselineContext::Physical,
                                             S::from_f64(10.0),
                                             S::from_f64(8.0),
                                         )

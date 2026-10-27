@@ -184,7 +184,12 @@ fn endpoint<S: l::LayoutScalar>(
     l::LayoutInputOf::inline_boundary(
         l::InlineBoundaryInputOf::new(
             kind,
-            l::InlineMetricsOf::try_new(n(baseline), n(height)).unwrap(),
+            l::InlineMetricsOf::try_new(
+                surgeist_layout::InlineBaselineContext::Physical,
+                n(baseline),
+                n(height),
+            )
+            .unwrap(),
             l::InlineBoundaryEdgeOf::ZERO,
         )
         .with_direction(direction),

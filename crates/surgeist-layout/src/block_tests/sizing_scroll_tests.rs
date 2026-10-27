@@ -1709,7 +1709,12 @@ fn block_scroll_geometry_clips_hidden_inline_child_overflow_from_parent_range() 
 
 #[test]
 fn block_scroll_geometry_includes_segmented_inline_overflow_rects() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(10.0, 10.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        10.0,
+        10.0,
+    )
+    .unwrap();
     let mut tree = ScrollBlockTree::default();
     tree.insert_children(1, vec![2, 3, 4, 5]);
     tree.insert_children(2, vec![]);

@@ -195,7 +195,8 @@ fn fixture_in_direction(
             LayoutInputOf::inline_boundary(
                 InlineBoundaryInputOf::new(
                     kind,
-                    InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+                    InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                        .unwrap(),
                     crate::InlineBoundaryEdgeOf::ZERO,
                 )
                 .with_direction(
@@ -284,7 +285,7 @@ fn automatic_phrase_equal_anchor_boundaries_cannot_swap_or_cross_the_issued_scop
         11,
         LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
             InlineBoundaryKind::End,
-            InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+            InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0).unwrap(),
             crate::InlineBoundaryEdgeOf::ZERO,
         )),
     );

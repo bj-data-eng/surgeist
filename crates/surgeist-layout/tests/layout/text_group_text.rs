@@ -296,8 +296,12 @@ impl Paragraph {
                             t::Affinity::After
                         },
                     });
-                    let metrics =
-                        l::InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap();
+                    let metrics = l::InlineMetricsOf::try_new(
+                        surgeist_layout::InlineBaselineContext::Physical,
+                        S::from_f64(8.0),
+                        S::from_f64(10.0),
+                    )
+                    .unwrap();
                     let input = match *part {
                         Part::Forced => l::LayoutInputOf::line_break(
                             l::LineBreakInputOf::new()

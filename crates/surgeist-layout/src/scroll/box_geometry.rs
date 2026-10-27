@@ -60,6 +60,10 @@ pub(crate) struct UsedOverflow {
 }
 
 impl UsedOverflow {
+    /// Classify the actual used pair; clipping alone is not scrolling.
+    pub(crate) const fn is_scroll_container(self) -> bool {
+        self.x.exposes_scroll_range() || self.y.exposes_scroll_range()
+    }
     #[must_use]
     pub(crate) const fn from_computed(computed: ComputedOverflow, item_is_replaced: bool) -> Self {
         Self {

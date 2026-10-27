@@ -8,6 +8,7 @@ fn input<S: LayoutScalar>(
     style: TextWrapStyle,
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
+        inline_baseline_context: crate::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: style,
         line_box_context: crate::line_box::LineBoxContext::new(
@@ -28,6 +29,7 @@ fn input<S: LayoutScalar>(
             .enumerate()
             .map(|(source_index, width)| MixedInlineParticipantOf::Atomic {
                 item: AtomicInlineBoxParticipant {
+                    baseline_reference: crate::InlineBaselineContext::Physical,
                     source_index,
                     size: Size::new(S::from_f64(width), S::from_f64(10.0)),
                     content_size: Size::new(S::from_f64(width), S::from_f64(10.0)),

@@ -2322,6 +2322,7 @@ where
                 source_index: crate::SourceIndex::new(item.source_index),
                 location,
                 size: item.output.size,
+                named_baselines: item.output.named_baselines,
                 content_size: item.output.content_size,
                 scroll_geometry: Some(scroll_geometry),
                 border: item.border,

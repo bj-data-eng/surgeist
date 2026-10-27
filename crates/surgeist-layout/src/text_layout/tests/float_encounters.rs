@@ -1766,7 +1766,8 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
                 ..NodeInputOf::default()
             },
         );
-    let metrics = InlineMetricsOf::try_new(S::ZERO, S::ZERO).unwrap();
+    let metrics =
+        InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, S::ZERO, S::ZERO).unwrap();
     for (node, kind) in [
         (10, InlineBoundaryKind::Start),
         (11, InlineBoundaryKind::End),

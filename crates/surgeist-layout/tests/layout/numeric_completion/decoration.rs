@@ -11,7 +11,12 @@ fn allocated_endpoint<S: l::LayoutScalar>(
     l::LayoutInputOf::inline_boundary(
         l::InlineBoundaryInputOf::new(
             kind,
-            l::InlineMetricsOf::try_new(S::from_f64(baseline), S::from_f64(extent)).unwrap(),
+            l::InlineMetricsOf::try_new(
+                surgeist_layout::InlineBaselineContext::Physical,
+                S::from_f64(baseline),
+                S::from_f64(extent),
+            )
+            .unwrap(),
             edge,
         )
         .with_direction(direction),
@@ -265,7 +270,14 @@ fn zero_forced_margin_barrier<S: l::LayoutScalar>(direction: l::Direction) {
     let control = l::LayoutInputOf::line_break(
         l::LineBreakInputOf::new()
             .with_direction(direction)
-            .with_metrics(l::InlineMetricsOf::try_new(S::ZERO, S::ZERO).unwrap()),
+            .with_metrics(
+                l::InlineMetricsOf::try_new(
+                    surgeist_layout::InlineBaselineContext::Physical,
+                    S::ZERO,
+                    S::ZERO,
+                )
+                .unwrap(),
+            ),
     );
     let tree = NumericTree::<S>::new(direction, vec![a, control, b]);
     let batch = tree.compute();

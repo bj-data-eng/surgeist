@@ -81,6 +81,79 @@ control-only runs use the same preference through their existing fitter.
 Intrinsic sizing and forced-only nowrap retain their ordinary behavior. This is
 an unfragmented, unclamped profile; the other CSS wrap styles are not exposed.
 
+#### Numeric inline baseline references
+
+`NodeInputOf::inline_baseline_context` selects the numeric line's alignment
+reference. `InlineBaselineContext::Physical` is the default raw coordinate
+operation. `Named(BaselineName::Alphabetic)` and `Named(BaselineName::Central)`
+request matching named baselines. The caller resolves the name from its
+typographic context; writing mode alone does not choose it. A parent's request
+does not change the child's own alignment context.
+
+Named coordinates use the child's border-box physical origin on an explicit
+axis. `BaselineCoordinateOf` accepts finite signed offsets, including positions
+outside the border box. `NamedBaselinesOf` retains separate first/last facts
+for each name: `Unknown`, genuinely `Absent`, or `Available`. Generic
+`BaselinesOf` projections do not establish named authority. A missing generic
+scalar likewise cannot prove named absence.
+
+The child's non-inherited `NodeInputOf::baseline_source` selects its matching
+set. `BaselineSource::Auto` selects last for an inline-block and first otherwise;
+`First` and `Last` select their respective sets explicitly. Only that set is
+consulted. If the selected fact is genuinely absent, Layout synthesizes
+alphabetic at the line-under margin edge and central midway between line-over
+and line-under margin edges. Signed used margins remain part of that geometry.
+Unknown authority refuses the request; a coordinate on an incompatible axis
+is an input error. First/last output facts follow the actual eligible line
+and retain their name and physical reference through box translation.
+Unrounded facts refer to the unrounded border origin. Final packet facts refer
+to the published border origin and preserve the once-snapped global baseline
+anchor, including when nested local positions round independently. Top/bottom
+content without a named baseline contribution establishes extents, while its
+named anchor remains unknown.
+
+For a block scroll container with `baseline_source: Auto`, the last set places
+both names at its own signed block-end margin edge. Layout then clamps exported
+available coordinates to that container's border interval. Explicit `First` or
+`Last` uses content-derived facts, with the same clamp; a synthesized fallback
+is also clamped when consumed. `Clip` alone does not create a scroll container
+or invoke these rules. Classification follows the adopted overflow-pair model.
+Each scrolling descendant exports its facts before its parent translates them.
+These coordinates use Layout's canonical initial-placement frame; current scroll
+offsets are not Layout inputs. See the pinned
+[baseline export rules](../../../references/css-align-3--WD-css-align-3-20260130--7361249cbb73.md#baseline-export)
+and [source selection](../../../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#baseline-source).
+
+`InlineMetricsOf` constructors require an explicit reference for their control
+strut. Baseline-aligned controls must match the line's reference; top/bottom
+alignment uses their real extents. Context, source and metric-reference changes use
+the ordinary changed-node invalidation contract, and cached computation
+outputs retain their named facts.
+References also survive forced-line metric carry. A control's reference becomes
+required when a real successor uses its strut as a baseline contribution.
+
+This named capability covers numeric atomic-box flow. Text placement origins
+and generic Flex/Grid baseline projections do not supply named facts. Text's
+font-design measurements require a real placed-origin adapter before they can
+satisfy a named box request. A horizontal design-zero coordinate cannot stand
+in for a possibly nonzero font-defined alphabetic baseline. Physical Text
+composition remains available through its existing contract.
+A Flex/Grid container can remain named-Unknown while its child's independently
+qualified facts remain available in that child's packet. Positioning and floating
+likewise preserve child-owned facts. Published cache outputs retain the same
+distinction between Unknown and Absent, including size-only computations.
+A sizing query may leave unneeded named facts Unknown even when a performed
+layout derives them. An actual named alignment consumer requests its needed
+name and first/last set before child computation; that demand is part of cache
+identity. It does not change the child's own alignment context or grant an
+unsupported producer named authority.
+After a Top/Bottom atomic forces a break, a real named receiver can refuse its
+unqualified carried strut even when that box has usable named facts.
+[Receiver-time atomic qualification](https://github.com/bj-data-eng/surgeist/issues/1490)
+owns consuming those facts at that phase.
+
+#### Prepared Text and inline flow
+
 Prepared Text participation carries actual issued origin, atomic, control and scope
 handles. Capture validates complete inventories against the same borrowed tree;
 equal characters from another preparation cannot replace that basis. Layout
@@ -464,6 +537,8 @@ Source: [output](../src/output.rs).
 
 - Root request and transaction: `LayoutRootRequestOf` and `CompletedLayoutBatchOf`.
 - Node and sizing results: `NodeOutputOf`, `ComputeInputOf`, and `ComputeOutputOf`.
+- Named baseline facts: `NamedBaselinesOf`, `BaselinePairOf`, `BaselineFactOf`
+  and `BaselineCoordinateOf`; see [baseline references](#numeric-inline-baseline-references).
 - Inline output: `InlineFragmentOutputOf`, `InlineFragmentOutputEntryOf`, and
   `PlacedTextOutput`.
 - Root context: `LayoutRootContextOf`, `FlexItemRootContextOf`, and `ContainingLayoutContext`.
@@ -614,7 +689,8 @@ Source: [inline input](../src/node_input/inline.rs).
 `InlineMetricsOf<S>` is layout-ready line box data. Layout consumes it for inline
 line construction and does not derive it from authored CSS or fonts. Integration
 layers should provide metrics from computed style and text/font measurement
-before constructing `LineBreakInputOf<S>`.
+before constructing `LineBreakInputOf<S>`. Its explicit reference follows the
+[numeric baseline contract](#numeric-inline-baseline-references).
 
 ## Browser parity runtime
 

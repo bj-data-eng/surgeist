@@ -100,6 +100,69 @@ pub(crate) enum RequestedAxis {
     Both,
 }
 
+/// One actual consumer's resolved source set, independent of child context.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NamedBaselineSet {
+    First,
+    Last,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NamedBaselineDemand {
+    None,
+    Fact {
+        name: crate::BaselineName,
+        set: NamedBaselineSet,
+    },
+}
+
+impl NamedBaselineDemand {
+    pub(crate) fn for_source(
+        name: crate::BaselineName,
+        source: crate::BaselineSource,
+        display: crate::Display,
+    ) -> Self {
+        Self::Fact {
+            name,
+            set: if source.prefers_last(display) {
+                NamedBaselineSet::Last
+            } else {
+                NamedBaselineSet::First
+            },
+        }
+    }
+
+    pub(crate) fn selected_fact<S: LayoutScalar>(
+        self,
+        facts: NamedBaselinesOf<S>,
+    ) -> Option<(crate::BaselineName, BaselineFactOf<S>)> {
+        match self {
+            Self::None => None,
+            Self::Fact { name, set } => {
+                let pair = facts.get(name);
+                Some((
+                    name,
+                    match set {
+                        NamedBaselineSet::First => pair.first(),
+                        NamedBaselineSet::Last => pair.last(),
+                    },
+                ))
+            }
+        }
+    }
+
+    /// The first non-absent contributor is already the exporting owner's barrier.
+    pub(crate) fn for_following<S: LayoutScalar>(self, facts: NamedBaselinesOf<S>) -> Self {
+        match self {
+            Self::Fact {
+                name,
+                set: NamedBaselineSet::First,
+            } if !matches!(facts.get(name).first(), BaselineFactOf::Absent) => Self::None,
+            other => other,
+        }
+    }
+}
+
 /// Direct and recursive compute state.
 ///
 /// Direct leaf callers construct this state with `leaf_layout` or
@@ -113,6 +176,7 @@ pub struct ComputeInputOf<S: LayoutScalar = DefaultScalar> {
     parent: Size<Option<S>>,
     containing_layout_context: ContainingLayoutContext,
     available: Size<AvailableOf<S>>,
+    named_baseline_demand: NamedBaselineDemand,
     block_indent_context: Option<crate::text_indent::BlockIndentContext<S>>,
     // Settlement owned by the node being computed.
     settled_auto_scrollbars: SettledAutoScrollbarState,
@@ -141,6 +205,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             parent: validate_optional_size(parent)?,
             containing_layout_context,
             available: validate_root_available_size(available)?,
+            named_baseline_demand: NamedBaselineDemand::None,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
@@ -165,6 +230,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             parent: validate_optional_size(parent)?,
             containing_layout_context,
             available: validate_root_available_size(available)?,
+            named_baseline_demand: NamedBaselineDemand::None,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
@@ -235,6 +301,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             parent,
             containing_layout_context,
             available,
+            named_baseline_demand: NamedBaselineDemand::None,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
@@ -267,6 +334,15 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
         &self,
     ) -> Option<crate::text_indent::BlockIndentContext<S>> {
         self.block_indent_context
+    }
+
+    pub(crate) const fn named_baseline_demand(&self) -> NamedBaselineDemand {
+        self.named_baseline_demand
+    }
+
+    pub(crate) const fn with_named_baseline_demand(mut self, demand: NamedBaselineDemand) -> Self {
+        self.named_baseline_demand = demand;
+        self
     }
 
     pub(crate) const fn with_block_indent_context(
@@ -657,6 +733,210 @@ impl<S: LayoutScalar> PhysicalBlockMarginCollapseOf<S> {
     }
 }
 
+/// A finite named baseline coordinate relative to the physical border-box origin.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BaselineCoordinateOf<S: LayoutScalar = DefaultScalar> {
+    axis: PhysicalAxis,
+    offset: S,
+}
+
+impl<S: LayoutScalar> BaselineCoordinateOf<S> {
+    pub fn try_new(axis: PhysicalAxis, offset: S) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+        if !offset.is_finite() {
+            return Err(crate::FiniteScalarErrorOf::NonFinite { value: offset });
+        }
+        Ok(Self {
+            axis,
+            offset: if offset == S::ZERO { S::ZERO } else { offset },
+        })
+    }
+    #[must_use]
+    pub const fn axis(self) -> PhysicalAxis {
+        self.axis
+    }
+    #[must_use]
+    pub const fn offset(self) -> S {
+        self.offset
+    }
+    /// Named scroll exposure clamps only actual coordinates, in their own
+    /// border frame. Ordinary absent facts remain absent until demanded.
+    pub(crate) fn clamped_to_border(
+        self,
+        size: Size<S>,
+    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+        let extent = match self.axis {
+            PhysicalAxis::Horizontal => size.width,
+            PhysicalAxis::Vertical => size.height,
+        };
+        if !extent.is_finite() {
+            return Err(crate::FiniteScalarErrorOf::NonFinite { value: extent });
+        }
+        Self::try_new(self.axis, self.offset.max(S::ZERO).min(extent))
+    }
+    pub(crate) fn translated(self, by: Point<S>) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+        Self::try_new(
+            self.axis,
+            self.offset
+                + match self.axis {
+                    PhysicalAxis::Horizontal => by.x,
+                    PhysicalAxis::Vertical => by.y,
+                },
+        )
+    }
+}
+
+/// Unknown authority differs from the affirmative absence permitting synthesis.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BaselineFactOf<S: LayoutScalar = DefaultScalar> {
+    Unknown,
+    Absent,
+    Available(BaselineCoordinateOf<S>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BaselinePairOf<S: LayoutScalar = DefaultScalar> {
+    first: BaselineFactOf<S>,
+    last: BaselineFactOf<S>,
+}
+impl<S: LayoutScalar> BaselinePairOf<S> {
+    #[must_use]
+    pub const fn new(first: BaselineFactOf<S>, last: BaselineFactOf<S>) -> Self {
+        Self { first, last }
+    }
+    #[must_use]
+    pub const fn first(self) -> BaselineFactOf<S> {
+        self.first
+    }
+    #[must_use]
+    pub const fn last(self) -> BaselineFactOf<S> {
+        self.last
+    }
+    fn translated(self, by: Point<S>) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+        let translate = |fact| match fact {
+            BaselineFactOf::Available(value) => value.translated(by).map(BaselineFactOf::Available),
+            other => Ok(other),
+        };
+        Ok(Self::new(translate(self.first)?, translate(self.last)?))
+    }
+}
+
+/// Named facts independent of the generic Flex/Grid physical projections.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NamedBaselinesOf<S: LayoutScalar = DefaultScalar> {
+    alphabetic: BaselinePairOf<S>,
+    central: BaselinePairOf<S>,
+}
+impl<S: LayoutScalar> NamedBaselinesOf<S> {
+    #[must_use]
+    pub const fn unknown() -> Self {
+        let pair = BaselinePairOf::new(BaselineFactOf::Unknown, BaselineFactOf::Unknown);
+        Self {
+            alphabetic: pair,
+            central: pair,
+        }
+    }
+    #[must_use]
+    pub const fn absent() -> Self {
+        let pair = BaselinePairOf::new(BaselineFactOf::Absent, BaselineFactOf::Absent);
+        Self {
+            alphabetic: pair,
+            central: pair,
+        }
+    }
+    #[must_use]
+    pub const fn with(mut self, name: crate::BaselineName, pair: BaselinePairOf<S>) -> Self {
+        match name {
+            crate::BaselineName::Alphabetic => self.alphabetic = pair,
+            crate::BaselineName::Central => self.central = pair,
+        }
+        self
+    }
+    #[must_use]
+    pub const fn get(self, name: crate::BaselineName) -> BaselinePairOf<S> {
+        match name {
+            crate::BaselineName::Alphabetic => self.alphabetic,
+            crate::BaselineName::Central => self.central,
+        }
+    }
+    pub(crate) fn translated(self, by: Point<S>) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+        Ok(Self {
+            alphabetic: self.alphabetic.translated(by)?,
+            central: self.central.translated(by)?,
+        })
+    }
+    pub(crate) fn clamped_to_border(
+        self,
+        size: Size<S>,
+    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+        let clamp = |fact: BaselineFactOf<S>| match fact {
+            BaselineFactOf::Available(coordinate) => coordinate
+                .clamped_to_border(size)
+                .map(BaselineFactOf::Available),
+            other => Ok(other),
+        };
+        let mut result = self;
+        for name in [
+            crate::BaselineName::Alphabetic,
+            crate::BaselineName::Central,
+        ] {
+            let pair = self.get(name);
+            result = result.with(
+                name,
+                BaselinePairOf::new(clamp(pair.first())?, clamp(pair.last())?),
+            );
+        }
+        Ok(result)
+    }
+    pub(crate) fn record(&mut self, next: Self) {
+        for name in [
+            crate::BaselineName::Alphabetic,
+            crate::BaselineName::Central,
+        ] {
+            let old = self.get(name);
+            let next = next.get(name);
+            let first = if matches!(old.first, BaselineFactOf::Absent) {
+                next.first
+            } else {
+                old.first
+            };
+            let last = if matches!(next.last, BaselineFactOf::Absent) {
+                old.last
+            } else {
+                next.last
+            };
+            *self = self.with(name, BaselinePairOf::new(first, last));
+        }
+    }
+    pub(crate) fn from_line(
+        context: crate::InlineBaselineContext,
+        axes: FlowAxes,
+        baselines: BaselinesOf<S>,
+        first_authority: bool,
+        last_authority: bool,
+    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+        if baselines == BaselinesOf::NONE {
+            return Ok(Self::absent());
+        }
+        let crate::InlineBaselineContext::Named(name) = context else {
+            return Ok(Self::unknown());
+        };
+        let fact =
+            |point: Point<Option<S>>, authority: bool| match axes.block_axis_coordinate(point) {
+                Some(_) if !authority => Ok(BaselineFactOf::Unknown),
+                Some(value) => BaselineCoordinateOf::try_new(axes.block_axis(), value)
+                    .map(BaselineFactOf::Available),
+                None => Ok(BaselineFactOf::Absent),
+            };
+        Ok(Self::unknown().with(
+            name,
+            BaselinePairOf::new(
+                fact(baselines.first, first_authority)?,
+                fact(baselines.last, last_authority)?,
+            ),
+        ))
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BaselinesOf<S: LayoutScalar = DefaultScalar> {
     pub first: Point<Option<S>>,
@@ -962,6 +1242,8 @@ mod baseline_tests {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ComputeOutputOf<S: LayoutScalar = DefaultScalar> {
+    /// Unsnapped facts relative to this computed border-box origin.
+    pub named_baselines: NamedBaselinesOf<S>,
     pub size: Size<S>,
     pub content_size: Size<S>,
     pub scroll_geometry: Option<ScrollGeometryOf<S>>,
@@ -974,6 +1256,7 @@ pub type ComputeOutput = ComputeOutputOf<DefaultScalar>;
 
 impl<S: LayoutScalar> ComputeOutputOf<S> {
     pub const HIDDEN: Self = Self {
+        named_baselines: NamedBaselinesOf::absent(),
         size: Size::<S>::ZERO,
         content_size: Size::<S>::ZERO,
         scroll_geometry: None,
@@ -982,7 +1265,11 @@ impl<S: LayoutScalar> ComputeOutputOf<S> {
         block_margin_collapse: PhysicalBlockMarginCollapseOf::NONE,
     };
 
-    pub const DEFAULT: Self = Self::HIDDEN;
+    /// Neutral generic output does not prove that a named baseline is absent.
+    pub const DEFAULT: Self = Self {
+        named_baselines: NamedBaselinesOf::unknown(),
+        ..Self::HIDDEN
+    };
 
     #[must_use]
     pub const fn from_sizes_and_baselines(
@@ -991,6 +1278,7 @@ impl<S: LayoutScalar> ComputeOutputOf<S> {
         baselines: BaselinesOf<S>,
     ) -> Self {
         Self {
+            named_baselines: NamedBaselinesOf::unknown(),
             size,
             content_size,
             scroll_geometry: None,
@@ -1026,6 +1314,12 @@ impl<S: LayoutScalar> ComputeOutputOf<S> {
             last: self.last_baselines,
         }
     }
+
+    #[must_use]
+    pub const fn with_named_baselines(mut self, facts: NamedBaselinesOf<S>) -> Self {
+        self.named_baselines = facts;
+        self
+    }
 }
 
 /// A node's zero-based source-sibling index, independent of item order.
@@ -1048,6 +1342,11 @@ impl SourceIndex {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NodeOutputOf<S: LayoutScalar = DefaultScalar> {
+    /// Actual named facts relative to this packet's border-box origin.
+    /// Unrounded packets retain unsnapped facts; final packets snap the shared
+    /// global named anchor once and subtract the actual published border origin.
+    /// Generic physical projections never establish these names.
+    pub named_baselines: NamedBaselinesOf<S>,
     /// Zero-based index among the node's source siblings.
     ///
     /// Root and standalone outputs use [`SourceIndex::ZERO`]. This identity is
@@ -1078,6 +1377,7 @@ impl<S: LayoutScalar> NodeOutputOf<S> {
     #[must_use]
     pub const fn with_source_index(source_index: SourceIndex) -> Self {
         Self {
+            named_baselines: NamedBaselinesOf::unknown(),
             source_index,
             location: Point::<S>::ZERO,
             size: Size::<S>::ZERO,

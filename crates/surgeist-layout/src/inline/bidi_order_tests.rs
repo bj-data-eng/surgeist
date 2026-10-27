@@ -18,6 +18,7 @@ fn atomic<S: LayoutScalar>(
     let size = axes.physical_size(LogicalSizeOf::new(n(inline), n(10.0)));
     MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {
+            baseline_reference: crate::InlineBaselineContext::Physical,
             source_index: source,
             size,
             content_size: size,
@@ -46,6 +47,7 @@ fn input<S: LayoutScalar>(
     participants: Vec<MixedInlineParticipantOf<S>>,
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
+        inline_baseline_context: crate::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,
         wrapping: None,
@@ -200,7 +202,8 @@ fn decorated_lane<S: LayoutScalar>() {
         Direction::Rtl,
         AvailableOf::definite(n(60.0)),
     );
-    let metrics = InlineMetricsOf::try_new(n(8.0), n(10.0)).unwrap();
+    let metrics =
+        InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, n(8.0), n(10.0)).unwrap();
     let boundary = |source, kind, border, padding| {
         InlineBoundaryControlOf::new(
             source,

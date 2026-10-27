@@ -16,7 +16,12 @@ fn signed_margin<S: LayoutScalar>(direction: Direction) -> Edges<S> {
 }
 
 fn metrics<S: LayoutScalar>() -> InlineMetricsOf<S> {
-    InlineMetricsOf::from_line_height_and_baseline(S::from_f64(10.0), S::from_f64(10.0)).unwrap()
+    InlineMetricsOf::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        S::from_f64(10.0),
+        S::from_f64(10.0),
+    )
+    .unwrap()
 }
 
 fn participation(following: InlineBreakOpportunity) -> AtomicInlineParticipation {
@@ -36,6 +41,7 @@ fn numeric_input<S: LayoutScalar>(
     );
     let atomic = |source_index, following| MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {
+            baseline_reference: crate::InlineBaselineContext::Physical,
             source_index,
             size: Size::splat(S::from_f64(10.0)),
             content_size: Size::ZERO,
@@ -59,6 +65,7 @@ fn numeric_input<S: LayoutScalar>(
         ))
     };
     MixedInlineRunInputOf {
+        inline_baseline_context: crate::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(

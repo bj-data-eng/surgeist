@@ -83,7 +83,12 @@ impl<S: layout::LayoutScalar> MixedHost<S> {
                 pair: None,
             });
         }
-        let metrics = layout::InlineMetricsOf::try_new(S::ZERO, S::ZERO).unwrap();
+        let metrics = layout::InlineMetricsOf::try_new(
+            surgeist_layout::InlineBaselineContext::Physical,
+            S::ZERO,
+            S::ZERO,
+        )
+        .unwrap();
         let boundary = |kind| {
             layout::InlineBoundaryInputOf::new(kind, metrics, layout::InlineBoundaryEdgeOf::ZERO)
                 .with_direction(direction)
