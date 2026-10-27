@@ -210,8 +210,8 @@ fn ordinary_float_encounter_preserves_one_paragraph_in_both_directions_and_sides
 
 /// An actual committed host cache and batch sink. The tree remains immutable
 /// throughout each computation; only a complete accepted batch can replace it.
-struct CachedHost<S: LayoutScalar> {
-    tree: PublicLayoutTreeOf<S>,
+pub(super) struct CachedHost<S: LayoutScalar> {
+    pub(super) tree: PublicLayoutTreeOf<S>,
     caches: std::collections::HashMap<u32, CacheOf<S>>,
     published: Option<CompletedLayoutBatchOf<u32, S>>,
     hits: std::cell::RefCell<Vec<u32>>,
@@ -219,7 +219,7 @@ struct CachedHost<S: LayoutScalar> {
     reject_batch: bool,
 }
 impl<S: LayoutScalar> CachedHost<S> {
-    fn new(tree: PublicLayoutTreeOf<S>) -> Self {
+    pub(super) fn new(tree: PublicLayoutTreeOf<S>) -> Self {
         Self {
             tree,
             caches: std::collections::HashMap::new(),

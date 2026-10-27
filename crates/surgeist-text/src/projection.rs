@@ -161,6 +161,7 @@ impl SourceProjection {
             barrier_atoms,
             false,
         )?;
+        admit_physical_endpoint_cuts(&projection.atoms, paragraph)?;
         #[cfg(any(test, feature = "text-accessibility"))]
         let projection = {
             let mut projection = projection;
@@ -237,11 +238,13 @@ impl SourceProjection {
                 }
             }
         }
-        Self::from_atoms(
+        let projection = Self::from_atoms(
             atoms,
             processed.project(paragraph.extent(processed).end, crate::Affinity::After),
             barriers,
-        )
+        )?;
+        admit_physical_endpoint_cuts(&projection.atoms, paragraph)?;
+        Ok(projection)
     }
 
     /// Reuses exact admitted atom provenance for a selected substituted sequence.
@@ -406,6 +409,38 @@ impl SourceProjection {
             .expect("validated segmentation boundary");
         self.segmentation_offsets[index].1
     }
+}
+
+/// Exact physical events require an actual decoded/processed atom seam.
+/// Deleted intervals retain their distinct events; a retained scalar or Phase-I
+/// replacement cannot be divided by choosing an affinity. In particular, use
+/// admitted atoms rather than raw UTF-16 so genuine disconnected halves stay
+/// separate original units.
+fn admit_physical_endpoint_cuts(
+    atoms: &[OriginalAtom],
+    paragraph: &crate::protocol::paragraph::ParagraphData,
+) -> Result<()> {
+    if paragraph.base_direction.is_none() {
+        return Ok(());
+    }
+    for (control, row) in paragraph.controls.iter().enumerate() {
+        if !crate::protocol::boundary::is_endpoint(&row.kind) {
+            continue;
+        }
+        let cut = atoms.partition_point(|atom| atom.source.end <= row.at);
+        if atoms
+            .get(cut)
+            .is_some_and(|atom| atom.source.start < row.at)
+        {
+            return Err(crate::protocol::protocol_error(
+                crate::protocol::ProtocolError::InvalidControl {
+                    control,
+                    at: row.at,
+                },
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn paragraph_barriers(

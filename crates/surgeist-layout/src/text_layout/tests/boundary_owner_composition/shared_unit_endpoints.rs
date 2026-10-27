@@ -1,4 +1,5 @@
 //! Exact physical pairs keep a shared marked unit whole and own their BP once.
+use super::super::float_encounters::CachedHost;
 use super::*;
 
 const SOURCE: &str = "A\u{301}B";
@@ -60,7 +61,13 @@ fn qualify_mark_tables(font: &[u8]) {
     );
 }
 
-fn binding(font: &[u8], rtl: bool, endpoints: bool, interior: bool) -> TextParagraphBinding<u32> {
+fn binding(
+    font: &[u8],
+    rtl: bool,
+    endpoints: bool,
+    interior: bool,
+    nested: bool,
+) -> TextParagraphBinding<u32> {
     capture(
         if interior {
             ["A", "\u{301}B"]
@@ -72,14 +79,14 @@ fn binding(font: &[u8], rtl: bool, endpoints: bool, interior: bool) -> TextParag
             style(text::WordBreak::KeepAll, text::LineBreak::Anywhere, false),
         ],
         font,
-        false,
+        nested,
         Wrap::Word,
         rtl,
         endpoints,
     )
 }
 
-fn qualify_source(p: &TextParagraphBinding<u32>, rtl: bool) {
+fn qualify_source(p: &TextParagraphBinding<u32>, rtl: bool, nested: bool) {
     assert_eq!(
         p.prepared.analyzed_source().source().text().code_units(),
         [65, 769, 66]
@@ -147,29 +154,39 @@ fn qualify_source(p: &TextParagraphBinding<u32>, rtl: bool) {
     if p.controls.is_empty() {
         return;
     }
-    assert_eq!(p.nodes, [100, 1, 101, 102, 2, 103]);
-    assert_eq!(p.controls.len(), 4);
+    if nested {
+        assert_eq!(p.nodes, [100, 102, 1, 103, 104, 2, 105, 101]);
+    } else {
+        assert_eq!(p.nodes, [100, 1, 101, 102, 2, 103]);
+    }
+    assert_eq!(p.controls.len(), if nested { 6 } else { 4 });
     let captured = p.prepared.captured_paragraph().unwrap();
     let scopes = captured
         .scope_intersections()
         .map(|row| row.scope())
         .filter(|scope| scope.role() == text::ScopeRole::Inline)
         .collect::<Vec<_>>();
-    assert_eq!(scopes.len(), 2);
-    for (scope, first) in scopes.iter().zip([0, 2]) {
+    assert_eq!(scopes.len(), if nested { 3 } else { 2 });
+    let pairs: &[(u32, u32)] = if nested {
+        &[(100, 101), (102, 103), (104, 105)]
+    } else {
+        &[(100, 101), (102, 103)]
+    };
+    for (scope, (start, end)) in scopes.iter().zip(pairs) {
+        let endpoint = |node| p.controls.iter().find(|row| row.node == node).unwrap();
         assert_eq!(
             scope.entry_control(),
-            p.controls[first].occurrence.captured_control()
+            endpoint(*start).occurrence.captured_control()
         );
         assert_eq!(
             scope.exit_control(),
-            p.controls[first + 1].occurrence.captured_control()
+            endpoint(*end).occurrence.captured_control()
         );
     }
-    for (index, row) in p.controls.iter().enumerate() {
+    for row in &p.controls {
         assert_eq!(
             row.occurrence.view().kind(),
-            if index % 2 == 0 {
+            if (row.node - 100).is_multiple_of(2) {
                 &ParagraphControlKind::InlineBoundaryStart
             } else {
                 &ParagraphControlKind::InlineBoundaryEnd
@@ -200,8 +217,8 @@ fn qualify_source(p: &TextParagraphBinding<u32>, rtl: bool) {
 fn prove_controls<S: LayoutScalar>(font: &[u8], rtl: bool) {
     qualify_mark_tables(font);
     for (endpoints, interior) in [(false, true), (true, false)] {
-        let p = binding(font, rtl, endpoints, interior);
-        qualify_source(&p, rtl);
+        let p = binding(font, rtl, endpoints, interior, false);
+        qualify_source(&p, rtl, false);
         assert_pair::<S>(
             &p,
             font,
@@ -228,14 +245,21 @@ fn prove_controls<S: LayoutScalar>(font: &[u8], rtl: bool) {
     }
 }
 
-fn check_geometry<S: LayoutScalar>(
-    input: &LayoutFlowInput<'_, PublicLayoutTreeOf<S>>,
+fn check_geometry<S: LayoutScalar, Tree: LayoutTree<Node = u32, Scalar = S>>(
+    input: &LayoutFlowInput<'_, Tree>,
     p: &TextParagraphBinding<u32>,
     font: &[u8],
-    positive: bool,
-) {
-    let first = if positive { 15.0 } else { 10.0 };
+    edges: (f64, f64),
+    first_pair: (u32, u32),
+    finite: [f64; 2],
+    dirty: &[u32],
+) -> Vec<CompletedLayoutBatchOf<u32, S>>
+where
+    Tree::MeasureError: std::fmt::Debug,
+{
+    let first = edges.0 + 10.0 + edges.1;
     let whole = first + 10.0;
+    let mut packets = Vec::new();
     for (width, advances, ranges) in [
         (
             AvailableOf::MAX_CONTENT,
@@ -248,20 +272,21 @@ fn check_geometry<S: LayoutScalar>(
             vec![text::Range::new(0, 2), text::Range::new(2, 3)],
         ),
         (
-            AvailableOf::definite(S::from_f64(first)),
+            AvailableOf::definite(S::from_f64(finite[0])),
             vec![first, 10.0],
             vec![text::Range::new(0, 2), text::Range::new(2, 3)],
         ),
         (
-            AvailableOf::definite(S::from_f64(first - 1.0)),
+            AvailableOf::definite(S::from_f64(finite[1])),
             vec![first, 10.0],
             vec![text::Range::new(0, 2), text::Range::new(2, 3)],
         ),
     ] {
-        let batch = compute_layout_with_flow(
+        let batch = compute_layout_with_flow_invalidated(
             input,
             0,
             LayoutRootRequestOf::viewport(Size::new(width, AvailableOf::MAX_CONTENT)).unwrap(),
+            dirty,
         )
         .unwrap();
         let layout = batch.placed_text()[0].layout();
@@ -277,6 +302,16 @@ fn check_geometry<S: LayoutScalar>(
         let mut lines = vec![None; ranges.len()];
         for row in batch.final_inline_fragments() {
             let fragment = row.fragment();
+            if matches!(
+                fragment.finalized_fragment().view().owner(),
+                text::FinalizedFragmentOwner::Control(_)
+            ) {
+                let view = fragment.finalized_fragment().view();
+                assert!(view.origin().is_none());
+                assert!(view.local_range().is_none());
+                assert!(view.aggregate_range().is_none());
+                assert!(view.processed_range().is_none());
+            }
             let line = fragment.finalized_fragment().finalized_line();
             assert_eq!(line.prepared_text(), p.prepared);
             lines[fragment.line_index()] = Some(line);
@@ -332,7 +367,7 @@ fn check_geometry<S: LayoutScalar>(
                 );
             }
         }
-        assert_eq!(controls.len(), 4);
+        assert_eq!(controls.len(), p.controls.len());
         glyphs.sort_by_key(|glyph| glyph.0);
         assert_eq!(
             glyphs,
@@ -361,7 +396,7 @@ fn check_geometry<S: LayoutScalar>(
             )
         );
         if matches!(width, AvailableOf::MaxContent) {
-            let start = if positive { 2.0 } else { 0.0 };
+            let start = edges.0;
             let positions = lines[0]
                 .run_views()
                 .flat_map(|run| {
@@ -381,7 +416,10 @@ fn check_geometry<S: LayoutScalar>(
                 positions,
                 [(35, start, 0.0), (100, start + 3.0, -4.0), (36, first, 0.0)]
             );
-            for (node, expected) in [(100, (0.0, start)), (101, (start + 10.0, first))] {
+            for (node, expected) in [
+                (first_pair.0, (0.0, start)),
+                (first_pair.1, (start + 10.0, first)),
+            ] {
                 let control = &p
                     .controls
                     .iter()
@@ -406,7 +444,27 @@ fn check_geometry<S: LayoutScalar>(
                 }
             }
         }
+        let positions = lines[0]
+            .run_views()
+            .flat_map(|run| {
+                let origin = run.origin().x;
+                run.glyphs()
+                    .map(move |glyph| {
+                        (
+                            glyph.id(),
+                            origin + glyph.pen() + f64::from(glyph.x()),
+                            glyph.y(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let base = positions.iter().find(|row| row.0 == 35).unwrap();
+        let mark = positions.iter().find(|row| row.0 == 100).unwrap();
+        assert_eq!((mark.1 - base.1, mark.2 - base.2), (3.0, -4.0));
+        packets.push(batch);
     }
+    packets
 }
 
 #[test]
@@ -426,8 +484,8 @@ fn physical_sibling_endpoints_inside_shared_mark_unit_admit_zero_and_positive_ed
         for rtl in [false, true] {
             prove_controls::<S>(&font, rtl);
             for positive in [false, true] {
-                let p = binding(&font, rtl, true, true);
-                qualify_source(&p, rtl);
+                let p = binding(&font, rtl, true, true, false);
+                qualify_source(&p, rtl, false);
                 assert_eq!(
                     p.origins[0].origin.view().local_range(),
                     text::Range::new(0, 1)
@@ -463,7 +521,15 @@ fn physical_sibling_endpoints_inside_shared_mark_unit_admit_zero_and_positive_ed
                     },
                 ) {
                     Ok(input) => {
-                        check_geometry(&input, &p, &font, positive);
+                        let _packets = check_geometry(
+                            &input,
+                            &p,
+                            &font,
+                            if positive { (2.0, 3.0) } else { (0.0, 0.0) },
+                            (100, 101),
+                            if positive { [15.0, 14.0] } else { [10.0, 9.0] },
+                            &[],
+                        );
                         None
                     }
                     Err(error) => match error.kind() {
@@ -490,4 +556,199 @@ fn physical_sibling_endpoints_inside_shared_mark_unit_admit_zero_and_positive_ed
         (expected.clone(), expected),
         "genuine paired endpoint chronology must be accepted without weakening binding validation"
     );
+}
+
+#[test]
+fn physical_nested_pairs_keep_the_mark_attached_and_count_each_edge_once() {
+    fn lane<S: LayoutScalar>() {
+        let font = super::super::canonical::fonts::mark_ahem();
+        for rtl in [false, true] {
+            prove_controls::<S>(&font, rtl);
+            let p = binding(&font, rtl, true, true, true);
+            qualify_source(&p, rtl, true);
+            let edges = [
+                (102, InlineBoundaryEdgeOf::try_new(S::ONE, S::ONE).unwrap()),
+                (
+                    103,
+                    InlineBoundaryEdgeOf::try_new(S::ONE, S::from_f64(2.0)).unwrap(),
+                ),
+            ];
+            let tree = tree::<S>(&p, rtl, &edges);
+            let input = LayoutFlowInput::try_new(
+                &tree,
+                0,
+                vec![p.clone()],
+                crate::WrappingInput {
+                    scopes: Vec::new(),
+                    child_order: Vec::new(),
+                },
+            )
+            .unwrap();
+            let _packets =
+                check_geometry(&input, &p, &font, (2.0, 3.0), (102, 103), [15.0, 14.0], &[]);
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+// Own every observed value: cloning finalized handles alone would retain shared
+// storage and would not detect mutation of a previously completed packet.
+fn snapshot<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+) -> impl std::fmt::Debug + PartialEq + use<S> {
+    let fragments = |rows: &[InlineFragmentOutputEntryOf<u32, S>]| {
+        rows.iter()
+            .map(|row| {
+                let fragment = row.fragment();
+                (
+                    row.owner().clone(),
+                    fragment.rect(),
+                    fragment.baseline(),
+                    fragment.line_index(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let layout = batch.placed_text()[0].layout();
+    let lines = layout
+        .lines()
+        .iter()
+        .map(|line| (line.range(), line.bounds(), line.baseline()))
+        .collect::<Vec<_>>();
+    let positions = layout
+        .positions()
+        .map(|position| {
+            (
+                position.source_cursor(),
+                layout.position_geometry(&position).unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+    let glyphs = layout
+        .glyph_runs()
+        .into_iter()
+        .flat_map(|run| {
+            let origin = run.origin();
+            run.glyphs()
+                .iter()
+                .map(move |glyph| {
+                    (
+                        glyph.id(),
+                        glyph.range(),
+                        glyph.advance(),
+                        origin.x + glyph.pen() + f64::from(glyph.x()),
+                        origin.y + f64::from(glyph.y()),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let selected = batch
+        .final_inline_fragments()
+        .iter()
+        .map(|row| {
+            let line = row.fragment().finalized_fragment().finalized_line();
+            let controls = line
+                .control_slots()
+                .map(|slot| (slot.control(), slot.inline_bounds(), slot.slot()))
+                .collect::<Vec<_>>();
+            (line.selected_line().request().clone(), controls)
+        })
+        .collect::<Vec<_>>();
+    (
+        batch.unrounded_entries().to_vec(),
+        batch.final_entries().to_vec(),
+        fragments(batch.unrounded_inline_fragments()),
+        fragments(batch.final_inline_fragments()),
+        layout.source().text().code_units().to_vec(),
+        lines,
+        positions,
+        glyphs,
+        selected,
+    )
+}
+
+fn cached_packets<S: LayoutScalar>(
+    host: &CachedHost<S>,
+    p: &TextParagraphBinding<u32>,
+    font: &[u8],
+    end: f64,
+    dirty: &[u32],
+) -> Vec<CompletedLayoutBatchOf<u32, S>> {
+    let input = LayoutFlowInput::try_new(
+        host,
+        0,
+        vec![p.clone()],
+        crate::WrappingInput {
+            scopes: Vec::new(),
+            child_order: Vec::new(),
+        },
+    )
+    .unwrap();
+    check_geometry(&input, p, font, (2.0, end), (100, 101), [15.0, 14.0], dirty)
+}
+
+#[test]
+fn changed_end_edge_reuses_preparation_and_matches_fresh_current_packets() {
+    fn lane<S: LayoutScalar>() {
+        let font = super::super::canonical::fonts::mark_ahem();
+        prove_controls::<S>(&font, false);
+        let p = binding(&font, false, true, true, false);
+        qualify_source(&p, false, false);
+        let preparation = p.prepared.clone();
+        let edges = [
+            (100, InlineBoundaryEdgeOf::try_new(S::ONE, S::ONE).unwrap()),
+            (
+                101,
+                InlineBoundaryEdgeOf::try_new(S::ONE, S::from_f64(2.0)).unwrap(),
+            ),
+        ];
+        let mut host = CachedHost::new(tree::<S>(&p, false, &edges));
+        let old = cached_packets(&host, &p, &font, 3.0, &[]);
+        let old_facts = old.iter().map(snapshot).collect::<Vec<_>>();
+        old[0].apply_to(&mut host).unwrap();
+        let warm_old = cached_packets(&host, &p, &font, 3.0, &[]);
+        assert_eq!(warm_old.iter().map(snapshot).collect::<Vec<_>>(), old_facts);
+        warm_old[0].apply_to(&mut host).unwrap();
+
+        let before = host.tree.layout_input(101).as_inline_boundary().unwrap();
+        assert_eq!(
+            before.edge(),
+            InlineBoundaryEdgeOf::try_new(S::ONE, S::from_f64(2.0)).unwrap()
+        );
+        let changed_input = InlineBoundaryInputOf::new(
+            before.kind(),
+            before.metrics(),
+            InlineBoundaryEdgeOf::try_new(S::ONE, S::from_f64(4.0)).unwrap(),
+        )
+        .with_writing_mode(before.writing_mode())
+        .with_direction(before.direction())
+        .with_vertical_align(before.vertical_align());
+        host.tree
+            .insert_input(101, LayoutInputOf::inline_boundary(changed_input));
+        let changed = cached_packets(&host, &p, &font, 5.0, &[101]);
+        assert!(
+            changed
+                .iter()
+                .all(|packet| packet.invalidated_nodes().contains(&101))
+        );
+        let changed_facts = changed.iter().map(snapshot).collect::<Vec<_>>();
+        let cold_host = CachedHost::new(host.tree.clone());
+        let fresh = cached_packets(&cold_host, &p, &font, 5.0, &[]);
+        assert_eq!(
+            fresh.iter().map(snapshot).collect::<Vec<_>>(),
+            changed_facts
+        );
+        changed[0].apply_to(&mut host).unwrap();
+        let warm_current = cached_packets(&host, &p, &font, 5.0, &[]);
+        assert_eq!(
+            warm_current.iter().map(snapshot).collect::<Vec<_>>(),
+            changed_facts
+        );
+        assert_eq!(p.prepared, preparation);
+        assert_eq!(old.iter().map(snapshot).collect::<Vec<_>>(), old_facts);
+    }
+    lane::<f32>();
+    lane::<f64>();
 }

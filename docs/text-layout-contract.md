@@ -746,6 +746,11 @@ An endpoint inside an indivisible typographic unit remains a numeric contributio
 with its own interval, while the unit retains shared glyph associations and
 provider positions. Count the edge once before positioning the next unit;
 never move an attached mark independently or introduce an interior break.
+Physical Start/End events retain their captured order at an admitted decoded
+atom seam, independently of caret affinity. An exact event inside the unit is
+still not a boundary-exact control or a legal line cut. A source point inside
+one connected scalar or an indivisible processed replacement cannot be assigned
+an invented side; retain the owning source-validation refusal.
 
 One canonical visual-order contribution supplies raw/occupied flow, fit,
 alignment, MinContent/MaxContent, tabs, prefixes, placement and overflow. Positive

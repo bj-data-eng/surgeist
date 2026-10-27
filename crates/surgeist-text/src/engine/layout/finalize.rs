@@ -167,6 +167,15 @@ pub(super) fn finalize(
     for (index, group) in groups.iter().enumerate() {
         atom_groups[group.clone()].fill(index);
     }
+    let endpoint_offsets = shared_endpoint_offsets(
+        &selected,
+        &shaped,
+        &dispositions,
+        &order,
+        &groups,
+        &atom_groups,
+        &levels,
+    )?;
     let mut internal_edges = vec![0.0; groups.len()];
     for (ordinal, _) in order.iter() {
         let level = levels[ordinal];
@@ -180,6 +189,29 @@ pub(super) fn finalize(
                     pen,
                     advance,
                 )?;
+                let endpoint_offset = endpoint_offsets
+                    .as_ref()
+                    .and_then(|geometry| geometry.offsets[unit]);
+                let slot = if let Some(offset) = endpoint_offset {
+                    add(
+                        "shared unit endpoint origin",
+                        TextNumericPhase::Finalization,
+                        pen,
+                        offset,
+                    )?
+                } else {
+                    pen
+                };
+                let slot_end = if endpoint_offset.is_some() {
+                    add(
+                        "shared unit endpoint end",
+                        TextNumericPhase::Finalization,
+                        slot,
+                        advance,
+                    )?
+                } else {
+                    inline_end
+                };
                 let cut = selected.presentation.units[unit].atoms.start;
                 let group = groups.partition_point(|group| group.end <= cut);
                 if groups
@@ -198,7 +230,7 @@ pub(super) fn finalize(
                 data.anchors.push(FinalizedAnchor {
                     unit,
                     slot: Point::new(
-                        pen,
+                        slot,
                         match selected.presentation.units[unit].kind {
                             crate::protocol::prepared::PresentationUnitKind::Control {
                                 occurrence,
@@ -212,7 +244,7 @@ pub(super) fn finalize(
                         },
                     ),
                     level,
-                    inline_end,
+                    inline_end: slot_end,
                 });
                 pen = inline_end;
             }
@@ -268,12 +300,23 @@ pub(super) fn finalize(
                 data.visual_order
                     .push(FinalizedVisualItem::Cluster(cluster_index));
                 let cluster = &shaped.clusters[cluster_index];
-                let cluster_x = add(
+                let group = atom_groups[cluster.atoms.start];
+                let mut cluster_x = add(
                     "shared unit glyph origin",
                     TextNumericPhase::Finalization,
                     pen,
-                    -internal_edges[atom_groups[cluster.atoms.start]],
+                    -internal_edges[group],
                 )?;
+                if let Some(geometry) = &endpoint_offsets
+                    && geometry.leading[group] != 0.0
+                {
+                    cluster_x = add(
+                        "shared unit leading endpoint inset",
+                        TextNumericPhase::Finalization,
+                        cluster_x,
+                        geometry.leading[group],
+                    )?;
+                }
                 let discarded =
                     dispositions[cluster_index] == SpacingSlotDisposition::DiscardedAtLineEdge;
                 // RTL ligature/component shares are visited before their logical
@@ -383,11 +426,7 @@ pub(super) fn finalize(
                 let output = &mut data.clusters[cluster_index];
                 output.x = cluster_x;
                 output.level = level;
-                output.advance = if discarded || cluster.whitespace == Whitespace::Newline {
-                    0.0
-                } else {
-                    cluster.advance
-                };
+                output.advance = placed_cluster_advance(cluster, dispositions[cluster_index]);
                 if let Some(index) = last_run {
                     let run = &mut data.runs[index];
                     if cluster.content.font_run().is_some_and(|font| {
@@ -652,6 +691,145 @@ pub(super) fn finalize(
         mapping,
         data,
     })
+}
+
+struct SharedEndpointGeometry {
+    offsets: Vec<Option<f64>>,
+    leading: Vec<f64>,
+}
+
+// Physical endpoints inside a shared unit retain their exact event order, but
+// their numeric intervals surround its complete text contribution rather than
+// its artificial component/caret shares. The flow pen consumes every item once.
+fn shared_endpoint_offsets(
+    selected: &SelectedData,
+    shaped: &ShapedData,
+    dispositions: &[SpacingSlotDisposition],
+    order: &crate::SuppliedVisualOrder<'_, '_>,
+    groups: &[std::ops::Range<usize>],
+    atom_groups: &[usize],
+    levels: &[u8],
+) -> Result<Option<SharedEndpointGeometry>> {
+    let mut endpoints = shaped
+        .items
+        .iter()
+        .enumerate()
+        .filter_map(|(ordinal, item)| {
+            let ShapedItem::Anchor { unit } = *item else {
+                return None;
+            };
+            let crate::protocol::prepared::PresentationUnitKind::Control { occurrence } =
+                selected.presentation.units[unit].kind
+            else {
+                return None;
+            };
+            if !crate::protocol::boundary::is_endpoint(
+                &selected.prepared.analyzed.paragraph.controls[occurrence].kind,
+            ) {
+                return None;
+            }
+            let cut = selected.presentation.units[unit].atoms.start;
+            let group = groups.partition_point(|group| group.end <= cut);
+            groups
+                .get(group)
+                .is_some_and(|group| group.start < cut && cut < group.end)
+                .then_some((unit, group, levels[ordinal] & 1 != 0))
+        });
+    // Ordinary lines retain their existing geometry path without allocating
+    // shared-endpoint state. Reuse this same iterator after the first demand.
+    let Some(first) = endpoints.next() else {
+        return Ok(None);
+    };
+    let mut endpoint_groups = vec![None; selected.presentation.units.len()];
+    let mut remaining = vec![None; groups.len()];
+    let mut consumed = vec![None; groups.len()];
+    let mut pending = vec![[0; 2]; groups.len()];
+    for (unit, group, odd) in std::iter::once(first).chain(endpoints) {
+        endpoint_groups[unit] = Some((group, odd));
+        if odd {
+            consumed[group] = Some(0.0);
+        } else {
+            remaining[group] = Some(0.0);
+        }
+        pending[group][usize::from(odd)] += 1;
+    }
+    let mut result = SharedEndpointGeometry {
+        offsets: vec![None; selected.presentation.units.len()],
+        leading: vec![0.0; groups.len()],
+    };
+    // Odd endpoints occupy the physical leading side. Retain the complete
+    // leading inset so even the component visited before those endpoints moves
+    // with the same provider glyph packet, without moving a mark independently.
+    for (ordinal, _) in order.iter() {
+        match shaped.items[ordinal] {
+            ShapedItem::TextCluster(index) => {
+                let cluster = &shaped.clusters[index];
+                if let Some(value) = &mut consumed[atom_groups[cluster.atoms.start]] {
+                    *value = add(
+                        "shared unit consumed text advance",
+                        TextNumericPhase::Finalization,
+                        *value,
+                        placed_cluster_advance(cluster, dispositions[index]),
+                    )?;
+                }
+            }
+            ShapedItem::Anchor { unit } => {
+                if let Some((group, true)) = endpoint_groups[unit] {
+                    result.offsets[unit] = consumed[group].map(|value| -value);
+                    result.leading[group] = add(
+                        "shared unit leading endpoint advance",
+                        TextNumericPhase::Finalization,
+                        result.leading[group],
+                        crate::protocol::boundary::advance(selected.presentation_input(), unit),
+                    )?;
+                    pending[group][1] -= 1;
+                    if pending[group][1] == 0 {
+                        consumed[group] = None;
+                    }
+                }
+            }
+            ShapedItem::InlineBox { .. } => {}
+        }
+    }
+    // Even endpoints occupy the physical trailing side. Only the suffix needed
+    // by an actual endpoint demands arithmetic; use the post-L1/L2 visual order.
+    let ordinals: Vec<_> = order.iter().map(|(ordinal, _)| ordinal).collect();
+    for ordinal in ordinals.into_iter().rev() {
+        match shaped.items[ordinal] {
+            ShapedItem::TextCluster(index) => {
+                let cluster = &shaped.clusters[index];
+                if let Some(value) = &mut remaining[atom_groups[cluster.atoms.start]] {
+                    *value = add(
+                        "shared unit remaining text advance",
+                        TextNumericPhase::Finalization,
+                        placed_cluster_advance(cluster, dispositions[index]),
+                        *value,
+                    )?;
+                }
+            }
+            ShapedItem::Anchor { unit } => {
+                if let Some((group, false)) = endpoint_groups[unit] {
+                    result.offsets[unit] = remaining[group];
+                    pending[group][0] -= 1;
+                    if pending[group][0] == 0 {
+                        remaining[group] = None;
+                    }
+                }
+            }
+            ShapedItem::InlineBox { .. } => {}
+        }
+    }
+    Ok(Some(result))
+}
+
+fn placed_cluster_advance(cluster: &PreparedCluster, disposition: SpacingSlotDisposition) -> f64 {
+    if disposition == SpacingSlotDisposition::DiscardedAtLineEdge
+        || cluster.whitespace == Whitespace::Newline
+    {
+        0.0
+    } else {
+        cluster.advance
+    }
 }
 
 fn fragment_key(owner: crate::protocol::paragraph::FragmentOwner) -> (u8, usize) {

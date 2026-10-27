@@ -710,6 +710,17 @@ bidi placement. Noncollapsed partial-unit selections cover complete typographic
 units; collapsed selections remain collapsed. Offset-taking interaction methods
 return `Result`, and invalid endpoints refuse rather than clamp.
 
+Native physical inline Start/End events use their exact admitted decoded atom
+seams instead of caret affinity. A physical endpoint between a base and its
+connected mark retains its captured order, while both glyphs retain the shared
+provider range and attachment. Its used edge is a separate source-free interval;
+it grants no interior line cut or boundary-exact control. Source points inside
+one connected scalar or indivisible Phase-I replacement retain their precise
+validation refusal rather than being rounded to a side.
+Other native anchors retain their supplied typographic affinity. If those
+projected positions cross an exact physical event, analysis retains the existing
+`InvalidAnchorOrder` refusal; it does not reorder the original occurrences.
+
 The [owned AccessKit projection](../src/accessibility.rs) retains the exact analysis
 identity and source maps. Source-only updates need no point and omit font, glyph,
 line and all geometry fields. Placed updates enrich the same semantic projection

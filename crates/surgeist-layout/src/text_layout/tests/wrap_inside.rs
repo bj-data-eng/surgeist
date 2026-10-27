@@ -1152,34 +1152,117 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
 }
 
 #[test]
-fn captured_physical_interior_tcu_profile_retains_its_existing_precise_refusal() {
-    let f = captured(
-        "A\u{301}B",
-        break_all(),
-        &[0..1, 1..3],
-        &[],
-        false,
-        true,
-        AHEM,
-    );
-    let tree = text_tree::<f64>(&f.binding, false);
-    let error = LayoutFlowInput::try_new(
-        &tree,
-        0,
-        vec![f.binding.clone()],
-        crate::WrappingInput {
-            scopes: policies(&f, &[WrapInside::Avoid; 2]),
-            child_order: Vec::new(),
-        },
-    )
-    .err()
-    .expect("known paired cross-origin TCU profile remains unsupported");
-    assert!(matches!(
-        error.kind(),
-        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TextBinding(
-            TextBindingError::ParticipantOrder
-        ))
-    ));
+fn captured_physical_interior_tcu_pairs_admit_and_wrap_only_at_whole_units() {
+    fn lane<S: LayoutScalar>() {
+        let f = captured(
+            "A\u{301}B",
+            break_all(),
+            &[0..1, 1..3],
+            &[],
+            false,
+            true,
+            AHEM,
+        );
+        let prepared = &f.binding.prepared;
+        assert_eq!(
+            prepared.analyzed_source().graphemes().collect::<Vec<_>>(),
+            [text::Range::new(0, 2), text::Range::new(2, 3)]
+        );
+        for control in &f.binding.controls {
+            assert_eq!(
+                prepared
+                    .control_is_boundary_exact(&control.occurrence)
+                    .unwrap(),
+                control.occurrence.view().source_position().get() != 1
+            );
+        }
+        let participants = prepared.participants().collect::<Vec<_>>();
+        let at = |range| {
+            participants
+                .iter()
+                .position(|participant| {
+                    matches!(participant,
+            text::PreparedParticipant::Text(unit) if unit.view().source_range() == range)
+                })
+                .unwrap()
+        };
+        let base = at(text::Range::new(0, 1));
+        let mark = at(text::Range::new(1, 2));
+        for offer in prepared.opportunity_views() {
+            let end = offer.boundary().view().participant_offset();
+            assert_eq!(base < end, mark < end);
+        }
+        let start = prepared.boundary_views().next().unwrap().handle();
+        let end = prepared
+            .opportunity_views()
+            .find(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+            .unwrap()
+            .handle();
+        let search = prepared
+            .conditional_search(
+                &start,
+                None,
+                &end,
+                text::ConditionalPurpose::MinContent,
+                &[],
+                None,
+            )
+            .unwrap();
+        assert!(search.begin(&[]).unwrap().opportunities().is_empty());
+        let tree = text_tree::<S>(&f.binding, false);
+        let input = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![f.binding.clone()],
+            crate::WrappingInput {
+                scopes: policies(&f, &[WrapInside::Avoid; 2]),
+                child_order: Vec::new(),
+            },
+        )
+        .expect("actual canonical pairs inside the shared unit associate strictly");
+        // Ahem contains canonical precomposed A-acute (glyph165, one em).
+        // The whole unit fits10; B does not fit beside it. Avoid cannot invent
+        // a cut at1 or suppress the only fitting whole-unit ending at2.
+        let batch = compute_layout_with_flow(
+            &input,
+            0,
+            request_at(AvailableOf::definite(S::from_f64(10.0))),
+        )
+        .unwrap();
+        assert_eq!(cuts(&batch), [2, 3]);
+        assert_eq!(
+            batch.placed_text()[0].layout().source().text(),
+            &text::Text::from("A\u{301}B")
+        );
+        let lines = finalized(&batch);
+        assert_eq!(
+            lines
+                .iter()
+                .map(|line| line.measurements().fit().advance())
+                .collect::<Vec<_>>(),
+            [10.0, 10.0]
+        );
+        let glyphs = lines
+            .iter()
+            .flat_map(|line| {
+                line.run_views().flat_map(|run| {
+                    assert_eq!(run.face().bytes(), AHEM);
+                    run.glyphs()
+                        .map(|glyph| (glyph.id(), glyph.range(), glyph.advance()))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            glyphs,
+            [
+                (165, text::Range::new(0, 2), 10.0),
+                (36, text::Range::new(2, 3), 10.0)
+            ]
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
 }
 
 fn phrase<S: LayoutScalar>() {
