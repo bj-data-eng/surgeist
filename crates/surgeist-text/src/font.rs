@@ -404,7 +404,8 @@ mod outline;
 pub use metrics::{
     FontBaseline, FontBaselineAbsence, FontBaselineAxis, FontBaselineMeasurement,
     FontBaselineOutcome, FontBaselineProvenance, FontBaselineScript, FontBaselineUnavailable,
-    FontBaselineUnavailableReason, FontBaselineValue, FontMetrics, StrikeoutMetrics,
+    FontBaselineUnavailableReason, FontBaselineValue, FontLineMetricSource, FontMetrics,
+    StrikeoutMetrics, VerticalGlyphMetricProvenance, VerticalGlyphMetrics,
 };
 pub use outline::{FontOutlineCapability, FontOutlineError, GlyphOutlineGeometry};
 

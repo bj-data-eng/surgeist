@@ -182,6 +182,9 @@ pub surgeist_text::ErrorDetail::FontFacesNotAdmitted::admitted: usize
 pub surgeist_text::ErrorDetail::FontFacesNotAdmitted::expected: usize
 pub surgeist_text::ErrorDetail::FontGenerationExhausted
 pub surgeist_text::ErrorDetail::FontGenerationExhausted::generation: u64
+pub surgeist_text::ErrorDetail::FontGlyphRange
+pub surgeist_text::ErrorDetail::FontGlyphRange::count: u32
+pub surgeist_text::ErrorDetail::FontGlyphRange::glyph: u32
 pub surgeist_text::ErrorDetail::FontMetricAllocationRefused
 pub surgeist_text::ErrorDetail::FontMetricCapacityOverflow
 pub surgeist_text::ErrorDetail::FontMetricTable
@@ -275,6 +278,9 @@ pub surgeist_text::ErrorDetail::UnsupportedShapingBoundary::kind: surgeist_text:
 pub surgeist_text::ErrorDetail::UnsupportedTextStyle
 pub surgeist_text::ErrorDetail::UnsupportedTextStyle::feature: surgeist_text::TextStyleFeature
 pub surgeist_text::ErrorDetail::UnsupportedTextStyle::reason: surgeist_text::UnsupportedTextStyleReason
+pub surgeist_text::ErrorDetail::UnsupportedVerticalGlyphVariation
+pub surgeist_text::ErrorDetail::UnsupportedVerticalGlyphVariation::axis_count: usize
+pub surgeist_text::ErrorDetail::UnsupportedVerticalGlyphVariation::glyph: u32
 pub enum surgeist_text::FinalizedFragmentOwner
 pub surgeist_text::FinalizedFragmentOwner::Alternative(surgeist_text::PreparedAlternative)
 pub surgeist_text::FinalizedFragmentOwner::Control(surgeist_text::PreparedControl)
@@ -314,16 +320,24 @@ pub surgeist_text::FontBaselineUnavailableReason::VerticalEmBoxReference
 pub enum surgeist_text::FontCatalogueMode
 pub surgeist_text::FontCatalogueMode::RegisteredOnly
 pub surgeist_text::FontCatalogueMode::System
+pub enum surgeist_text::FontLineMetricSource
+pub surgeist_text::FontLineMetricSource::Hhea
+pub surgeist_text::FontLineMetricSource::Os2Typographic
+pub surgeist_text::FontLineMetricSource::Os2Windows
 pub enum surgeist_text::FontMetricField
 pub surgeist_text::FontMetricField::Ascent
 pub surgeist_text::FontMetricField::BaselineCoordinate
 pub surgeist_text::FontMetricField::BaselineIdeographicOrigin
 pub surgeist_text::FontMetricField::BaselineMidpoint
 pub surgeist_text::FontMetricField::Descent
+pub surgeist_text::FontMetricField::HorizontalAdvance
 pub surgeist_text::FontMetricField::Leading
 pub surgeist_text::FontMetricField::Size
 pub surgeist_text::FontMetricField::StrikeoutCenter
 pub surgeist_text::FontMetricField::StrikeoutThickness
+pub surgeist_text::FontMetricField::VerticalAdvance
+pub surgeist_text::FontMetricField::VerticalOriginX
+pub surgeist_text::FontMetricField::VerticalOriginY
 pub enum surgeist_text::FontMetricNumericError
 pub surgeist_text::FontMetricNumericError::Negative
 pub surgeist_text::FontMetricNumericError::NonFinite
@@ -336,10 +350,17 @@ pub surgeist_text::FontMetricPhase::StrikeoutNormalization
 pub surgeist_text::FontMetricPhase::Unscaled
 pub enum surgeist_text::FontMetricTable
 pub surgeist_text::FontMetricTable::Base
+pub surgeist_text::FontMetricTable::Glyf
 pub surgeist_text::FontMetricTable::Head
 pub surgeist_text::FontMetricTable::Hhea
+pub surgeist_text::FontMetricTable::Hmtx
+pub surgeist_text::FontMetricTable::Loca
+pub surgeist_text::FontMetricTable::Maxp
 pub surgeist_text::FontMetricTable::Mvar
 pub surgeist_text::FontMetricTable::Os2
+pub surgeist_text::FontMetricTable::Vhea
+pub surgeist_text::FontMetricTable::Vmtx
+pub surgeist_text::FontMetricTable::Vvar
 pub enum surgeist_text::FontMetricTableError
 pub surgeist_text::FontMetricTableError::BaselineCoordinateFormat
 pub surgeist_text::FontMetricTableError::BaselineCoordinateFormat::format: u16
@@ -368,8 +389,13 @@ pub surgeist_text::FontMetricTableError::Duplicate
 pub surgeist_text::FontMetricTableError::Inaccessible
 pub surgeist_text::FontMetricTableError::InvalidUnitsPerEm
 pub surgeist_text::FontMetricTableError::InvalidUnitsPerEm::value: u16
+pub surgeist_text::FontMetricTableError::LongMetricCount
+pub surgeist_text::FontMetricTableError::LongMetricCount::count: u16
+pub surgeist_text::FontMetricTableError::LongMetricCount::glyph_count: u32
 pub surgeist_text::FontMetricTableError::Malformed
 pub surgeist_text::FontMetricTableError::Missing
+pub surgeist_text::FontMetricTableError::MissingCompanion
+pub surgeist_text::FontMetricTableError::MissingCompanion::required: surgeist_text::FontMetricTable
 pub surgeist_text::FontMetricTableError::UnsupportedRecordSize
 pub surgeist_text::FontMetricTableError::UnsupportedRecordSize::size: u16
 pub surgeist_text::FontMetricTableError::UnsupportedVersion
@@ -1128,6 +1154,13 @@ pub surgeist_text::VerticalAlign::TextTop
 impl surgeist_text::VerticalAlign
 pub const fn surgeist_text::VerticalAlign::baseline() -> Self
 pub fn surgeist_text::VerticalAlign::try_shift(value: f64) -> surgeist_text::Result<Self>
+pub enum surgeist_text::VerticalGlyphMetricProvenance
+pub surgeist_text::VerticalGlyphMetricProvenance::EmptyGlyfTopSideBearing
+pub surgeist_text::VerticalGlyphMetricProvenance::GlyfYMaxTopSideBearing
+pub surgeist_text::VerticalGlyphMetricProvenance::HorizontalAdvanceHalf
+pub surgeist_text::VerticalGlyphMetricProvenance::HorizontalMetricsAscent(surgeist_text::FontLineMetricSource)
+pub surgeist_text::VerticalGlyphMetricProvenance::HorizontalMetricsHeight(surgeist_text::FontLineMetricSource)
+pub surgeist_text::VerticalGlyphMetricProvenance::VmtxAdvance
 pub enum surgeist_text::Weight
 pub surgeist_text::Weight::Black
 pub surgeist_text::Weight::Bold
@@ -1451,6 +1484,8 @@ impl<'a> surgeist_text::EffectiveFontInstance<'a>
 pub fn surgeist_text::EffectiveFontInstance<'a>::glyph_outline(&self, glyph_id: u32, expected_catalogue: &surgeist_text::FontCatalogueIdentity) -> surgeist_text::Result<surgeist_text::GlyphOutlineGeometry<'a>>
 impl<'a> surgeist_text::EffectiveFontInstance<'a>
 pub fn surgeist_text::EffectiveFontInstance<'a>::metrics(&self, expected_catalogue: &surgeist_text::FontCatalogueIdentity) -> surgeist_text::Result<surgeist_text::FontMetrics<'a>>
+impl<'a> surgeist_text::EffectiveFontInstance<'a>
+pub fn surgeist_text::EffectiveFontInstance<'a>::vertical_glyph_metrics(&self, glyph_id: u32, expected: &surgeist_text::FontCatalogueIdentity) -> surgeist_text::Result<surgeist_text::VerticalGlyphMetrics<'a>>
 pub struct surgeist_text::Error
 pub surgeist_text::Error::code: surgeist_text::ErrorCode
 pub surgeist_text::Error::message: alloc::string::String
@@ -1655,6 +1690,7 @@ pub const fn surgeist_text::FontMetrics<'a>::ascent(&self) -> f64
 pub const fn surgeist_text::FontMetrics<'a>::descent(&self) -> f64
 pub const fn surgeist_text::FontMetrics<'a>::instance(&self) -> &surgeist_text::EffectiveFontInstance<'a>
 pub const fn surgeist_text::FontMetrics<'a>::leading(&self) -> f64
+pub const fn surgeist_text::FontMetrics<'a>::line_metric_source(&self) -> surgeist_text::FontLineMetricSource
 pub const fn surgeist_text::FontMetrics<'a>::strikeout(&self) -> surgeist_text::StrikeoutMetrics
 pub const fn surgeist_text::FontMetrics<'a>::units_per_em(&self) -> u16
 pub struct surgeist_text::FontSynthesis
@@ -2915,6 +2951,16 @@ pub fn surgeist_text::ValidatedStyle::text_transform(&self) -> surgeist_text::Te
 impl core::convert::TryFrom<surgeist_text::Style> for surgeist_text::ValidatedStyle
 pub type surgeist_text::ValidatedStyle::Error = surgeist_text::Error
 pub fn surgeist_text::ValidatedStyle::try_from(style: surgeist_text::Style) -> surgeist_text::Result<Self>
+pub struct surgeist_text::VerticalGlyphMetrics<'a>
+impl<'a> surgeist_text::VerticalGlyphMetrics<'a>
+pub const fn surgeist_text::VerticalGlyphMetrics<'a>::advance(&self) -> f64
+pub const fn surgeist_text::VerticalGlyphMetrics<'a>::advance_provenance(&self) -> surgeist_text::VerticalGlyphMetricProvenance
+pub const fn surgeist_text::VerticalGlyphMetrics<'a>::glyph_id(&self) -> u32
+pub const fn surgeist_text::VerticalGlyphMetrics<'a>::instance(&self) -> &surgeist_text::EffectiveFontInstance<'a>
+pub const fn surgeist_text::VerticalGlyphMetrics<'a>::origin_x(&self) -> f64
+pub const fn surgeist_text::VerticalGlyphMetrics<'a>::origin_x_provenance(&self) -> surgeist_text::VerticalGlyphMetricProvenance
+pub const fn surgeist_text::VerticalGlyphMetrics<'a>::origin_y(&self) -> f64
+pub const fn surgeist_text::VerticalGlyphMetrics<'a>::origin_y_provenance(&self) -> surgeist_text::VerticalGlyphMetricProvenance
 pub struct surgeist_text::WhiteSpaceTrim
 pub surgeist_text::WhiteSpaceTrim::discard_after: bool
 pub surgeist_text::WhiteSpaceTrim::discard_before: bool

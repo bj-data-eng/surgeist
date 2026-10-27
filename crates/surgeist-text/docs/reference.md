@@ -36,7 +36,7 @@ private implementation organization.
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
 | Original analysis and layout | `AnalyzedSource`, `AnalysisIdentity`, `System`, `Builder`, `SystemOptions` | [analyzed.rs](../src/analyzed.rs), [system.rs](../src/system.rs) |
 | Font catalogue | `FontCatalogueMode`, issued `FontCatalogueIdentity`, `System::register_fonts` and `refresh_fonts` | [catalogue.rs](../src/catalogue.rs) |
-| Font resources and metrics | `FontData`, `FontFace`, `EffectiveFontInstance`, `FontMetrics`, `StrikeoutMetrics`, `FontBaselineMeasurement` | [font.rs](../src/font.rs), [font/metrics.rs](../src/font/metrics.rs), [named baselines](../src/font/metrics/baseline.rs) |
+| Font resources and metrics | `FontData`, `FontFace`, `EffectiveFontInstance`, `FontMetrics`, `StrikeoutMetrics`, `VerticalGlyphMetrics`, `FontBaselineMeasurement` | [font.rs](../src/font.rs), [font/metrics.rs](../src/font/metrics.rs), [vertical glyph metrics](../src/font/metrics/vertical.rs), [named baselines](../src/font/metrics/baseline.rs) |
 | Borrowed readback | `RunView`, positioned `GlyphPlacement`, actual decorations | [views.rs](../src/views.rs) |
 | Prepared hyphenation | `PreparedWord`, `PreparedHyphenationCut`, borrowed views, `PreparedWordPortion`, `HyphenationResource`, `HyphenationProvenance` | [hyphenation.rs](../src/protocol/hyphenation.rs), [resource support](hyphenation-resources.md) |
 | Finalized logical prefixes | `TextSeam`, `FinalizedPrefixView`, `FinalizedSharedUnitView`, `FinalizedLine::prefix_at` | [prefix.rs](../src/protocol/prefix.rs), [composition guide](composed-lines.md) |
@@ -514,6 +514,8 @@ actual OS/2 strike; they cannot create an absent decoration. Unknown/unreturned
 tags still require structurally valid indexes and storage, but do not execute
 another field. The [selection provenance](font-metrics-provenance.md) identifies
 the retained provider branch and the separate owned qualification.
+`FontMetrics::line_metric_source` exposes the actual ascent/descent source as
+`FontLineMetricSource`; leading can have a different source.
 
 Metrics use f64 geometry at the actual f32 instance size: nonnegative ascent,
 signed nonpositive descent, and finite signed leading. Required signs are checked
@@ -524,6 +526,34 @@ resolved `center = ascent / 2`, `thickness = size / 18`. At horizontal baseline
 paragraph decoration policy. The owned engine reads this same instance metric
 owner during shaping; the query itself adds no font matching, glyph coverage,
 outline metrics or complete text-engine guarantee.
+
+## Nominal vertical glyph metrics
+
+`EffectiveFontInstance::vertical_glyph_metrics(glyph_id, expected_catalogue)`
+observes a nominal glyph in a retained static TrueType instance. Its
+`VerticalGlyphMetrics` result retains the instance and glyph request, finite
+advance and origin coordinates, and separate component provenance. Glyph zero
+is valid; an out-of-range request returns `InvalidRange` with `FontGlyphRange`.
+The origin uses the horizontal font-design frame, positive right/up. Results
+scale once to the actual instance size without integer rounding, hinting or
+synthetic bold/slant adjustment; metadata still retains the original instance.
+
+Coherent vhea/vmtx records supply the advance and top bearing; origin y uses
+the selected stored glyf yMax plus bearing. This nominal header reference covers
+simple and composite records without claiming rendered outline bounds. A proven
+empty record has yMax zero. Both vertical tables absent use the existing resolved
+horizontal ascent minus signed descent for advance, half nominal horizontal
+advance for origin x, and ascent for origin y. Line gap and ink centering do not
+participate. Native queries avoid unrelated OS/2/strikeout data; synthesis uses
+the shared horizontal metric owner without strikeout-only demands.
+
+Malformed consumed records and incomplete pairs refuse rather than synthesize.
+TrueType VORG is ignored, including malformed unused data. Actual variable faces
+(also at default coordinates) and unqualified CFF/CFF2/VARC profiles return
+precise capability errors. The [native metric policy](../../../references/font-vertical-metrics--native-determination.md)
+defines the provenance and source limits. This query does not apply vertical
+features, identify a named baseline, rotate glyphs or enable vertical paragraph
+selection and placement.
 
 ## Named font-baseline measurements
 
