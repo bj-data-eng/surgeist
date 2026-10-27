@@ -1,34 +1,56 @@
 //! The canonical CSS Syntax consume-a-number spelling continuation.
 //! Decimal conversion and unit/type admission are separate owners.
 
+/// One piece of a number's spelling that a [`NumberStep::Consume`] took.
+///
+/// The set is closed: it mirrors the parts of a number in section 4.3.13, and
+/// a new edition of the specification would be a deliberate breaking change.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Part {
+pub enum NumberPart {
+    /// The leading sign.
     Sign,
+    /// One mantissa digit with its value (0 to 9), integer or fraction.
     Mantissa(u8),
+    /// The decimal point that introduces a fraction.
     Point,
+    /// The exponent marker, U+0065 (e) or U+0045 (E).
     Exponent,
+    /// The sign of the exponent.
     ExponentSign,
+    /// One exponent digit with its value (0 to 9).
     ExponentDigit(u8),
 }
 
+/// The spelling counts of a complete number, fixed once the number ends.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct Layout {
-    pub(crate) negative: bool,
-    pub(crate) mantissa_digits: usize,
-    pub(crate) fraction_digits: usize,
-    pub(crate) exponent_negative: bool,
-    pub(crate) exponent_digits: usize,
+pub struct NumberLayout {
+    /// Whether the number's sign was U+002D HYPHEN-MINUS.
+    pub negative: bool,
+    /// The count of mantissa digits, integer and fraction together.
+    pub mantissa_digits: usize,
+    /// The count of those digits after the decimal point.
+    pub fraction_digits: usize,
+    /// Whether the exponent's sign was U+002D HYPHEN-MINUS.
+    pub exponent_negative: bool,
+    /// The count of exponent digits; zero when there is no exponent.
+    pub exponent_digits: usize,
 }
 
+/// One transition of a [`NumberCursor`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Step {
-    Consume(Part),
+pub enum NumberStep {
+    /// The caller consumes one input code point, which is this part of the
+    /// number.
+    Consume(NumberPart),
+    /// A fixed grammar transition that consumes nothing.
     Transition,
-    Done(Layout),
+    /// The number ended before the first unconsumed code point.
+    Done(NumberLayout),
 }
 
+/// A spelling counter does not fit `usize`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct Overflow;
+pub struct NumberOverflow;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum State {
@@ -42,16 +64,25 @@ enum State {
     Done,
 }
 
-#[derive(Clone, Copy)]
-pub(crate) struct NumberCursor {
+/// The finite state of consuming one number's spelling (section 4.3.13),
+/// driven by a window of the next three code points.
+#[derive(Clone, Copy, Debug)]
+pub struct NumberCursor {
     state: State,
-    layout: Layout,
+    layout: NumberLayout,
+}
+impl Default for NumberCursor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 impl NumberCursor {
-    pub(crate) const fn new() -> Self {
+    /// Creates a cursor before the number's first code point.
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             state: State::Sign,
-            layout: Layout {
+            layout: NumberLayout {
                 negative: false,
                 mantissa_digits: 0,
                 fraction_digits: 0,
@@ -61,9 +92,14 @@ impl NumberCursor {
         }
     }
 
-    /// One fixed grammar transition. Only a Consume step advances input.
+    /// One fixed grammar transition over the next three code points (`None`
+    /// is the EOF code point). Only a [`NumberStep::Consume`] advances input.
     /// Counters are checked before mutation; overflow retains the old state.
-    pub(crate) fn step(&mut self, [a, b, c]: [Option<char>; 3]) -> Result<Step, Overflow> {
+    ///
+    /// # Errors
+    ///
+    /// [`NumberOverflow`] when a digit counter would exceed `usize`.
+    pub fn step(&mut self, [a, b, c]: [Option<char>; 3]) -> Result<NumberStep, NumberOverflow> {
         let digit = a
             .and_then(|value| value.to_digit(10).filter(|_| value.is_ascii_digit()))
             .map(|value| value as u8);
@@ -72,38 +108,45 @@ impl NumberCursor {
                 self.state = State::Integer;
                 if matches!(a, Some('+' | '-')) {
                     self.layout.negative = a == Some('-');
-                    Step::Consume(Part::Sign)
+                    NumberStep::Consume(NumberPart::Sign)
                 } else {
-                    Step::Transition
+                    NumberStep::Transition
                 }
             }
             State::Integer | State::Fraction if digit.is_some() => {
-                let mantissa = self.layout.mantissa_digits.checked_add(1).ok_or(Overflow)?;
+                let mantissa = self
+                    .layout
+                    .mantissa_digits
+                    .checked_add(1)
+                    .ok_or(NumberOverflow)?;
                 let fraction = if self.state == State::Fraction {
-                    self.layout.fraction_digits.checked_add(1).ok_or(Overflow)?
+                    self.layout
+                        .fraction_digits
+                        .checked_add(1)
+                        .ok_or(NumberOverflow)?
                 } else {
                     self.layout.fraction_digits
                 };
                 self.layout.mantissa_digits = mantissa;
                 self.layout.fraction_digits = fraction;
-                Step::Consume(Part::Mantissa(digit.expect("fixed digit check")))
+                NumberStep::Consume(NumberPart::Mantissa(digit.expect("fixed digit check")))
             }
             State::Integer => {
                 self.state = State::Point;
-                Step::Transition
+                NumberStep::Transition
             }
             State::Point => {
                 if a == Some('.') && b.is_some_and(|value| value.is_ascii_digit()) {
                     self.state = State::Fraction;
-                    Step::Consume(Part::Point)
+                    NumberStep::Consume(NumberPart::Point)
                 } else {
                     self.state = State::Exponent;
-                    Step::Transition
+                    NumberStep::Transition
                 }
             }
             State::Fraction => {
                 self.state = State::Exponent;
-                Step::Transition
+                NumberStep::Transition
             }
             State::Exponent => {
                 if matches!(a, Some('e' | 'E'))
@@ -112,45 +155,35 @@ impl NumberCursor {
                             && c.is_some_and(|value| value.is_ascii_digit()))
                 {
                     self.state = State::ExponentSign;
-                    Step::Consume(Part::Exponent)
+                    NumberStep::Consume(NumberPart::Exponent)
                 } else {
                     self.state = State::Done;
-                    Step::Done(self.layout)
+                    NumberStep::Done(self.layout)
                 }
             }
             State::ExponentSign => {
                 self.state = State::ExponentDigits;
                 if matches!(a, Some('+' | '-')) {
                     self.layout.exponent_negative = a == Some('-');
-                    Step::Consume(Part::ExponentSign)
+                    NumberStep::Consume(NumberPart::ExponentSign)
                 } else {
-                    Step::Transition
+                    NumberStep::Transition
                 }
             }
             State::ExponentDigits if digit.is_some() => {
-                self.layout.exponent_digits =
-                    self.layout.exponent_digits.checked_add(1).ok_or(Overflow)?;
-                Step::Consume(Part::ExponentDigit(digit.expect("fixed digit check")))
+                self.layout.exponent_digits = self
+                    .layout
+                    .exponent_digits
+                    .checked_add(1)
+                    .ok_or(NumberOverflow)?;
+                NumberStep::Consume(NumberPart::ExponentDigit(digit.expect("fixed digit check")))
             }
             State::ExponentDigits => {
                 self.state = State::Done;
-                Step::Done(self.layout)
+                NumberStep::Done(self.layout)
             }
-            State::Done => Step::Done(self.layout),
+            State::Done => NumberStep::Done(self.layout),
         })
-    }
-}
-
-/// CSS Syntax's fixed three-code-point would-start-a-number decision.
-pub(crate) fn number_start([a, b, c]: [Option<char>; 3]) -> bool {
-    match a {
-        Some('+' | '-') => {
-            b.is_some_and(|value| value.is_ascii_digit())
-                || b == Some('.') && c.is_some_and(|value| value.is_ascii_digit())
-        }
-        Some('.') => b.is_some_and(|value| value.is_ascii_digit()),
-        Some(value) => value.is_ascii_digit(),
-        None => false,
     }
 }
 
@@ -164,7 +197,7 @@ mod tests {
             (
                 "-12.30e+04px",
                 10,
-                Layout {
+                NumberLayout {
                     negative: true,
                     mantissa_digits: 4,
                     fraction_digits: 2,
@@ -175,7 +208,7 @@ mod tests {
             (
                 ".5e-2%",
                 5,
-                Layout {
+                NumberLayout {
                     negative: false,
                     mantissa_digits: 1,
                     fraction_digits: 1,
@@ -186,7 +219,7 @@ mod tests {
             (
                 "1e+px",
                 1,
-                Layout {
+                NumberLayout {
                     negative: false,
                     mantissa_digits: 1,
                     fraction_digits: 0,
@@ -197,7 +230,7 @@ mod tests {
             (
                 "0.0.2",
                 3,
-                Layout {
+                NumberLayout {
                     negative: false,
                     mantissa_digits: 2,
                     fraction_digits: 1,
@@ -216,28 +249,15 @@ mod tests {
                 ]
                 .map(|value| value.copied().map(char::from));
                 match cursor.step(window).unwrap() {
-                    Step::Consume(_) => index += 1,
-                    Step::Transition => {}
-                    Step::Done(layout) => {
+                    NumberStep::Consume(_) => index += 1,
+                    NumberStep::Transition => {}
+                    NumberStep::Done(layout) => {
                         assert_eq!(index, length, "{text}");
                         assert_eq!(layout, expected);
                         break;
                     }
                 }
             }
-        }
-    }
-
-    #[test]
-    fn starts_are_ascii_and_require_actual_lookahead() {
-        for (window, expected) in [
-            ([Some('-'), Some('.'), Some('1')], true),
-            ([Some('+'), Some('2'), None], true),
-            ([Some('.'), Some('1'), None], true),
-            ([Some('١'), None, None], false),
-            ([Some('-'), Some('.'), None], false),
-        ] {
-            assert_eq!(number_start(window), expected);
         }
     }
 }

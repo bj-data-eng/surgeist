@@ -1,8 +1,8 @@
 //! General UTF16 CSS input, CSS Syntax preprocessing and provenance.
 use crate::CssParserContext;
 use crate::source::CssSourceSnapshot;
-use crate::tokenization::bounded::{InputCursor, InputKind, Request};
 use std::sync::Arc;
+use surgeist_css_parser::input::{InputCursor, InputKind, InputRequest};
 
 /// Owner-issued complete CSS parse input and its actual parser context.
 #[derive(Clone, Debug)]
@@ -518,9 +518,11 @@ fn prepare_owned<E>(
     loop {
         control.step()?;
         match cursor.request() {
-            Request::Read { index } => cursor.read(original[index]).expect("UTF16 cursor protocol"),
-            Request::HeldUnit => cursor.process_held().expect("UTF16 held-unit protocol"),
-            Request::Emit(scalar) => {
+            InputRequest::Read { index } => {
+                cursor.read(original[index]).expect("UTF16 cursor protocol")
+            }
+            InputRequest::HeldUnit => cursor.process_held().expect("UTF16 held-unit protocol"),
+            InputRequest::Emit(scalar) => {
                 let end = text
                     .len()
                     .checked_add(scalar.value.len_utf8())
@@ -591,7 +593,7 @@ fn prepare_owned<E>(
                 text.push(scalar.value);
                 cursor.emitted().expect("UTF16 emit protocol");
             }
-            Request::End => {
+            InputRequest::End => {
                 if cursor.end().expect("UTF16 EOF protocol") {
                     break;
                 }

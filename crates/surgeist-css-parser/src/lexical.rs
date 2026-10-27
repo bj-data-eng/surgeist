@@ -12,6 +12,14 @@
 //! code points as `Option<char>`, where `None` is the specification's EOF code
 //! point, the one that stands in for the end of the input stream.
 //!
+//! A caller that holds text before preprocessing preprocesses each code point
+//! itself (U+0000 becomes U+FFFD; U+000D and U+000C become U+000A) before it
+//! asks one of these questions. [`InputCursor`](crate::input::InputCursor)
+//! does that as it decodes, and the stepwise tokenizer
+//! ([`lexer::protocol`](crate::lexer::protocol)) assumes it. The definitions
+//! exist once: a second predicate for unpreprocessed text would only be this one
+//! behind a conversion.
+//!
 //! # The non-ASCII ident code point
 //!
 //! [`is_non_ascii_ident_code_point`] currently implements the rule of the

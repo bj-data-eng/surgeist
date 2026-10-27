@@ -355,7 +355,7 @@ pub(crate) mod tests {
     use super::*;
     use crate::color::controlled::CssColorOperationOwner;
     use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
-    use crate::tokenization::bounded::InputKind;
+    use surgeist_css_parser::input::InputKind;
 
     fn lexical<'owner>(
         owner: &'owner mut CssColorOperationOwner,

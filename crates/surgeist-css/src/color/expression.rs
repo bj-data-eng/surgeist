@@ -12,7 +12,7 @@ use crate::color::controlled::protocol::{ColorProtocolError, Data, LexicalTable}
 use crate::numeric::CssNumericDimension as Dimension;
 use crate::numeric::CssNumericType as Type;
 use crate::numeric::bounded_expression as engine;
-use crate::tokenization::tokenizer::{NameKind, TokenKind};
+use surgeist_css_parser::lexer::protocol::{NameKind, RawTokenKind};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct InputContext {
@@ -353,7 +353,7 @@ impl<'owner> NumericGrammar<'owner> {
         };
         if !matches!(
             opener.token.kind,
-            TokenKind::Name {
+            RawTokenKind::Name {
                 kind: NameKind::Function,
                 ..
             }
@@ -621,7 +621,7 @@ impl<'owner> NumericGrammar<'owner> {
         let State::Identifier(token) = self.state else {
             return Err(ColorProtocolError::WrongAction);
         };
-        let TokenKind::Name {
+        let RawTokenKind::Name {
             kind: NameKind::Ident,
             units: name,
         } = token.token.kind
@@ -698,27 +698,27 @@ impl<'owner> NumericGrammar<'owner> {
                         .admits_operand(ordinal)
                         .map_err(|_| ColorProtocolError::Input)?;
                     let kind = match token.token.kind {
-                        TokenKind::Number { .. } if admits_operand => {
+                        RawTokenKind::Number { .. } if admits_operand => {
                             self.state = State::Header(token);
                             return Ok(());
                         }
-                        TokenKind::Whitespace => engine::InputKind::Whitespace,
-                        TokenKind::Comment { .. } => engine::InputKind::Comment,
-                        TokenKind::Delimiter('+') => engine::InputKind::Plus,
-                        TokenKind::Delimiter('-') => engine::InputKind::Minus,
-                        TokenKind::Delimiter('*') => engine::InputKind::Multiply,
-                        TokenKind::Delimiter('/') => engine::InputKind::Divide,
-                        TokenKind::Delimiter(',') => engine::InputKind::Comma,
-                        TokenKind::Delimiter('(') => engine::InputKind::OpenGroup,
-                        TokenKind::Delimiter(')') => engine::InputKind::Close,
-                        TokenKind::Name {
+                        RawTokenKind::Whitespace => engine::InputKind::Whitespace,
+                        RawTokenKind::Comment { .. } => engine::InputKind::Comment,
+                        RawTokenKind::Delim('+') => engine::InputKind::Plus,
+                        RawTokenKind::Delim('-') => engine::InputKind::Minus,
+                        RawTokenKind::Delim('*') => engine::InputKind::Multiply,
+                        RawTokenKind::Delim('/') => engine::InputKind::Divide,
+                        RawTokenKind::Delim(',') => engine::InputKind::Comma,
+                        RawTokenKind::Delim('(') => engine::InputKind::OpenGroup,
+                        RawTokenKind::Delim(')') => engine::InputKind::Close,
+                        RawTokenKind::Name {
                             kind: NameKind::Function,
                             ..
                         } => match token.word {
                             Word::Math(function) => engine::InputKind::OpenFunction(function),
                             _ => engine::InputKind::Invalid,
                         },
-                        TokenKind::Name {
+                        RawTokenKind::Name {
                             kind: NameKind::Ident,
                             ..
                         } => match token.word {
@@ -1506,7 +1506,7 @@ mod tests {
     use super::*;
     use crate::color::controlled::CssColorOperationOwner;
     use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
-    use crate::tokenization::bounded::InputKind;
+    use surgeist_css_parser::input::InputKind;
 
     fn lexical<'owner>(
         owner: &'owner mut CssColorOperationOwner,
@@ -2082,7 +2082,7 @@ mod tests {
         };
         assert_eq!(
             token.source,
-            crate::tokenization::tokenizer::Span { start: 7, end: 10 }
+            surgeist_css_parser::lexer::protocol::Span { start: 7, end: 10 }
         );
         syntax.abandon();
         assert!(matches!(syntax.action(), NumericAction::Stopped));

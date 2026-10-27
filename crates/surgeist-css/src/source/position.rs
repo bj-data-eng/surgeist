@@ -424,7 +424,7 @@ impl SourceCheckpoints {
 struct SecondarySourceFormation {
     text: String,
     checkpoints: SourceCheckpoints,
-    input: crate::tokenization::bounded::InputCursor,
+    input: surgeist_css_parser::input::InputCursor,
     scalars: Vec<char>,
 }
 
@@ -488,8 +488,8 @@ impl CssSourceSnapshot {
         source: &str,
         control: &crate::values::color_adjust::utf16_value::Control<'_>,
     ) -> Result<Self, ()> {
-        use crate::tokenization::bounded::{InputCursor, InputKind, Request};
         use crate::values::color_adjust::utf16_value::Failure;
+        use surgeist_css_parser::input::{InputCursor, InputKind, InputRequest};
         let baseline = control.live().bytes();
         let result = (|| {
             control.step()?;
@@ -504,12 +504,14 @@ impl CssSourceSnapshot {
             loop {
                 control.step()?;
                 match formation.input.request() {
-                    Request::Read { index } => formation
+                    InputRequest::Read { index } => formation
                         .input
                         .read(u16::from(source.as_bytes()[index]))
                         .expect("actual decoded UTF8 input"),
-                    Request::HeldUnit => formation.input.process_held().expect("actual held input"),
-                    Request::Emit(scalar) => {
+                    InputRequest::HeldUnit => {
+                        formation.input.process_held().expect("actual held input")
+                    }
+                    InputRequest::Emit(scalar) => {
                         let Some(bytes) = output_bytes.checked_add(scalar.value.len_utf8()) else {
                             return control.fail(Failure::CapacityOverflow);
                         };
@@ -521,7 +523,7 @@ impl CssSourceSnapshot {
                             .emitted()
                             .expect("actual admitted scalar storage");
                     }
-                    Request::End => {
+                    InputRequest::End => {
                         if formation.input.end().expect("actual UTF8 EOF") {
                             break;
                         }
@@ -900,7 +902,7 @@ mod utf16_admission_tests {
             .unwrap();
         let source = report.syntax().parse_source().unwrap().source();
         let raw = source.0.utf16.as_ref().unwrap();
-        let scratch = std::mem::size_of::<crate::tokenization::bounded::InputCursor>()
+        let scratch = std::mem::size_of::<surgeist_css_parser::input::InputCursor>()
             + std::mem::size_of::<CssSourcePosition>();
         let exact = CssUtf16InputLimits {
             max_input_units: original.len(),

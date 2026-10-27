@@ -10,9 +10,9 @@ use crate::color::controlled::protocol::{
     ColorProtocolError, Data, LexicalRecord, LexicalTable, RecordRange, RecordTable,
 };
 use crate::color::{CssColorInterpolationMethod, CssColorSyntax, CssSystemColor};
-use crate::tokenization::tokenizer::{NameKind, NumberKind, Span, TokenKind};
 use surgeist_color::ColorSpace as Space;
 use surgeist_color::{HueInterpolation, PredefinedColorSpace};
+use surgeist_css_parser::lexer::protocol::{NameKind, NumberKind, RawTokenKind, Span};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum RawComponent {
@@ -655,15 +655,15 @@ impl<'owner> ColorGrammar<'owner> {
             || frame.relative
             || matches!(frame.recipe.space, Some(ProfileSpace::Custom { .. })) && frame.relative;
         match token.token.kind {
-            TokenKind::Number { .. }
-            | TokenKind::Name {
+            RawTokenKind::Number { .. }
+            | RawTokenKind::Name {
                 kind: NameKind::Ident,
                 ..
-            } if matches!(token.token.kind, TokenKind::Number { .. }) || allowed_ident => {
+            } if matches!(token.token.kind, RawTokenKind::Number { .. }) || allowed_ident => {
                 self.consume()?;
                 self.component(frame, role, RawComponent::Atom(token))?;
             }
-            TokenKind::Name {
+            RawTokenKind::Name {
                 kind: NameKind::Function,
                 ..
             } if matches!(token.word, Word::Math(_)) => {
@@ -685,7 +685,7 @@ impl<'owner> ColorGrammar<'owner> {
         mut frame: Frame,
         token: Option<ClassifiedToken>,
     ) -> Result<(), ColorProtocolError> {
-        if token.is_some_and(|value| value.token.kind != TokenKind::Delimiter(')')) {
+        if token.is_some_and(|value| value.token.kind != RawTokenKind::Delim(')')) {
             self.failure(token);
             return Ok(());
         }
@@ -746,7 +746,7 @@ impl<'owner> ColorGrammar<'owner> {
         if token.is_some_and(|value| {
             matches!(
                 value.token.kind,
-                TokenKind::Whitespace | TokenKind::Comment { .. }
+                RawTokenKind::Whitespace | RawTokenKind::Comment { .. }
             )
         }) {
             if let State::Math {
@@ -773,7 +773,7 @@ impl<'owner> ColorGrammar<'owner> {
                     self.failure(None);
                     return Ok(());
                 };
-                if let TokenKind::Name {
+                if let RawTokenKind::Name {
                     kind: NameKind::Function,
                     ..
                 } = token.token.kind
@@ -807,7 +807,7 @@ impl<'owner> ColorGrammar<'owner> {
                         mix_space: None,
                         mix_hue: None,
                     });
-                } else if let TokenKind::Name {
+                } else if let RawTokenKind::Name {
                     kind: NameKind::Hash { .. },
                     units,
                 } = token.token.kind
@@ -831,7 +831,7 @@ impl<'owner> ColorGrammar<'owner> {
                     };
                 } else if matches!(
                     token.token.kind,
-                    TokenKind::Name {
+                    RawTokenKind::Name {
                         kind: NameKind::Ident,
                         ..
                     }
@@ -879,14 +879,14 @@ impl<'owner> ColorGrammar<'owner> {
                 if let Some(token) = token {
                     let nested = matches!(
                         token.token.kind,
-                        TokenKind::Name {
+                        RawTokenKind::Name {
                             kind: NameKind::Function,
                             ..
-                        } | TokenKind::Delimiter('(')
+                        } | RawTokenKind::Delim('(')
                     );
                     let next_depth = if nested {
                         depth.checked_add(1).ok_or(ColorProtocolError::Overflow)?
-                    } else if token.token.kind == TokenKind::Delimiter(')') {
+                    } else if token.token.kind == RawTokenKind::Delim(')') {
                         depth - 1
                     } else {
                         depth
@@ -974,7 +974,7 @@ impl<'owner> ColorGrammar<'owner> {
     ) -> Result<(), ColorProtocolError> {
         let word = token.map(|value| value.word);
         let delimiter = token.and_then(|value| {
-            if let TokenKind::Delimiter(unit) = value.token.kind {
+            if let RawTokenKind::Delim(unit) = value.token.kind {
                 Some(unit)
             } else {
                 None
@@ -1014,14 +1014,14 @@ impl<'owner> ColorGrammar<'owner> {
                 };
                 let space = match (value.token.kind, value.word) {
                     (
-                        TokenKind::Name {
+                        RawTokenKind::Name {
                             kind: NameKind::Ident,
                             ..
                         },
                         Word::Predefined(space),
                     ) => ProfileSpace::Predefined(space),
                     (
-                        TokenKind::Name {
+                        RawTokenKind::Name {
                             kind: NameKind::Ident,
                             units,
                         },
@@ -1158,7 +1158,7 @@ impl<'owner> ColorGrammar<'owner> {
             }
             FrameStage::MixSpace => {
                 if let Some(value) = token.filter(|value| value.dashed) {
-                    let TokenKind::Name {
+                    let RawTokenKind::Name {
                         kind: NameKind::Ident,
                         units,
                     } = value.token.kind
@@ -1186,7 +1186,7 @@ impl<'owner> ColorGrammar<'owner> {
                 if !token.is_some_and(|value| {
                     matches!(
                         value.token.kind,
-                        TokenKind::Name {
+                        RawTokenKind::Name {
                             kind: NameKind::Ident,
                             ..
                         }
@@ -1331,13 +1331,13 @@ impl<'owner> ColorGrammar<'owner> {
 fn is_weight(token: ClassifiedToken) -> bool {
     matches!(
         token.token.kind,
-        TokenKind::Number {
+        RawTokenKind::Number {
             kind: NumberKind::Percentage,
             ..
         }
     ) || matches!(
         token.token.kind,
-        TokenKind::Name {
+        RawTokenKind::Name {
             kind: NameKind::Function,
             ..
         }
@@ -1349,7 +1349,7 @@ mod tests {
     use super::*;
     use crate::color::controlled::CssColorOperationOwner;
     use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
-    use crate::tokenization::bounded::InputKind;
+    use surgeist_css_parser::input::InputKind;
 
     fn parse(
         input: &str,

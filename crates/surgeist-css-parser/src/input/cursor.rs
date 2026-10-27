@@ -6,36 +6,62 @@
 
 /// The original input's unit vocabulary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum InputKind {
+pub enum InputKind {
+    /// UTF-8 code units: each unit a host feeds is one byte (at most 255).
     Utf8,
+    /// UTF-16 code units, including unpaired surrogates.
     Utf16,
 }
 
 /// A preprocessed scalar and its exact original half-open unit interval.
+///
+/// `start..end` counts the original input's units (bytes for
+/// [`InputKind::Utf8`], 16-bit units for [`InputKind::Utf16`]), not scalars
+/// and not offsets into any normalized text.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct Scalar {
-    pub(crate) value: char,
-    pub(crate) start: usize,
-    pub(crate) end: usize,
+pub struct Scalar {
+    /// The scalar after section 3.3 preprocessing.
+    pub value: char,
+    /// The first original unit the scalar was decoded from.
+    pub start: usize,
+    /// One past the last original unit the scalar was decoded from.
+    pub end: usize,
 }
 
+/// What an [`InputCursor`] needs its host to do next.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Request {
+pub enum InputRequest {
+    /// Read the original unit at `index` and pass it to
+    /// [`InputCursor::read`].
     Read {
+        /// The position of the unit in the original input.
         index: usize,
     },
-    /// Process one already read unit after a preceding lone high surrogate.
+    /// Process one already read unit after a preceding lone high surrogate;
+    /// call [`InputCursor::process_held`].
     HeldUnit,
+    /// Admit storage for this scalar, then call [`InputCursor::emitted`].
     Emit(Scalar),
+    /// The original input is exhausted; call [`InputCursor::end`].
     End,
 }
 
+/// A protocol violation by the host of an [`InputCursor`].
+///
+/// Every error leaves the cursor unchanged, so the pending request remains
+/// valid and the host may retry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Error {
+pub enum InputError {
+    /// The call does not answer the pending [`InputRequest`].
     WrongReply,
+    /// A unit outside the input kind's vocabulary, or one that cannot
+    /// continue the decoder's current sequence.
     WrongUnit,
+    /// The UTF-8 input is malformed.
     InvalidUtf8,
+    /// An original position does not fit `usize`.
     BoundaryOverflow,
+    /// The cursor already completed.
     Complete,
 }
 
@@ -57,7 +83,17 @@ enum Decoder {
 }
 
 /// Fixed-register input cursor. Its caller owns all source and emitted storage.
-pub(crate) struct InputCursor {
+///
+/// The cursor decodes one kind of original unit and applies the preprocessing
+/// of section 3.3 as scalars are produced: U+000D CARRIAGE RETURN, U+000C FORM
+/// FEED and a U+000D U+000A pair become U+000A LINE FEED, and U+0000 NULL and
+/// any surrogate code point become U+FFFD REPLACEMENT CHARACTER. Each scalar
+/// keeps the interval of original units it came from.
+///
+/// This is a host-only stepwise protocol: ask [`request`](Self::request),
+/// answer it, repeat until [`end`](Self::end) returns `true`.
+#[derive(Debug)]
+pub struct InputCursor {
     kind: InputKind,
     length: usize,
     position: usize,
@@ -70,7 +106,9 @@ pub(crate) struct InputCursor {
 }
 
 impl InputCursor {
-    pub(crate) const fn new(kind: InputKind, length: usize) -> Self {
+    /// Creates a cursor over `length` original units of `kind`.
+    #[must_use]
+    pub const fn new(kind: InputKind, length: usize) -> Self {
         Self {
             kind,
             length,
@@ -85,61 +123,79 @@ impl InputCursor {
     }
 
     /// Reads only cached fixed state. Caller admits this header observation.
-    pub(crate) fn request(&self) -> Request {
+    #[must_use]
+    pub fn request(&self) -> InputRequest {
         if let Some(scalar) = self.output {
-            return Request::Emit(scalar);
+            return InputRequest::Emit(scalar);
         }
         if self.held_unit.is_some() {
-            return Request::HeldUnit;
+            return InputRequest::HeldUnit;
         }
         if self.position < self.length {
-            return Request::Read {
+            return InputRequest::Read {
                 index: self.position,
             };
         }
-        Request::End
+        InputRequest::End
     }
 
     /// An actual unit read, followed by its fixed decoder transition.
     /// Invalid protocol input is rejected before changing the cursor.
-    pub(crate) fn read(&mut self, unit: u16) -> Result<(), Error> {
+    ///
+    /// # Errors
+    ///
+    /// [`InputError::WrongReply`] unless the pending request is
+    /// [`InputRequest::Read`]; [`InputError::WrongUnit`] for a UTF-8 unit
+    /// above 255; [`InputError::InvalidUtf8`] for a byte that cannot continue
+    /// a well-formed sequence; [`InputError::Complete`] after the end.
+    pub fn read(&mut self, unit: u16) -> Result<(), InputError> {
         if self.ended {
-            return Err(Error::Complete);
+            return Err(InputError::Complete);
         }
-        if !matches!(self.request(), Request::Read { .. }) {
-            return Err(Error::WrongReply);
+        if !matches!(self.request(), InputRequest::Read { .. }) {
+            return Err(InputError::WrongReply);
         }
         if self.kind == InputKind::Utf8 {
             if unit > 255 {
-                return Err(Error::WrongUnit);
+                return Err(InputError::WrongUnit);
             }
             self.validate_utf8(unit as u8)?;
         }
         let index = self.position;
-        let next = index.checked_add(1).ok_or(Error::BoundaryOverflow)?;
+        let next = index.checked_add(1).ok_or(InputError::BoundaryOverflow)?;
         self.position = next;
         self.decode(index, unit)
     }
 
     /// Processes the actual cached unit once; it never rereads original input.
-    pub(crate) fn process_held(&mut self) -> Result<(), Error> {
+    ///
+    /// # Errors
+    ///
+    /// [`InputError::WrongReply`] unless the pending request is
+    /// [`InputRequest::HeldUnit`]; [`InputError::Complete`] after the end.
+    pub fn process_held(&mut self) -> Result<(), InputError> {
         if self.ended {
-            return Err(Error::Complete);
+            return Err(InputError::Complete);
         }
-        if !matches!(self.request(), Request::HeldUnit) {
-            return Err(Error::WrongReply);
+        if !matches!(self.request(), InputRequest::HeldUnit) {
+            return Err(InputError::WrongReply);
         }
-        let (index, unit) = self.held_unit.take().ok_or(Error::WrongReply)?;
+        let (index, unit) = self.held_unit.take().ok_or(InputError::WrongReply)?;
         self.decode(index, unit)
     }
 
     /// Acknowledges actual admitted storage of the requested scalar.
-    pub(crate) fn emitted(&mut self) -> Result<(), Error> {
+    ///
+    /// # Errors
+    ///
+    /// [`InputError::WrongReply`] unless the pending request is
+    /// [`InputRequest::Emit`]; [`InputError::Complete`] after the end.
+    pub fn emitted(&mut self) -> Result<(), InputError> {
         if self.ended {
-            return Err(Error::Complete);
+            return Err(InputError::Complete);
         }
         if self.output.is_none() {
-            return Err(Error::WrongReply);
+            return Err(InputError::WrongReply);
         }
         self.output = self.held_scalar.take();
         Ok(())
@@ -147,15 +203,24 @@ impl InputCursor {
 
     /// One fixed EOF transition. It can publish a pending CR/lone surrogate;
     /// the caller must acknowledge that scalar before final EOF completion.
-    pub(crate) fn end(&mut self) -> Result<bool, Error> {
+    ///
+    /// Returns `true` once the input is complete and `false` when a final
+    /// scalar was published and must be acknowledged first.
+    ///
+    /// # Errors
+    ///
+    /// [`InputError::WrongReply`] unless the pending request is
+    /// [`InputRequest::End`]; [`InputError::InvalidUtf8`] when the input ends
+    /// inside a UTF-8 sequence; [`InputError::Complete`] after the end.
+    pub fn end(&mut self) -> Result<bool, InputError> {
         if self.ended {
-            return Err(Error::Complete);
+            return Err(InputError::Complete);
         }
-        if self.request() != Request::End {
-            return Err(Error::WrongReply);
+        if self.request() != InputRequest::End {
+            return Err(InputError::WrongReply);
         }
         match self.decoder {
-            Decoder::Utf8 { .. } => return Err(Error::InvalidUtf8),
+            Decoder::Utf8 { .. } => return Err(InputError::InvalidUtf8),
             Decoder::High { start, .. } => {
                 self.decoder = Decoder::Ready;
                 self.scalar(Scalar {
@@ -181,7 +246,7 @@ impl InputCursor {
     /// after E0, ED, F0 and F4 reject overlong forms, surrogates and code
     /// points above U+10FFFF at the second byte, the first unit that proves
     /// the sequence malformed.
-    fn validate_utf8(&self, byte: u8) -> Result<(), Error> {
+    fn validate_utf8(&self, byte: u8) -> Result<(), InputError> {
         match self.decoder {
             Decoder::Ready if byte <= 0x7f || (0xc2..=0xf4).contains(&byte) => Ok(()),
             Decoder::Utf8 {
@@ -204,15 +269,15 @@ impl InputCursor {
                 if (lower..=upper).contains(&byte) {
                     Ok(())
                 } else {
-                    Err(Error::InvalidUtf8)
+                    Err(InputError::InvalidUtf8)
                 }
             }
-            _ => Err(Error::InvalidUtf8),
+            _ => Err(InputError::InvalidUtf8),
         }
     }
 
-    fn decode(&mut self, index: usize, unit: u16) -> Result<(), Error> {
-        let end = index.checked_add(1).ok_or(Error::BoundaryOverflow)?;
+    fn decode(&mut self, index: usize, unit: u16) -> Result<(), InputError> {
+        let end = index.checked_add(1).ok_or(InputError::BoundaryOverflow)?;
         if self.kind == InputKind::Utf8 {
             let byte = unit as u8;
             match self.decoder {
@@ -246,7 +311,7 @@ impl InputCursor {
                     if left == 1 {
                         self.decoder = Decoder::Ready;
                         self.scalar(Scalar {
-                            value: char::from_u32(value).ok_or(Error::InvalidUtf8)?,
+                            value: char::from_u32(value).ok_or(InputError::InvalidUtf8)?,
                             start,
                             end,
                         });
@@ -259,7 +324,7 @@ impl InputCursor {
                         };
                     }
                 }
-                Decoder::High { .. } => return Err(Error::WrongUnit),
+                Decoder::High { .. } => return Err(InputError::WrongUnit),
             }
         } else {
             match self.decoder {
@@ -269,7 +334,7 @@ impl InputCursor {
                         let value = 0x10000 + ((u32::from(value) - 0xd800) << 10) + u32::from(unit)
                             - 0xdc00;
                         self.scalar(Scalar {
-                            value: char::from_u32(value).ok_or(Error::WrongUnit)?,
+                            value: char::from_u32(value).ok_or(InputError::WrongUnit)?,
                             start,
                             end,
                         });
@@ -293,7 +358,7 @@ impl InputCursor {
                     start: index,
                     end,
                 }),
-                Decoder::Utf8 { .. } => return Err(Error::WrongUnit),
+                Decoder::Utf8 { .. } => return Err(InputError::WrongUnit),
             }
         }
         Ok(())
@@ -341,13 +406,13 @@ mod tests {
         let mut output = Vec::new();
         loop {
             match cursor.request() {
-                Request::Read { index } => cursor.read(input[index]).unwrap(),
-                Request::HeldUnit => cursor.process_held().unwrap(),
-                Request::Emit(scalar) => {
+                InputRequest::Read { index } => cursor.read(input[index]).unwrap(),
+                InputRequest::HeldUnit => cursor.process_held().unwrap(),
+                InputRequest::Emit(scalar) => {
                     output.push(scalar);
                     cursor.emitted().unwrap();
                 }
-                Request::End => {
+                InputRequest::End => {
                     if cursor.end().unwrap() {
                         break;
                     }
@@ -472,31 +537,31 @@ mod tests {
         let mut cursor = InputCursor::new(InputKind::Utf16, 2);
         cursor.read(65).unwrap();
         let pending = cursor.request();
-        assert_eq!(cursor.read(66), Err(Error::WrongReply));
+        assert_eq!(cursor.read(66), Err(InputError::WrongReply));
         assert_eq!(cursor.request(), pending);
         // No storage acknowledgement means no next read or successful EOF.
-        assert_eq!(cursor.end(), Err(Error::WrongReply));
+        assert_eq!(cursor.end(), Err(InputError::WrongReply));
         assert_eq!(cursor.request(), pending);
         cursor.emitted().unwrap();
-        assert_eq!(cursor.request(), Request::Read { index: 1 });
+        assert_eq!(cursor.request(), InputRequest::Read { index: 1 });
         cursor.read(66).unwrap();
         cursor.emitted().unwrap();
         assert!(cursor.end().unwrap());
-        assert_eq!(cursor.end(), Err(Error::Complete));
+        assert_eq!(cursor.end(), Err(InputError::Complete));
     }
 
     #[test]
     fn invalid_utf8_protocol_unit_is_atomic_and_retryable() {
         let mut cursor = InputCursor::new(InputKind::Utf8, 2);
-        assert_eq!(cursor.read(256), Err(Error::WrongUnit));
-        assert_eq!(cursor.request(), Request::Read { index: 0 });
+        assert_eq!(cursor.read(256), Err(InputError::WrongUnit));
+        assert_eq!(cursor.request(), InputRequest::Read { index: 0 });
         cursor.read(0xc3).unwrap();
-        assert_eq!(cursor.read(0), Err(Error::InvalidUtf8));
-        assert_eq!(cursor.request(), Request::Read { index: 1 });
+        assert_eq!(cursor.read(0), Err(InputError::InvalidUtf8));
+        assert_eq!(cursor.request(), InputRequest::Read { index: 1 });
         cursor.read(0xa9).unwrap();
         assert_eq!(
             cursor.request(),
-            Request::Emit(Scalar {
+            InputRequest::Emit(Scalar {
                 value: 'é',
                 start: 0,
                 end: 2

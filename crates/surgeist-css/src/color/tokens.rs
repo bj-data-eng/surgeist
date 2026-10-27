@@ -3,12 +3,12 @@
 use super::keywords::{Word, word};
 use crate::color::controlled::CssColorSlot;
 use crate::color::controlled::protocol::{ColorProtocolError, LexicalRecord, LexicalTable};
-use crate::tokenization::tokenizer::{Span, Token, TokenKind};
+use surgeist_css_parser::lexer::protocol::{RawToken, RawTokenKind, Span};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ClassifiedToken {
     pub(crate) index: usize,
-    pub(crate) token: Token,
+    pub(crate) token: RawToken,
     pub(crate) word: Word,
     pub(crate) dashed: bool,
     pub(crate) unit: Option<crate::numeric::CssNumericUnit>,
@@ -35,7 +35,7 @@ enum State {
 pub(crate) struct TokenReader<'owner> {
     table: LexicalTable<'owner>,
     next: usize,
-    token: Option<Token>,
+    token: Option<RawToken>,
     token_index: usize,
     name: Span,
     name_index: usize,
@@ -127,17 +127,17 @@ impl<'owner> TokenReader<'owner> {
                     .ok_or(ColorProtocolError::Overflow)?;
                 if let LexicalRecord::Token(token) = observed {
                     let name = match token.kind {
-                        TokenKind::Name { units, .. } => Some(units),
-                        TokenKind::Number { unit, .. } => Some(unit),
-                        TokenKind::Whitespace
-                        | TokenKind::Comment { .. }
-                        | TokenKind::String { .. }
-                        | TokenKind::BadString
-                        | TokenKind::Url { .. }
-                        | TokenKind::BadUrl { .. }
-                        | TokenKind::Delimiter(_)
-                        | TokenKind::Cdo
-                        | TokenKind::Cdc => None,
+                        RawTokenKind::Name { units, .. } => Some(units),
+                        RawTokenKind::Number { unit, .. } => Some(unit),
+                        RawTokenKind::Whitespace
+                        | RawTokenKind::Comment { .. }
+                        | RawTokenKind::String { .. }
+                        | RawTokenKind::BadString
+                        | RawTokenKind::Url { .. }
+                        | RawTokenKind::BadUrl { .. }
+                        | RawTokenKind::Delim(_)
+                        | RawTokenKind::Cdo
+                        | RawTokenKind::Cdc => None,
                     };
                     if name
                         .is_some_and(|name| name.end > self.table.length() || name.start > name.end)
@@ -195,13 +195,13 @@ impl<'owner> TokenReader<'owner> {
             std::str::from_utf8(&self.ascii[..self.ascii_length]).expect("admitted ASCII")
         });
         self.word = match (name, self.token.map(|token| token.kind)) {
-            (Some(name), Some(TokenKind::Name { kind, .. })) => word(name, kind),
+            (Some(name), Some(RawTokenKind::Name { kind, .. })) => word(name, kind),
             _ => Word::Unknown,
         };
         self.unit = if matches!(
             self.token.map(|token| token.kind),
-            Some(TokenKind::Number {
-                kind: crate::tokenization::tokenizer::NumberKind::Dimension,
+            Some(RawTokenKind::Number {
+                kind: surgeist_css_parser::lexer::protocol::NumberKind::Dimension,
                 ..
             })
         ) {
@@ -265,8 +265,8 @@ mod tests {
     use super::*;
     use crate::color::controlled::CssColorOperationOwner;
     use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
-    use crate::tokenization::bounded::InputKind;
-    use crate::tokenization::tokenizer::NameKind;
+    use surgeist_css_parser::input::InputKind;
+    use surgeist_css_parser::lexer::protocol::NameKind;
     #[test]
     fn escaped_keywords_and_long_profile_spans_use_actual_flat_records() {
         let input = "\\72 GB( --évery-long-profile-name ) CanvasText lightgoldenrodyellow";
@@ -304,7 +304,7 @@ mod tests {
                 TokenAction::Classify => reader.classify().unwrap(),
                 TokenAction::Yield => {
                     let token = reader.current().unwrap();
-                    if !matches!(token.token.kind, TokenKind::Whitespace) {
+                    if !matches!(token.token.kind, RawTokenKind::Whitespace) {
                         observed.push(token);
                     }
                     reader.consumed().unwrap();
@@ -319,7 +319,7 @@ mod tests {
         );
         assert!(matches!(
             observed[0].token.kind,
-            TokenKind::Name {
+            RawTokenKind::Name {
                 kind: NameKind::Function,
                 ..
             }

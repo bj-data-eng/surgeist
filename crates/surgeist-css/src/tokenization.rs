@@ -10,11 +10,8 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use cssparser::{Parser, ParserInput, Token};
-
-pub(crate) mod bounded;
-pub(crate) mod name;
-pub(crate) mod number;
-pub(crate) mod tokenizer;
+use surgeist_css_parser::lexer::protocol::{NumberCursor, NumberStep};
+use surgeist_css_parser::lexical;
 
 // Test-only work counter: the input bytes walked by `prepare` on this thread.
 #[cfg(test)]
@@ -131,46 +128,33 @@ pub(crate) fn source_token_parts<'a>(
     }
 }
 
-/// CSS Syntax 3 §4.3.9 over authored code points, including preprocessing.
-/// EOF is a valid escape second code point, and NUL becomes U+FFFD (§3.3).
+/// CSS Syntax 3 §4.3.9 over authored code points: the pre-pass sees text that
+/// input preprocessing (§3.3) has not yet normalized, so each code point is
+/// preprocessed here before [`lexical::would_start_ident`], which describes
+/// preprocessed input, decides. EOF is a valid escape second code point.
 fn would_start_identifier(text: &str) -> bool {
-    let mut points = text.chars();
+    let mut points = text.chars().map(preprocessed);
     let first = points.next();
     let second = points.next();
     let third = points.next();
-    identifier_start([first, second, third])
+    lexical::would_start_ident(first, second, third)
 }
 
-/// CSS Syntax's fixed three-code-point identifier-start decision.
-pub(crate) fn identifier_start([first, second, third]: [Option<char>; 3]) -> bool {
-    match first {
-        Some('-') => {
-            second.is_some_and(|point| point == '-' || name_start(point))
-                || valid_escape(second, third)
-        }
-        Some('\\') => valid_escape(first, second),
-        Some(point) => name_start(point),
-        None => false,
+/// CSS Syntax 3 §3.3 applied to one authored code point: U+0000 becomes
+/// U+FFFD, and U+000D and U+000C become U+000A.
+const fn preprocessed(point: char) -> char {
+    match point {
+        '\0' => '\u{fffd}',
+        '\r' | '\u{c}' => '\n',
+        point => point,
     }
-}
-
-pub(crate) fn name_start(point: char) -> bool {
-    point.is_ascii_alphabetic() || point == '_' || point == '\0' || !point.is_ascii()
-}
-
-pub(crate) fn name_point(point: char) -> bool {
-    name_start(point) || point.is_ascii_digit() || point == '-'
-}
-
-pub(crate) fn valid_escape(first: Option<char>, second: Option<char>) -> bool {
-    first == Some('\\') && !matches!(second, Some('\n' | '\r' | '\u{c}'))
 }
 
 // CSS Syntax's consume-a-number spelling boundary. The dependency supplies the
 // token category; this scan preserves the exact prefix without float conversion.
 pub(crate) fn numeric_prefix_length(representation: &str) -> usize {
     let bytes = representation.as_bytes();
-    let mut cursor = number::NumberCursor::new();
+    let mut cursor = NumberCursor::new();
     let mut end = 0;
     loop {
         let window = [bytes.get(end), bytes.get(end + 1), bytes.get(end + 2)]
@@ -179,9 +163,9 @@ pub(crate) fn numeric_prefix_length(representation: &str) -> usize {
             .step(window)
             .expect("a borrowed token's counters fit its length")
         {
-            number::Step::Consume(_) => end += 1,
-            number::Step::Transition => {}
-            number::Step::Done(_) => return end,
+            NumberStep::Consume(_) => end += 1,
+            NumberStep::Transition => {}
+            NumberStep::Done(_) => return end,
         }
     }
 }
@@ -304,10 +288,37 @@ fn remnants_closing(bytes: &[u8], mut offset: usize) -> Option<usize> {
     None
 }
 
+/// Whether an authored byte is whitespace once preprocessed (§3.3, §4.2).
 const fn whitespace(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | b'\x0c')
+    lexical::is_whitespace(preprocessed(byte as char))
 }
 
+/// Whether an authored byte is a newline once preprocessed (§3.3, §4.2).
 const fn newline(byte: u8) -> bool {
-    matches!(byte, b'\n' | b'\r' | b'\x0c')
+    lexical::is_newline(preprocessed(byte as char))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{newline, whitespace};
+
+    // Authored text has not been preprocessed. Syntax 3 §3.3 turns U+000D,
+    // U+000C and the pair U+000D U+000A into U+000A, and §4.2 defines a newline
+    // as U+000A and whitespace as a newline, U+0009 or U+0020. A byte of
+    // authored text is therefore a newline when it is LF, CR or FF, and
+    // whitespace when it is also TAB or SPACE; no other byte, including every
+    // byte of a multi-byte sequence and NUL, is either.
+    #[test]
+    fn authored_bytes_are_newlines_and_whitespace_as_preprocessing_and_the_definitions_say() {
+        for byte in 0..=u8::MAX {
+            let expected_newline = matches!(byte, 0x0A | 0x0D | 0x0C);
+            let expected_whitespace = expected_newline || matches!(byte, 0x09 | 0x20);
+            assert_eq!(newline(byte), expected_newline, "newline {byte:#04x}");
+            assert_eq!(
+                whitespace(byte),
+                expected_whitespace,
+                "whitespace {byte:#04x}"
+            );
+        }
+    }
 }

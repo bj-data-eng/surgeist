@@ -1,6 +1,6 @@
 //! Finite CSS name/escape decoding. Inputs have already been preprocessed.
 
-use super::{name_point, valid_escape};
+use crate::lexical::{is_ident_code_point, is_whitespace, valid_escape};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum State {
@@ -40,7 +40,7 @@ impl NameAction<'_> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct NameCursor {
     state: State,
 }
@@ -53,7 +53,9 @@ impl NameCursor {
     pub(crate) fn action(&mut self, [a, b]: [Option<char>; 2]) -> NameAction<'_> {
         let (step, next) = match self.state {
             State::Name => match a {
-                Some(value) if name_point(value) => (Step::Emit { value, count: 1 }, State::Name),
+                Some(value) if is_ident_code_point(value) => {
+                    (Step::Emit { value, count: 1 }, State::Name)
+                }
                 Some('\\') if valid_escape(a, b) => (Step::Consume { count: 1 }, State::Escape),
                 _ => (Step::Done, State::Done),
             },
@@ -87,7 +89,7 @@ impl NameCursor {
                         },
                     )
                 } else {
-                    let count = u8::from(a.is_some_and(whitespace));
+                    let count = u8::from(a.is_some_and(is_whitespace));
                     (Step::Consume { count }, State::EmitHex { value })
                 }
             }
@@ -110,10 +112,6 @@ impl NameCursor {
             next,
         }
     }
-}
-
-pub(crate) const fn whitespace(value: char) -> bool {
-    matches!(value, '\t' | '\n' | ' ')
 }
 
 #[cfg(test)]

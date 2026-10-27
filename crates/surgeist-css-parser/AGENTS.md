@@ -24,6 +24,22 @@ not the conventions of another implementation.
 | Clauses covered, their tests and what is not claimed | [docs/conformance-coverage.md](docs/conformance-coverage.md) |
 | Crate purpose, status and edition pointer | [README.md](README.md) |
 
+## Stepwise Protocol Facts
+
+`input::InputCursor` and `lexer::protocol::TokenCursor` are host-only sans-IO
+protocols: a host admits each request, owns every bank and may refuse an
+append, and the cursors stay unchanged and resumable. Their sizes, and those
+of `Scalar`, `Record` and the types inside them, are pinned in
+[tests/layout_pins.rs](tests/layout_pins.rs) because hosts charge them (the
+`scratch` amount of surgeist-css's UTF-16 characterization rows includes
+`size_of::<InputCursor>()`). Do not change a pinned layout; keep new state
+outside these types.
+
+The cursors read preprocessed scalars (Syntax 3 section 3.3) and use the
+[lexical](src/lexical.rs) predicates, which describe preprocessed input. Text
+that has not been preprocessed is preprocessed per code point before asking a
+predicate.
+
 ## Command Inventory
 
 Select affected checks under the root process/resource policy, from repository
