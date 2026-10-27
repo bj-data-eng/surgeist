@@ -138,6 +138,7 @@ pub(crate) enum NumericWrappingError {
     Scope(WrappingScopeError),
     FeedbackCycle,
     InvalidBalanceBasis,
+    InvalidAtomicReceiverBasis,
 }
 impl From<crate::group_alignment::NumericError> for NumericWrappingError {
     fn from(error: crate::group_alignment::NumericError) -> Self {
@@ -173,6 +174,13 @@ pub(crate) fn numeric_wrapping_error<Node, S: crate::LayoutScalar, M>(
             crate::LayoutOperation::InlineWrapping,
             crate::LayoutErrorKindOf::InternalInvariant(
                 crate::LayoutInternalInvariant::InvalidInlineBalance,
+            ),
+        ),
+        NumericWrappingError::InvalidAtomicReceiverBasis => crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(node),
+            crate::LayoutOperation::InlineWrapping,
+            crate::LayoutErrorKindOf::InternalInvariant(
+                crate::LayoutInternalInvariant::InvalidAtomicReceiverBasis,
             ),
         ),
     }

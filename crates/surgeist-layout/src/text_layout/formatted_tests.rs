@@ -142,6 +142,7 @@ fn numeric_forced_lines() -> Vec<NumericFormattedLine> {
         },
         |block, _| block,
         true,
+        crate::inline::unavailable_atomic_receiver,
     )
     .unwrap();
     let lines = report.formatted_lines.unwrap();

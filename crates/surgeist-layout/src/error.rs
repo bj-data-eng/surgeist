@@ -332,6 +332,8 @@ pub enum LayoutInternalInvariant {
     InvalidRoundedInlineFragmentGeometry,
     /// A private balanced-line basis violated its finite/count/replay invariant.
     InvalidInlineBalance,
+    /// A deferred receiving metric no longer matched its retained atomic source.
+    InvalidAtomicReceiverBasis,
     MissingLeafMeasurementProvider,
     MissingStagedUnroundedOutput,
     SubgridTrackInheritance,

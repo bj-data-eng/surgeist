@@ -139,7 +139,7 @@ fn exercise<S: LayoutScalar>(
         participants: &participants,
         supplied: &supplied,
     };
-    let selected = select_scope_inline_line(
+    let InlineSelectionStep::Selected(Some(selected)) = select_scope_inline_line(
         NumericLineQuery {
             goal: None,
             indent: S::ZERO,
@@ -152,10 +152,12 @@ fn exercise<S: LayoutScalar>(
             axes: flow.flow_axes,
         },
         Some(&projection),
+        |_, _| Ok(None),
         |receipt| Ok(receipt.summary.used_inline_extent <= S::from_f64(25.0)),
     )
-    .unwrap()
-    .unwrap();
+    .unwrap() else {
+        panic!("resolved metric-only selection does not retry its receiver")
+    };
     assert_eq!(selected.end, ending);
     let boxes: Vec<_> = selected
         .line
@@ -171,7 +173,7 @@ fn exercise<S: LayoutScalar>(
         selected.line.used_inline_extent.to_f64(),
         10.0 * expected.len() as f64
     );
-    let receiving = select_scope_inline_line(
+    let InlineSelectionStep::Selected(Some(receiving)) = select_scope_inline_line(
         NumericLineQuery {
             goal: None,
             indent: S::ZERO,
@@ -184,10 +186,12 @@ fn exercise<S: LayoutScalar>(
             axes: flow.flow_axes,
         },
         Some(&projection),
+        |_, _| Ok(None),
         |receipt| Ok(receipt.summary.used_inline_extent <= S::from_f64(25.0)),
     )
-    .unwrap()
-    .unwrap();
+    .unwrap() else {
+        panic!("resolved metric-only selection does not retry its receiver")
+    };
     assert_eq!(receiving.end, SelectedInlineLineEnd::Paragraph);
     assert_eq!(
         receiving.line.used_inline_extent.to_f64(),
@@ -348,6 +352,7 @@ fn actual_numeric_fallback_envelope_cycle_refuses_without_a_retry_threshold() {
         // Actual fallback atomic15 has baseline15 and no descent. The carried
         // explicit 10+10 strut gives natural extent25; float fallback uses20.
         let strut = Some(ReferencedInlineStrutOf {
+            source: InlineStrutSource::Direct,
             reference: crate::InlineBaselineContext::Physical,
             metrics: InlineMetricContributionOf {
                 baseline: S::from_f64(10.0),

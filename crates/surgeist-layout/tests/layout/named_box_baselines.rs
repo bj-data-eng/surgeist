@@ -1,4 +1,6 @@
 //! Independently derived WM4 named margin-box baselines through public layout.
+mod atomic_receivers;
+
 use std::{cell::Cell, convert::Infallible, slice, sync::Arc};
 use surgeist_layout as l;
 use surgeist_text as t;

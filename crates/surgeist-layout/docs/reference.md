@@ -132,6 +132,16 @@ outputs retain their named facts.
 References also survive forced-line metric carry. A control's reference becomes
 required when a real successor uses its strut as a baseline contribution.
 
+When mandatory atomic participation or a native box edge carries a top/bottom
+atomic's strut, Layout retains the actual source box. A real formatted receiver
+resolves its requested name against that box's selected first/last fact and
+signed margins before metric allocation, float-band fitting and balance replay.
+If needed, it requests the fact on the source's original child-computation basis.
+The original top/bottom line keeps its geometry; phantom completion requests no
+unused name and establishes no named anchor. Explicit control struts still use
+their declared reference, because they have no atomic box from which to resolve
+another one.
+
 This named capability covers numeric atomic-box flow. Text placement origins
 and generic Flex/Grid baseline projections do not supply named facts. Text's
 font-design measurements require a real placed-origin adapter before they can
@@ -147,10 +157,6 @@ layout derives them. An actual named alignment consumer requests its needed
 name and first/last set before child computation; that demand is part of cache
 identity. It does not change the child's own alignment context or grant an
 unsupported producer named authority.
-After a Top/Bottom atomic forces a break, a real named receiver can refuse its
-unqualified carried strut even when that box has usable named facts.
-[Receiver-time atomic qualification](https://github.com/bj-data-eng/surgeist/issues/1490)
-owns consuming those facts at that phase.
 
 #### Prepared Text and inline flow
 

@@ -562,7 +562,7 @@ fn propagation<S: LayoutScalar>() {
             let mut cursor = InlineSourceCursor::default();
             let mut pending = None;
             for extent in expected_flow {
-                let selected = select_scope_inline_line(
+                let InlineSelectionStep::Selected(Some(selected)) = select_scope_inline_line(
                     NumericLineQuery {
                         goal: None,
                         indent: n(0.0),
@@ -575,10 +575,12 @@ fn propagation<S: LayoutScalar>() {
                         axes: input.flow_axes,
                     },
                     input.wrapping.as_ref(),
+                    |_, _| Ok(None),
                     |r| Ok(r.summary.used_inline_extent <= n(100.0)),
                 )
-                .unwrap()
-                .unwrap();
+                .unwrap() else {
+                    panic!("resolved metric-only selection does not retry its receiver")
+                };
                 assert_eq!(selected.line.used_inline_extent, n(extent));
                 cursor = selected.next_cursor;
                 pending = selected.pending_strut;
@@ -1251,6 +1253,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     },
                     |block, _| block,
                     true,
+                    crate::inline::unavailable_atomic_receiver,
                 )
                 .unwrap();
                 let mut expected_endings = Vec::new();
