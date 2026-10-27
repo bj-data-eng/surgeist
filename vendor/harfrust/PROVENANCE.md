@@ -295,8 +295,11 @@ The new result never exposes its inner ordinary GlyphBuffer.
 Raw integer font and heuristic operands remain distinct from encoded translated
 state. Fallback mark centering, gap/correction and ligature-component quotients
 are evaluated in their existing raw design domain and only their actual result
-is encoded; UPEM and narrow-space quotients retain their integer rounding. Real
-mark/zero-width and attachment owners retain authority over assignments. Range
+is encoded; UPEM and narrow-space quotients retain their integer rounding.
+Vertical fallback mark assignments then include the base's actual X offset in
+the translated domain, retaining half-unit origins without decoding them into
+raw centering arithmetic. Real mark/zero-width and attachment owners retain
+authority over assignments. Range
 checks cover the new domain's nominal encoding, GPOS, attachment and fallback
 arithmetic; they do not saturate or publish a plausible successful partial result.
 
