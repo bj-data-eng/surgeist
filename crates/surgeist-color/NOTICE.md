@@ -8,7 +8,9 @@ or bundled upstream implementation.
 ## Sources
 
 Numerical conversion and resolved serialization implement the selected CSS
-Color requirements. Source comments retain the original edition, coefficient
+Color requirements. The `named` table transcribes the opaque named colors of
+Color 4 section 6.1 (CRD 2026-09-08) and is verified against the retained
+specification text. Source comments retain the original edition, coefficient
 derivations and numerical-policy qualifications. These references are
 implementation evidence, not a claim that this crate incorporates a browser
 implementation or implements every clause in those standards.

@@ -170,6 +170,7 @@ pub use controlled::{
 };
 mod alpha;
 pub mod format;
+pub mod named;
 pub use alpha::byte_alpha_for_serialization;
 mod rectangular_color_conversion;
 pub use rectangular_color_conversion::{RectangularCoordinates, RectangularSpace};

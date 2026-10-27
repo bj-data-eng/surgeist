@@ -140,10 +140,10 @@ replay are separately authored; they do not change this project's own license.
 
 This notice covers the 19 registry packages in this crate’s default-feature
 normal and build dependency graph. They are external Cargo dependencies, not
-vendored source. The HTML value dependency uses cssparser for safe legacy named-color
-lookup. The repository-owned surgeist-css dependency supplies controlled color grammar
-and source-qualified resolution; surgeist-color supplies numerical conversion
-and serialization for parser input-color construction.
+vendored source. The repository-owned surgeist-css dependency supplies controlled color grammar
+and source-qualified resolution and brings cssparser; surgeist-color supplies numerical conversion,
+serialization and the named-color table for parser input-color construction, and the HTML value
+dependency uses that table for legacy named colors.
 The license texts below reuse the exact retained copies in the CSS crate.
 The graph is not an inventory of every downstream binary; linker behavior and
 resolution determine a consumer’s contents. License alternatives remain intact.
@@ -154,7 +154,7 @@ distributed by Alex Crichton:
 * License: [MIT](../surgeist-css/licenses/cfg-if/LICENSE-MIT) OR [Apache-2.0](../surgeist-css/licenses/cfg-if/LICENSE-APACHE)
 * Homepage: [cfg-if](https://github.com/rust-lang/cfg-if)
 
-This product depends on `cssparser` 0.37.0 for named-color lookup, with `cssparser-macros` 0.7.0 for procedural macros, distributed by Simon Sapin:
+This product depends on `cssparser` 0.37.0 through surgeist-css, with `cssparser-macros` 0.7.0 for procedural macros, distributed by Simon Sapin:
 
 * License: [MPL-2.0](../surgeist-css/licenses/rust-cssparser/LICENSE)
 * Homepage: [rust-cssparser](https://github.com/servo/rust-cssparser)

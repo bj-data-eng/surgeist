@@ -3,6 +3,7 @@
 mod keyword_color_values;
 mod lab_direct_component_bounds;
 mod modern_hsl_hwb_channels;
+mod named_color_table;
 mod parsed_color_alpha;
 mod perceptual_color_grammar;
 mod predefined_color_grammar;

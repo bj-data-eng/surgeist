@@ -181,7 +181,7 @@ pub(crate) fn word(name: &str, kind: crate::tokenization::tokenizer::NameKind) -
         "up" => Word::Strategy(crate::numeric::CssRoundingStrategy::Up),
         "down" => Word::Strategy(crate::numeric::CssRoundingStrategy::Down),
         "to-zero" => Word::Strategy(crate::numeric::CssRoundingStrategy::ToZero),
-        _ => cssparser::color::parse_named_color(name).map_or(Word::Unknown, |(r, g, b)| Word::Named([r, g, b])),
+        _ => surgeist_color::named::lookup(name).map_or(Word::Unknown, Word::Named),
     }
 }
 

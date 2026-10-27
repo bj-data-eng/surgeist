@@ -4,7 +4,13 @@ Read the [repository guide](../../AGENTS.md) for shared policy and workflow.
 
 This crate owns checked numerical color/space values, intrinsic conversion,
 interpolation, numerical transformations, resolved serialization, finite
-formatting/rounding and byte-alpha serialization policy. It has no Cargo
+formatting/rounding and byte-alpha serialization policy. It also owns the
+[`named`](src/named.rs) table of the 148 opaque Color 4 section 6.1 named colors
+and its ASCII case-insensitive lookup: one dependency-free source for HTML's
+legacy color recovery and CSS's keywords. The table is written from the retained
+[specification text](../../references/css-color-4--CRD-css-color-4-20260908--bada647312a7.md#named-colors);
+[its test](tests/named.rs) parses that text and compares every row, so change
+the table only with a new selected edition. It has no Cargo
 production or build dependencies, including optional or target-specific ones.
 Standard-library use is permitted. Do not add CSS parsing, authored expression
 resolution, source/fact identity or host policy here. CSS and other consumers own
