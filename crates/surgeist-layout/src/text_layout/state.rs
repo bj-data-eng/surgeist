@@ -49,6 +49,7 @@ pub(crate) struct LineBasis {
     request: surgeist_text::LineSelectionRequest,
     amounts: Vec<f64>,
     anchor: surgeist_text::LineAnchor,
+    orientation: surgeist_text::LineOrientation,
     atomics: Vec<surgeist_text::AtomicPlacement>,
     bands: super::fit::LineBands,
     flow: super::fit::LineFlow,
@@ -580,10 +581,25 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                             },
                             anchor: match placement {
                                 PlacementEntry::Formatted(line) => line.anchor,
-                                PlacementEntry::NonFormatted(line) => surgeist_text::LineAnchor {
-                                    inline_origin: line.origin.x,
-                                    baseline: line.origin.y,
+                                PlacementEntry::NonFormatted(line) => match line.orientation {
+                                    surgeist_text::LineOrientation::Horizontal => {
+                                        surgeist_text::LineAnchor {
+                                            inline_origin: line.origin.x,
+                                            baseline: line.origin.y,
+                                        }
+                                    }
+                                    surgeist_text::LineOrientation::Sideways
+                                    | surgeist_text::LineOrientation::Vertical => {
+                                        surgeist_text::LineAnchor {
+                                            inline_origin: line.origin.y,
+                                            baseline: line.origin.x,
+                                        }
+                                    }
                                 },
+                            },
+                            orientation: match placement {
+                                PlacementEntry::Formatted(line) => line.orientation,
+                                PlacementEntry::NonFormatted(line) => line.orientation,
                             },
                             atomics: match placement {
                                 PlacementEntry::Formatted(line) => line.atomics.clone(),

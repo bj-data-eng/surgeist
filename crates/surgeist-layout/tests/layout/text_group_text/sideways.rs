@@ -293,3 +293,7 @@ fn real_finite_horizontal_then_sideways_rl_text_f32() {
 fn real_finite_horizontal_then_sideways_rl_text_f64() {
     finite::<f64>();
 }
+
+mod controls;
+mod floats;
+mod geometry;

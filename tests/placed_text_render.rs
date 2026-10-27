@@ -35,6 +35,9 @@ mod hanging_punctuation;
 #[path = "placed_text_render/computed_boundaries.rs"]
 mod computed_boundaries;
 
+#[path = "placed_text_render/sideways_rl.rs"]
+mod sideways_rl;
+
 struct Tree {
     inputs: [layout::LayoutInput; 2],
     non_box: layout::NodeInput,

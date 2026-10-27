@@ -227,6 +227,10 @@ impl Paragraph {
     ) -> Self {
         use t::SourceProcessingEvent as E;
         let direction = host.inputs[container as usize].as_box().unwrap().direction;
+        let writing_mode = host.inputs[container as usize]
+            .as_box()
+            .unwrap()
+            .writing_mode;
         let raw = parts
             .iter()
             .filter_map(|part| {
@@ -320,6 +324,7 @@ impl Paragraph {
                     let input = match *part {
                         Part::Forced => l::LayoutInputOf::line_break(
                             l::LineBreakInputOf::new()
+                                .with_writing_mode(writing_mode)
                                 .with_direction(direction)
                                 .with_metrics(metrics),
                         ),
@@ -336,6 +341,7 @@ impl Paragraph {
                                     l::InlineBoundaryEdgeOf::try_new(S::from_f64(edge), S::ZERO)
                                         .unwrap(),
                                 )
+                                .with_writing_mode(writing_mode)
                                 .with_direction(direction),
                             )
                         }
