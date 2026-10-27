@@ -3074,11 +3074,21 @@ where
                                 || line_baseline - item.baseline_offset(input.flow_axes),
                                 |offset| block_start + offset,
                             ),
-                        InlineControlAlignment::Top => block_start - logical_margin.block_start,
-                        InlineControlAlignment::Bottom => {
-                            block_start + line_block_extent
-                                - logical_margin.block_end
-                                - logical_size.block
+                        InlineControlAlignment::Top | InlineControlAlignment::Bottom => {
+                            let edge = if item.alignment == InlineControlAlignment::Top {
+                                input.flow_axes.line_over()
+                            } else {
+                                input.flow_axes.line_under()
+                            };
+                            // Align the margin edge; retain the border origin for
+                            // the existing single physical projection.
+                            if edge == input.flow_axes.block_start() {
+                                block_start + logical_margin.block_start
+                            } else {
+                                block_start + line_block_extent
+                                    - logical_margin.block_end
+                                    - logical_size.block
+                            }
                         }
                     };
                     atomics.push(AtomicInlineSourceOf {
