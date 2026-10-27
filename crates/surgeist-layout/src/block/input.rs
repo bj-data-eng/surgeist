@@ -16,6 +16,7 @@ pub(crate) struct BlockContainerProjection<'a, S: LayoutScalar> {
     pub(super) text_indent: crate::TextIndentOf<S>,
     pub(super) line_box_direction_policy: crate::LineBoxDirectionPolicy,
     pub(super) inline_baseline_context: crate::InlineBaselineContext,
+    pub(super) baseline_source: crate::BaselineSource,
     pub(super) hyphenate_limit_lines: crate::HyphenateLimitLines,
     pub(super) hyphenate_limit_last: crate::HyphenateLimitLast,
     pub(super) hyphenate_limit_zone: crate::LengthPercentageOf<S>,
@@ -38,6 +39,7 @@ impl<'a, S: LayoutScalar> BlockContainerProjection<'a, S> {
             text_indent: input.text_indent,
             line_box_direction_policy: input.line_box_direction_policy,
             inline_baseline_context: input.inline_baseline_context,
+            baseline_source: input.baseline_source,
             hyphenate_limit_lines: input.hyphenate_limit_lines,
             hyphenate_limit_last: input.hyphenate_limit_last,
             hyphenate_limit_zone: input.hyphenate_limit_zone,
@@ -54,6 +56,7 @@ impl<'a, S: LayoutScalar> BlockContainerProjection<'a, S> {
 /// Block-child facts retained after child role lookup.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BlockChildProjection<'a, S: LayoutScalar> {
+    pub(super) baseline_source: crate::BaselineSource,
     pub(super) common: CommonBoxProjection<'a, S>,
     pub(super) display: Display,
     pub(super) block_flow_context: crate::BlockFlowContext,
@@ -69,6 +72,7 @@ impl<'a, S: LayoutScalar> BlockChildProjection<'a, S> {
     #[must_use]
     pub(crate) fn from_node(input: &'a NodeInputOf<S>) -> Self {
         Self {
+            baseline_source: input.baseline_source,
             common: CommonBoxProjection::from_node(input),
             display: input.display,
             block_flow_context: input.block_flow_context,

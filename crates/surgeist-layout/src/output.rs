@@ -682,6 +682,21 @@ impl<S: LayoutScalar> BaselineCoordinateOf<S> {
     pub const fn offset(self) -> S {
         self.offset
     }
+    /// Named scroll exposure clamps only actual coordinates, in their own
+    /// border frame. Ordinary absent facts remain absent until demanded.
+    pub(crate) fn clamped_to_border(
+        self,
+        size: Size<S>,
+    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+        let extent = match self.axis {
+            PhysicalAxis::Horizontal => size.width,
+            PhysicalAxis::Vertical => size.height,
+        };
+        if !extent.is_finite() {
+            return Err(crate::FiniteScalarErrorOf::NonFinite { value: extent });
+        }
+        Self::try_new(self.axis, self.offset.max(S::ZERO).min(extent))
+    }
     pub(crate) fn translated(self, by: Point<S>) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
         Self::try_new(
             self.axis,
@@ -772,6 +787,29 @@ impl<S: LayoutScalar> NamedBaselinesOf<S> {
             alphabetic: self.alphabetic.translated(by)?,
             central: self.central.translated(by)?,
         })
+    }
+    pub(crate) fn clamped_to_border(
+        self,
+        size: Size<S>,
+    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+        let clamp = |fact: BaselineFactOf<S>| match fact {
+            BaselineFactOf::Available(coordinate) => coordinate
+                .clamped_to_border(size)
+                .map(BaselineFactOf::Available),
+            other => Ok(other),
+        };
+        let mut result = self;
+        for name in [
+            crate::BaselineName::Alphabetic,
+            crate::BaselineName::Central,
+        ] {
+            let pair = self.get(name);
+            result = result.with(
+                name,
+                BaselinePairOf::new(clamp(pair.first())?, clamp(pair.last())?),
+            );
+        }
+        Ok(result)
     }
     pub(crate) fn record(&mut self, next: Self) {
         for name in [

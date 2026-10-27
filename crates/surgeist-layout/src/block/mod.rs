@@ -204,7 +204,13 @@ where
     {
         return Ok(BlockResult {
             output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height))
-                .with_named_baselines(crate::NamedBaselinesOf::absent()),
+                .with_named_baselines(named_block_baselines(
+                    node,
+                    &style,
+                    &constants,
+                    Size::new(width, height),
+                    crate::NamedBaselinesOf::absent(),
+                )?),
             used: input,
             floats: None,
         });
@@ -221,7 +227,13 @@ where
     {
         return Ok(BlockResult {
             output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height))
-                .with_named_baselines(crate::NamedBaselinesOf::absent()),
+                .with_named_baselines(named_block_baselines(
+                    node,
+                    &style,
+                    &constants,
+                    Size::new(width, height),
+                    crate::NamedBaselinesOf::absent(),
+                )?),
             used: input,
             floats: None,
         });
@@ -355,7 +367,13 @@ where
             Size::ZERO,
             final_pass.baselines,
         )
-        .with_named_baselines(final_pass.named_baselines);
+        .with_named_baselines(named_block_baselines(
+            node,
+            &style,
+            &final_constants,
+            output_size,
+            final_pass.named_baselines,
+        )?);
         output.block_margin_collapse = block_margin_collapse;
         Ok(BlockResult {
             output,
@@ -412,7 +430,13 @@ where
             published_scroll.content_size,
             final_pass.baselines,
         )
-        .with_named_baselines(final_pass.named_baselines);
+        .with_named_baselines(named_block_baselines(
+            node,
+            &style,
+            &final_constants,
+            output_size,
+            final_pass.named_baselines,
+        )?);
         output.scroll_geometry = Some(published_scroll.geometry);
         output.block_margin_collapse = block_margin_collapse;
         Ok(BlockResult {
@@ -797,6 +821,61 @@ impl<S: LayoutScalar> Constants<S> {
             input,
         )
     }
+}
+
+fn named_block_baselines<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    style: &BlockContainerProjection<'_, S>,
+    constants: &Constants<S>,
+    size: Size<S>,
+    mut facts: crate::NamedBaselinesOf<S>,
+) -> LayoutResultOf<Node, crate::NamedBaselinesOf<S>, S, M> {
+    let used = crate::scroll::UsedOverflow::from_computed(
+        style.common.overflow,
+        style.common.item_is_replaced,
+    );
+    if !used.is_scroll_container() {
+        return Ok(facts);
+    }
+    let numeric_error = |crate::FiniteScalarErrorOf::NonFinite { value }| {
+        crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(node),
+            crate::LayoutOperation::ChildLayout,
+            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::InvalidNumeric {
+                value,
+            }),
+        )
+    };
+    // Positional facts already use Layout's canonical ZERO INITIAL ANCHOR,
+    // after actual content alignment. Range extrema/padding are not offsets.
+    // The exceptional exterior edge is not translated by its own scroll.
+    if style.baseline_source == crate::BaselineSource::Auto
+        && style.display.inner_display() == crate::Display::Block
+        && !style.common.item_is_replaced
+    {
+        let end_margin = constants.own_bottom_margin.resolve();
+        let coordinate = match constants.flow_axes.block_end() {
+            crate::PhysicalSide::Top | crate::PhysicalSide::Left => -end_margin,
+            crate::PhysicalSide::Bottom => size.height + end_margin,
+            crate::PhysicalSide::Right => size.width + end_margin,
+        };
+        let edge = crate::BaselineFactOf::Available(
+            crate::BaselineCoordinateOf::try_new(constants.flow_axes.block_axis(), coordinate)
+                .map_err(numeric_error)?,
+        );
+        for name in [
+            crate::BaselineName::Alphabetic,
+            crate::BaselineName::Central,
+        ] {
+            facts = facts.with(
+                name,
+                crate::BaselinePairOf::new(facts.get(name).first(), edge),
+            );
+        }
+    }
+    // Clamp known content and exceptional coordinates in THIS border frame;
+    // a parent subsequently translates them once. Unknown/Absent stay intact.
+    facts.clamped_to_border(size).map_err(numeric_error)
 }
 
 #[cfg(test)]

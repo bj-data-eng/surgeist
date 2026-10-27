@@ -97,10 +97,12 @@ for each name: `Unknown`, genuinely `Absent`, or `Available`. Generic
 `BaselinesOf` projections do not establish named authority. A missing generic
 scalar likewise cannot prove named absence.
 
-The named consumer uses the matching first baseline, or the last when the
-first is genuinely absent. If both are absent, Layout synthesizes alphabetic
-at the line-under margin edge and central midway between line-over and
-line-under margin edges. Signed used margins remain part of that geometry.
+The child's non-inherited `NodeInputOf::baseline_source` selects its matching
+set. `BaselineSource::Auto` selects last for an inline-block and first otherwise;
+`First` and `Last` select their respective sets explicitly. Only that set is
+consulted. If the selected fact is genuinely absent, Layout synthesizes
+alphabetic at the line-under margin edge and central midway between line-over
+and line-under margin edges. Signed used margins remain part of that geometry.
 Unknown authority refuses the request; a coordinate on an incompatible axis
 is an input error. First/last output facts follow the actual eligible line
 and retain their name and physical reference through box translation.
@@ -110,9 +112,21 @@ anchor, including when nested local positions round independently. Top/bottom
 content without a named baseline contribution establishes extents, while its
 named anchor remains unknown.
 
+For a block scroll container with `baseline_source: Auto`, the last set places
+both names at its own signed block-end margin edge. Layout then clamps exported
+available coordinates to that container's border interval. Explicit `First` or
+`Last` uses content-derived facts, with the same clamp; a synthesized fallback
+is also clamped when consumed. `Clip` alone does not create a scroll container
+or invoke these rules. Classification follows the adopted overflow-pair model.
+Each scrolling descendant exports its facts before its parent translates them.
+These coordinates use Layout's canonical initial-placement frame; current scroll
+offsets are not Layout inputs. See the pinned
+[baseline export rules](../../../references/css-align-3--WD-css-align-3-20260130--7361249cbb73.md#baseline-export)
+and [source selection](../../../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#baseline-source).
+
 `InlineMetricsOf` constructors require an explicit reference for their control
 strut. Baseline-aligned controls must match the line's reference; top/bottom
-alignment uses their real extents. Context and metric-reference changes use
+alignment uses their real extents. Context, source and metric-reference changes use
 the ordinary changed-node invalidation contract, and cached computation
 outputs retain their named facts.
 References also survive forced-line metric carry. A control's reference becomes

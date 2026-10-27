@@ -769,6 +769,7 @@ fn authority_refusals<S: l::LayoutScalar>() {
             let mut outer = atomic(h, d, 0.0, (0.0, 0.0));
             outer.size.height = l::PreferredSizeOf::AUTO;
             outer.inline_baseline_context = alpha;
+            outer.baseline_source = l::BaselineSource::First;
             let wrapper_id = parent.push(Some(0), l::LayoutInputOf::box_input(outer));
             parent.push(Some(wrapper_id), l::LayoutInputOf::line_break(control));
             if has_tail {
@@ -1350,4 +1351,624 @@ fn inline_block_default_auto_uses_last_named_baseline_f32() {
 #[test]
 fn inline_block_default_auto_uses_last_named_baseline_f64() {
     inline_block_default_last::<f64>();
+}
+
+fn source_fact<S: l::LayoutScalar>(fact: l::BaselineFactOf<S>, axis: l::PhysicalAxis, value: f64) {
+    match fact {
+        l::BaselineFactOf::Available(coordinate) => {
+            assert_eq!(coordinate.axis(), axis);
+            assert_eq!(coordinate.offset(), n(value));
+        }
+        other => panic!("expected actual named coordinate {value}, got {other:?}"),
+    }
+}
+fn source_block<S: l::LayoutScalar>(
+    name: l::BaselineName,
+    height: Option<f64>,
+) -> l::NodeInputOf<S> {
+    let mut input = root(
+        l::WritingMode::HorizontalTb,
+        l::Direction::Ltr,
+        l::InlineBaselineContext::Named(name),
+    );
+    input.size.width = px(20.0);
+    input.size.height = height.map_or(l::PreferredSizeOf::AUTO, px);
+    input
+}
+fn source_line<S: l::LayoutScalar>(
+    host: &mut Host<S>,
+    parent: u32,
+    name: l::BaselineName,
+    height: f64,
+) -> u32 {
+    let line = host.push(
+        Some(parent),
+        l::LayoutInputOf::box_input(source_block(name, None)),
+    );
+    host.push(
+        Some(line),
+        l::LayoutInputOf::box_input(atomic(
+            l::WritingMode::HorizontalTb,
+            l::Direction::Ltr,
+            height,
+            (0.0, 0.0),
+        )),
+    );
+    line
+}
+fn source_parent<S: l::LayoutScalar>(
+    name: l::BaselineName,
+    peer: f64,
+    source: l::BaselineSource,
+    overflow: l::ComputedOverflow,
+    margin: f64,
+) -> Host<S> {
+    let mode = l::WritingMode::HorizontalTb;
+    let context = l::InlineBaselineContext::Named(name);
+    let mut host = Host::new(root(mode, l::Direction::Ltr, context));
+    assert_eq!(
+        host.push(
+            Some(0),
+            l::LayoutInputOf::box_input(atomic(mode, l::Direction::Ltr, peer, (0.0, 0.0)))
+        ),
+        1
+    );
+    let mut wrapper = atomic(mode, l::Direction::Ltr, 40.0, (0.0, margin));
+    wrapper.inline_baseline_context = context;
+    wrapper.baseline_source = source;
+    wrapper.overflow = overflow;
+    assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(wrapper)), 2);
+    host
+}
+fn source_content<S: l::LayoutScalar>(
+    host: &mut Host<S>,
+    name: l::BaselineName,
+    spacer: f64,
+    last: f64,
+) {
+    source_line(host, 2, name, 10.0);
+    host.push(
+        Some(2),
+        l::LayoutInputOf::box_input(source_block(name, Some(spacer))),
+    );
+    source_line(host, 2, name, last);
+}
+fn source_rectangles<S: l::LayoutScalar>(
+    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    height: f64,
+    peer: f64,
+    wrapper: f64,
+) {
+    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        assert_eq!(
+            node(entries, 0).size,
+            l::Size::new(n(100.0), n(height)),
+            "expected root height{height}, peer y{peer}, wrapper y{wrapper}"
+        );
+        assert_eq!(node(entries, 1).location, l::Point::new(S::ZERO, n(peer)));
+        assert_eq!(
+            node(entries, 2).location,
+            l::Point::new(n(20.0), n(wrapper))
+        );
+        assert_eq!(node(entries, 2).size, l::Size::new(n(20.0), n(40.0)));
+        for id in 0..u32::try_from(entries.len()).unwrap() {
+            node(entries, id);
+        }
+        assert_eq!(node(entries, 1).source_index, l::SourceIndex::new(0));
+        assert_eq!(node(entries, 2).source_index, l::SourceIndex::new(1));
+    }
+    assert!(batch.placed_text().is_empty());
+    assert!(batch.final_inline_fragments().is_empty());
+}
+
+fn source_override_cache<S: l::LayoutScalar>() {
+    let mode = l::WritingMode::HorizontalTb;
+    let name = l::BaselineName::Alphabetic;
+    let visible = l::ComputedOverflow::try_new(l::Overflow::Visible, l::Overflow::Visible).unwrap();
+    let fixture = |source| {
+        let mut host = source_parent::<S>(name, 30.0, source, visible, 0.0);
+        host.change(2, |input| input.size.height = l::PreferredSizeOf::AUTO);
+        let mut first = atomic(mode, l::Direction::Ltr, 10.0, (0.0, 0.0));
+        first.size.width = px(10.0);
+        first.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
+            t::BidiLevel::try_new(0).unwrap(),
+            l::InlineBreakOpportunity::Mandatory,
+        ));
+        host.push(Some(2), l::LayoutInputOf::box_input(first));
+        let mut last = atomic(mode, l::Direction::Ltr, 20.0, (0.0, 0.0));
+        last.size.width = px(10.0);
+        host.push(Some(2), l::LayoutInputOf::box_input(last));
+        host
+    };
+    assert_eq!(l::BaselineSource::default(), l::BaselineSource::Auto);
+    let mut host = fixture(l::BaselineSource::Auto);
+    let initial = host.compute(mode, &[]).unwrap();
+    let initial_semantics = semantic(&initial);
+    initial.apply_to(&mut host).unwrap();
+    let old_hits: usize = host.hits.iter().map(Cell::get).sum();
+    let warm = host.compute(mode, &[]).unwrap();
+    assert_eq!(semantic(&warm), initial_semantics);
+    assert!(host.hits.iter().map(Cell::get).sum::<usize>() > old_hits);
+    warm.apply_to(&mut host).unwrap();
+    for (source, height, y) in [
+        (l::BaselineSource::First, 50.0, 20.0),
+        (l::BaselineSource::Last, 30.0, 0.0),
+        (l::BaselineSource::Auto, 30.0, 0.0),
+    ] {
+        host.change(2, |input| input.baseline_source = source);
+        let changed = host.compute(mode, &[2]).unwrap();
+        let fresh = fixture(source).compute(mode, &[]).unwrap();
+        assert_eq!(semantic(&changed), semantic(&fresh));
+        for entries in [changed.unrounded_entries(), changed.final_entries()] {
+            assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(height)));
+            assert_eq!(node(entries, 2).location, l::Point::new(n(20.0), n(y)));
+            let pair = node(entries, 2).named_baselines.get(name);
+            source_fact(pair.first(), l::PhysicalAxis::Vertical, 10.0);
+            source_fact(pair.last(), l::PhysicalAxis::Vertical, 30.0);
+        }
+        changed.apply_to(&mut host).unwrap();
+        // This declaration is not inherited: changing ONLY the parent must
+        // preserve the real child's chosen source and intrinsic10/30 table.
+        for parent_source in [l::BaselineSource::First, l::BaselineSource::Last] {
+            host.change(0, |input| input.baseline_source = parent_source);
+            let parent_changed = host.compute(mode, &[0]).unwrap();
+            assert_eq!(semantic(&parent_changed), semantic(&changed));
+            parent_changed.apply_to(&mut host).unwrap();
+        }
+        assert_eq!(semantic(&initial), initial_semantics);
+    }
+}
+#[test]
+fn named_source_overrides_noninheritance_and_real_cache_f32() {
+    source_override_cache::<f32>();
+}
+#[test]
+fn named_source_overrides_noninheritance_and_real_cache_f64() {
+    source_override_cache::<f64>();
+}
+
+fn source_unknown_selection<S: l::LayoutScalar>() {
+    let mode = l::WritingMode::HorizontalTb;
+    let name = l::BaselineName::Alphabetic;
+    let visible = l::ComputedOverflow::try_new(l::Overflow::Visible, l::Overflow::Visible).unwrap();
+    for unknown_first in [true, false] {
+        for source in [
+            l::BaselineSource::Auto,
+            l::BaselineSource::First,
+            l::BaselineSource::Last,
+        ] {
+            let mut host = source_parent::<S>(name, 30.0, source, visible, 0.0);
+            host.change(2, |input| input.size.height = l::PreferredSizeOf::AUTO);
+            let top_only = |host: &mut Host<S>| {
+                let child = host.push(
+                    Some(2),
+                    l::LayoutInputOf::box_input(source_block(name, None)),
+                );
+                host.push(
+                    Some(child),
+                    l::LayoutInputOf::line_break(
+                        l::LineBreakInputOf::new()
+                            .with_metrics(
+                                l::InlineMetricsOf::try_new(
+                                    l::InlineBaselineContext::Physical,
+                                    n(8.0),
+                                    n(10.0),
+                                )
+                                .unwrap(),
+                            )
+                            .with_vertical_align(l::VerticalAlign::Top),
+                    ),
+                );
+            };
+            if unknown_first {
+                top_only(&mut host);
+                source_line(&mut host, 2, name, 6.0);
+            } else {
+                source_line(&mut host, 2, name, 6.0);
+                top_only(&mut host);
+            }
+            let chooses_first = source == l::BaselineSource::First;
+            if chooses_first == unknown_first {
+                // Publish the genuine available opposite set first. A refused
+                // source change may not replace that completed packet or caches.
+                host.change(2, |input| {
+                    input.baseline_source = if unknown_first {
+                        l::BaselineSource::Last
+                    } else {
+                        l::BaselineSource::First
+                    };
+                });
+                let prior = host.compute(mode, &[]).unwrap();
+                let prior_semantics = semantic(&prior);
+                prior.apply_to(&mut host).unwrap();
+                let counts = (host.prepares.get(), host.commits);
+                host.change(2, |input| input.baseline_source = source);
+                missing(host.compute(mode, &[2]));
+                assert_eq!((host.prepares.get(), host.commits), counts);
+                assert_eq!(
+                    semantic(host.published.batch.as_ref().unwrap()),
+                    prior_semantics
+                );
+                assert_eq!(semantic(&prior), prior_semantics);
+            } else {
+                let batch = host.compute(mode, &[]).unwrap();
+                for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                    assert_eq!(node(entries, 2).size.height, n(16.0));
+                    let pair = node(entries, 2).named_baselines.get(name);
+                    if unknown_first {
+                        assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
+                        source_fact(pair.last(), l::PhysicalAxis::Vertical, 16.0);
+                        assert_eq!(node(entries, 0).size.height, n(30.0));
+                        assert_eq!(node(entries, 2).location.y, n(14.0));
+                    } else {
+                        source_fact(pair.first(), l::PhysicalAxis::Vertical, 6.0);
+                        assert_eq!(pair.last(), l::BaselineFactOf::Unknown);
+                        assert_eq!(node(entries, 0).size.height, n(40.0));
+                        assert_eq!(node(entries, 2).location.y, n(24.0));
+                    }
+                }
+            }
+        }
+    }
+}
+#[test]
+fn named_source_selected_unknown_never_borrows_opposite_fact_f32() {
+    source_unknown_selection::<f32>();
+}
+#[test]
+fn named_source_selected_unknown_never_borrows_opposite_fact_f64() {
+    source_unknown_selection::<f64>();
+}
+
+fn source_absent_and_empty_scroll<S: l::LayoutScalar>() {
+    let mode = l::WritingMode::HorizontalTb;
+    let name = l::BaselineName::Central;
+    let visible = l::ComputedOverflow::try_new(l::Overflow::Visible, l::Overflow::Visible).unwrap();
+    let hidden = l::ComputedOverflow::try_new(l::Overflow::Hidden, l::Overflow::Hidden).unwrap();
+    for child_overflow in [l::Overflow::Hidden, l::Overflow::Scroll, l::Overflow::Auto] {
+        for (source, height, peer) in [
+            (l::BaselineSource::First, 40.0, 10.0),
+            (l::BaselineSource::Last, 50.0, 30.0),
+            (l::BaselineSource::Auto, 50.0, 30.0),
+        ] {
+            let mut host = source_parent::<S>(name, 20.0, source, visible, 0.0);
+            let mut child = source_block(name, Some(40.0));
+            child.overflow = l::ComputedOverflow::try_new(child_overflow, child_overflow).unwrap();
+            host.push(Some(2), l::LayoutInputOf::box_input(child));
+            let batch = host.compute(mode, &[]).unwrap();
+            source_rectangles(&batch, height, peer, 0.0);
+            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                for id in [2, 3] {
+                    let pair = node(entries, id).named_baselines.get(name);
+                    assert_eq!(pair.first(), l::BaselineFactOf::Absent);
+                    source_fact(pair.last(), l::PhysicalAxis::Vertical, 40.0);
+                }
+            }
+        }
+    }
+    // Explicit source disables the exceptional Auto set. Its selected genuine
+    // Absent must synthesize from the margin box, THEN clamp that synthesized
+    // result for a scroll container; merely clamping Available exports misses it.
+    for source in [l::BaselineSource::First, l::BaselineSource::Last] {
+        for (name, margin, height, y, coordinate) in [
+            (l::BaselineName::Alphabetic, 8.0, 68.0, 20.0, 40.0),
+            (l::BaselineName::Alphabetic, -6.0, 60.0, 26.0, 34.0),
+            (l::BaselineName::Central, 8.0, 60.0, 6.0, 24.0),
+            (l::BaselineName::Central, -6.0, 60.0, 13.0, 17.0),
+        ] {
+            let host = source_parent::<S>(name, 60.0, source, hidden, margin);
+            let batch = host.compute(mode, &[]).unwrap();
+            source_rectangles(&batch, height, 0.0, y);
+            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                absent(node(entries, 2).named_baselines);
+                // The actual parent anchor proves the used clamped coordinate
+                // without replacing the child's genuine Absent facts.
+                let parent = if name == l::BaselineName::Alphabetic {
+                    60.0
+                } else {
+                    30.0
+                };
+                named(
+                    node(entries, 0).named_baselines,
+                    name,
+                    l::PhysicalAxis::Vertical,
+                    parent,
+                );
+                assert_eq!(node(entries, 2).location.y + n::<S>(coordinate), n(parent));
+            }
+        }
+    }
+}
+#[test]
+fn named_source_absent_slot_and_empty_scroll_fallback_clamp_f32() {
+    source_absent_and_empty_scroll::<f32>();
+}
+#[test]
+fn named_source_absent_slot_and_empty_scroll_fallback_clamp_f64() {
+    source_absent_and_empty_scroll::<f64>();
+}
+
+fn source_scroll_content<S: l::LayoutScalar>() {
+    let mode = l::WritingMode::HorizontalTb;
+    let hidden = l::ComputedOverflow::try_new(l::Overflow::Hidden, l::Overflow::Hidden).unwrap();
+    for (name, source, margin, height, peer, y, last) in [
+        (
+            l::BaselineName::Alphabetic,
+            l::BaselineSource::Auto,
+            8.0,
+            68.0,
+            0.0,
+            20.0,
+            40.0,
+        ),
+        (
+            l::BaselineName::Alphabetic,
+            l::BaselineSource::Auto,
+            -6.0,
+            60.0,
+            0.0,
+            26.0,
+            34.0,
+        ),
+        (
+            l::BaselineName::Alphabetic,
+            l::BaselineSource::Auto,
+            -50.0,
+            60.0,
+            0.0,
+            60.0,
+            0.0,
+        ),
+        (
+            l::BaselineName::Central,
+            l::BaselineSource::Auto,
+            8.0,
+            70.0,
+            10.0,
+            0.0,
+            40.0,
+        ),
+        (
+            l::BaselineName::Central,
+            l::BaselineSource::Auto,
+            -6.0,
+            64.0,
+            4.0,
+            0.0,
+            34.0,
+        ),
+        (
+            l::BaselineName::Central,
+            l::BaselineSource::Auto,
+            -50.0,
+            60.0,
+            0.0,
+            30.0,
+            0.0,
+        ),
+        (
+            l::BaselineName::Alphabetic,
+            l::BaselineSource::First,
+            0.0,
+            90.0,
+            0.0,
+            50.0,
+            24.0,
+        ),
+        (
+            l::BaselineName::Alphabetic,
+            l::BaselineSource::Last,
+            0.0,
+            76.0,
+            0.0,
+            36.0,
+            24.0,
+        ),
+        (
+            l::BaselineName::Central,
+            l::BaselineSource::First,
+            0.0,
+            65.0,
+            0.0,
+            25.0,
+            19.0,
+        ),
+        (
+            l::BaselineName::Central,
+            l::BaselineSource::Last,
+            0.0,
+            60.0,
+            0.0,
+            11.0,
+            19.0,
+        ),
+    ] {
+        let mut host = source_parent::<S>(name, 60.0, source, hidden, margin);
+        source_content(&mut host, name, 4.0, 10.0);
+        let batch = host.compute(mode, &[]).unwrap();
+        source_rectangles(&batch, height, peer, y);
+        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            assert_eq!(node(entries, 3).location.y, S::ZERO);
+            assert_eq!(node(entries, 5).location.y, n(10.0));
+            assert_eq!(node(entries, 6).location.y, n(14.0));
+            let pair = node(entries, 2).named_baselines.get(name);
+            source_fact(
+                pair.first(),
+                l::PhysicalAxis::Vertical,
+                if name == l::BaselineName::Alphabetic {
+                    10.0
+                } else {
+                    5.0
+                },
+            );
+            source_fact(pair.last(), l::PhysicalAxis::Vertical, last);
+            if source == l::BaselineSource::Auto {
+                for exceptional_name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+                    source_fact(
+                        node(entries, 2)
+                            .named_baselines
+                            .get(exceptional_name)
+                            .last(),
+                        l::PhysicalAxis::Vertical,
+                        last,
+                    );
+                }
+            }
+        }
+    }
+}
+#[test]
+fn named_source_actual_scroll_sets_and_signed_margins_f32() {
+    source_scroll_content::<f32>();
+}
+#[test]
+fn named_source_actual_scroll_sets_and_signed_margins_f64() {
+    source_scroll_content::<f64>();
+}
+
+fn source_clip_and_nested<S: l::LayoutScalar>() {
+    let mode = l::WritingMode::HorizontalTb;
+    let hidden = l::ComputedOverflow::try_new(l::Overflow::Hidden, l::Overflow::Hidden).unwrap();
+    for overflow in [
+        l::ComputedOverflow::try_new(l::Overflow::Clip, l::Overflow::Clip).unwrap(),
+        l::ComputedOverflow::try_new(l::Overflow::Visible, l::Overflow::Clip).unwrap(),
+        hidden,
+    ] {
+        let scroll = overflow == hidden;
+        for (name, height, peer, y, last) in [
+            (
+                l::BaselineName::Alphabetic,
+                60.0,
+                0.0,
+                if scroll { 20.0 } else { 5.0 },
+                if scroll { 40.0 } else { 55.0 },
+            ),
+            (
+                l::BaselineName::Central,
+                if scroll { 70.0 } else { 75.0 },
+                if scroll { 10.0 } else { 15.0 },
+                0.0,
+                if scroll { 40.0 } else { 45.0 },
+            ),
+        ] {
+            for source in [l::BaselineSource::Last, l::BaselineSource::Auto] {
+                let mut host = source_parent::<S>(name, 60.0, source, overflow, 0.0);
+                source_content(&mut host, name, 25.0, 20.0);
+                let batch = host.compute(mode, &[]).unwrap();
+                source_rectangles(&batch, height, peer, y);
+                for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                    source_fact(
+                        node(entries, 2).named_baselines.get(name).last(),
+                        l::PhysicalAxis::Vertical,
+                        last,
+                    );
+                    assert_eq!(node(entries, 6).location.y, n(35.0));
+                }
+            }
+        }
+    }
+    // Only Alphabetic exceeds40: Central35 must not be replaced by40.
+    for (name, last) in [
+        (l::BaselineName::Alphabetic, 40.0),
+        (l::BaselineName::Central, 35.0),
+    ] {
+        let mut host = source_parent::<S>(name, 60.0, l::BaselineSource::Last, hidden, 0.0);
+        source_content(&mut host, name, 15.0, 20.0);
+        let batch = host.compute(mode, &[]).unwrap();
+        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            source_fact(
+                node(entries, 2).named_baselines.get(name).last(),
+                l::PhysicalAxis::Vertical,
+                last,
+            );
+        }
+    }
+    for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+        for outer_scroll in [false, true] {
+            let mut host = Host::<S>::new(source_block(name, None));
+            host.change(0, |input| {
+                input.size.width = px(100.0);
+                input.size.height = px(if outer_scroll { 45.0 } else { 50.0 });
+                input.baseline_source = l::BaselineSource::Last;
+                if outer_scroll {
+                    input.overflow = hidden;
+                }
+            });
+            host.push(
+                Some(0),
+                l::LayoutInputOf::box_input(source_block(name, Some(10.0))),
+            );
+            let mut child = source_block(name, Some(40.0));
+            child.overflow = hidden;
+            child.baseline_source = l::BaselineSource::Last;
+            assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(child)), 2);
+            source_content(&mut host, name, 25.0, 20.0);
+            let batch = host.compute(mode, &[]).unwrap();
+            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                assert_eq!(node(entries, 2).location.y, n(10.0));
+                source_fact(
+                    node(entries, 2).named_baselines.get(name).last(),
+                    l::PhysicalAxis::Vertical,
+                    40.0,
+                );
+                source_fact(
+                    node(entries, 0).named_baselines.get(name).last(),
+                    l::PhysicalAxis::Vertical,
+                    if outer_scroll { 45.0 } else { 50.0 },
+                );
+            }
+        }
+    }
+}
+#[test]
+fn named_source_clip_individual_clamp_and_nested_initial_frames_f32() {
+    source_clip_and_nested::<f32>();
+}
+#[test]
+fn named_source_clip_individual_clamp_and_nested_initial_frames_f64() {
+    source_clip_and_nested::<f64>();
+}
+
+fn source_vertical_lr<S: l::LayoutScalar>() {
+    let mode = l::WritingMode::VerticalLr;
+    for (name, extent, peer_x) in [
+        (l::BaselineName::Alphabetic, 100.0, 40.0),
+        (l::BaselineName::Central, 70.0, 10.0),
+    ] {
+        let mut host = Host::<S>::new(root(
+            mode,
+            l::Direction::Ltr,
+            l::InlineBaselineContext::Named(name),
+        ));
+        host.push(
+            Some(0),
+            l::LayoutInputOf::box_input(atomic(mode, l::Direction::Ltr, 60.0, (0.0, 0.0))),
+        );
+        let mut wrapper = atomic(mode, l::Direction::Ltr, 40.0, (0.0, 0.0));
+        // VerticalLr block-end is physical RIGHT; alphabetic under is LEFT.
+        wrapper.margin.right = l::LengthAutoOf::value(l::LengthPercentageOf::px(n(8.0)).unwrap());
+        wrapper.overflow =
+            l::ComputedOverflow::try_new(l::Overflow::Hidden, l::Overflow::Hidden).unwrap();
+        host.push(Some(0), l::LayoutInputOf::box_input(wrapper));
+        let batch = host.compute(mode, &[]).unwrap();
+        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            assert_eq!(node(entries, 0).size, l::Size::new(n(extent), n(100.0)));
+            assert_eq!(node(entries, 1).location, l::Point::new(n(peer_x), S::ZERO));
+            assert_eq!(node(entries, 2).location, l::Point::new(S::ZERO, n(20.0)));
+            assert_eq!(node(entries, 2).size, l::Size::new(n(40.0), n(20.0)));
+            for exceptional_name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
+                let pair = node(entries, 2).named_baselines.get(exceptional_name);
+                assert_eq!(pair.first(), l::BaselineFactOf::Absent);
+                source_fact(pair.last(), l::PhysicalAxis::Horizontal, 40.0);
+            }
+        }
+    }
+}
+#[test]
+fn named_source_vertical_lr_empty_scroll_uses_block_end_for_both_names_f32() {
+    source_vertical_lr::<f32>();
+}
+#[test]
+fn named_source_vertical_lr_empty_scroll_uses_block_end_for_both_names_f64() {
+    source_vertical_lr::<f64>();
 }

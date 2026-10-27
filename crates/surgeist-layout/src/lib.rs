@@ -304,10 +304,10 @@ pub use measurement::{
     MeasurementAvailable, MeasurementAvailableOf, compute_leaf,
 };
 pub use node_input::{
-    AlignContent, AlignItems, AtomicInlineParticipation, BlockFlowContext, BlockGeneration,
-    BoxSizing, Clear, ComputedOverflow, ComputedOverflowError, Direction, Display, FlexDirection,
-    FlexGrow, FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap, Float,
-    FloatExclusion, FloatExclusionInterval, FloatExclusionIntervalError,
+    AlignContent, AlignItems, AtomicInlineParticipation, BaselineSource, BlockFlowContext,
+    BlockGeneration, BoxSizing, Clear, ComputedOverflow, ComputedOverflowError, Direction, Display,
+    FlexDirection, FlexGrow, FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap,
+    Float, FloatExclusion, FloatExclusionInterval, FloatExclusionIntervalError,
     FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQuery,
     FloatExclusionQueryOf, GridAutoFlow, GridFlowTolerance, GridFlowToleranceOf, GridPlacement,
     InlineBaselineContext, InlineBaselineError, InlineBoundaryEdge, InlineBoundaryEdgeOf,

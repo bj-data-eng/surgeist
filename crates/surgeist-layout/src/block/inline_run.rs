@@ -1702,14 +1702,15 @@ fn atomic_inline_box_participant<S: LayoutScalar, M>(
         && child_style.vertical_align == VerticalAlign::Baseline
     {
         let pair = output.named_baselines.get(name);
-        let fact = if block_overflow.value() != Overflow::Visible {
-            crate::BaselineFactOf::Absent
+        let fact = if child_style
+            .baseline_source
+            .prefers_last(child_style.display)
+        {
+            pair.last()
         } else {
-            match pair.first() {
-                crate::BaselineFactOf::Absent => pair.last(),
-                first => first,
-            }
+            pair.first()
         };
+        let synthesized = matches!(fact, crate::BaselineFactOf::Absent);
         let physical = match fact {
             crate::BaselineFactOf::Unknown => {
                 return Err(LayoutErrorKindOf::MissingContext(
@@ -1751,6 +1752,16 @@ fn atomic_inline_box_participant<S: LayoutScalar, M>(
                 LayoutInvalidInputOf::InvalidNumeric { value: physical },
             ));
         }
+        let physical = if synthesized && used_overflow.is_scroll_container() {
+            crate::BaselineCoordinateOf::try_new(containing_flow_axes.block_axis(), physical)
+                .and_then(|coordinate| coordinate.clamped_to_border(output.size))
+                .map_err(|crate::FiniteScalarErrorOf::NonFinite { value }| {
+                    LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value })
+                })?
+                .offset()
+        } else {
+            physical
+        };
         let logical = if containing_flow_axes
             .logical_axis_progression(crate::LogicalAxis::Block)
             .is_decreasing()

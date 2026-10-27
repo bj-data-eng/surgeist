@@ -54,6 +54,10 @@ pub enum surgeist_layout::BaselineFactOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::BaselineFactOf::Absent
 pub surgeist_layout::BaselineFactOf::Available(surgeist_layout::BaselineCoordinateOf<S>)
 pub surgeist_layout::BaselineFactOf::Unknown
+pub enum surgeist_layout::BaselineSource
+pub surgeist_layout::BaselineSource::Auto
+pub surgeist_layout::BaselineSource::First
+pub surgeist_layout::BaselineSource::Last
 pub enum surgeist_layout::BlockFlowContext
 pub surgeist_layout::BlockFlowContext::Independent
 pub surgeist_layout::BlockFlowContext::Normal
@@ -1432,6 +1436,7 @@ pub surgeist_layout::NodeInputOf::align_items: core::option::Option<surgeist_lay
 pub surgeist_layout::NodeInputOf::align_self: core::option::Option<surgeist_layout::AlignItems>
 pub surgeist_layout::NodeInputOf::aspect_ratio: core::option::Option<surgeist_layout::AspectRatioOf<S>>
 pub surgeist_layout::NodeInputOf::atomic_inline_participation: core::option::Option<surgeist_layout::AtomicInlineParticipation>
+pub surgeist_layout::NodeInputOf::baseline_source: surgeist_layout::BaselineSource
 pub surgeist_layout::NodeInputOf::block_flow_context: surgeist_layout::BlockFlowContext
 pub surgeist_layout::NodeInputOf::block_generation: surgeist_layout::BlockGeneration
 pub surgeist_layout::NodeInputOf::border: surgeist_layout::Edges<surgeist_layout::LengthOf<S>>

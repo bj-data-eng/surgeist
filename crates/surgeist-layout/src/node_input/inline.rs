@@ -12,6 +12,26 @@ pub enum InlineBaselineContext {
     Named(crate::BaselineName),
 }
 
+/// The child's own, non-inherited choice of alignment baseline set.
+/// This preference applies to named matching, not raw Physical projections.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum BaselineSource {
+    #[default]
+    Auto,
+    First,
+    Last,
+}
+
+impl BaselineSource {
+    pub(crate) fn prefers_last(self, display: super::Display) -> bool {
+        match self {
+            Self::Auto => display == super::Display::InlineBlock,
+            Self::First => false,
+            Self::Last => true,
+        }
+    }
+}
+
 /// A supplied baseline fact cannot be used in this containing context.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InlineBaselineError {
