@@ -382,6 +382,10 @@ fn balancing_real_phrase_suffix_never_restores_normal_or_emergency_while_ordinar
     let stable = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Stable);
     let repaired = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::AvoidShortLastLine);
     let balanced = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Balance);
+    let pretty = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Pretty);
+    // Tail improves the genuine final pair to40/50. Body cannot reduce the
+    // protected final50, and every observed trial retains ordinary authority.
+    assert_eq!(ordinary_facts(&pretty), [(5, 40.0), (10, 50.0)]);
     assert_eq!(ordinary_facts(&auto), [(7, 60.0), (10, 30.0)]);
     assert_eq!(ordinary_facts(&stable), [(7, 60.0), (10, 30.0)]);
     assert_eq!(ordinary_facts(&repaired), [(5, 40.0), (10, 50.0)]);
@@ -533,6 +537,10 @@ fn balancing_fitting_words_keeps_ordinary_hyphen_trials_out_of_conditional_stage
     );
     let auto = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Auto);
     let balanced = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Balance);
+    let pretty = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Pretty);
+    // The genuine whole-word cut improves60/45 to50/55; Body cannot undo the
+    // protected final55 to explore conditional Normal/Anywhere opportunities.
+    assert_eq!(ordinary_facts(&pretty), [(11, 50.0), (22, 55.0)]);
     assert_eq!(ordinary_facts(&auto), [(13, 60.0), (22, 45.0)]);
     assert_eq!(ordinary_facts(&balanced), [(11, 50.0), (22, 55.0)]);
     assert_eq!(ordinary_facts(&auto), [(13, 60.0), (22, 45.0)]);
