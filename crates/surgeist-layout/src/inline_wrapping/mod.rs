@@ -227,6 +227,8 @@ impl AvoidClass {
             .map_or((0, usize::MAX), |i| self.ancestry.intervals[i])
     }
     fn subset(&self, other: &Self) -> bool {
+        #[cfg(test)]
+        work_tests::record_subset();
         let inside = match (self.scope, other.scope) {
             (None, _) => true,
             (Some(_), None) => false,
@@ -256,6 +258,8 @@ impl<T> PreferenceFrontier<T> {
         receipt: T,
         prefer: impl Fn(&T, &T) -> Ordering,
     ) -> Result<(), WrappingScopeError> {
+        #[cfg(test)]
+        work_tests::record_offer();
         if !Arc::ptr_eq(&self.ancestry, &class.ancestry) {
             return Err(WrappingScopeError::InconsistentIncidence);
         }
@@ -354,3 +358,5 @@ impl<T> PreferenceFrontier<T> {
 mod edge_preference_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod work_tests;
