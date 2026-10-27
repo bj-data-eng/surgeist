@@ -2,7 +2,7 @@
 
 use std::mem::size_of;
 
-use surgeist_text::{Brush, Layout, RunView};
+use surgeist_text::{Brush, Layout, LineOrientation, RunView};
 
 use crate::{
     Color, Error, GlyphRunLimits, GlyphSynthesis, Layer, NormalizedCoordinate, Paint, Result,
@@ -117,6 +117,11 @@ pub enum TextLayoutCause {
 /// Typed placed-layout adapter refusal; no prefix scene is published.
 #[derive(Debug)]
 pub enum TextLayoutError {
+    /// The actual Text run basis has no qualified Render adapter.
+    UnsupportedOrientation {
+        /// Retained orientation of the run.
+        orientation: LineOrientation,
+    },
     /// An aggregate requirement exceeds its caller-supplied bound.
     Limit {
         /// Bounded resource.
@@ -387,7 +392,17 @@ fn text_glyph(glyph: surgeist_text::GlyphPlacement) -> Result<TextGlyph> {
 
 fn run_transform(run: &RunView<'_>, placement: Transform) -> Result<Transform> {
     let origin = run.origin();
-    Transform::translation(origin.x, origin.y)?.then(placement)
+    let transform = match run.orientation() {
+        LineOrientation::Horizontal => Transform::translation(origin.x, origin.y)?,
+        LineOrientation::Sideways => Transform::try_new([0.0, 1.0, -1.0, 0.0, origin.x, origin.y])?,
+        LineOrientation::Vertical => {
+            return Err(TextLayoutError::UnsupportedOrientation {
+                orientation: run.orientation(),
+            }
+            .into());
+        }
+    };
+    transform.then(placement)
 }
 
 fn decoration_rect(rect: surgeist_text::Rect) -> Result<crate::Rect> {

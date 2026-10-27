@@ -299,7 +299,12 @@ coverage, and `is_collapsed()` compares exact relation cuts. Removed components
 can have distinct cuts and source coverage at the same geometry, without creating
 glyphs or additional wrapping opportunities.
 
-The composed profile is horizontal. `TabContext::FontAdvance` executes the
+Native composition uses horizontal shaping and logical line measurements.
+Explicit placement retains a Horizontal or clockwise Sideways basis;
+[sideways preparation and physical readback](reference.md#clockwise-sideways-placement)
+describe its feature settings, axis coordinates and capability limits. Tab
+origins and spacing requests remain in the local inline frame.
+`TabContext::FontAdvance` executes the
 retained-font U+0009 glyph advance, which can be the actual `.notdef` advance; it is
 not CSS tab stops. `NoTabs` requires actual selected absence. CSS preparation
 uses `TabPreparation::CssStops` and a captured `ParagraphTabReference` containing
@@ -321,7 +326,7 @@ nonzero signs use the same forward grid with the interval's magnitude and exactl
 one threshold bump; this is an explicit native policy. Consumed unknown intrinsic
 phase remains a precise capability refusal. Native whitespace-edge measurements follow the captured
 terminal role and actual line ending; callers do not supply numeric hanging.
-Other whitespace modes, styled boundary barriers and vertical orientation remain
+Other whitespace modes, styled boundary barriers and upright/mixed typography remain
 outside this contribution.
 See the [owning contract](../../../docs/text-layout-contract.md) for phase ownership
 and coherent placement policy, and [reference](reference.md) for supported styles.

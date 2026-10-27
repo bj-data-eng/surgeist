@@ -847,6 +847,8 @@ pub surgeist_text::ProtocolError::UnexpectedControl
 pub surgeist_text::ProtocolError::UnexpectedControl::occurrence: usize
 pub surgeist_text::ProtocolError::UnsupportedContext
 pub surgeist_text::ProtocolError::UnsupportedContext::field: surgeist_text::ProtocolContextField
+pub surgeist_text::ProtocolError::UnsupportedSidewaysAtomic
+pub surgeist_text::ProtocolError::UnsupportedSidewaysAtomic::occurrence: usize
 pub surgeist_text::ProtocolError::UnsupportedStandaloneAnalysis
 pub surgeist_text::ProtocolError::UnsupportedWrappingAnalysis
 pub surgeist_text::ProtocolError::WrappingScopeQuery
@@ -1838,6 +1840,7 @@ pub fn surgeist_text::Layout::metrics(&self) -> surgeist_text::Metrics
 pub fn surgeist_text::Layout::move_cursor(&self, cursor: surgeist_text::Cursor, movement: surgeist_text::Movement) -> surgeist_text::Result<surgeist_text::Cursor>
 pub fn surgeist_text::Layout::move_position(&self, position: &surgeist_text::PlacedPosition, movement: surgeist_text::Movement) -> surgeist_text::Result<surgeist_text::PlacedPosition>
 pub fn surgeist_text::Layout::move_selection(&self, selection: surgeist_text::Selection, movement: surgeist_text::Movement, extend: bool) -> surgeist_text::Result<surgeist_text::Selection>
+pub fn surgeist_text::Layout::orientation(&self) -> surgeist_text::LineOrientation
 pub fn surgeist_text::Layout::painted_selection(&self, selection: surgeist_text::Selection, paint: surgeist_text::SelectionPaint) -> surgeist_text::Result<surgeist_text::PaintedSelectionGeometry>
 pub fn surgeist_text::Layout::position_geometry(&self, position: &surgeist_text::PlacedPosition) -> surgeist_text::Result<surgeist_text::CursorGeometry>
 pub fn surgeist_text::Layout::position_selection(&self, anchor: &surgeist_text::PlacedPosition, focus: &surgeist_text::PlacedPosition) -> surgeist_text::Result<surgeist_text::PlacedSelection>
@@ -1859,7 +1862,8 @@ impl surgeist_text::Line
 pub const fn surgeist_text::Line::baseline(self) -> f64
 pub const fn surgeist_text::Line::bounds(self) -> surgeist_text::Rect
 pub const fn surgeist_text::Line::index(self) -> usize
-pub const fn surgeist_text::Line::new(index: usize, range: surgeist_text::Range, baseline: f64, bounds: surgeist_text::Rect) -> Self
+pub const fn surgeist_text::Line::new(index: usize, range: surgeist_text::Range, baseline: f64, bounds: surgeist_text::Rect, orientation: surgeist_text::LineOrientation) -> Self
+pub const fn surgeist_text::Line::orientation(self) -> surgeist_text::LineOrientation
 pub const fn surgeist_text::Line::range(self) -> surgeist_text::Range
 pub struct surgeist_text::LineAlignmentInsets
 impl surgeist_text::LineAlignmentInsets
@@ -1924,6 +1928,7 @@ pub struct surgeist_text::LineMetricFact
 impl surgeist_text::LineMetricFact
 pub const fn surgeist_text::LineMetricFact::line(self) -> surgeist_text::Line
 pub const fn surgeist_text::LineMetricFact::new(line: surgeist_text::Line) -> Self
+pub const fn surgeist_text::LineMetricFact::orientation(self) -> surgeist_text::LineOrientation
 pub struct surgeist_text::LinePlacement
 pub surgeist_text::LinePlacement::anchor: surgeist_text::LineAnchor
 pub surgeist_text::LinePlacement::atomics: alloc::vec::Vec<surgeist_text::AtomicPlacement>
@@ -1955,7 +1960,8 @@ pub const fn surgeist_text::Metrics::first_baseline(self) -> core::option::Optio
 pub const fn surgeist_text::Metrics::full_width(self) -> f64
 pub const fn surgeist_text::Metrics::last_baseline(self) -> core::option::Option<f64>
 pub const fn surgeist_text::Metrics::line_count(self) -> usize
-pub const fn surgeist_text::Metrics::new(size: surgeist_text::Size, full_width: f64, line_count: usize, first_baseline: core::option::Option<f64>, last_baseline: core::option::Option<f64>, overflow: bool) -> Self
+pub const fn surgeist_text::Metrics::new(size: surgeist_text::Size, full_width: f64, line_count: usize, first_baseline: core::option::Option<f64>, last_baseline: core::option::Option<f64>, overflow: bool, orientation: surgeist_text::LineOrientation) -> Self
+pub const fn surgeist_text::Metrics::orientation(self) -> surgeist_text::LineOrientation
 pub const fn surgeist_text::Metrics::overflow(self) -> bool
 pub const fn surgeist_text::Metrics::size(self) -> surgeist_text::Size
 pub struct surgeist_text::NativeHyphenationConvention
@@ -2097,9 +2103,11 @@ pub const fn surgeist_text::PositionedInlineBox::rect(self) -> surgeist_text::Re
 pub const fn surgeist_text::PositionedInlineBox::vertical_align(self) -> surgeist_text::VerticalAlign
 pub struct surgeist_text::PreparationOptions
 impl surgeist_text::PreparationOptions
+pub const fn surgeist_text::PreparationOptions::orientation(self) -> surgeist_text::LineOrientation
 pub const fn surgeist_text::PreparationOptions::scale(self) -> f32
 pub const fn surgeist_text::PreparationOptions::tabs(self) -> surgeist_text::TabPreparation
 pub fn surgeist_text::PreparationOptions::try_new(scale: f32, tabs: surgeist_text::TabPreparation) -> surgeist_text::Result<Self>
+pub const fn surgeist_text::PreparationOptions::with_orientation(self, orientation: surgeist_text::LineOrientation) -> Self
 impl core::default::Default for surgeist_text::PreparationOptions
 pub fn surgeist_text::PreparationOptions::default() -> Self
 pub struct surgeist_text::PreparedAlternative
@@ -2412,6 +2420,7 @@ pub fn surgeist_text::PreparedText::virtual_separators(&self) -> impl core::iter
 impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::analyzed_source(&self) -> surgeist_text::AnalyzedSource
 pub fn surgeist_text::PreparedText::font_catalogue_identity(&self) -> &surgeist_text::FontCatalogueIdentity
+pub fn surgeist_text::PreparedText::orientation(&self) -> surgeist_text::LineOrientation
 pub fn surgeist_text::PreparedText::preparation_options(&self) -> surgeist_text::PreparationOptions
 pub fn surgeist_text::PreparedText::tab_reference(&self) -> core::option::Option<&surgeist_text::ParagraphTabReference>
 pub fn surgeist_text::PreparedText::terminal_edge(&self) -> surgeist_text::ParagraphTerminalEdge
@@ -2619,6 +2628,7 @@ pub fn surgeist_text::Run::glyphs(&self) -> &[surgeist_text::Glyph]
 pub const fn surgeist_text::Run::line(&self) -> usize
 pub fn surgeist_text::Run::new(line: usize, range: surgeist_text::Range, font: surgeist_text::FontData, style: surgeist_text::Style, brush: surgeist_text::Brush, metrics: surgeist_text::RunMetrics, glyphs: alloc::vec::Vec<surgeist_text::Glyph>) -> Self
 pub const fn surgeist_text::Run::offset(&self) -> f64
+pub const fn surgeist_text::Run::orientation(&self) -> surgeist_text::LineOrientation
 pub const fn surgeist_text::Run::origin(&self) -> surgeist_text::Point
 pub const fn surgeist_text::Run::range(&self) -> surgeist_text::Range
 pub const fn surgeist_text::Run::style(&self) -> &surgeist_text::Style
@@ -2628,16 +2638,18 @@ pub const fn surgeist_text::RunMetricFact::advance(self) -> f64
 pub const fn surgeist_text::RunMetricFact::baseline(self) -> f64
 pub const fn surgeist_text::RunMetricFact::font_size(self) -> f32
 pub const fn surgeist_text::RunMetricFact::line(self) -> usize
-pub const fn surgeist_text::RunMetricFact::new(line: usize, range: surgeist_text::Range, font_size: f32, baseline: f64, offset: f64, advance: f64) -> Self
+pub const fn surgeist_text::RunMetricFact::new(line: usize, range: surgeist_text::Range, font_size: f32, baseline: f64, offset: f64, advance: f64, orientation: surgeist_text::LineOrientation) -> Self
 pub const fn surgeist_text::RunMetricFact::offset(self) -> f64
+pub const fn surgeist_text::RunMetricFact::orientation(self) -> surgeist_text::LineOrientation
 pub const fn surgeist_text::RunMetricFact::range(self) -> surgeist_text::Range
 pub struct surgeist_text::RunMetrics
 impl surgeist_text::RunMetrics
 pub const fn surgeist_text::RunMetrics::advance(self) -> f64
 pub const fn surgeist_text::RunMetrics::baseline(self) -> f64
 pub const fn surgeist_text::RunMetrics::font_size(self) -> f32
-pub const fn surgeist_text::RunMetrics::new(font_size: f32, baseline: f64, offset: f64, advance: f64) -> Self
+pub const fn surgeist_text::RunMetrics::new(font_size: f32, baseline: f64, offset: f64, advance: f64, orientation: surgeist_text::LineOrientation) -> Self
 pub const fn surgeist_text::RunMetrics::offset(self) -> f64
+pub const fn surgeist_text::RunMetrics::orientation(self) -> surgeist_text::LineOrientation
 pub struct surgeist_text::RunView<'a>
 impl surgeist_text::RunView<'_>
 pub fn surgeist_text::RunView<'_>::baseline(&self, expected: &surgeist_text::FontCatalogueIdentity, axis: surgeist_text::FontBaselineAxis, name: surgeist_text::FontBaseline) -> surgeist_text::Result<surgeist_text::FontBaselineMeasurement<'_>>
@@ -2647,6 +2659,7 @@ pub fn surgeist_text::RunView<'_>::face(&self) -> surgeist_text::FontFace<'_>
 pub const fn surgeist_text::RunView<'_>::font_size(&self) -> f32
 pub fn surgeist_text::RunView<'_>::glyphs(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::GlyphPlacement> + '_
 pub const fn surgeist_text::RunView<'_>::line(&self) -> usize
+pub const fn surgeist_text::RunView<'_>::orientation(&self) -> surgeist_text::LineOrientation
 pub fn surgeist_text::RunView<'_>::origin(&self) -> surgeist_text::Point
 pub const fn surgeist_text::RunView<'_>::range(&self) -> surgeist_text::Range
 pub const fn surgeist_text::RunView<'_>::run_index(&self) -> usize

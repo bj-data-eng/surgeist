@@ -65,6 +65,7 @@ pub use prepared::PreparedBreakKind;
 pub struct PreparationOptions {
     scale: f32,
     tabs: crate::TabPreparation,
+    orientation: LineOrientation,
 }
 
 impl PreparationOptions {
@@ -83,7 +84,23 @@ impl PreparationOptions {
                 f64::from(scale),
             ));
         }
-        Ok(Self { scale, tabs })
+        Ok(Self {
+            scale,
+            tabs,
+            orientation: LineOrientation::Horizontal,
+        })
+    }
+    /// Requests a physical preparation basis. Actual preparation admits only
+    /// Horizontal and clockwise Sideways; unsupported requests refuse atomically.
+    #[must_use]
+    pub const fn with_orientation(mut self, orientation: LineOrientation) -> Self {
+        self.orientation = orientation;
+        self
+    }
+    /// Requested basis, authenticated again by selection and placement.
+    #[must_use]
+    pub const fn orientation(self) -> LineOrientation {
+        self.orientation
     }
     #[must_use]
     pub const fn tabs(self) -> crate::TabPreparation {
@@ -99,6 +116,7 @@ impl Default for PreparationOptions {
         Self {
             scale: 1.0,
             tabs: crate::TabPreparation::FontAdvance,
+            orientation: LineOrientation::Horizontal,
         }
     }
 }
@@ -125,6 +143,11 @@ impl Hash for PreparedText {
     }
 }
 impl PreparedText {
+    /// Admitted horizontal or clockwise sideways composition/placement basis.
+    #[must_use]
+    pub fn orientation(&self) -> LineOrientation {
+        self.inner.options.orientation()
+    }
     /// Exact preparation demand retained with this immutable allocation.
     #[must_use]
     pub fn preparation_options(&self) -> PreparationOptions {
@@ -212,8 +235,12 @@ pub enum PreparedParticipant {
 /// Supported physical shaping basis. Other requested bases refuse explicitly.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum LineOrientation {
+    /// Horizontal shaping and physical x-right/y-down placement.
     Horizontal,
+    /// Upright vertical typography, currently unsupported.
     Vertical,
+    /// Horizontal composition physically rotated 90 degrees clockwise.
+    /// This does not denote CSS sideways-lr or mixed/upright typography.
     Sideways,
 }
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -572,6 +599,8 @@ impl PartialEq for FinalizedFragment {
 impl Eq for FinalizedFragment {}
 
 /// Physical location of local x=0 on the line baseline, not its top-left.
+/// Horizontal uses (inline_origin, baseline); clockwise Sideways uses
+/// (baseline, inline_origin). The baseline is a cross-axis coordinate.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LineAnchor {
     pub inline_origin: f64,
@@ -844,6 +873,11 @@ pub enum ProtocolError {
     },
     MismatchedContext {
         field: ProtocolContextField,
+    },
+    /// The bounded clockwise sideways profile cannot place independent boxes.
+    UnsupportedSidewaysAtomic {
+        /// Actual original box occurrence in this paragraph, including out-of-flow.
+        occurrence: usize,
     },
     InvalidAtomicGeometry {
         occurrence: usize,

@@ -515,7 +515,7 @@ Render appends each original outline and a copy translated by positive local x d
 
 Advances, glyph positions, carets and font line metrics do not gain a bold-spacing adjustment. Apply the outline operation to actual positioned glyphs, including zero-advance marks; an outline-empty glyph remains empty. Text outline geometry and Render ink include the emitted copies, with bounds derived from their canonical geometry. Additional path elements and live storage count against the existing limits, and failure publishes no prefix. Existing representation restrictions remain explicit capability errors.
 
-This is the extracted-path policy. Appending contours is not a geometric boolean union and does not promise native CoreText two-pass alpha, antialiasing or CTM-adjusted displacement. The selected profile covers the existing horizontal outline and x-shear convention; vertical/oriented synthesis needs its own qualified operation before admission. This determination selects replacement behavior and does not assert that the current Text resolver or Render entry already implements it.
+This is the extracted-path policy. Appending contours is not a geometric boolean union and does not promise native CoreText two-pass alpha, antialiasing or CTM-adjusted displacement. The selected profile covers the horizontal outline and x-shear convention. [Clockwise sideways placement](../crates/surgeist-text/docs/reference.md#clockwise-sideways-placement) applies its qualified run basis after that same canonical horizontal operation; it does not select upright font metrics or introduce a vertical synthesis operation. Other vertical/oriented synthesis requires its own qualified operation before admission.
 
 ## Selected-line protocol
 

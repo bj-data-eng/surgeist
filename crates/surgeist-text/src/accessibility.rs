@@ -132,6 +132,7 @@ struct Fragment {
     bounds: Rect,
     line: usize,
     rtl: bool,
+    orientation: crate::LineOrientation,
     word: bool,
     metadata: Metadata,
 }
@@ -440,6 +441,7 @@ fn update(
                     ),
                     line: line_index,
                     rtl: cluster.level & 1 != 0,
+                    orientation: line.orientation,
                     word: cluster.boundary >= crate::engine::analysis::Boundary::Word
                         && !cluster.whitespace.is_space_or_nbsp(),
                     metadata: run.map_or_else(
@@ -611,13 +613,16 @@ fn update(
                     union(bounds, fragment.bounds)
                 });
             node.set_bounds(host_rect(bounds, origin)?);
-            let direction = pieces.iter().all(|fragment| fragment.rtl == first.rtl);
+            let direction = pieces.iter().all(|fragment| {
+                fragment.rtl == first.rtl && fragment.orientation == first.orientation
+            });
             let one_line = pieces.iter().all(|fragment| fragment.line == first.line);
             if direction {
-                node.set_text_direction(if first.rtl {
-                    TextDirection::RightToLeft
-                } else {
-                    TextDirection::LeftToRight
+                node.set_text_direction(match (first.orientation, first.rtl) {
+                    (crate::LineOrientation::Sideways, false) => TextDirection::TopToBottom,
+                    (crate::LineOrientation::Sideways, true) => TextDirection::BottomToTop,
+                    (_, true) => TextDirection::RightToLeft,
+                    (_, false) => TextDirection::LeftToRight,
                 });
             }
             first.metadata.apply(&mut node, &pieces);
@@ -631,7 +636,12 @@ fn update(
             // pieces remain exact internally; omit optional fields rather than invent precision.
             if pieces.len() == 1 {
                 node.set_character_positions(vec![0.0]);
-                node.set_character_widths(vec![host_width(bounds.size.width)?]);
+                let inline_span = if first.orientation == crate::LineOrientation::Sideways {
+                    bounds.size.height
+                } else {
+                    bounds.size.width
+                };
+                node.set_character_widths(vec![host_width(inline_span)?]);
             }
             if one_line {
                 line_nodes.push((first.line, nodes.len()));
@@ -676,7 +686,12 @@ fn update(
                             .alignment
                     })
                 });
-            if let Some(alignment) = alignment {
+            if let Some(alignment) = alignment.filter(|alignment| {
+                layout.orientation() == crate::LineOrientation::Horizontal
+                    || matches!(alignment, Alignment::Center | Alignment::Justify)
+            }) {
+                // AccessKit has no top/bottom text-align value. Omit that
+                // optional projection for vertical start/end rather than lie.
                 node.set_text_align(match alignment {
                     Alignment::Start => {
                         if layout.direction() == crate::Direction::RightToLeft {

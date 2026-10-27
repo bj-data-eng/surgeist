@@ -9,6 +9,10 @@ Standalone layout retains raw Preserve and automatic direction. Explicit compose
 paragraphs execute source processing and capture their actual base direction;
 inline-box alignment requests do not imply CSS vertical-alignment execution.
 See the [support reference](docs/reference.md) for the current contract.
+Native prepared lines also support [clockwise sideways placement](docs/reference.md#clockwise-sideways-placement),
+with preparation-bound font features and the same physical basis for paint and
+interaction. Independent atomic content and upright/mixed typography retain
+explicit capability refusals.
 
 `process_source_whitespace` executes source-local whitespace processing before
 fonts. `process_contextual_source` additionally consumes captured box, paragraph

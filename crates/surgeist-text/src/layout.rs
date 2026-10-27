@@ -2,7 +2,8 @@ use std::{fmt, sync::Arc};
 
 use super::{
     BaselineShift, Brush, Direction, Edit, FontCatalogueIdentity, FontData, Id, InlineBoxKind, Key,
-    Options, Point, Range, Rect, Result, SelectionPaint, Size, Source, Style, VerticalAlign,
+    LineOrientation, Options, Point, Range, Rect, Result, SelectionPaint, Size, Source, Style,
+    VerticalAlign,
 };
 use crate::engine::{
     PlacedLine, editing,
@@ -111,6 +112,7 @@ impl Layout {
                         })
                 }),
             },
+            self.orientation(),
         )
     }
 
@@ -126,6 +128,12 @@ impl Layout {
         } else {
             Direction::LeftToRight
         }
+    }
+
+    /// Actual admitted preparation and physical placement basis.
+    #[must_use]
+    pub fn orientation(&self) -> LineOrientation {
+        self.inner.prepared.options.orientation()
     }
 
     pub fn lines(&self) -> Vec<Line> {
@@ -148,6 +156,7 @@ impl Layout {
                             metrics.block_max - metrics.block_min,
                         ),
                     ),
+                    line.orientation,
                 )
             })
             .collect()
@@ -205,12 +214,15 @@ impl Layout {
                     RunMetrics::new(
                         shaped.font_size,
                         line_baseline(line),
-                        line_point(
-                            line,
-                            Point::new(run.x, line.finalized.data.metrics.baseline),
-                        )
-                        .x,
+                        inline_coordinate(
+                            line.orientation,
+                            line_point(
+                                line,
+                                Point::new(run.x, line.finalized.data.metrics.baseline),
+                            ),
+                        ),
                         run.advance,
+                        line.orientation,
                     ),
                     glyphs,
                 )
@@ -229,12 +241,15 @@ impl Layout {
                     run.source,
                     shaped.font_size,
                     line_baseline(line),
-                    line_point(
-                        line,
-                        Point::new(run.x, line.finalized.data.metrics.baseline),
-                    )
-                    .x,
+                    inline_coordinate(
+                        line.orientation,
+                        line_point(
+                            line,
+                            Point::new(run.x, line.finalized.data.metrics.baseline),
+                        ),
+                    ),
                     run.advance,
+                    line.orientation,
                 )
             })
             .collect();
@@ -436,21 +451,84 @@ impl Layout {
     }
 }
 
+/// Scalar axis projections are total even for caller-constructed value records.
+/// They do not admit typography: only Horizontal/Sideways can own PlacedLine.
+pub(crate) const fn inline_coordinate(orientation: LineOrientation, point: Point) -> f64 {
+    match orientation {
+        LineOrientation::Horizontal => point.x,
+        LineOrientation::Sideways | LineOrientation::Vertical => point.y,
+    }
+}
+pub(crate) const fn cross_coordinate(orientation: LineOrientation, point: Point) -> f64 {
+    match orientation {
+        LineOrientation::Horizontal => point.y,
+        LineOrientation::Sideways | LineOrientation::Vertical => point.x,
+    }
+}
+pub(crate) const fn physical_origin(
+    orientation: LineOrientation,
+    inline: f64,
+    cross: f64,
+) -> Point {
+    match orientation {
+        LineOrientation::Horizontal => Point::new(inline, cross),
+        LineOrientation::Sideways | LineOrientation::Vertical => Point::new(cross, inline),
+    }
+}
 pub(crate) fn line_baseline(line: &PlacedLine) -> f64 {
-    line.anchor.y
+    cross_coordinate(line.orientation, line.anchor)
 }
 
-/// The one physical translation of this line's immutable local geometry.
+/// The sole physical mapping of immutable local line geometry. The raw glyph
+/// provider frame and local baseline are never rotated or rewritten in storage.
 pub(crate) fn line_point(line: &PlacedLine, local: Point) -> Point {
-    Point::new(
-        line.anchor.x + local.x,
-        line.anchor.y + (local.y - line.finalized.data.metrics.baseline),
-    )
+    match line.orientation {
+        LineOrientation::Horizontal => Point::new(
+            line.anchor.x + local.x,
+            line.anchor.y + (local.y - line.finalized.data.metrics.baseline),
+        ),
+        LineOrientation::Sideways => Point::new(
+            line.anchor.x - (local.y - line.finalized.data.metrics.baseline),
+            line.anchor.y + local.x,
+        ),
+        LineOrientation::Vertical => unreachable!("upright placement was not admitted"),
+    }
 }
-
+/// Inverse of the admitted line's physical mapping, for actual interaction.
+pub(crate) fn local_point(line: &PlacedLine, physical: Point) -> Point {
+    match line.orientation {
+        LineOrientation::Horizontal => Point::new(
+            physical.x - line.anchor.x,
+            physical.y - line.anchor.y + line.finalized.data.metrics.baseline,
+        ),
+        LineOrientation::Sideways => Point::new(
+            physical.y - line.anchor.y,
+            line.finalized.data.metrics.baseline - (physical.x - line.anchor.x),
+        ),
+        LineOrientation::Vertical => unreachable!("upright placement was not admitted"),
+    }
+}
 pub(crate) fn line_rect(line: &PlacedLine, local: Rect) -> Rect {
-    let origin = line_point(line, local.origin);
-    Rect::new(origin.x, origin.y, local.size.width, local.size.height)
+    match line.orientation {
+        LineOrientation::Horizontal => {
+            let origin = line_point(line, local.origin);
+            Rect::new(origin.x, origin.y, local.size.width, local.size.height)
+        }
+        LineOrientation::Sideways => {
+            let origin = line_point(line, local.origin);
+            // Signed local spans retain their endpoints; the physical result is
+            // their actual axis-aligned hull, not a fabricated negative height.
+            let end_x = origin.x - local.size.height;
+            let end_y = origin.y + local.size.width;
+            Rect::new(
+                origin.x.min(end_x),
+                origin.y.min(end_y),
+                local.size.height.abs(),
+                local.size.width.abs(),
+            )
+        }
+        LineOrientation::Vertical => unreachable!("upright placement was not admitted"),
+    }
 }
 
 pub(crate) fn decoration_top(baseline: f64, offset_from_baseline: f64) -> f64 {
@@ -465,9 +543,16 @@ pub struct Metrics {
     first_baseline: Option<f64>,
     last_baseline: Option<f64>,
     overflow: bool,
+    orientation: LineOrientation,
 }
 
 impl Metrics {
+    /// Physical basis for interpreting inline offsets and cross-axis baselines.
+    #[must_use]
+    pub const fn orientation(self) -> LineOrientation {
+        self.orientation
+    }
+
     #[must_use]
     pub const fn new(
         size: Size,
@@ -476,6 +561,7 @@ impl Metrics {
         first_baseline: Option<f64>,
         last_baseline: Option<f64>,
         overflow: bool,
+        orientation: LineOrientation,
     ) -> Self {
         Self {
             size,
@@ -484,6 +570,7 @@ impl Metrics {
             first_baseline,
             last_baseline,
             overflow,
+            orientation,
         }
     }
 
@@ -524,16 +611,30 @@ pub struct Line {
     range: Range,
     baseline: f64,
     bounds: Rect,
+    orientation: LineOrientation,
 }
 
 impl Line {
+    /// Physical basis for interpreting inline offsets and cross-axis baselines.
     #[must_use]
-    pub const fn new(index: usize, range: Range, baseline: f64, bounds: Rect) -> Self {
+    pub const fn orientation(self) -> LineOrientation {
+        self.orientation
+    }
+
+    #[must_use]
+    pub const fn new(
+        index: usize,
+        range: Range,
+        baseline: f64,
+        bounds: Rect,
+        orientation: LineOrientation,
+    ) -> Self {
         Self {
             index,
             range,
             baseline,
             bounds,
+            orientation,
         }
     }
 
@@ -570,6 +671,12 @@ pub struct Run {
 }
 
 impl Run {
+    /// Actual physical basis; raw glyph offsets remain in horizontal provider coordinates.
+    #[must_use]
+    pub const fn orientation(&self) -> LineOrientation {
+        self.metrics.orientation()
+    }
+
     #[must_use]
     pub fn new(
         line: usize,
@@ -638,7 +745,11 @@ impl Run {
 
     #[must_use]
     pub const fn origin(&self) -> Point {
-        Point::new(self.metrics.offset, self.metrics.baseline)
+        physical_origin(
+            self.metrics.orientation,
+            self.metrics.offset,
+            self.metrics.baseline,
+        )
     }
 
     #[must_use]
@@ -698,6 +809,12 @@ pub struct LineMetricFact {
 }
 
 impl LineMetricFact {
+    /// Basis retained by the actual line projection.
+    #[must_use]
+    pub const fn orientation(self) -> LineOrientation {
+        self.line.orientation()
+    }
+
     #[must_use]
     pub const fn new(line: Line) -> Self {
         Self { line }
@@ -717,9 +834,16 @@ pub struct RunMetricFact {
     baseline: f64,
     offset: f64,
     advance: f64,
+    orientation: LineOrientation,
 }
 
 impl RunMetricFact {
+    /// Physical basis for interpreting inline offsets and cross-axis baselines.
+    #[must_use]
+    pub const fn orientation(self) -> LineOrientation {
+        self.orientation
+    }
+
     #[must_use]
     pub const fn new(
         line: usize,
@@ -728,6 +852,7 @@ impl RunMetricFact {
         baseline: f64,
         offset: f64,
         advance: f64,
+        orientation: LineOrientation,
     ) -> Self {
         Self {
             line,
@@ -736,6 +861,7 @@ impl RunMetricFact {
             baseline,
             offset,
             advance,
+            orientation,
         }
     }
 
@@ -851,16 +977,30 @@ pub struct RunMetrics {
     baseline: f64,
     offset: f64,
     advance: f64,
+    orientation: LineOrientation,
 }
 
 impl RunMetrics {
+    /// Physical basis for interpreting inline offsets and cross-axis baselines.
     #[must_use]
-    pub const fn new(font_size: f32, baseline: f64, offset: f64, advance: f64) -> Self {
+    pub const fn orientation(self) -> LineOrientation {
+        self.orientation
+    }
+
+    #[must_use]
+    pub const fn new(
+        font_size: f32,
+        baseline: f64,
+        offset: f64,
+        advance: f64,
+        orientation: LineOrientation,
+    ) -> Self {
         Self {
             font_size,
             baseline,
             offset,
             advance,
+            orientation,
         }
     }
 

@@ -12,12 +12,19 @@ mod casing;
 mod kana;
 #[path = "math.rs"]
 mod math;
+#[path = "sideways.rs"]
+mod sideways;
 #[path = "width.rs"]
 mod width;
 
 /// Repository-authored cmap/metrics over the retained licensed Ahem outlines.
 pub(crate) fn math_ahem() -> Vec<u8> {
     math::fixture()
+}
+
+/// Real ordered vert/vrt2/vrtr substitutions over retained Ahem outlines.
+pub(crate) fn sideways_ahem() -> Vec<u8> {
+    sideways::fixture()
 }
 
 fn words(values: &[u16]) -> Vec<u8> {
