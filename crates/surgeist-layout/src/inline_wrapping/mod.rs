@@ -1,6 +1,10 @@
 //! Layout-owned inline scope proof and ancestry-prefix break preference.
 
-use std::{cmp::Ordering, collections::BTreeMap, sync::Arc};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 pub(crate) mod balance;
 pub(crate) mod body;
 mod declarations;
@@ -219,7 +223,23 @@ struct FrontierEntry<T> {
 }
 enum FrontierEntries<T> {
     Inside(BTreeMap<usize, FrontierEntry<T>>),
-    Mixed(Vec<FrontierEntry<T>>),
+    Mixed(MixedEntries<T>),
+}
+struct MixedEntries<T> {
+    entries: Vec<FrontierEntry<T>>,
+    // Accepted historical IDs conservatively cover every retained edge. Old
+    // removed IDs may miss an optimization, but cannot alter a preference.
+    seen_edges: BTreeSet<usize>,
+    has_empty_edges: bool,
+}
+impl<T> MixedEntries<T> {
+    fn from_inside(entries: BTreeMap<usize, FrontierEntry<T>>) -> Self {
+        Self {
+            has_empty_edges: !entries.is_empty(),
+            entries: entries.into_values().collect(),
+            seen_edges: BTreeSet::new(),
+        }
+    }
 }
 impl AvoidClass {
     fn interval(&self) -> (usize, usize) {
@@ -227,6 +247,8 @@ impl AvoidClass {
             .map_or((0, usize::MAX), |i| self.ancestry.intervals[i])
     }
     fn subset(&self, other: &Self) -> bool {
+        #[cfg(test)]
+        work_tests::record_subset();
         let inside = match (self.scope, other.scope) {
             (None, _) => true,
             (Some(_), None) => false,
@@ -256,6 +278,8 @@ impl<T> PreferenceFrontier<T> {
         receipt: T,
         prefer: impl Fn(&T, &T) -> Ordering,
     ) -> Result<(), WrappingScopeError> {
+        #[cfg(test)]
+        work_tests::record_offer();
         if !Arc::ptr_eq(&self.ancestry, &class.ancestry) {
             return Err(WrappingScopeError::InconsistentIncidence);
         }
@@ -263,10 +287,11 @@ impl<T> PreferenceFrontier<T> {
             // Empty-edge ancestors that already dominated a receipt continue
             // to dominate it when edge constraints arrive. Transfer only the
             // retained frontier, keeping its true normal-preference serials.
-            let prior = std::mem::replace(&mut self.entries, FrontierEntries::Mixed(Vec::new()));
+            let prior =
+                std::mem::replace(&mut self.entries, FrontierEntries::Inside(BTreeMap::new()));
             self.entries = match prior {
                 FrontierEntries::Inside(entries) => {
-                    FrontierEntries::Mixed(entries.into_values().collect())
+                    FrontierEntries::Mixed(MixedEntries::from_inside(entries))
                 }
                 mixed => mixed,
             };
@@ -302,22 +327,38 @@ impl<T> PreferenceFrontier<T> {
                     },
                 );
             }
-            FrontierEntries::Mixed(entries) => {
-                if entries
-                    .iter()
-                    .any(|prior| prior.class.subset(&class) && !class.subset(&prior.class))
-                {
-                    return Ok(());
+            FrontierEntries::Mixed(mixed) => {
+                // Two disjoint nonempty edge sets cannot include each other,
+                // irrespective of their inside ancestry. Shared/repeated Text
+                // incidences still take the complete comparison path below.
+                let disjoint = !class.edges.is_empty()
+                    && !mixed.has_empty_edges
+                    && class
+                        .edges
+                        .iter()
+                        .all(|edge| !mixed.seen_edges.contains(edge));
+                if !disjoint {
+                    if mixed
+                        .entries
+                        .iter()
+                        .any(|prior| prior.class.subset(&class) && !class.subset(&prior.class))
+                    {
+                        return Ok(());
+                    }
+                    if mixed.entries.iter().any(|prior| {
+                        prior.class.subset(&class)
+                            && class.subset(&prior.class)
+                            && prefer(&prior.receipt, &receipt) == Ordering::Less
+                    }) {
+                        return Ok(());
+                    }
+                    mixed.entries.retain(|prior| !class.subset(&prior.class));
                 }
-                if entries.iter().any(|prior| {
-                    prior.class.subset(&class)
-                        && class.subset(&prior.class)
-                        && prefer(&prior.receipt, &receipt) == Ordering::Less
-                }) {
-                    return Ok(());
-                }
-                entries.retain(|prior| !class.subset(&prior.class));
-                entries.push(FrontierEntry {
+                mixed.seen_edges.extend(class.edges.iter().copied());
+                // A nonempty class cannot remove an empty-edge survivor;
+                // replacing it with another empty class preserves this guard.
+                mixed.has_empty_edges |= class.edges.is_empty();
+                mixed.entries.push(FrontierEntry {
                     class,
                     serial: self.serial,
                     receipt,
@@ -344,7 +385,7 @@ impl<T> PreferenceFrontier<T> {
         };
         match self.entries {
             FrontierEntries::Inside(entries) => entries.into_values().reduce(preferred),
-            FrontierEntries::Mixed(entries) => entries.into_iter().reduce(preferred),
+            FrontierEntries::Mixed(mixed) => mixed.entries.into_iter().reduce(preferred),
         }
         .map(|entry| entry.receipt)
     }
@@ -354,3 +395,5 @@ impl<T> PreferenceFrontier<T> {
 mod edge_preference_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod work_tests;

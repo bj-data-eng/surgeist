@@ -12,6 +12,14 @@ the pinned Writing Modes and Inline editions, distinguishes OpenType 1.9.1
 format rules from native synthesis and fractional CSS-midpoint policy, and
 bounds unhinted measurement separately from vertical shaping and placement.
 
+## Native vertical glyph metrics
+
+The [vertical glyph-metric determination](font-vertical-metrics--native-determination.md)
+owns the bounded static TrueType observation and absent-table synthesis policy
+for #1513/#781. It distinguishes glyph origins from named baselines, OpenType
+format rules from native heuristics, and metric observations from vertical
+shaping and placement.
+
 ## AutoPhrase overflow and intrinsic sizing
 
 The [AutoPhrase intrinsic determination](text-auto-phrase-intrinsic--determination-20261025.md)

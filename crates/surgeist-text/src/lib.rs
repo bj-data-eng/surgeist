@@ -54,8 +54,8 @@ pub use font::{
     EffectiveFontInstance, FontBaseline, FontBaselineAbsence, FontBaselineAxis,
     FontBaselineMeasurement, FontBaselineOutcome, FontBaselineProvenance, FontBaselineScript,
     FontBaselineUnavailable, FontBaselineUnavailableReason, FontBaselineValue, FontData, FontFace,
-    FontMetrics, FontOutlineCapability, FontOutlineError, FontSynthesis, GlyphOutlineGeometry,
-    StrikeoutMetrics,
+    FontLineMetricSource, FontMetrics, FontOutlineCapability, FontOutlineError, FontSynthesis,
+    GlyphOutlineGeometry, StrikeoutMetrics, VerticalGlyphMetricProvenance, VerticalGlyphMetrics,
 };
 pub use geometry::{Point, Rect, Size};
 pub use id::Id;
@@ -160,6 +160,10 @@ mod shaping_test_fonts;
 #[cfg(test)]
 #[path = "test_fonts/baseline.rs"]
 mod baseline_test_fonts;
+
+#[cfg(test)]
+#[path = "test_fonts/vertical.rs"]
+mod vertical_test_fonts;
 
 mod range_fragments;
 pub use range_fragments::{
