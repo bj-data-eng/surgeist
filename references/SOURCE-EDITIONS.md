@@ -117,6 +117,10 @@ The [1 October 2026 Candidate Recommendation Draft](css-syntax-3--CRD-css-syntax
 is the selected CSS Syntax 3 edition from 2026-10-20 ([#1328](https://github.com/bj-data-eng/surgeist/issues/1328)).
 It supersedes the [24 December 2021 draft](css-syntax-3--CRD-css-syntax-3-20211224--413b27acb4e1.md),
 which remains the Snapshot baseline and the basis of the deferred items below.
+The [surgeist-css-parser](../crates/surgeist-css-parser/README.md) crate
+implements this edition's tokenization and parsing, and its
+[coverage map](../crates/surgeist-css-parser/docs/conformance-coverage.md)
+records which clauses its tests cover.
 
 The selection was made to settle semicolon recovery in blocks. The 2026 draft
 parses every block with "consume a block's contents", which discards a
