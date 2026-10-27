@@ -1348,7 +1348,12 @@ fn line_break_input_defaults_to_visible_horizontal_break_context() {
 
 #[test]
 fn line_break_input_carries_inline_metrics() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(20.0, 15.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        20.0,
+        15.0,
+    )
+    .unwrap();
     let input = LineBreakInput::new().with_metrics(metrics);
 
     assert_eq!(input.metrics(), metrics);
@@ -1357,7 +1362,12 @@ fn line_break_input_carries_inline_metrics() {
 
 #[test]
 fn line_break_input_supports_f64_metrics() {
-    let metrics = InlineMetricsOf::<f64>::from_line_height_and_baseline(32.0, 25.0).unwrap();
+    let metrics = InlineMetricsOf::<f64>::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        32.0,
+        25.0,
+    )
+    .unwrap();
     let input = LineBreakInputOf::<f64>::new().with_metrics(metrics);
 
     assert_eq!(input.metrics().baseline(), 25.0);
@@ -1365,7 +1375,12 @@ fn line_break_input_supports_f64_metrics() {
 
 #[test]
 fn inline_boundary_input_requires_explicit_metrics() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(28.0, 20.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        28.0,
+        20.0,
+    )
+    .unwrap();
     let input = InlineBoundaryInput::new(
         InlineBoundaryKind::Start,
         metrics,
@@ -1384,7 +1399,12 @@ fn inline_boundary_input_requires_explicit_metrics() {
 
 #[test]
 fn inline_boundary_input_supports_f64_metrics() {
-    let metrics = InlineMetricsOf::<f64>::from_line_height_and_baseline(40.0, 30.0).unwrap();
+    let metrics = InlineMetricsOf::<f64>::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        40.0,
+        30.0,
+    )
+    .unwrap();
     let input = InlineBoundaryInputOf::<f64>::new(
         InlineBoundaryKind::End,
         metrics,
@@ -1398,21 +1418,26 @@ fn inline_boundary_input_supports_f64_metrics() {
 
 #[test]
 fn inline_metrics_validate_line_box_invariants() {
-    let metrics = InlineMetrics::try_new(12.0, 18.0).unwrap();
+    let metrics =
+        InlineMetrics::try_new(crate::InlineBaselineContext::Physical, 12.0, 18.0).unwrap();
 
     assert_eq!(metrics.baseline(), 12.0);
     assert_eq!(metrics.line_extent(), 18.0);
     assert_eq!(metrics.after_baseline(), 6.0);
 
     assert_eq!(
-        InlineMetrics::try_new(19.0, 18.0),
+        InlineMetrics::try_new(crate::InlineBaselineContext::Physical, 19.0, 18.0),
         Err(InlineMetricsError::BaselineExceedsLineExtent {
             baseline: 19.0,
             line_extent: 18.0,
         })
     );
     assert_eq!(
-        InlineMetrics::from_line_height_and_baseline(10.0, 12.0),
+        InlineMetrics::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
+            10.0,
+            12.0
+        ),
         Err(InlineMetricsError::BaselineExceedsLineHeight {
             baseline: 12.0,
             line_height: 10.0,
@@ -1423,11 +1448,11 @@ fn inline_metrics_validate_line_box_invariants() {
 #[test]
 fn inline_metrics_reject_non_finite_and_negative_values() {
     assert!(matches!(
-        InlineMetrics::try_new(f32::NAN, 18.0),
+        InlineMetrics::try_new(crate::InlineBaselineContext::Physical, f32::NAN, 18.0),
         Err(InlineMetricsError::NonFinite { value }) if value.is_nan()
     ));
     assert_eq!(
-        InlineMetrics::try_new(12.0, -18.0),
+        InlineMetrics::try_new(crate::InlineBaselineContext::Physical, 12.0, -18.0),
         Err(InlineMetricsError::Negative { value: -18.0 })
     );
 }
@@ -1435,6 +1460,7 @@ fn inline_metrics_reject_non_finite_and_negative_values() {
 #[test]
 fn inline_metrics_support_f64_scalar_lane() {
     let metrics = InlineMetricsOf::<f64>::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
         9_000_000_000_000.0,
         8_000_000_000_000.0,
     )
@@ -1459,7 +1485,12 @@ fn layout_input_distinguishes_box_from_line_break() {
 
 #[test]
 fn layout_input_distinguishes_inline_boundary_from_boxes_and_breaks() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(18.0, 14.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        18.0,
+        14.0,
+    )
+    .unwrap();
     let boundary = InlineBoundaryInput::new(
         InlineBoundaryKind::Start,
         metrics,
@@ -1726,7 +1757,12 @@ fn node_input_default_retains_horizontal_tb_ltr_for_both_scalar_lanes() {
 #[test]
 fn borrowed_input_views_reuse_validated_backing_in_both_scalar_lanes() {
     fn assert_lane<S: LayoutScalar>() {
-        let metrics = InlineMetricsOf::try_new(S::from_f64(7.0), S::from_f64(11.0)).unwrap();
+        let metrics = InlineMetricsOf::try_new(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(7.0),
+            S::from_f64(11.0),
+        )
+        .unwrap();
         let paragraph = prepared_occurrences([1]);
         let text = paragraph
             .text_input::<S>(1)
@@ -1887,7 +1923,7 @@ fn inline_boundary_edge_exposes_the_used_scalar_sum_without_widened_resummation(
     );
     let input = InlineBoundaryInputOf::new(
         InlineBoundaryKind::End,
-        InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+        InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0).unwrap(),
         edge,
     );
     assert_eq!(input.edge(), edge);

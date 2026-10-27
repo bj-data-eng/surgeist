@@ -84,6 +84,7 @@ pub(super) fn numeric_atomic_fit_with_flow<S: LayoutScalar>(
 ) -> crate::inline::MixedInlineRunReportOf<S> {
     let axes = FlowAxes::new(writing_mode, direction);
     crate::inline::layout_mixed_inline_run(crate::inline::MixedInlineRunInputOf {
+        inline_baseline_context: crate::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,
         wrapping: None,
@@ -106,6 +107,7 @@ pub(super) fn numeric_atomic_fit_with_flow<S: LayoutScalar>(
                     axes.physical_size(LogicalSizeOf::new(S::from_f64(width), S::from_f64(10.0)));
                 crate::inline::MixedInlineParticipantOf::Atomic {
                     item: crate::inline::AtomicInlineBoxParticipant {
+                        baseline_reference: crate::InlineBaselineContext::Physical,
                         source_index,
                         size,
                         content_size: size,
@@ -538,6 +540,7 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
     };
     let atomic = |source_index, width, height, baseline, level| Participant::Atomic {
         item: AtomicInlineBoxParticipant {
+            baseline_reference: crate::InlineBaselineContext::Physical,
             source_index,
             size: axes.physical_size(LogicalSizeOf::new(S::from_f64(width), S::from_f64(height))),
             content_size: Size::ZERO,
@@ -559,12 +562,18 @@ pub(super) fn assert_fri06_c08_r1_mixed_unit_traversal<S: LayoutScalar>(
                 axes.direction(),
                 AvailableOf::definite(S::from_f64(100.0)),
             ),
-            InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0)).unwrap(),
+            InlineMetricsOf::from_ascent_descent(
+                crate::InlineBaselineContext::Physical,
+                S::from_f64(8.0),
+                S::from_f64(2.0),
+            )
+            .unwrap(),
             InlineControlAlignment::Baseline,
             crate::InlineBoundaryEdgeOf::ZERO,
         ))
     };
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+        inline_baseline_context: crate::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,
         wrapping: None,
@@ -776,8 +785,12 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
     let fourth_atomic = atomic(40.0, InlineBreakOpportunity::Prohibited);
     let line_strut = InlineBoundaryInputOf::new(
         InlineBoundaryKind::Start,
-        InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(12.0))
-            .unwrap(),
+        InlineMetricsOf::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(20.0),
+            S::from_f64(12.0),
+        )
+        .unwrap(),
         crate::InlineBoundaryEdgeOf::ZERO,
     )
     .with_writing_mode(WritingMode::HorizontalTb)
@@ -1010,6 +1023,7 @@ pub(super) fn fri06_c12_t08_forced_break_fallback_batch<S: LayoutScalar>(
     };
     let line_break = LineBreakInputOf::new().with_metrics(
         InlineMetricsOf::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
             S::from_f64(20.0),
             S::from_f64(line_break_baseline),
         )
@@ -1209,11 +1223,21 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         let atomic = prepared_atomic_style(25.25, 10.5, 0.0, 0.0);
         let boundary = InlineBoundaryInputOf::new(
             InlineBoundaryKind::Start,
-            InlineMetricsOf::from_ascent_descent(S::from_f64(6.25), S::from_f64(3.75)).unwrap(),
+            InlineMetricsOf::from_ascent_descent(
+                crate::InlineBaselineContext::Physical,
+                S::from_f64(6.25),
+                S::from_f64(3.75),
+            )
+            .unwrap(),
             crate::InlineBoundaryEdgeOf::ZERO,
         );
         let line_break = LineBreakInputOf::new().with_metrics(
-            InlineMetricsOf::from_ascent_descent(S::from_f64(8.25), S::from_f64(1.75)).unwrap(),
+            InlineMetricsOf::from_ascent_descent(
+                crate::InlineBaselineContext::Physical,
+                S::from_f64(8.25),
+                S::from_f64(1.75),
+            )
+            .unwrap(),
         );
         Self {
             inputs: HashMap::from([

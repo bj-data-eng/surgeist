@@ -249,8 +249,12 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
                 inputs.push(layout::LayoutInputOf::inline_boundary(
                     layout::InlineBoundaryInputOf::new(
                         kind,
-                        layout::InlineMetricsOf::try_new(S::from_f64(16.0), S::from_f64(20.0))
-                            .unwrap(),
+                        layout::InlineMetricsOf::try_new(
+                            surgeist_layout::InlineBaselineContext::Physical,
+                            S::from_f64(16.0),
+                            S::from_f64(20.0),
+                        )
+                        .unwrap(),
                         layout::InlineBoundaryEdgeOf::try_new(
                             S::from_f64(edge.0),
                             S::from_f64(edge.1),
@@ -532,7 +536,12 @@ fn semantic_receiver_fixture<S: layout::LayoutScalar>(
             inputs.push(layout::LayoutInputOf::inline_boundary(
                 layout::InlineBoundaryInputOf::new(
                     kind,
-                    layout::InlineMetricsOf::try_new(S::from_f64(16.0), S::from_f64(20.0)).unwrap(),
+                    layout::InlineMetricsOf::try_new(
+                        surgeist_layout::InlineBaselineContext::Physical,
+                        S::from_f64(16.0),
+                        S::from_f64(20.0),
+                    )
+                    .unwrap(),
                     layout::InlineBoundaryEdgeOf::ZERO,
                 )
                 .with_direction(direction),

@@ -20,7 +20,7 @@ pub(crate) struct PendingParagraph<Node> {
     pub prepared: surgeist_text::PreparedText,
     pub entries: Vec<PlacementEntry>,
     pub wrap_style: crate::TextWrapStyle,
-    pub balance: Option<std::sync::Arc<super::fit::BalanceBasis>>,
+    pub program: Option<std::sync::Arc<super::fit::SelectionProgram>>,
     pub natural_advances: Vec<f64>,
     pub boxes: Vec<Option<super::boxes::BoxAssignment>>,
     pub bands: Vec<super::fit::LineBands>,
@@ -70,7 +70,7 @@ pub(crate) struct PassBasis<Node, S: LayoutScalar> {
     pub selections: Vec<(
         Node,
         crate::TextWrapStyle,
-        Option<std::sync::Arc<super::fit::BalanceBasis>>,
+        Option<std::sync::Arc<super::fit::SelectionProgram>>,
     )>,
     pub absolute_baselines: Vec<(Node, f64)>,
     pub associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
@@ -536,7 +536,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             selections: self
                 .pending
                 .iter()
-                .map(|p| (p.container, p.wrap_style, p.balance.clone()))
+                .map(|p| (p.container, p.wrap_style, p.program.clone()))
                 .collect(),
             lines: self
                 .pending

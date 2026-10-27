@@ -153,7 +153,8 @@ fn continuation(
             node,
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 kind,
-                InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+                InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                    .unwrap(),
                 crate::InlineBoundaryEdgeOf::ZERO,
             )),
         );
@@ -589,7 +590,8 @@ fn segmented_fixture(
                 } else {
                     InlineBoundaryKind::End
                 },
-                InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+                InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                    .unwrap(),
                 crate::InlineBoundaryEdgeOf::ZERO,
             )),
         );
@@ -877,7 +879,8 @@ fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
             node,
             LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                 kind,
-                InlineMetricsOf::try_new(8.0, 10.0).unwrap(),
+                InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, 8.0, 10.0)
+                    .unwrap(),
                 InlineBoundaryEdgeOf::try_new(border, padding).unwrap(),
             )),
         );

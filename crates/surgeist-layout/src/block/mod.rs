@@ -9,7 +9,7 @@ use super::inline::{
 use super::value::{ResolvedLengthAutoOf, UnresolvedLengthReason};
 use super::{
     AvailableOf, BaselinesOf, BoxSizing, Clear, CollapsibleMarginOf, Compute, ComputeInputOf,
-    ComputeOutputOf, ComputedOverflow, ContainingLayoutContext, Direction, Edges, Float,
+    ComputeOutputOf, ComputedOverflow, ContainingLayoutContext, Direction, Edges,
     InlineBoundaryInputOf, InlineFragmentOutputOf, LayoutErrorKindOf, LayoutErrorOf,
     LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation, LayoutResultOf, LayoutScalar,
     LengthAutoOf, LineBreakInputOf, NodeOutputOf, Overflow, ParentFormattingContext,
@@ -55,7 +55,7 @@ use sizing::{
 #[cfg(test)]
 pub(crate) use in_flow::resolve_logical_in_flow_margin;
 use in_flow::{
-    InFlowPassContext, layout_in_flow_children, normal_flow_children_can_establish_baseline,
+    InFlowPassContext, layout_in_flow_children, normal_flow_children_need_physical_sizing_work,
 };
 
 #[cfg(test)]
@@ -203,7 +203,14 @@ where
         } = constants.node_outer_size
     {
         return Ok(BlockResult {
-            output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height)),
+            output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height))
+                .with_named_baselines(named_block_baselines(
+                    node,
+                    &style,
+                    &constants,
+                    Size::new(width, height),
+                    crate::NamedBaselinesOf::absent(),
+                )?),
             used: input,
             floats: None,
         });
@@ -212,19 +219,26 @@ where
         && inherited.is_none()
         && !semantic_work
         && !observe_formatted
+        && input.named_baseline_demand() == crate::output::NamedBaselineDemand::None
         && let Size {
             width: Some(width),
             height: Some(height),
         } = constants.node_outer_size
-        && !normal_flow_children_can_establish_baseline(tree, &children)
+        && !normal_flow_children_need_physical_sizing_work(tree, &children)
     {
         return Ok(BlockResult {
-            output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height)),
+            output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height))
+                .with_named_baselines(named_block_baselines(
+                    node,
+                    &style,
+                    &constants,
+                    Size::new(width, height),
+                    crate::NamedBaselinesOf::unknown(),
+                )?),
             used: input,
             floats: None,
         });
     }
-
     let logical_inner_size = constants.logical_node_inner_size();
     let sizes_float_context = float_context::sizes_float_context(
         float_role,
@@ -352,7 +366,14 @@ where
             output_size,
             Size::ZERO,
             final_pass.baselines,
-        );
+        )
+        .with_named_baselines(named_block_baselines(
+            node,
+            &style,
+            &final_constants,
+            output_size,
+            final_pass.named_baselines,
+        )?);
         output.block_margin_collapse = block_margin_collapse;
         Ok(BlockResult {
             output,
@@ -408,7 +429,14 @@ where
             output_size,
             published_scroll.content_size,
             final_pass.baselines,
-        );
+        )
+        .with_named_baselines(named_block_baselines(
+            node,
+            &style,
+            &final_constants,
+            output_size,
+            final_pass.named_baselines,
+        )?);
         output.scroll_geometry = Some(published_scroll.geometry);
         output.block_margin_collapse = block_margin_collapse;
         Ok(BlockResult {
@@ -443,6 +471,7 @@ struct Constants<S: LayoutScalar> {
     node_max_size: Size<Option<S>>,
     direction: Direction,
     line_box_direction_policy: crate::LineBoxDirectionPolicy,
+    inline_baseline_context: crate::InlineBaselineContext,
     text_indent: crate::TextIndentOf<S>,
     hyphenate_limit_lines: crate::HyphenateLimitLines,
     hyphenate_limit_last: crate::HyphenateLimitLast,
@@ -737,6 +766,7 @@ impl<S: LayoutScalar> Constants<S> {
             node_max_size: max_size,
             direction: flow_axes.direction(),
             line_box_direction_policy: style.line_box_direction_policy,
+            inline_baseline_context: style.inline_baseline_context,
             wrap_style: style.wrap_style,
             text_align: style.text_align,
             text_align_last: style.text_align_last,
@@ -791,6 +821,61 @@ impl<S: LayoutScalar> Constants<S> {
             input,
         )
     }
+}
+
+fn named_block_baselines<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    style: &BlockContainerProjection<'_, S>,
+    constants: &Constants<S>,
+    size: Size<S>,
+    mut facts: crate::NamedBaselinesOf<S>,
+) -> LayoutResultOf<Node, crate::NamedBaselinesOf<S>, S, M> {
+    let used = crate::scroll::UsedOverflow::from_computed(
+        style.common.overflow,
+        style.common.item_is_replaced,
+    );
+    if !used.is_scroll_container() {
+        return Ok(facts);
+    }
+    let numeric_error = |crate::FiniteScalarErrorOf::NonFinite { value }| {
+        crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(node),
+            crate::LayoutOperation::ChildLayout,
+            crate::LayoutErrorKindOf::InvalidInput(crate::LayoutInvalidInputOf::InvalidNumeric {
+                value,
+            }),
+        )
+    };
+    // Positional facts already use Layout's canonical ZERO INITIAL ANCHOR,
+    // after actual content alignment. Range extrema/padding are not offsets.
+    // The exceptional exterior edge is not translated by its own scroll.
+    if style.baseline_source == crate::BaselineSource::Auto
+        && style.display.inner_display() == crate::Display::Block
+        && !style.common.item_is_replaced
+    {
+        let end_margin = constants.own_bottom_margin.resolve();
+        let coordinate = match constants.flow_axes.block_end() {
+            crate::PhysicalSide::Top | crate::PhysicalSide::Left => -end_margin,
+            crate::PhysicalSide::Bottom => size.height + end_margin,
+            crate::PhysicalSide::Right => size.width + end_margin,
+        };
+        let edge = crate::BaselineFactOf::Available(
+            crate::BaselineCoordinateOf::try_new(constants.flow_axes.block_axis(), coordinate)
+                .map_err(numeric_error)?,
+        );
+        for name in [
+            crate::BaselineName::Alphabetic,
+            crate::BaselineName::Central,
+        ] {
+            facts = facts.with(
+                name,
+                crate::BaselinePairOf::new(facts.get(name).first(), edge),
+            );
+        }
+    }
+    // Clamp known content and exceptional coordinates in THIS border frame;
+    // a parent subsequently translates them once. Unknown/Absent stay intact.
+    facts.clamped_to_border(size).map_err(numeric_error)
 }
 
 #[cfg(test)]

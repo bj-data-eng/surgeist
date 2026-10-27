@@ -19,6 +19,7 @@ fn mr02_atomic<S: LayoutScalar>(
 ) -> MixedInlineParticipantOf<S> {
     MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {
+            baseline_reference: crate::InlineBaselineContext::Physical,
             source_index,
             size: Size::new(S::from_f64(extent), S::from_f64(block_extent)),
             content_size: Size::new(S::from_f64(extent), S::from_f64(block_extent)),
@@ -41,6 +42,7 @@ fn mr02_input<S: LayoutScalar>(
     participants: Vec<MixedInlineParticipantOf<S>>,
 ) -> MixedInlineRunInputOf<S> {
     MixedInlineRunInputOf {
+        inline_baseline_context: crate::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
@@ -67,7 +69,12 @@ fn authored_atomic_shape_band_break_target_keeps_34_38_then_42_46_both_scalars()
             let mut participants = vec![mixed_boundary(
                 100,
                 flow,
-                InlineMetricsOf::from_ascent_descent(S::from_f64(16.0), S::from_f64(4.0)).unwrap(),
+                InlineMetricsOf::from_ascent_descent(
+                    crate::InlineBaselineContext::Physical,
+                    S::from_f64(16.0),
+                    S::from_f64(4.0),
+                )
+                .unwrap(),
             )];
             // Every extent is an authored box allocation. The first 48px box
             // does not represent the historical fixture's measured text.
@@ -142,8 +149,12 @@ fn authored_atomic_shape_band_break_target_keeps_34_38_then_42_46_both_scalars()
 fn fri06_mr02_inline_linear_empty_strut_and_forced_clear_preserve_metrics_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-        let metrics =
-            InlineMetricsOf::from_ascent_descent(S::from_f64(9.0), S::from_f64(3.0)).unwrap();
+        let metrics = InlineMetricsOf::from_ascent_descent(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(9.0),
+            S::from_f64(3.0),
+        )
+        .unwrap();
         let report = layout_mixed_inline_run(mr02_input(
             AvailableOf::MAX_CONTENT,
             vec![mixed_forced_line_break(7, flow_axes, metrics, Clear::Both)],
@@ -350,8 +361,12 @@ fn actual_prepared_collapse_keeps_original_source_while_suppressing_line_edges_b
 #[test]
 fn fri06_mr02_inline_linear_bidi_mixed_sources_preserve_visual_order_and_baselines_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let boundary_metrics =
-            InlineMetricsOf::from_ascent_descent(S::from_f64(6.0), S::from_f64(2.0)).unwrap();
+        let boundary_metrics = InlineMetricsOf::from_ascent_descent(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(6.0),
+            S::from_f64(2.0),
+        )
+        .unwrap();
         let report = layout_mixed_inline_run(mr02_input(
             AvailableOf::MAX_CONTENT,
             vec![
@@ -602,7 +617,9 @@ fn mixed_forced_line_break<S: LayoutScalar>(
 
 fn fri06_c12_t07_endpoint_break_private_line_membership() -> (usize, usize, usize) {
     let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-    let metrics = InlineMetrics::from_ascent_descent(8.0, 2.0).unwrap();
+    let metrics =
+        InlineMetrics::from_ascent_descent(crate::InlineBaselineContext::Physical, 8.0, 2.0)
+            .unwrap();
     let report = layout_mixed_inline_run(mr02_input(
         Available::MAX_CONTENT,
         vec![
@@ -698,13 +715,20 @@ fn fri06_c03_clear_private_builder_maps_none_start_end_and_both_in_all_flows() {
 fn fri06_c03_strut_private_builder_retains_control_baselines_and_post_line_intent_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-        let boundary_metrics =
-            InlineMetricsOf::from_line_height_and_baseline(S::from_f64(18.0), S::from_f64(13.0))
-                .unwrap();
-        let break_metrics =
-            InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(15.0))
-                .unwrap();
+        let boundary_metrics = InlineMetricsOf::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(18.0),
+            S::from_f64(13.0),
+        )
+        .unwrap();
+        let break_metrics = InlineMetricsOf::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(20.0),
+            S::from_f64(15.0),
+        )
+        .unwrap();
         let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+            inline_baseline_context: crate::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
             text_wrap_style: crate::TextWrapStyle::Auto,
             line_box_context: crate::line_box::LineBoxContext::new(
@@ -747,6 +771,7 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
         let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
         let participant = |source_index, following_break| MixedInlineParticipantOf::Atomic {
             item: AtomicInlineBoxParticipant {
+                baseline_reference: crate::InlineBaselineContext::Physical,
                 source_index,
                 size: Size::new(S::from_f64(30.0), S::from_f64(10.0)),
                 content_size: Size::new(S::from_f64(30.0), S::from_f64(10.0)),
@@ -765,6 +790,7 @@ fn fri06_c04_line_band_private_callback_retries_transition_and_reselects_same_cu
         let mut queries = Vec::new();
         let report = layout_mixed_inline_run_with_band_source(
             MixedInlineRunInputOf {
+                inline_baseline_context: crate::InlineBaselineContext::Physical,
                 groups: crate::group_alignment::Snapshot::default(),
                 text_wrap_style: crate::TextWrapStyle::Auto,
                 line_box_context: crate::line_box::LineBoxContext::new(
@@ -1014,7 +1040,12 @@ fn atomic_inline_intrinsic_widths_use_max_item_and_sum() {
 
 #[test]
 fn atomic_inline_horizontal_rtl_maps_item_origins_in_report() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(10.0, 10.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        10.0,
+        10.0,
+    )
+    .unwrap();
     let report = layout_inline_run(InlineRunInput {
         available_width: Available::MAX_CONTENT,
         writing_mode: WritingMode::HorizontalTb,
@@ -1034,7 +1065,12 @@ fn atomic_inline_horizontal_rtl_maps_item_origins_in_report() {
 
 #[test]
 fn forced_line_break_control_preserves_layout_ready_fields() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(24.0, 18.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        24.0,
+        18.0,
+    )
+    .unwrap();
     let control = crate::inline::ForcedLineBreakControlOf::new(
         7,
         crate::inline::InlineFlowOf::new(
@@ -1064,7 +1100,12 @@ fn forced_line_break_control_preserves_layout_ready_fields() {
 
 #[test]
 fn inline_boundary_control_preserves_layout_ready_fields() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(24.0, 18.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        24.0,
+        18.0,
+    )
+    .unwrap();
     let control = inline_boundary_control(
         9,
         InlineBoundaryKind::Start,
@@ -1095,8 +1136,18 @@ fn inline_boundary_control_preserves_layout_ready_fields() {
 
 #[test]
 fn inline_boundaries_expand_horizontal_line_metrics_without_advance() {
-    let start_metrics = InlineMetrics::from_line_height_and_baseline(10.0, 8.0).unwrap();
-    let end_metrics = InlineMetrics::from_line_height_and_baseline(30.0, 20.0).unwrap();
+    let start_metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        10.0,
+        8.0,
+    )
+    .unwrap();
+    let end_metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        30.0,
+        20.0,
+    )
+    .unwrap();
     let report = layout_inline_run(InlineRunInput {
         available_width: Available::MAX_CONTENT,
         writing_mode: WritingMode::HorizontalTb,
@@ -1141,7 +1192,12 @@ fn inline_boundaries_expand_horizontal_line_metrics_without_advance() {
 
 #[test]
 fn inline_boundaries_before_overwide_first_box_do_not_create_leading_line() {
-    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(50.0, 35.0).unwrap();
+    let boundary_metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        50.0,
+        35.0,
+    )
+    .unwrap();
     let report = layout_inline_run(InlineRunInput {
         available_width: Available::definite(20.0),
         writing_mode: WritingMode::HorizontalTb,
@@ -1172,7 +1228,12 @@ fn inline_boundaries_before_overwide_first_box_do_not_create_leading_line() {
 
 #[test]
 fn forced_line_break_control_can_be_used_as_atomic_inline_item() {
-    let metrics = InlineMetrics::from_line_height_and_baseline(10.0, 8.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        10.0,
+        8.0,
+    )
+    .unwrap();
     let control = crate::inline::ForcedLineBreakControlOf::new(
         1,
         crate::inline::InlineFlowOf::new(
@@ -1937,7 +1998,12 @@ fn supplied_line_projection_and_forced_break_queries_visit_linear_real_formatter
         assert_eq!(inline_candidate_scan_visits(), count * 2);
 
         let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-        let metrics = InlineMetricsOf::<f64>::from_ascent_descent(8.0, 2.0).unwrap();
+        let metrics = InlineMetricsOf::<f64>::from_ascent_descent(
+            crate::InlineBaselineContext::Physical,
+            8.0,
+            2.0,
+        )
+        .unwrap();
         let participants = (0..count)
             .flat_map(|index| {
                 [
@@ -2160,8 +2226,12 @@ fn last_tail_observations_keep_actual_numeric_endings_and_zero_atomic_content() 
             layout_mixed_inline_run(input).unwrap()
         };
         let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-        let metrics =
-            InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0)).unwrap();
+        let metrics = InlineMetricsOf::from_ascent_descent(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(8.0),
+            S::from_f64(2.0),
+        )
+        .unwrap();
         let report = observe(mr02_input(
             AvailableOf::MaxContent,
             vec![
@@ -2218,7 +2288,12 @@ fn positive_numeric_endpoint_contributes_once_to_intrinsics_and_retries_a_real_f
                         Direction::Ltr,
                         AvailableOf::MAX_CONTENT,
                     ),
-                    InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                    InlineMetricsOf::try_new(
+                        crate::InlineBaselineContext::Physical,
+                        S::from_f64(8.0),
+                        S::from_f64(10.0),
+                    )
+                    .unwrap(),
                     InlineControlAlignment::Baseline,
                     edge,
                 )),

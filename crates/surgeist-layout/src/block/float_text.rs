@@ -212,10 +212,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         cursor: S,
         inline_space: FloatInlineSpace,
         restart_sequence: bool,
-        balance: bool,
+        group_replay: bool,
     ) -> Self {
         let count = events.len();
-        let journal = balance.then(|| {
+        let journal = group_replay.then(|| {
             let earlier_float_top = base.preceding_float_top();
             EncounterJournal {
                 remaining: events

@@ -5,6 +5,8 @@ It computes box, line, and scroll geometry from layout-ready inputs, with block,
 inline, flex, grid, subgrid, and experimental grid-lanes algorithms. Prepared Text
 composition supports normal and last-line alignment, signed indentation and
 explicit U+0020 space expansion; see the [Text input contract](docs/reference.md#node-input).
+Numeric atomic-box flow also supports explicit alphabetic and central
+[baseline matching](docs/reference.md#numeric-inline-baseline-references).
 
 The crate is at version `0.1.0`. Its grid support is a defined subset, and it does
 not provide authored CSS parsing, text shaping, rendering, or a live scrolling

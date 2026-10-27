@@ -919,6 +919,7 @@ where
                 source_index: crate::SourceIndex::new(item.source_index),
                 location,
                 size: output.size,
+                named_baselines: output.named_baselines,
                 content_size: output.content_size,
                 border: item.border,
                 padding: item.padding,

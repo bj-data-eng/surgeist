@@ -98,9 +98,15 @@ fn external_completion_is_not_target_membership_in_accepted_endpoints() {
 
 fn numeric_forced_lines() -> Vec<NumericFormattedLine> {
     let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-    let metrics = crate::InlineMetricsOf::from_ascent_descent(8.0, 2.0).unwrap();
+    let metrics = crate::InlineMetricsOf::from_ascent_descent(
+        crate::InlineBaselineContext::Physical,
+        8.0,
+        2.0,
+    )
+    .unwrap();
     let report = layout_mixed_inline_run_with_formatted_observation(
         MixedInlineRunInputOf {
+            inline_baseline_context: crate::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
             text_wrap_style: crate::TextWrapStyle::Auto,
             wrapping: None,
@@ -136,6 +142,7 @@ fn numeric_forced_lines() -> Vec<NumericFormattedLine> {
         },
         |block, _| block,
         true,
+        crate::inline::unavailable_atomic_receiver,
     )
     .unwrap();
     let lines = report.formatted_lines.unwrap();

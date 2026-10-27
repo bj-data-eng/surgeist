@@ -73,8 +73,11 @@
 //! The prepared-text profile supports horizontal LTR and RTL flow, signed
 //! indentation, and font-advance or CSS-stop tabs. [`TextAlign`] and
 //! [`TextAlignLast`] select line alignment. [`TextWrapStyle`] selects ordinary
-//! or balanced breaks within each forced-break group without changing its real
-//! containing geometry or wrapping permission. [`TextJustification::Spaces`] permits
+//! or balanced breaks; [`TextWrapStyle::Stable`] retains ordinary line-local
+//! quality selection. [`TextWrapStyle::AvoidShortLastLine`] attempts bounded
+//! final-pair repair in a genuinely Paragraph-ending group. These choices do not
+//! change the real containing geometry
+//! or wrapping permission. [`TextJustification::Spaces`] permits
 //! explicit expansion of actual retained U+0020 slots during justification;
 //! [`TextJustification::None`]
 //! adds no expansion. Text owns line-edge and trailing-space decisions.
@@ -304,32 +307,33 @@ pub use measurement::{
     MeasurementAvailable, MeasurementAvailableOf, compute_leaf,
 };
 pub use node_input::{
-    AlignContent, AlignItems, AtomicInlineParticipation, BlockFlowContext, BlockGeneration,
-    BoxSizing, Clear, ComputedOverflow, ComputedOverflowError, Direction, Display, FlexDirection,
-    FlexGrow, FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap, Float,
-    FloatExclusion, FloatExclusionInterval, FloatExclusionIntervalError,
+    AlignContent, AlignItems, AtomicInlineParticipation, BaselineSource, BlockFlowContext,
+    BlockGeneration, BoxSizing, Clear, ComputedOverflow, ComputedOverflowError, Direction, Display,
+    FlexDirection, FlexGrow, FlexGrowOf, FlexItemCollapse, FlexShrink, FlexShrinkOf, FlexWrap,
+    Float, FloatExclusion, FloatExclusionInterval, FloatExclusionIntervalError,
     FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQuery,
     FloatExclusionQueryOf, GridAutoFlow, GridFlowTolerance, GridFlowToleranceOf, GridPlacement,
-    InlineBoundaryEdge, InlineBoundaryEdgeOf, InlineBoundaryInput, InlineBoundaryInputOf,
-    InlineBoundaryKind, InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf,
-    ItemOrder, LayoutInput, LayoutInputOf, LayoutInputView, LayoutInputViewOf,
-    LineBoxDirectionPolicy, LineBreakDisplay, LineBreakInput, LineBreakInputOf, NodeInput,
-    NodeInputOf, Overflow, OverflowClipBox, OverflowClipMargin, OverflowClipMarginOf, Position,
-    RawGridLine, RawGridPlacement, ScrollMargin, ScrollMarginError, ScrollMarginErrorOf,
-    ScrollMarginOf, ScrollPadding, ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf,
-    ScrollSnapAlign, ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness,
-    ScrollSnapType, ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, TextAlignLast,
-    TextGroupAlign, TextIndent, TextIndentOf, TextJustification, TextWrapStyle, VerticalAlign,
-    WritingMode,
+    InlineBaselineContext, InlineBaselineError, InlineBoundaryEdge, InlineBoundaryEdgeOf,
+    InlineBoundaryInput, InlineBoundaryInputOf, InlineBoundaryKind, InlineBreakOpportunity,
+    InlineMetrics, InlineMetricsError, InlineMetricsOf, ItemOrder, LayoutInput, LayoutInputOf,
+    LayoutInputView, LayoutInputViewOf, LineBoxDirectionPolicy, LineBreakDisplay, LineBreakInput,
+    LineBreakInputOf, NodeInput, NodeInputOf, Overflow, OverflowClipBox, OverflowClipMargin,
+    OverflowClipMarginOf, Position, RawGridLine, RawGridPlacement, ScrollMargin, ScrollMarginError,
+    ScrollMarginErrorOf, ScrollMarginOf, ScrollPadding, ScrollPaddingOf, ScrollPaddingValue,
+    ScrollPaddingValueOf, ScrollSnapAlign, ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop,
+    ScrollSnapStrictness, ScrollSnapType, ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf,
+    TextAlign, TextAlignLast, TextGroupAlign, TextIndent, TextIndentOf, TextJustification,
+    TextWrapStyle, VerticalAlign, WritingMode,
 };
 pub use output::{
-    Baselines, BaselinesOf, CollapsibleMargin, CollapsibleMarginOf, CompletedLayoutBatch,
-    CompletedLayoutBatchOf, ComputeInput, ComputeInputOf, ComputeOutput, ComputeOutputOf,
-    ContainingLayoutContext, FlexItemRootContext, FlexItemRootContextOf, InlineFragmentOutput,
-    InlineFragmentOutputEntry, InlineFragmentOutputEntryOf, InlineFragmentOutputOf,
-    InlineFragmentOwner, LayoutCacheClearEntry, LayoutCacheStoreEntry, LayoutCacheStoreEntryOf,
-    LayoutOutputEntry, LayoutOutputEntryOf, LayoutRootContext, LayoutRootContextOf,
-    LayoutRootRequest, LayoutRootRequestOf, LayoutRoundingMode, NodeOutput, NodeOutputOf,
+    BaselineCoordinateOf, BaselineFactOf, BaselinePairOf, Baselines, BaselinesOf,
+    CollapsibleMargin, CollapsibleMarginOf, CompletedLayoutBatch, CompletedLayoutBatchOf,
+    ComputeInput, ComputeInputOf, ComputeOutput, ComputeOutputOf, ContainingLayoutContext,
+    FlexItemRootContext, FlexItemRootContextOf, InlineFragmentOutput, InlineFragmentOutputEntry,
+    InlineFragmentOutputEntryOf, InlineFragmentOutputOf, InlineFragmentOwner,
+    LayoutCacheClearEntry, LayoutCacheStoreEntry, LayoutCacheStoreEntryOf, LayoutOutputEntry,
+    LayoutOutputEntryOf, LayoutRootContext, LayoutRootContextOf, LayoutRootRequest,
+    LayoutRootRequestOf, LayoutRoundingMode, NamedBaselinesOf, NodeOutput, NodeOutputOf,
     ParentFormattingContext, PhysicalBlockMarginCollapse, PhysicalBlockMarginCollapseOf,
     PlacedTextOutput, RootAvailabilityError, RootAvailabilityErrorOf, SourceIndex,
 };
@@ -352,6 +356,8 @@ pub use sizing::{
     PreferredSizeCalcBasis, PreferredSizeOf, SizingCalculation, SizingCalculationError,
     SizingCalculationOf,
 };
+/// Baseline names, independent of any font-design or placed-box coordinate.
+pub use surgeist_text::FontBaseline as BaselineName;
 pub use tree::{LayoutBatchSink, LayoutTree, Traverse};
 pub use value::{
     AspectRatio, AspectRatioOf, Available, AvailableOf, FiniteScalarErrorOf, Length, LengthAuto,

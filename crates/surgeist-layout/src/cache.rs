@@ -26,6 +26,7 @@ struct CacheKeyOf<S: LayoutScalar = DefaultScalar> {
     parent: Size<Option<S>>,
     containing_layout_context: ContainingLayoutContext,
     available: Size<AvailableOf<S>>,
+    named_baseline_demand: crate::output::NamedBaselineDemand,
     settled_auto_scrollbars: SettledAutoScrollbarState,
     containing_auto_scrollbar_pass: SettledAutoScrollbarState,
     context: CacheKeyContext,
@@ -42,6 +43,7 @@ impl<S: LayoutScalar> CacheKeyOf<S> {
             parent: input.parent(),
             containing_layout_context: input.containing_layout_context(),
             available: input.available(),
+            named_baseline_demand: input.named_baseline_demand(),
             settled_auto_scrollbars: input.settled_auto_scrollbars(),
             containing_auto_scrollbar_pass: input.containing_auto_scrollbar_pass(),
             context,
@@ -195,6 +197,7 @@ fn matches_output<S: LayoutScalar, T>(
         && key.settled_auto_scrollbars == entry.key.settled_auto_scrollbars
         && key.containing_auto_scrollbar_pass == entry.key.containing_auto_scrollbar_pass
         && key.block_indent_context == entry.key.block_indent_context
+        && key.named_baseline_demand == entry.key.named_baseline_demand
         && context == entry.key.context
         && (input.known().width == entry.key.known.width
             || input.known().width == Some(cached_size.width))

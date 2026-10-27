@@ -9,6 +9,7 @@ use crate::geometry::FlowAxes;
 #[cfg(test)]
 use crate::geometry::{LogicalPointOf, LogicalSizeOf};
 use crate::inline_wrapping::balance::{BalanceGoal, NaturalResidual};
+use crate::inline_wrapping::tail::{LineQualityGoal, LineQualityKey};
 #[cfg(test)]
 use std::cell::Cell;
 use std::ops::Range;
@@ -68,6 +69,7 @@ pub(super) enum MixedInlineParticipantOf<S: LayoutScalar = DefaultScalar> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunInputOf<S: LayoutScalar = DefaultScalar> {
+    pub inline_baseline_context: crate::InlineBaselineContext,
     pub groups: crate::group_alignment::Snapshot,
     pub text_wrap_style: crate::TextWrapStyle,
     pub line_box_context: crate::line_box::LineBoxContext,
@@ -179,6 +181,9 @@ impl<S: LayoutScalar> InlineEndpointOf<S> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct MixedInlineRunReportOf<S: LayoutScalar = DefaultScalar> {
+    pub inline_baseline_context: crate::InlineBaselineContext,
+    pub first_named_baseline: bool,
+    pub last_named_baseline: bool,
     pub group_lines: Vec<crate::group_alignment::NaturalLine<S>>,
     pub formatted_lines: Option<Vec<crate::text_layout::formatted::NumericFormattedLine>>,
     pub line_box_context: crate::line_box::LineBoxContext,
@@ -311,6 +316,7 @@ struct SelectedInlineLineOf<S: LayoutScalar> {
     split_baseline_edge_phase: Option<S>,
     inline_start_override: Option<S>,
     uses_float_strut_phase: bool,
+    incoming_strut: Option<ReferencedInlineStrutOf<S>>,
     scope_band: Option<LogicalLineBandQueryResultOf<S>>,
     band: LogicalLineBandOf<S>,
 }
@@ -401,14 +407,39 @@ struct SelectedInlineLineCandidateOf<S: LayoutScalar> {
     end: SelectedInlineLineEnd,
     line: SelectedInlineLineOf<S>,
     next_cursor: InlineSourceCursor,
-    pending_strut: Option<InlineMetricContributionOf<S>>,
+    pending_strut: Option<ReferencedInlineStrutOf<S>>,
+}
+
+enum InlineSelectionStep<S: LayoutScalar> {
+    Selected(Option<SelectedInlineLineCandidateOf<S>>),
+    RetryReceiver(ReferencedInlineStrutOf<S>),
 }
 
 #[derive(Clone, Copy, PartialEq)]
-struct InlineMetricContributionOf<S: LayoutScalar> {
-    baseline: S,
-    after_baseline: S,
+pub(super) struct InlineMetricContributionOf<S: LayoutScalar> {
+    pub baseline: S,
+    pub after_baseline: S,
 }
+
+/// The actual reference travels with carried geometry through checkpoints.
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct ReferencedInlineStrutOf<S: LayoutScalar> {
+    pub metrics: InlineMetricContributionOf<S>,
+    pub reference: crate::InlineBaselineContext,
+    pub source: InlineStrutSource,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(super) enum InlineStrutSource {
+    Direct,
+    Atomic { source_index: usize },
+}
+
+type AtomicReceiverSource<'a, S> = dyn FnMut(
+        usize,
+        crate::InlineBaselineContext,
+    ) -> Result<ReferencedInlineStrutOf<S>, crate::inline_wrapping::NumericWrappingError>
+    + 'a;
 
 impl<S: LayoutScalar> InlineMetricContributionOf<S> {
     fn extent(self) -> S {
@@ -514,6 +545,24 @@ impl<S: LayoutScalar> MixedInlineParticipantOf<S> {
             }
             Self::ForcedLineBreak(_) => S::ZERO,
             Self::Boundary(control) => control.edge().advance(),
+        }
+    }
+
+    fn referenced_strut(self, flow_axes: FlowAxes) -> ReferencedInlineStrutOf<S> {
+        let reference = match self {
+            Self::Atomic { item, .. } => item.baseline_reference,
+            Self::ForcedLineBreak(control) => control.metrics().reference(),
+            Self::Boundary(control) => control.metrics().reference(),
+        };
+        ReferencedInlineStrutOf {
+            metrics: self.metrics(flow_axes),
+            reference,
+            source: match self {
+                Self::Atomic { item, .. } => InlineStrutSource::Atomic {
+                    source_index: item.source_index,
+                },
+                Self::ForcedLineBreak(_) | Self::Boundary(_) => InlineStrutSource::Direct,
+            },
         }
     }
 
@@ -693,6 +742,7 @@ fn selected_from_summary<S: LayoutScalar>(
         split_baseline_edge_phase: summary.split_baseline_edge_phase,
         inline_start_override: None,
         uses_float_strut_phase: false,
+        incoming_strut: None,
         scope_band: None,
         band: LogicalLineBandOf {
             inline_start: S::ZERO,
@@ -897,7 +947,7 @@ fn select_next_inline_line<S: LayoutScalar>(
     next_boundary_descriptor: usize,
     available_inline_extent: S,
     wraps: bool,
-    pending_strut: Option<InlineMetricContributionOf<S>>,
+    pending_strut: Option<ReferencedInlineStrutOf<S>>,
     flow_axes: FlowAxes,
 ) -> Option<SelectedInlineLineCandidateOf<S>> {
     let participants = run.participants;
@@ -908,7 +958,7 @@ fn select_next_inline_line<S: LayoutScalar>(
             line: select_inline_line(
                 run.line(source_cursor..source_cursor, cursor.descriptor),
                 None,
-                Some(strut),
+                Some(strut.metrics),
                 flow_axes,
             ),
             next_cursor: cursor,
@@ -933,7 +983,7 @@ fn select_next_inline_line<S: LayoutScalar>(
                 line: select_inline_line(
                     run.line(source_cursor..scan, cursor.descriptor),
                     Some(control),
-                    pending_strut,
+                    pending_strut.map(|strut| strut.metrics),
                     flow_axes,
                 ),
                 next_cursor: InlineSourceCursor {
@@ -941,7 +991,7 @@ fn select_next_inline_line<S: LayoutScalar>(
                     source: scan + 1,
                     descriptor: cursor.descriptor + scan - source_cursor,
                 },
-                pending_strut: Some(participant.metrics(flow_axes)),
+                pending_strut: Some(participant.referenced_strut(flow_axes)),
             });
         }
 
@@ -960,7 +1010,7 @@ fn select_next_inline_line<S: LayoutScalar>(
                 line: select_inline_line(
                     run.line(source_cursor..break_end, cursor.descriptor),
                     None,
-                    pending_strut,
+                    pending_strut.map(|strut| strut.metrics),
                     flow_axes,
                 ),
                 next_cursor: InlineSourceCursor {
@@ -986,7 +1036,7 @@ fn select_next_inline_line<S: LayoutScalar>(
                     line: select_inline_line(
                         run.line(source_cursor..scan, cursor.descriptor),
                         None,
-                        pending_strut,
+                        pending_strut.map(|strut| strut.metrics),
                         flow_axes,
                     ),
                     next_cursor: InlineSourceCursor {
@@ -994,7 +1044,7 @@ fn select_next_inline_line<S: LayoutScalar>(
                         source: scan,
                         descriptor: cursor.descriptor + scan - source_cursor,
                     },
-                    pending_strut: Some(participant.metrics(flow_axes)),
+                    pending_strut: Some(participant.referenced_strut(flow_axes)),
                 });
             }
             InlineBreakOpportunity::Prohibited => {}
@@ -1006,7 +1056,7 @@ fn select_next_inline_line<S: LayoutScalar>(
         line: select_inline_line(
             run.line(source_cursor..participants.len(), cursor.descriptor),
             None,
-            pending_strut,
+            pending_strut.map(|strut| strut.metrics),
             flow_axes,
         ),
         next_cursor: InlineSourceCursor {
@@ -1022,7 +1072,7 @@ fn select_next_inline_line<S: LayoutScalar>(
 struct NumericCandidateReceiptOf<S: LayoutScalar> {
     end: SelectedInlineLineEnd,
     next_cursor: InlineSourceCursor,
-    pending_strut: Option<InlineMetricContributionOf<S>>,
+    pending_strut: Option<ReferencedInlineStrutOf<S>>,
     summary: InlineLineSummaryOf<S>,
     groups: InlineLineMetricGroupsOf<S>,
     phase_groups: InlineLineMetricGroupsOf<S>,
@@ -1049,7 +1099,8 @@ struct NumericReceiptAccumulatorOf<S: LayoutScalar> {
     fallback: Option<InlineMetricContributionOf<S>>,
 }
 impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
-    fn new(strut: Option<InlineMetricContributionOf<S>>) -> Self {
+    fn new(strut: Option<ReferencedInlineStrutOf<S>>) -> Self {
+        let strut = strut.map(|strut| strut.metrics);
         let groups = InlineLineMetricGroupsOf::from_strut(strut);
         Self {
             groups,
@@ -1097,7 +1148,7 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
         end: SelectedInlineLineEnd,
         cursor: InlineSourceCursor,
         control: Option<ForcedLineBreakControlOf<S>>,
-        pending: Option<InlineMetricContributionOf<S>>,
+        pending: Option<ReferencedInlineStrutOf<S>>,
         length: usize,
     ) -> NumericCandidateReceiptOf<S> {
         let mut groups = self.groups;
@@ -1110,7 +1161,8 @@ impl<S: LayoutScalar> NumericReceiptAccumulatorOf<S> {
             };
             groups.include(control.alignment(), metrics);
             phase_groups.include(control.alignment(), metrics);
-            let mut initial = InlineLineMetricGroupsOf::from_strut(pending);
+            let mut initial =
+                InlineLineMetricGroupsOf::from_strut(pending.map(|strut| strut.metrics));
             initial.include(control.alignment(), metrics);
             fallback = Some(initial.resolve());
         }
@@ -1299,62 +1351,73 @@ fn resolve_numeric_candidate<S: LayoutScalar>(
 
 #[derive(Clone, Copy)]
 struct NumericLineQuery<'a, S: LayoutScalar> {
-    goal: Option<BalanceGoal>,
+    goal: Option<LineQualityGoal>,
     indent: S,
     run: ProjectedInlineRun<'a, S>,
     cursor: InlineSourceCursor,
     next_boundary_descriptor: usize,
     available: S,
     wraps: bool,
-    pending: Option<InlineMetricContributionOf<S>>,
+    pending: Option<ReferencedInlineStrutOf<S>>,
     axes: FlowAxes,
 }
 enum NumericCandidatePreference<S: LayoutScalar> {
     Auto(NumericCandidateReceiptOf<S>),
-    Balance {
+    Quality {
         receipt: NumericCandidateReceiptOf<S>,
-        residual: NaturalResidual,
+        key: LineQualityKey,
     },
 }
 impl<S: LayoutScalar> NumericCandidatePreference<S> {
     fn new(
         receipt: NumericCandidateReceiptOf<S>,
-        goal: Option<BalanceGoal>,
+        goal: Option<LineQualityGoal>,
         indent: S,
     ) -> Result<Self, crate::inline_wrapping::NumericWrappingError> {
-        let Some(_) = goal else {
+        let Some(goal) = goal else {
             return Ok(Self::Auto(receipt));
         };
-        let invalid = crate::inline_wrapping::NumericWrappingError::InvalidBalanceBasis;
-        let capacity = receipt.capacity.ok_or(invalid)?;
-        let residual = NaturalResidual::from_components(
-            capacity.to_f64(),
-            indent.to_f64(),
-            receipt.summary.used_inline_extent.to_f64(),
-        )
-        .ok_or(invalid)?;
-        Ok(Self::Balance { receipt, residual })
+        let invalid = match goal {
+            LineQualityGoal::Balance(_) => {
+                crate::inline_wrapping::NumericWrappingError::InvalidBalanceBasis
+            }
+            LineQualityGoal::Tail(_) => {
+                crate::inline_wrapping::NumericWrappingError::InvalidTailBasis
+            }
+        };
+        let key = match receipt.capacity {
+            Some(capacity) => goal
+                .key(
+                    capacity.to_f64(),
+                    indent.to_f64(),
+                    receipt.summary.used_inline_extent.to_f64(),
+                )
+                .ok_or(invalid)?,
+            None => match goal {
+                LineQualityGoal::Balance(_) => return Err(invalid),
+                // A nonformatted completion has no optional quality measure;
+                // it still retains its genuine ordinary completion semantics.
+                LineQualityGoal::Tail(_) => LineQualityKey::Tail(None),
+            },
+        };
+        Ok(Self::Quality { receipt, key })
     }
     fn receipt(&self) -> &NumericCandidateReceiptOf<S> {
         match self {
-            Self::Auto(receipt) | Self::Balance { receipt, .. } => receipt,
+            Self::Auto(receipt) | Self::Quality { receipt, .. } => receipt,
         }
     }
     fn into_receipt(self) -> NumericCandidateReceiptOf<S> {
         match self {
-            Self::Auto(receipt) | Self::Balance { receipt, .. } => receipt,
+            Self::Auto(receipt) | Self::Quality { receipt, .. } => receipt,
         }
     }
-    fn compare(&self, other: &Self, goal: Option<BalanceGoal>) -> std::cmp::Ordering {
+    fn compare(&self, other: &Self, goal: Option<LineQualityGoal>) -> std::cmp::Ordering {
         match (self, other, goal) {
             (Self::Auto(_), Self::Auto(_), None) => std::cmp::Ordering::Equal,
-            (
-                Self::Balance { residual: left, .. },
-                Self::Balance {
-                    residual: right, ..
-                },
-                Some(goal),
-            ) => goal.compare_distance(*left, *right),
+            (Self::Quality { key: left, .. }, Self::Quality { key: right, .. }, Some(goal)) => {
+                goal.compare(*left, *right)
+            }
             _ => unreachable!("one numeric candidate walk has one actual preference mode"),
         }
     }
@@ -1363,11 +1426,17 @@ impl<S: LayoutScalar> NumericCandidatePreference<S> {
 fn select_scope_inline_line<S: LayoutScalar>(
     query: NumericLineQuery<'_, S>,
     wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
+    mut prepare_receiver: impl FnMut(
+        SelectedInlineLineEnd,
+        bool,
+    ) -> Result<
+        Option<ReferencedInlineStrutOf<S>>,
+        crate::inline_wrapping::NumericWrappingError,
+    >,
     mut fits: impl FnMut(
         &mut NumericCandidateReceiptOf<S>,
     ) -> Result<bool, crate::inline_wrapping::NumericWrappingError>,
-) -> Result<Option<SelectedInlineLineCandidateOf<S>>, crate::inline_wrapping::NumericWrappingError>
-{
+) -> Result<InlineSelectionStep<S>, crate::inline_wrapping::NumericWrappingError> {
     let NumericLineQuery {
         goal,
         indent,
@@ -1391,7 +1460,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
         )
     };
     if wrapping.is_none() && goal.is_none() {
-        return Ok(baseline());
+        return prepare_selected_receiver(baseline(), &mut prepare_receiver);
     }
     let edge_stop = wrapping.and_then(|wrapping| {
         if !cursor.edge_consumed && wrapping.forced(cursor.source) {
@@ -1401,7 +1470,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
         }
     });
     if cursor.source == run.participants.len() && edge_stop.is_none() {
-        return Ok(baseline());
+        return prepare_selected_receiver(baseline(), &mut prepare_receiver);
     }
     let mut stop = run.participants.len();
     let mut forced = None;
@@ -1445,16 +1514,22 @@ fn select_scope_inline_line<S: LayoutScalar>(
         stop - cursor.source,
     );
     completion.pending_strut = if let Some(control) = forced {
-        Some(MixedInlineParticipantOf::ForcedLineBreak(control).metrics(axes))
+        Some(MixedInlineParticipantOf::ForcedLineBreak(control).referenced_strut(axes))
     } else if mandatory {
         stop.checked_sub(1)
-            .map(|i| run.participants[i].metrics(axes))
+            .map(|i| run.participants[i].referenced_strut(axes))
     } else {
         None
     };
     completion.summary.post_line_clear_intent = forced.map_or(PostLineClearIntent::None, |c| {
         mapped_post_line_clear_intent(axes, c.clear())
     });
+    // Earlier legal Soft candidates end after an Atomic and are therefore real
+    // too. Boundaries supply no following permission; a scope force is Forced.
+    // Prepare before allocation, preference or any height-dependent observation.
+    if let Some(seed) = prepare_receiver(completion.end, completion.summary.has_in_flow_content)? {
+        return Ok(InlineSelectionStep::RetryReceiver(seed));
+    }
     if let Some(fallback) = completion.summary.fallback_line_band {
         completion.has_fallback_atomic=run.participants[cursor.source..stop].iter().any(|p|matches!(*p,MixedInlineParticipantOf::Atomic {item,..} if item.fallback_block_start_in_band(axes,fallback).is_some()));
     }
@@ -1491,7 +1566,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
                     completion.summary.has_in_flow_content,
                 ) == NumericLineDisposition::NonFormatted)
     {
-        return Ok(Some(build(completion)));
+        return Ok(InlineSelectionStep::Selected(Some(build(completion))));
     }
     let descriptor_stop = cursor.descriptor + stop - cursor.source;
     let bounded = ProjectedInlineRun {
@@ -1532,6 +1607,9 @@ fn select_scope_inline_line<S: LayoutScalar>(
             end - cursor.source,
         );
         receipt.pending_strut = candidate.pending_strut;
+        if let Some(seed) = prepare_receiver(receipt.end, receipt.summary.has_in_flow_content)? {
+            return Ok(InlineSelectionStep::RetryReceiver(seed));
+        }
         if let Some(wrapping) = wrapping {
             allocate_numeric_box_metrics(
                 &mut receipt,
@@ -1593,6 +1671,10 @@ fn select_scope_inline_line<S: LayoutScalar>(
             pending,
             end - cursor.source,
         );
+        if let Some(seed) = prepare_receiver(candidate.end, candidate.summary.has_in_flow_content)?
+        {
+            return Ok(InlineSelectionStep::RetryReceiver(seed));
+        }
         if let Some(wrapping) = wrapping {
             allocate_numeric_box_metrics(
                 &mut candidate,
@@ -1619,9 +1701,29 @@ fn select_scope_inline_line<S: LayoutScalar>(
             }
         })
         .or(first);
-    Ok(preferred
-        .map(|preferred| build(preferred.into_receipt()))
-        .or(fallback))
+    Ok(InlineSelectionStep::Selected(
+        preferred
+            .map(|preferred| build(preferred.into_receipt()))
+            .or(fallback),
+    ))
+}
+
+fn prepare_selected_receiver<S: LayoutScalar>(
+    candidate: Option<SelectedInlineLineCandidateOf<S>>,
+    prepare: &mut impl FnMut(
+        SelectedInlineLineEnd,
+        bool,
+    ) -> Result<
+        Option<ReferencedInlineStrutOf<S>>,
+        crate::inline_wrapping::NumericWrappingError,
+    >,
+) -> Result<InlineSelectionStep<S>, crate::inline_wrapping::NumericWrappingError> {
+    if let Some(candidate) = &candidate
+        && let Some(seed) = prepare(candidate.end, candidate.line.has_in_flow_content)?
+    {
+        return Ok(InlineSelectionStep::RetryReceiver(seed));
+    }
+    Ok(InlineSelectionStep::Selected(candidate))
 }
 
 fn text_line_offset<S: LayoutScalar>(
@@ -1831,9 +1933,11 @@ pub(super) fn layout_mixed_inline_run<S: LayoutScalar>(
         },
         |block, _| block,
         false,
+        unavailable_atomic_receiver,
     )
 }
 
+#[cfg(test)]
 pub(super) fn layout_mixed_inline_run_with_band_source<S, BandSource, ClearSource>(
     input: MixedInlineRunInputOf<S>,
     band_source: BandSource,
@@ -1853,23 +1957,33 @@ where
         band_source,
         clear_source,
         false,
+        unavailable_atomic_receiver,
     )
 }
 
-pub(super) fn layout_mixed_inline_run_with_formatted_observation<S, BandSource, ClearSource>(
+pub(super) fn layout_mixed_inline_run_with_formatted_observation<
+    S,
+    BandSource,
+    ClearSource,
+    ReceiverSource,
+>(
     input: MixedInlineRunInputOf<S>,
     band_source: BandSource,
     clear_source: ClearSource,
     observe: bool,
+    receiver_source: ReceiverSource,
 ) -> Result<MixedInlineRunReportOf<S>, crate::inline_wrapping::NumericWrappingError>
 where
     S: LayoutScalar,
     BandSource: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
     ClearSource: FnMut(S, PostLineClearIntent) -> S,
+    ReceiverSource:
+        FnMut(
+            usize,
+            crate::InlineBaselineContext,
+        )
+            -> Result<ReferencedInlineStrutOf<S>, crate::inline_wrapping::NumericWrappingError>,
 {
-    if !observe {
-        return layout_mixed_inline_run_with_band_source(input, band_source, clear_source);
-    }
     let supplied = project_inline_participants(&input.participants);
     let available = resolved_inline_available(&input, &supplied);
     layout_mixed_inline_run_from_available(
@@ -1878,7 +1992,8 @@ where
         available,
         band_source,
         clear_source,
-        true,
+        observe,
+        receiver_source,
     )
 }
 
@@ -1887,13 +2002,28 @@ struct NumericWalkInput<'a, S: LayoutScalar> {
     input: &'a MixedInlineRunInputOf<S>,
     supplied: &'a [SuppliedInlineParticipant],
     available: S,
+    receiver_source: &'a std::cell::RefCell<AtomicReceiverSource<'a, S>>,
+}
+
+/// A metric-only private caller has supplied coordinates, not actual box facts.
+#[cfg(test)]
+pub(super) fn unavailable_atomic_receiver<S: LayoutScalar>(
+    _: usize,
+    expected: crate::InlineBaselineContext,
+) -> Result<ReferencedInlineStrutOf<S>, crate::inline_wrapping::NumericWrappingError> {
+    Err(crate::inline_wrapping::NumericWrappingError::Baseline(
+        crate::InlineBaselineError::ReferenceMismatch {
+            expected,
+            actual: crate::InlineBaselineContext::Physical,
+        },
+    ))
 }
 
 #[derive(Clone, Copy, PartialEq)]
 struct NumericFlowState<S: LayoutScalar> {
     cursor: InlineSourceCursor,
     boundary_index: usize,
-    pending_strut: Option<InlineMetricContributionOf<S>>,
+    pending_strut: Option<ReferencedInlineStrutOf<S>>,
     indent_state: crate::text_indent::IndentLineState,
     line_box_context: crate::line_box::LineBoxContext,
     block_cursor: S,
@@ -1908,6 +2038,7 @@ struct NumericSequence<S: LayoutScalar> {
     state: NumericFlowState<S>,
     selected_lines: Vec<SelectedInlineLineOf<S>>,
     formatted_lines: Option<Vec<crate::text_layout::formatted::NumericFormattedLine>>,
+    tail_frontier: Option<NumericFlowState<S>>,
 }
 
 #[derive(Clone, Copy)]
@@ -1935,6 +2066,7 @@ impl<S: LayoutScalar> NumericSequence<S> {
             },
             selected_lines: Vec::new(),
             formatted_lines: observe.then(Vec::new),
+            tail_frontier: None,
         }
     }
     fn checkpoint(&self) -> NumericGroupEntry<S> {
@@ -1946,6 +2078,7 @@ impl<S: LayoutScalar> NumericSequence<S> {
     }
     fn restore(&mut self, entry: NumericGroupEntry<S>) {
         self.state = entry.state;
+        self.tail_frontier = None;
         self.selected_lines.truncate(entry.selected_len);
         if let Some(lines) = &mut self.formatted_lines {
             lines.truncate(entry.formatted_len);
@@ -1955,7 +2088,9 @@ impl<S: LayoutScalar> NumericSequence<S> {
 
 #[derive(Clone, Copy)]
 struct NumericWalkControl {
-    goal: Option<BalanceGoal>,
+    goal: Option<LineQualityGoal>,
+    goal_start: usize,
+    observe_frontier: Option<usize>,
     stop_at_group: bool,
     max_formatted: Option<usize>,
 }
@@ -1963,13 +2098,17 @@ impl NumericWalkControl {
     fn auto() -> Self {
         Self {
             goal: None,
+            goal_start: 0,
+            observe_frontier: None,
             stop_at_group: false,
             max_formatted: None,
         }
     }
-    fn group(goal: Option<BalanceGoal>, max_formatted: Option<usize>) -> Self {
+    fn group(goal: Option<LineQualityGoal>, max_formatted: Option<usize>) -> Self {
         Self {
             goal,
+            goal_start: 0,
+            observe_frontier: None,
             stop_at_group: true,
             max_formatted,
         }
@@ -2008,6 +2147,7 @@ where
         input,
         supplied,
         available,
+        receiver_source,
     } = request;
     let run = ProjectedInlineRun {
         participants: &input.participants,
@@ -2018,6 +2158,7 @@ where
         state,
         selected_lines,
         formatted_lines,
+        tail_frontier,
     } = sequence;
     let NumericFlowState {
         mut cursor,
@@ -2035,36 +2176,75 @@ where
     let line_direction = line_box_context.weak_direction();
     let mut formatted_count = 0;
     let mut outcome = NumericWalkOutcome::Exhausted;
-    loop {
+    'lines: loop {
+        if control.observe_frontier == Some(formatted_count) && tail_frontier.is_none() {
+            *tail_frontier = Some(NumericFlowState {
+                cursor,
+                boundary_index,
+                pending_strut,
+                indent_state,
+                line_box_context,
+                block_cursor,
+                float_strut,
+                continuation_inline_cursor,
+                advanced_phase_transition,
+                resolved_terminal_block_extent,
+                float_edge_phase,
+            });
+        }
+        let goal = control
+            .goal
+            .filter(|_| formatted_count >= control.goal_start);
         let line_indent = input.indent.at(indent_state);
         let next_boundary_descriptor = line_boundaries
             .peek()
             .map_or(supplied.len(), |boundary| boundary.descriptor);
-        let Some(mut provisional) = select_scope_inline_line(
-            NumericLineQuery {
-                goal: control.goal,
-                indent: line_indent,
-                run,
-                cursor,
-                next_boundary_descriptor,
-                available: available - line_indent,
-                wraps,
-                pending: pending_strut,
-                axes: input.flow_axes,
-            },
-            input.wrapping.as_ref(),
-            |receipt| {
-                resolve_numeric_candidate(
-                    receipt,
-                    float_strut,
-                    block_cursor,
-                    line_indent,
-                    available,
-                    &mut band_source,
-                )
-            },
-        )?
-        else {
+        let provisional = loop {
+            let step = select_scope_inline_line(
+                NumericLineQuery {
+                    goal,
+                    indent: line_indent,
+                    run,
+                    cursor,
+                    next_boundary_descriptor,
+                    available: available - line_indent,
+                    wraps,
+                    pending: pending_strut,
+                    axes: input.flow_axes,
+                },
+                input.wrapping.as_ref(),
+                |ending, content| {
+                    prepare_receiving_seed(
+                        pending_strut,
+                        input.inline_baseline_context,
+                        ending,
+                        content,
+                        receiver_source,
+                    )
+                },
+                |receipt| {
+                    validate_carried_reference(
+                        pending_strut,
+                        input.inline_baseline_context,
+                        receipt.end.line_end(),
+                        receipt.summary.has_in_flow_content,
+                    )?;
+                    resolve_numeric_candidate(
+                        receipt,
+                        float_strut,
+                        block_cursor,
+                        line_indent,
+                        available,
+                        &mut band_source,
+                    )
+                },
+            )?;
+            match step {
+                InlineSelectionStep::Selected(candidate) => break candidate,
+                InlineSelectionStep::RetryReceiver(seed) => pending_strut = Some(seed),
+            }
+        };
+        let Some(mut provisional) = provisional else {
             break;
         };
         if NumericLineDisposition::for_line(
@@ -2072,6 +2252,7 @@ where
             provisional.line.has_in_flow_content,
         ) == NumericLineDisposition::NonFormatted
         {
+            provisional.line.incoming_strut = pending_strut;
             provisional.line.ending = provisional.end.line_end();
             provisional.line.next_cursor = provisional.next_cursor;
             provisional.line.indent = line_indent;
@@ -2093,6 +2274,12 @@ where
             }
             continue;
         }
+        validate_carried_reference(
+            pending_strut,
+            input.inline_baseline_context,
+            provisional.end.line_end(),
+            provisional.line.has_in_flow_content,
+        )?;
         if float_strut.is_some() {
             resolve_float_strut_phase(&mut provisional.line, float_strut, input.flow_axes);
         }
@@ -2121,7 +2308,7 @@ where
         } else {
             let selected = select_scope_inline_line(
                 NumericLineQuery {
-                    goal: control.goal,
+                    goal,
                     indent: line_indent,
                     run,
                     cursor,
@@ -2132,7 +2319,22 @@ where
                     axes: input.flow_axes,
                 },
                 input.wrapping.as_ref(),
+                |ending, content| {
+                    prepare_receiving_seed(
+                        pending_strut,
+                        input.inline_baseline_context,
+                        ending,
+                        content,
+                        receiver_source,
+                    )
+                },
                 |receipt| {
+                    validate_carried_reference(
+                        pending_strut,
+                        input.inline_baseline_context,
+                        receipt.end.line_end(),
+                        receipt.summary.has_in_flow_content,
+                    )?;
                     resolve_numeric_candidate(
                         receipt,
                         float_strut,
@@ -2142,8 +2344,15 @@ where
                         &mut band_source,
                     )
                 },
-            )?
-            .expect("a provisional line remains selectable against its queried band");
+            )?;
+            let selected = match selected {
+                InlineSelectionStep::Selected(candidate) => candidate
+                    .expect("a provisional line remains selectable against its queried band"),
+                InlineSelectionStep::RetryReceiver(seed) => {
+                    pending_strut = Some(seed);
+                    continue 'lines;
+                }
+            };
             (queried_band.inline_start, band_inline_end, selected)
         };
         if let Some(band) = selected.line.scope_band {
@@ -2198,6 +2407,7 @@ where
         }
 
         let mut line = selected.line;
+        line.incoming_strut = pending_strut;
         line.indent = line_indent;
         if advanced_phase_transition && continuation_inline_cursor.is_some() {
             line.inline_start_override = Some(band_inline_start + line_indent);
@@ -2398,7 +2608,7 @@ where
         request,
         sequence,
         &mut remaining,
-        NumericWalkControl::group(goal, Some(reference.count)),
+        NumericWalkControl::group(goal.map(LineQualityGoal::Balance), Some(reference.count)),
         band_source,
         clear_source,
     )?;
@@ -2653,18 +2863,25 @@ where
     Ok(())
 }
 
-fn layout_mixed_inline_run_from_available<S, BandSource, ClearSource>(
+fn layout_mixed_inline_run_from_available<S, BandSource, ClearSource, ReceiverSource>(
     input: MixedInlineRunInputOf<S>,
     supplied: Vec<SuppliedInlineParticipant>,
     available: S,
     mut band_source: BandSource,
     mut clear_source: ClearSource,
     observe_formatted: bool,
+    receiver_source: ReceiverSource,
 ) -> Result<MixedInlineRunReportOf<S>, crate::inline_wrapping::NumericWrappingError>
 where
     S: LayoutScalar,
     BandSource: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
     ClearSource: FnMut(S, PostLineClearIntent) -> S,
+    ReceiverSource:
+        FnMut(
+            usize,
+            crate::InlineBaselineContext,
+        )
+            -> Result<ReferencedInlineStrutOf<S>, crate::inline_wrapping::NumericWrappingError>,
 {
     let mut boundary_descriptor = 0;
     // Mandatory following breaks also delimit a line. Looking only for forced
@@ -2726,17 +2943,35 @@ where
         }
     })
     .peekable();
-    let balance = input.text_wrap_style == crate::TextWrapStyle::Balance
+    let balance = match input.text_wrap_style {
+        crate::TextWrapStyle::Auto | crate::TextWrapStyle::Stable => false,
+        crate::TextWrapStyle::Balance => {
+            matches!(input.available_inline_extent, AvailableOf::Definite(_))
+        }
+        crate::TextWrapStyle::AvoidShortLastLine => false,
+    };
+    let repair_tail = input.text_wrap_style == crate::TextWrapStyle::AvoidShortLastLine
         && matches!(input.available_inline_extent, AvailableOf::Definite(_));
-    let mut sequence = NumericSequence::new(&input, observe_formatted || balance);
+    let mut sequence = NumericSequence::new(&input, observe_formatted || balance || repair_tail);
+    let receiver_source = std::cell::RefCell::new(receiver_source);
     let request = NumericWalkInput {
         input: &input,
         supplied: &supplied,
         available,
+        receiver_source: &receiver_source,
     };
     if balance {
         let boundaries = line_boundaries.collect::<Vec<_>>();
         balance_numeric_sequence(
+            request,
+            &boundaries,
+            &mut sequence,
+            &mut band_source,
+            &mut clear_source,
+        )?;
+    } else if repair_tail {
+        let boundaries = line_boundaries.collect::<Vec<_>>();
+        tail::repair_numeric_tail(
             request,
             &boundaries,
             &mut sequence,
@@ -2757,6 +2992,7 @@ where
         state,
         selected_lines,
         formatted_lines,
+        ..
     } = sequence;
     let NumericFlowState {
         line_box_context,
@@ -2771,6 +3007,8 @@ where
     let mut inline_extent = S::ZERO;
     let mut first_baseline = None;
     let mut last_baseline = None;
+    let mut first_named_baseline = false;
+    let mut last_named_baseline = false;
     let mut atomics = Vec::new();
     let mut controls = Vec::new();
     let mut nonformatted_controls = Vec::new();
@@ -2822,6 +3060,24 @@ where
         }
         let block_start = line.band.block_start;
         let line_baseline = block_start + line.baseline;
+        let named_authority = matches!(
+            input.inline_baseline_context,
+            crate::InlineBaselineContext::Named(_)
+        ) && (line.units.iter().any(|unit| {
+            !unit.discarded
+                && participant_has_named_baseline(unit.participant, input.inline_baseline_context)
+        }) || line.line_break.is_some_and(|control| {
+            participant_has_named_baseline(
+                MixedInlineParticipantOf::ForcedLineBreak(control),
+                input.inline_baseline_context,
+            )
+        }) || line.incoming_strut.is_some_and(|strut| {
+            matches!(strut.reference, crate::InlineBaselineContext::Named(_))
+        }));
+        if first_baseline.is_none() {
+            first_named_baseline = named_authority;
+        }
+        last_named_baseline = named_authority;
         first_baseline.get_or_insert(line_baseline);
         last_baseline = Some(line_baseline);
         let (line_inline_start, visual_indices, inline_starts) = resolved_inline_unit_slots(
@@ -2875,11 +3131,21 @@ where
                                 || line_baseline - item.baseline_offset(input.flow_axes),
                                 |offset| block_start + offset,
                             ),
-                        InlineControlAlignment::Top => block_start - logical_margin.block_start,
-                        InlineControlAlignment::Bottom => {
-                            block_start + line_block_extent
-                                - logical_margin.block_end
-                                - logical_size.block
+                        InlineControlAlignment::Top | InlineControlAlignment::Bottom => {
+                            let edge = if item.alignment == InlineControlAlignment::Top {
+                                input.flow_axes.line_over()
+                            } else {
+                                input.flow_axes.line_under()
+                            };
+                            // Align the margin edge; retain the border origin for
+                            // the existing single physical projection.
+                            if edge == input.flow_axes.block_start() {
+                                block_start + logical_margin.block_start
+                            } else {
+                                block_start + line_block_extent
+                                    - logical_margin.block_end
+                                    - logical_size.block
+                            }
                         }
                     };
                     atomics.push(AtomicInlineSourceOf {
@@ -2941,6 +3207,9 @@ where
     }
 
     Ok(MixedInlineRunReportOf {
+        inline_baseline_context: input.inline_baseline_context,
+        first_named_baseline,
+        last_named_baseline,
         group_lines,
         formatted_lines,
         line_box_context,
@@ -2962,6 +3231,7 @@ where
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct AtomicInlineBoxParticipant<S: LayoutScalar = DefaultScalar> {
+    pub baseline_reference: crate::InlineBaselineContext,
     pub source_index: usize,
     pub size: Size<S>,
     pub content_size: Size<S>,
@@ -3209,6 +3479,7 @@ impl<S: LayoutScalar> InlineParticipant<S> {
         first_baseline: Option<S>,
     ) -> Self {
         Self::Box(AtomicInlineBoxParticipant {
+            baseline_reference: crate::InlineBaselineContext::Physical,
             source_index,
             size,
             content_size: size,
@@ -3303,6 +3574,7 @@ pub(super) fn layout_inline_run<S: LayoutScalar>(input: InlineRunInput<S>) -> In
         })
         .collect();
     let report = layout_mixed_inline_run(MixedInlineRunInputOf {
+        inline_baseline_context: crate::InlineBaselineContext::Physical,
         groups: crate::group_alignment::Snapshot::default(),
         text_wrap_style: crate::TextWrapStyle::Auto,
         line_box_context: crate::line_box::LineBoxContext::new(
@@ -3408,3 +3680,81 @@ mod balance_tests;
 mod bidi_order_tests;
 #[cfg(test)]
 mod phantom_completion_tests;
+mod tail;
+
+fn participant_has_named_baseline<S: LayoutScalar>(
+    participant: MixedInlineParticipantOf<S>,
+    reference: crate::InlineBaselineContext,
+) -> bool {
+    match participant {
+        MixedInlineParticipantOf::Atomic { item, .. } => {
+            item.alignment == InlineControlAlignment::Baseline && item.first_baseline.is_some()
+        }
+        MixedInlineParticipantOf::Boundary(control) => {
+            control.alignment() == InlineControlAlignment::Baseline
+                && control.metrics().reference() == reference
+        }
+        MixedInlineParticipantOf::ForcedLineBreak(control) => {
+            control.alignment() == InlineControlAlignment::Baseline
+                && control.metrics().reference() == reference
+        }
+    }
+}
+
+fn prepare_receiving_seed<S: LayoutScalar>(
+    strut: Option<ReferencedInlineStrutOf<S>>,
+    expected: crate::InlineBaselineContext,
+    ending: SelectedInlineLineEnd,
+    content: bool,
+    source: &std::cell::RefCell<AtomicReceiverSource<'_, S>>,
+) -> Result<Option<ReferencedInlineStrutOf<S>>, crate::inline_wrapping::NumericWrappingError> {
+    if NumericLineDisposition::for_line(ending.line_end(), content)
+        == NumericLineDisposition::NonFormatted
+    {
+        return Ok(None);
+    }
+    let Some(strut) = strut else {
+        return Ok(None);
+    };
+    if strut.reference == expected {
+        return Ok(None);
+    }
+    if let InlineStrutSource::Atomic { source_index } = strut.source
+        && strut.reference == crate::InlineBaselineContext::Physical
+        && matches!(expected, crate::InlineBaselineContext::Named(_))
+    {
+        let resolved = source.borrow_mut()(source_index, expected)?;
+        if resolved.source != strut.source
+            || resolved.reference != expected
+            || !resolved.metrics.baseline.is_finite()
+            || !resolved.metrics.after_baseline.is_finite()
+        {
+            return Err(crate::inline_wrapping::NumericWrappingError::InvalidAtomicReceiverBasis);
+        }
+        return Ok(Some(resolved));
+    }
+    validate_carried_reference(Some(strut), expected, ending.line_end(), content)?;
+    Ok(None)
+}
+
+fn validate_carried_reference<S: LayoutScalar>(
+    strut: Option<ReferencedInlineStrutOf<S>>,
+    expected: crate::InlineBaselineContext,
+    ending: surgeist_text::LineEnd,
+    content: bool,
+) -> Result<(), crate::inline_wrapping::NumericWrappingError> {
+    if NumericLineDisposition::for_line(ending, content) == NumericLineDisposition::NonFormatted {
+        return Ok(());
+    }
+    if let Some(strut) = strut
+        && strut.reference != expected
+    {
+        return Err(crate::inline_wrapping::NumericWrappingError::Baseline(
+            crate::InlineBaselineError::ReferenceMismatch {
+                expected,
+                actual: strut.reference,
+            },
+        ));
+    }
+    Ok(())
+}

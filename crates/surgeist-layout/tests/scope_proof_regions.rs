@@ -445,7 +445,12 @@ fn fixture_with_child_topology(
             10 + ordinal,
             layout::LayoutInput::inline_boundary(layout::InlineBoundaryInput::new(
                 kind,
-                layout::InlineMetrics::try_new(8.0, 10.0).unwrap(),
+                layout::InlineMetrics::try_new(
+                    surgeist_layout::InlineBaselineContext::Physical,
+                    8.0,
+                    10.0,
+                )
+                .unwrap(),
                 layout::InlineBoundaryEdgeOf::ZERO,
             )),
         );

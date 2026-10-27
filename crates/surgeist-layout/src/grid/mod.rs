@@ -547,7 +547,8 @@ where
             available,
         )
         .with_settled_auto_scrollbars(input.settled_auto_scrollbars())
-        .with_containing_auto_scrollbar_pass(input.containing_auto_scrollbar_pass());
+        .with_containing_auto_scrollbar_pass(input.containing_auto_scrollbar_pass())
+        .with_named_baseline_demand(input.named_baseline_demand());
         let measured = compute_grid_with_scrollbar_settlement(
             tree,
             node,

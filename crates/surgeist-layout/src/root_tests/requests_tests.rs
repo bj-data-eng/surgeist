@@ -661,15 +661,24 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
             vertical_align: VerticalAlign::Bottom,
             ..prepared_atomic_style(10.0, 35.0, 0.0, 0.0)
         };
-        let top_metrics =
-            InlineMetricsOf::from_line_height_and_baseline(S::from_f64(22.0), S::from_f64(6.0))
-                .unwrap();
-        let bottom_metrics =
-            InlineMetricsOf::from_line_height_and_baseline(S::from_f64(32.0), S::from_f64(20.0))
-                .unwrap();
-        let break_metrics =
-            InlineMetricsOf::from_line_height_and_baseline(S::from_f64(10.0), S::from_f64(8.0))
-                .unwrap();
+        let top_metrics = InlineMetricsOf::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(22.0),
+            S::from_f64(6.0),
+        )
+        .unwrap();
+        let bottom_metrics = InlineMetricsOf::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(32.0),
+            S::from_f64(20.0),
+        )
+        .unwrap();
+        let break_metrics = InlineMetricsOf::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(10.0),
+            S::from_f64(8.0),
+        )
+        .unwrap();
         let batch = prepared_mixed_batch(
             &paragraph,
             vec![
@@ -783,12 +792,18 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
 #[test]
 fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_source_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let boundary_metrics =
-            InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(15.0))
-                .unwrap();
-        let break_metrics =
-            InlineMetricsOf::from_line_height_and_baseline(S::from_f64(12.0), S::from_f64(9.0))
-                .unwrap();
+        let boundary_metrics = InlineMetricsOf::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(20.0),
+            S::from_f64(15.0),
+        )
+        .unwrap();
+        let break_metrics = InlineMetricsOf::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(12.0),
+            S::from_f64(9.0),
+        )
+        .unwrap();
         let atomic_style = prepared_atomic_style(10.0, 10.0, 0.0, 0.0);
         let paragraph = PreparedParagraph::new(
             vec![
@@ -917,6 +932,7 @@ fn fri06_c03_control_forced_break_splits_min_content_indivisible_groups_both_sca
                 LayoutInputOf::line_break(
                     LineBreakInputOf::new().with_metrics(
                         InlineMetricsOf::from_line_height_and_baseline(
+                            crate::InlineBaselineContext::Physical,
                             S::from_f64(10.0),
                             S::from_f64(8.0),
                         )
@@ -966,9 +982,12 @@ fn fri06_c03_control_forced_break_splits_min_content_indivisible_groups_both_sca
 #[test]
 fn fri06_c03_strut_adjacent_final_breaks_keep_only_actual_forced_lines_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let metrics =
-            InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(15.0))
-                .unwrap();
+        let metrics = InlineMetricsOf::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(20.0),
+            S::from_f64(15.0),
+        )
+        .unwrap();
         let batch = fri06_c03_mixed_batch(
             vec![
                 (
@@ -1006,9 +1025,12 @@ fn fri06_c03_strut_adjacent_final_breaks_keep_only_actual_forced_lines_both_scal
 #[test]
 fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let metrics =
-            InlineMetricsOf::from_line_height_and_baseline(S::from_f64(20.0), S::from_f64(15.0))
-                .unwrap();
+        let metrics = InlineMetricsOf::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(20.0),
+            S::from_f64(15.0),
+        )
+        .unwrap();
         // This case owns numeric control envelopes; real inline boxes supply
         // adjacent geometry, while separate prepared cases own Text semantics.
         let text = || {
@@ -1171,9 +1193,12 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
 #[test]
 fn fri06_c03_control_visible_break_uses_each_unequal_lines_alignment_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
-        let metrics =
-            InlineMetricsOf::from_line_height_and_baseline(S::from_f64(12.0), S::from_f64(9.0))
-                .unwrap();
+        let metrics = InlineMetricsOf::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(12.0),
+            S::from_f64(9.0),
+        )
+        .unwrap();
         let paragraph = PreparedParagraph::new(
             vec![
                 ParagraphPart::text(1, Source::new("XX"), ahem_style(10.0, 10.0)),
@@ -1248,8 +1273,12 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
             );
             (node, LayoutInputOf::box_input(style.clone()), style)
         };
-        let metrics =
-            InlineMetricsOf::from_ascent_descent(S::from_f64(8.0), S::from_f64(2.0)).unwrap();
+        let metrics = InlineMetricsOf::from_ascent_descent(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(8.0),
+            S::from_f64(2.0),
+        )
+        .unwrap();
 
         let mixed = fri06_c04_line_batch(
             flow_axes,
@@ -1414,6 +1443,7 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
                     LayoutInputOf::line_break(
                         LineBreakInputOf::new().with_metrics(
                             InlineMetricsOf::from_line_height_and_baseline(
+                                crate::InlineBaselineContext::Physical,
                                 S::from_f64(20.0),
                                 S::from_f64(15.0),
                             )
@@ -3147,8 +3177,12 @@ fn fri06_c08_float_line_continuation_batch<S: LayoutScalar>(
     );
     let strut = InlineBoundaryInputOf::new(
         InlineBoundaryKind::Start,
-        InlineMetricsOf::from_line_height_and_baseline(S::from_f64(line_height), S::from_f64(12.0))
-            .unwrap(),
+        InlineMetricsOf::from_line_height_and_baseline(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(line_height),
+            S::from_f64(12.0),
+        )
+        .unwrap(),
         crate::InlineBoundaryEdgeOf::ZERO,
     );
     let mut children = vec![
@@ -3320,8 +3354,12 @@ fn fri06_c08_float_line_empty_inline_keeps_integral_float_height_at_62() {
             style,
             surgeist_text::ParagraphBaseDirection::LeftToRight,
         );
-        let metrics =
-            InlineMetricsOf::from_ascent_descent(S::from_f64(7.8), S::from_f64(2.3)).unwrap();
+        let metrics = InlineMetricsOf::from_ascent_descent(
+            crate::InlineBaselineContext::Physical,
+            S::from_f64(7.8),
+            S::from_f64(2.3),
+        )
+        .unwrap();
         assert_fri06_c08_float_line_control_height::<S>(
             vec![
                 (3, paragraph.text_input(3), NodeInputOf::non_box()),
@@ -3630,6 +3668,7 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                     .with_direction(direction)
                     .with_metrics(
                         InlineMetricsOf::from_line_height_and_baseline(
+                            crate::InlineBaselineContext::Physical,
                             S::from_f64(24.0),
                             S::from_f64(16.8),
                         )
@@ -5496,7 +5535,12 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
         }
     }
 
-    let metrics = InlineMetrics::from_line_height_and_baseline(16.0, 12.0).unwrap();
+    let metrics = InlineMetrics::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        16.0,
+        12.0,
+    )
+    .unwrap();
     let mut tree = HiddenTree::default();
     tree.children.insert(1, vec![2, 3]);
     tree.children.insert(2, vec![]);

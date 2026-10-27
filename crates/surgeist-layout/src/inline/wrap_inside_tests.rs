@@ -10,9 +10,12 @@ fn exercise<S: LayoutScalar>(
     expected: &[usize],
     ending: SelectedInlineLineEnd,
 ) {
-    let metrics =
-        InlineMetricsOf::from_line_height_and_baseline(S::from_f64(10.0), S::from_f64(10.0))
-            .unwrap();
+    let metrics = InlineMetricsOf::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        S::from_f64(10.0),
+        S::from_f64(10.0),
+    )
+    .unwrap();
     let flow = InlineFlowOf::new(
         WritingMode::HorizontalTb,
         Direction::Ltr,
@@ -97,6 +100,7 @@ fn exercise<S: LayoutScalar>(
         .unwrap();
     let atomic = |source_index, following| MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {
+            baseline_reference: crate::InlineBaselineContext::Physical,
             source_index,
             size: Size::splat(S::from_f64(10.0)),
             content_size: Size::ZERO,
@@ -135,7 +139,7 @@ fn exercise<S: LayoutScalar>(
         participants: &participants,
         supplied: &supplied,
     };
-    let selected = select_scope_inline_line(
+    let InlineSelectionStep::Selected(Some(selected)) = select_scope_inline_line(
         NumericLineQuery {
             goal: None,
             indent: S::ZERO,
@@ -148,10 +152,12 @@ fn exercise<S: LayoutScalar>(
             axes: flow.flow_axes,
         },
         Some(&projection),
+        |_, _| Ok(None),
         |receipt| Ok(receipt.summary.used_inline_extent <= S::from_f64(25.0)),
     )
-    .unwrap()
-    .unwrap();
+    .unwrap() else {
+        panic!("resolved metric-only selection does not retry its receiver")
+    };
     assert_eq!(selected.end, ending);
     let boxes: Vec<_> = selected
         .line
@@ -167,7 +173,7 @@ fn exercise<S: LayoutScalar>(
         selected.line.used_inline_extent.to_f64(),
         10.0 * expected.len() as f64
     );
-    let receiving = select_scope_inline_line(
+    let InlineSelectionStep::Selected(Some(receiving)) = select_scope_inline_line(
         NumericLineQuery {
             goal: None,
             indent: S::ZERO,
@@ -180,10 +186,12 @@ fn exercise<S: LayoutScalar>(
             axes: flow.flow_axes,
         },
         Some(&projection),
+        |_, _| Ok(None),
         |receipt| Ok(receipt.summary.used_inline_extent <= S::from_f64(25.0)),
     )
-    .unwrap()
-    .unwrap();
+    .unwrap() else {
+        panic!("resolved metric-only selection does not retry its receiver")
+    };
     assert_eq!(receiving.end, SelectedInlineLineEnd::Paragraph);
     assert_eq!(
         receiving.line.used_inline_extent.to_f64(),
@@ -222,6 +230,7 @@ fn atomic_metric<S: LayoutScalar>(
 ) -> MixedInlineParticipantOf<S> {
     MixedInlineParticipantOf::Atomic {
         item: AtomicInlineBoxParticipant {
+            baseline_reference: crate::InlineBaselineContext::Physical,
             source_index: 0,
             size: Size::new(S::from_f64(10.0), S::from_f64(height)),
             content_size: Size::ZERO,
@@ -263,8 +272,12 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
                 Direction::Ltr,
                 AvailableOf::MAX_CONTENT,
             ),
-            InlineMetricsOf::from_line_height_and_baseline(S::from_f64(30.0), S::from_f64(30.0))
-                .unwrap(),
+            InlineMetricsOf::from_line_height_and_baseline(
+                crate::InlineBaselineContext::Physical,
+                S::from_f64(30.0),
+                S::from_f64(30.0),
+            )
+            .unwrap(),
             InlineControlAlignment::Baseline,
             InlineBoundaryEdgeOf::ZERO,
         );
@@ -338,9 +351,13 @@ fn actual_numeric_fallback_envelope_cycle_refuses_without_a_retry_threshold() {
         let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
         // Actual fallback atomic15 has baseline15 and no descent. The carried
         // explicit 10+10 strut gives natural extent25; float fallback uses20.
-        let strut = Some(InlineMetricContributionOf {
-            baseline: S::from_f64(10.0),
-            after_baseline: S::from_f64(10.0),
+        let strut = Some(ReferencedInlineStrutOf {
+            source: InlineStrutSource::Direct,
+            reference: crate::InlineBaselineContext::Physical,
+            metrics: InlineMetricContributionOf {
+                baseline: S::from_f64(10.0),
+                after_baseline: S::from_f64(10.0),
+            },
         });
         let mut accumulator = NumericReceiptAccumulatorOf::new(strut);
         accumulator.push(atomic_metric(15.0, None), axes);

@@ -122,6 +122,7 @@ pub enum LayoutTextNumericError {
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
+    InlineBaseline(crate::InlineBaselineError),
     RootAvailability {
         axis: PhysicalAxis,
         error: NonNegativeFiniteScalarErrorOf<S>,
@@ -181,6 +182,7 @@ pub enum FloatExclusionRoleError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum LayoutMissingContext {
+    NamedInlineBaseline,
     RequiredBasis,
     FloatExclusionProvider,
     TextCapture,
@@ -330,6 +332,10 @@ pub enum LayoutInternalInvariant {
     InvalidRoundedInlineFragmentGeometry,
     /// A private balanced-line basis violated its finite/count/replay invariant.
     InvalidInlineBalance,
+    /// A private paragraph-tail program did not reproduce its retained basis.
+    InvalidInlineTailSelection,
+    /// A deferred receiving metric no longer matched its retained atomic source.
+    InvalidAtomicReceiverBasis,
     MissingLeafMeasurementProvider,
     MissingStagedUnroundedOutput,
     SubgridTrackInheritance,

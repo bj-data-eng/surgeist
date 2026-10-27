@@ -1101,6 +1101,7 @@ fn fri06_c12_t08_float_dominated_terminal_extent_stops_at_the_float_edge() {
                 LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::from_line_height_and_baseline(
+                        crate::InlineBaselineContext::Physical,
                         S::from_f64(20.0),
                         S::from_f64(14.8),
                     )
@@ -1198,6 +1199,7 @@ fn fri06_c12_t08_float_shape_slots_follow_visual_order_before_physical_projectio
                 LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::from_line_height_and_baseline(
+                        crate::InlineBaselineContext::Physical,
                         S::from_f64(20.0),
                         S::from_f64(14.0),
                     )
@@ -1210,6 +1212,7 @@ fn fri06_c12_t08_float_shape_slots_follow_visual_order_before_physical_projectio
                 LayoutInputOf::inline_boundary(InlineBoundaryInputOf::new(
                     InlineBoundaryKind::Start,
                     InlineMetricsOf::from_line_height_and_baseline(
+                        crate::InlineBaselineContext::Physical,
                         S::from_f64(20.0),
                         S::from_f64(14.0),
                     )

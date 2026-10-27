@@ -95,7 +95,12 @@ fn boundary<S: l::LayoutScalar>(
     l::LayoutInputOf::inline_boundary(
         l::InlineBoundaryInputOf::new(
             kind,
-            l::InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+            l::InlineMetricsOf::try_new(
+                surgeist_layout::InlineBaselineContext::Physical,
+                S::from_f64(8.0),
+                S::from_f64(10.0),
+            )
+            .unwrap(),
             l::InlineBoundaryEdgeOf::ZERO,
         )
         .with_direction(direction),
@@ -106,7 +111,12 @@ fn forced<S: l::LayoutScalar>(direction: l::Direction) -> l::LayoutInputOf<S> {
         l::LineBreakInputOf::new()
             .with_direction(direction)
             .with_metrics(
-                l::InlineMetricsOf::try_new(S::from_f64(16.0), S::from_f64(20.0)).unwrap(),
+                l::InlineMetricsOf::try_new(
+                    surgeist_layout::InlineBaselineContext::Physical,
+                    S::from_f64(16.0),
+                    S::from_f64(20.0),
+                )
+                .unwrap(),
             ),
     )
 }

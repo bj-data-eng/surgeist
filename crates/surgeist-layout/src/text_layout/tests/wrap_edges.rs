@@ -219,7 +219,12 @@ impl Fixture {
                 LayoutInputOf::inline_boundary(
                     InlineBoundaryInputOf::new(
                         kind,
-                        InlineMetricsOf::try_new(S::from_f64(8.0), S::from_f64(10.0)).unwrap(),
+                        InlineMetricsOf::try_new(
+                            crate::InlineBaselineContext::Physical,
+                            S::from_f64(8.0),
+                            S::from_f64(10.0),
+                        )
+                        .unwrap(),
                         InlineBoundaryEdgeOf::ZERO,
                     )
                     .with_direction(Direction::Ltr),

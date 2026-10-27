@@ -14,21 +14,21 @@ pub(crate) struct BalanceBasis {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct GroupBasis {
-    terminal: PreparedTermination,
-    boundary: PreparedBoundary,
-    ending: LineEnd,
-    count: usize,
+pub(super) struct GroupBasis {
+    pub(super) terminal: PreparedTermination,
+    pub(super) boundary: PreparedBoundary,
+    pub(super) ending: LineEnd,
+    pub(super) count: usize,
     residuals: Vec<NaturalResidual>,
 }
 
-struct GroupReference {
-    basis: GroupBasis,
-    window: Range<usize>,
+pub(super) struct GroupReference {
+    pub(super) basis: GroupBasis,
+    pub(super) window: Range<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct LineProof {
+pub(super) struct LineProof {
     request: LineSelectionRequest,
     disposition: LineDisposition,
     boxes: Option<BoxAssignment>,
@@ -55,7 +55,7 @@ struct LineProof {
 }
 
 impl LineProof {
-    fn of(line: &FittedLine) -> Self {
+    pub(super) fn of(line: &FittedLine) -> Self {
         Self {
             request: line.finalized.selected_line().request().clone(),
             disposition: line.disposition.clone(),
@@ -85,19 +85,19 @@ impl LineProof {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct GroupProof {
-    lines: Vec<LineProof>,
-    outgoing: SequenceEntry,
+pub(super) struct GroupProof {
+    pub(super) lines: Vec<LineProof>,
+    pub(super) outgoing: SequenceEntry,
 }
 
 #[derive(Default)]
-struct Observations {
+pub(super) struct Observations {
     roles: Vec<RoleUse>,
     boxes: Vec<super::super::boxes::BoxTrialUse>,
 }
 
 impl Observations {
-    fn record(&mut self, lines: &[FittedLine]) {
+    pub(super) fn record(&mut self, lines: &[FittedLine]) {
         // Repeated authentic observations are harmless. Global membership
         // scans would make unrelated earlier groups part of every local trial.
         self.roles
@@ -106,7 +106,7 @@ impl Observations {
             .extend(lines.iter().flat_map(|line| line.box_uses.iter().cloned()));
     }
 
-    fn attach(self, lines: &mut [FittedLine]) {
+    pub(super) fn attach(self, lines: &mut [FittedLine]) {
         if let Some(last) = lines.last_mut() {
             last.role_uses.extend(self.roles);
             last.box_uses.extend(self.boxes);
@@ -133,7 +133,7 @@ fn residuals(lines: &[FittedLine]) -> Result<Vec<NaturalResidual>, FitError> {
         .collect()
 }
 
-fn references(
+pub(super) fn references(
     lines: &[FittedLine],
     opportunities: &[Opportunity],
 ) -> Result<Vec<GroupReference>, FitError> {
@@ -197,7 +197,7 @@ fn references(
     Ok(groups)
 }
 
-fn authenticate(
+pub(super) fn authenticate(
     reference: &GroupReference,
     lines: &[FittedLine],
     outgoing: SequenceEntry,
@@ -241,7 +241,7 @@ where
     Accept: FnMut() -> Result<(), FitError>,
     Clear: FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
 {
-    fn group(
+    pub(super) fn group(
         &mut self,
         entry: &SequenceEntry,
         reference: &GroupReference,
@@ -255,7 +255,8 @@ where
                 reset: EncounterReset::Group,
                 stop_at_forced: true,
                 max_formatted: Some(reference.basis.count),
-                goal,
+                goal: goal.map(LineQualityGoal::Balance),
+                goal_after: 0,
                 opportunity_start: reference.window.start,
                 opportunity_end: reference.window.end,
             },
@@ -315,6 +316,7 @@ where
         stop_at_forced: false,
         max_formatted: None,
         goal: None,
+        goal_after: 0,
         opportunity_start: 0,
         opportunity_end: runner.opportunities.len(),
     };
@@ -412,13 +414,13 @@ where
     } else if result.iter().map(LineProof::of).ne(chosen) {
         return Err(FitError::FeedbackCycle);
     }
-    let basis = Arc::new(BalanceBasis {
+    let basis = Arc::new(SelectionProgram::Balance(BalanceBasis {
         groups: references.into_iter().map(|group| group.basis).collect(),
         goals,
         original_auto,
-    });
+    }));
     for line in &mut result {
-        line.balance = Some(Arc::clone(&basis));
+        line.program = Some(Arc::clone(&basis));
     }
     observations.attach(&mut result);
     Ok(result)
@@ -458,13 +460,10 @@ mod tests {
     use super::*;
     use crate::test_support::text::{PreparedParagraph, ahem_style};
 
-    #[test]
-    fn real_forced_groups_bound_local_trials_and_never_rescan_unrelated_opportunities() {
-        let short = "AAA BB C";
-        let long = "A ".repeat(80) + "A";
-        let mut groups = vec![short.to_owned(); 8];
-        groups.push(long);
-        groups.extend(vec![short.to_owned(); 8]);
+    fn fit_groups(
+        groups: &[String],
+        wrap_style: crate::TextWrapStyle,
+    ) -> (PreparedParagraph, Vec<FittedLine>) {
         let mut style = ahem_style(10.0, 10.0);
         style.wrap = surgeist_text::Wrap::Word;
         style.white_space = surgeist_text::WhiteSpace::PreserveBreaks;
@@ -486,7 +485,7 @@ mod tests {
                 base_direction: ParagraphBaseDirection::LeftToRight,
                 block_direction: ParagraphBaseDirection::LeftToRight,
                 alignment: TextAlign::Start,
-                wrap_style: crate::TextWrapStyle::Balance,
+                wrap_style,
                 last_alignment: TextAlignLast::Auto,
                 justification: TextJustification::None,
                 indent: crate::text_indent::ResolvedTextIndent::ZERO,
@@ -530,6 +529,17 @@ mod tests {
             },
         )
         .unwrap_or_else(|_| panic!("real prepared forced groups fit"));
+        (paragraph, lines)
+    }
+
+    #[test]
+    fn real_forced_groups_bound_local_trials_and_never_rescan_unrelated_opportunities() {
+        let short = "AAA BB C";
+        let long = "A ".repeat(80) + "A";
+        let mut groups = vec![short.to_owned(); 8];
+        groups.push(long);
+        groups.extend(vec![short.to_owned(); 8]);
+        let (paragraph, lines) = fit_groups(&groups, crate::TextWrapStyle::Balance);
         let mut actual = Vec::new();
         let mut widths = Vec::new();
         for line in &lines {
@@ -559,6 +569,59 @@ mod tests {
                 if window != long_window {
                     assert!(work.runs <= 21, "<=20 local runs plus whole-program replay");
                     assert!(work.opportunities <= 21 * 3 * (window.1 - window.0), "only this group's actual opportunities are visited");
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn paragraph_tail_trials_replay_only_the_final_real_group() {
+        let mut groups = vec!["AAA BB C".to_owned(); 8];
+        groups.push("A ".repeat(80) + "A");
+        groups.extend(vec!["AAA BB C".to_owned(); 8]);
+        let (paragraph, lines) = fit_groups(&groups, crate::TextWrapStyle::AvoidShortLastLine);
+        let mut actual = Vec::new();
+        let mut widths = Vec::new();
+        for line in &lines {
+            assert_eq!(line.finalized.prepared_text(), paragraph.prepared);
+            if line.disposition.is_formatted() {
+                widths.push(line.natural_advance);
+            }
+            if line.finalized.selected_line().request().context.end != LineEnd::Soft {
+                actual.push(std::mem::take(&mut widths));
+            }
+            assert!(matches!(
+                line.program.as_deref(),
+                Some(SelectionProgram::Tail(_))
+            ));
+        }
+        assert_eq!(actual.len(), 17);
+        for (index, group) in actual.iter().enumerate() {
+            if index == 8 {
+                assert_eq!(group, &vec![50.0; 27]);
+            } else if index == 16 {
+                assert_eq!(group, &[30.0, 40.0]);
+            } else {
+                assert_eq!(group, &[60.0, 10.0]);
+            }
+        }
+        GROUP_WORK.with_borrow(|work| {
+            assert_eq!(work.len(), 17);
+            let final_window = *work.keys().max_by_key(|window| window.0).unwrap();
+            for (index, (&window, work)) in work.iter().enumerate() {
+                if window == final_window {
+                    assert!(
+                        work.runs <= 19,
+                        "seventeen goals and two winner validations"
+                    );
+                    assert!(work.opportunities <= 19 * 3 * (window.1 - window.0));
+                } else {
+                    assert_eq!(
+                        work.runs, 2,
+                        "ordinary rolling pass and final validation only"
+                    );
+                    let count = if index == 8 { 27 } else { 2 };
+                    assert!(work.opportunities <= 2 * count * (window.1 - window.0));
                 }
             }
         });

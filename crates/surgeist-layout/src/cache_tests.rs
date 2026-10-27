@@ -195,6 +195,7 @@ fn cache_scroll_geometry<S: LayoutScalar>() -> ScrollGeometryOf<S> {
 
 fn complete_compute_size_output<S: LayoutScalar>() -> ComputeOutputOf<S> {
     ComputeOutputOf {
+        named_baselines: crate::NamedBaselinesOf::unknown(),
         size: Size::new(scalar(120.0), scalar(40.0)),
         content_size: Size::new(scalar(180.0), scalar(90.0)),
         scroll_geometry: Some(cache_scroll_geometry()),

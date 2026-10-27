@@ -13,7 +13,12 @@ fn n<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
 }
 fn metrics<S: LayoutScalar>() -> InlineMetricsOf<S> {
-    InlineMetricsOf::from_line_height_and_baseline(n(10.0), n(10.0)).unwrap()
+    InlineMetricsOf::from_line_height_and_baseline(
+        crate::InlineBaselineContext::Physical,
+        n(10.0),
+        n(10.0),
+    )
+    .unwrap()
 }
 fn participation(following: InlineBreakOpportunity) -> AtomicInlineParticipation {
     // This is the already qualified native level0 atomic profile, with separate
@@ -80,6 +85,7 @@ impl<S: LayoutScalar> Fixture<S> {
         self.nodes.push(node);
         self.participants.push(MixedInlineParticipantOf::Atomic {
             item: AtomicInlineBoxParticipant {
+                baseline_reference: crate::InlineBaselineContext::Physical,
                 source_index: node as usize,
                 size: Size::splat(n(10.0)),
                 content_size: Size::ZERO,
@@ -130,6 +136,7 @@ impl<S: LayoutScalar> Fixture<S> {
             .numeric_projection(&flow.graph, 0, &self.nodes)
             .unwrap();
         MixedInlineRunInputOf {
+            inline_baseline_context: crate::InlineBaselineContext::Physical,
             groups: crate::group_alignment::Snapshot::default(),
             text_wrap_style: crate::TextWrapStyle::Auto,
             line_box_context: crate::line_box::LineBoxContext::new(
@@ -555,7 +562,7 @@ fn propagation<S: LayoutScalar>() {
             let mut cursor = InlineSourceCursor::default();
             let mut pending = None;
             for extent in expected_flow {
-                let selected = select_scope_inline_line(
+                let InlineSelectionStep::Selected(Some(selected)) = select_scope_inline_line(
                     NumericLineQuery {
                         goal: None,
                         indent: n(0.0),
@@ -568,10 +575,12 @@ fn propagation<S: LayoutScalar>() {
                         axes: input.flow_axes,
                     },
                     input.wrapping.as_ref(),
+                    |_, _| Ok(None),
                     |r| Ok(r.summary.used_inline_extent <= n(100.0)),
                 )
-                .unwrap()
-                .unwrap();
+                .unwrap() else {
+                    panic!("resolved metric-only selection does not retry its receiver")
+                };
                 assert_eq!(selected.line.used_inline_extent, n(extent));
                 cursor = selected.next_cursor;
                 pending = selected.pending_strut;
@@ -1202,6 +1211,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     .unwrap();
                 let report = layout_mixed_inline_run_with_formatted_observation(
                     MixedInlineRunInputOf {
+                        inline_baseline_context: crate::InlineBaselineContext::Physical,
                         groups: crate::group_alignment::Snapshot::default(),
                         text_wrap_style: crate::TextWrapStyle::Auto,
                         line_box_context: crate::line_box::LineBoxContext::new(
@@ -1222,6 +1232,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                         // The declared Visible overflow reserves no scrollbar.
                         participants: vec![MixedInlineParticipantOf::Atomic {
                             item: AtomicInlineBoxParticipant {
+                                baseline_reference: crate::InlineBaselineContext::Physical,
                                 source_index: allocation.source_index.get(),
                                 size: allocation.size,
                                 content_size: allocation.content_size,
@@ -1242,6 +1253,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                     },
                     |block, _| block,
                     true,
+                    crate::inline::unavailable_atomic_receiver,
                 )
                 .unwrap();
                 let mut expected_endings = Vec::new();

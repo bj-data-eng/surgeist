@@ -336,7 +336,12 @@ impl Case {
                         } else {
                             InlineBoundaryKind::End
                         },
-                        InlineMetricsOf::try_new(S::from_f64(16.0), S::from_f64(20.0)).unwrap(),
+                        InlineMetricsOf::try_new(
+                            crate::InlineBaselineContext::Physical,
+                            S::from_f64(16.0),
+                            S::from_f64(20.0),
+                        )
+                        .unwrap(),
                         InlineBoundaryEdgeOf::ZERO,
                     )
                     .with_direction(self.direction),
