@@ -7,7 +7,7 @@ use crate::values::text::{
     CssOverflowWrap, CssTextOverflow, CssTextWrap, CssTextWrapMode, CssTextWrapStyle,
     CssWhiteSpace, CssWhiteSpaceCollapse, CssWhiteSpaceKeyword, CssWhiteSpaceTrim, CssWordBreak,
 };
-use cssparser::match_ignore_ascii_case;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 fn text_wrap_mode_keyword(ident: &str) -> Option<CssTextWrapMode> {
     match_ignore_ascii_case! { ident,

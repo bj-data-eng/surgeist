@@ -4,7 +4,8 @@ use super::property_input::Parser;
 use super::values::{parse_hinted_number_calculation, parse_length_percentage};
 use crate::diagnostic::CssFeatureId;
 use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::{Token, match_ignore_ascii_case};
+use cssparser::Token;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{
     LiteralTokens, NumericType, next_is_comma, parse_numeric_function, parse_numeric_type,

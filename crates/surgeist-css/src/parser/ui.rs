@@ -19,7 +19,8 @@ use crate::values::ui::{
     CssCursorUrlSetDescriptor, CssCursorUrlSetOption, CssCursorUrlSetReference,
 };
 use crate::values::ui::{CssCursorKeyword, CssPointerEvents, CssUserSelect};
-use cssparser::{Token, match_ignore_ascii_case};
+use cssparser::Token;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 macro_rules! keyword_parser {
     ($fn:ident, $ty:ident, {$($text:literal => $variant:ident),+}) => {

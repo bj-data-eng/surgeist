@@ -39,11 +39,11 @@ A new edition is adopted deliberately and recorded there.
 
 ## Dependencies
 
-The crate depends on no other Surgeist crate, and `surgeist-css` is to depend
-on it; it does not yet. The direction differs from [surgeist-html-parser](../surgeist-html-parser/README.md),
-which sits above the HTML values it constructs: CSS Syntax 3 is a
-language-independent layer below every CSS grammar, so it cannot depend on CSS
-values. The [explanation](../../docs/explanation.md#language-values-authored-state-and-live-identity)
+The crate depends on no other Surgeist crate, and `surgeist-css` depends on it.
+The direction differs from
+[surgeist-html-parser](../surgeist-html-parser/README.md), which sits above the
+HTML values it constructs: CSS Syntax 3 is a language-independent layer below
+every CSS grammar, so it cannot depend on CSS values. The [explanation](../../docs/explanation.md#language-values-authored-state-and-live-identity)
 places both among the repository's crate boundaries.
 
 ## Verification

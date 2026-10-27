@@ -3,7 +3,7 @@ use super::border_width::{parse_exact_line_triple, parse_exact_line_width};
 use super::combinators::{Combinator, Tail, fill, keyword, parse_group};
 use super::property_input::Parser;
 use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::match_ignore_ascii_case;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{next_is_ident, parse_positive_integer_value};
 use crate::values::border::CssLineStyle;

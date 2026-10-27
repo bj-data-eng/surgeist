@@ -30,7 +30,8 @@ use crate::query::media::{
     CssReducedTransparencyPreference, CssScanMode, CssUnknownMediaFeature,
     CssUnknownMediaFeatureReason,
 };
-use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
+use cssparser::{ParseError, Parser, Token};
+use surgeist_css_parser::match_ignore_ascii_case;
 
 pub(super) enum AdmittedMediaFeature {
     Feature(CssMediaFeatureQuery, Box<MediaFeatureSyntax>),

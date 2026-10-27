@@ -10,8 +10,7 @@ tokenization, parsing results and token streams, parser entry points and
 algorithms, the `An+B` microsyntax and token serialization. It gives syntax no
 CSS meaning. [surgeist-css](../surgeist-css/AGENTS.md) owns grammars, property
 and descriptor values, rules, selectors, queries and recovery diagnostics, and
-is to depend on this crate (it does not yet). This crate depends on no Surgeist
-crate; do not add one.
+depends on this crate. This crate depends on no Surgeist crate; do not add one.
 Behavior follows the
 [pinned CSS Syntax 3 edition](../../references/SOURCE-EDITIONS.md#css-syntax-3-edition),
 not the conventions of another implementation.

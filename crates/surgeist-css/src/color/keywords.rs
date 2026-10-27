@@ -1,7 +1,7 @@
 //! Shared allocation-free decoded keyword recognition.
 
 use crate::color::CssSystemColor;
-use cssparser::match_ignore_ascii_case;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 pub(crate) fn system_color(ident: &str) -> Option<CssSystemColor> {
     let value = match_ignore_ascii_case! { ident,

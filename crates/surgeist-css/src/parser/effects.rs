@@ -6,7 +6,8 @@ use super::values::{
 };
 use crate::diagnostic::CssFeatureId;
 use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::{Token, match_ignore_ascii_case};
+use cssparser::Token;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::box_model::parse_drop_shadow;
 use super::position::parse_full_position;

@@ -4015,6 +4015,7 @@ dependencies = [
  "serde_json",
  "stats_alloc",
  "surgeist-color",
+ "surgeist-css-parser",
  "surgeist-fuzz",
  "unicode-segmentation",
 ]

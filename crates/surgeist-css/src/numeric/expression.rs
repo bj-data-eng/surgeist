@@ -966,7 +966,7 @@ pub enum CssNumericConstant {
 }
 impl CssNumericConstant {
     pub(crate) fn parse(name: &str) -> Option<Self> {
-        cssparser::match_ignore_ascii_case! { name,
+        surgeist_css_parser::match_ignore_ascii_case! { name,
             "e" => Some(Self::E), "pi" => Some(Self::Pi),
             "infinity" => Some(Self::Infinity), "-infinity" => Some(Self::NegativeInfinity),
             "nan" => Some(Self::NaN), _ => None,
@@ -1040,7 +1040,7 @@ pub enum CssMathFunction {
 }
 impl CssMathFunction {
     pub(crate) fn parse(name: &str) -> Option<Self> {
-        Some(cssparser::match_ignore_ascii_case! { name,
+        Some(surgeist_css_parser::match_ignore_ascii_case! { name,
             "calc" => Self::Calc,
             "min" => Self::Min,
             "max" => Self::Max,

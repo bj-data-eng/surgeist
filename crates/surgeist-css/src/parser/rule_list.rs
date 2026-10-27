@@ -59,8 +59,9 @@ use crate::syntax_consumption::RuleListSyntax;
 use crate::syntax_consumption::{GenericRuleResult, SyntaxDocument};
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserInput, ParserState,
-    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token, match_ignore_ascii_case,
+    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token,
 };
+use surgeist_css_parser::match_ignore_ascii_case;
 
 /// Where a rule list appears.
 #[derive(Clone, Copy)]

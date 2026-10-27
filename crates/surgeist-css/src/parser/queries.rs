@@ -10,9 +10,8 @@ pub(crate) fn construct_when_media_feature(
 ) -> Result<crate::query::CssWhenMediaFeature, crate::query::CssConditionConstructionError> {
     features::construct_when_media_feature(component, limits)
 }
-use cssparser::{
-    BasicParseErrorKind, Delimiter, ParseError, Parser, Token, match_ignore_ascii_case,
-};
+use cssparser::{BasicParseErrorKind, Delimiter, ParseError, Parser, Token};
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::boolean_condition::{BooleanConditionGrammar, parse_boolean_condition};
 use super::recovery::{

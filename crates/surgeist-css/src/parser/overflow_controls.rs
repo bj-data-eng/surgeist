@@ -3,7 +3,8 @@
 use super::combinators::{Combinator, Tail, commit, parse_group};
 use super::property_input::Parser;
 use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::{Token, match_ignore_ascii_case};
+use cssparser::Token;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::parse_nonnegative_length;
 use crate::numeric::expression::NumericInputContext;
