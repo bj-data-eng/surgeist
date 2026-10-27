@@ -10,11 +10,24 @@ interpretation on this crate.
 
 ## Status
 
-The crate is newly created and exposes no public items yet. Its API arrives
-module by module, each with the specification-derived tests for the clauses it
-implements. The [coverage map](docs/conformance-coverage.md) lists the clauses
-of the pinned edition with their tests and claims only what those tests
-establish; today it claims nothing.
+The crate is being built module by module, each with the specification-derived
+tests for the clauses it implements. It currently offers:
+
+- `lexical`: the code-point classes of Syntax 3 section 4.2 and the checks of
+  sections 4.3.8 to 4.3.11 (valid escape, would start an ident sequence, a
+  number or a unicode-range) as `const fn`s. The non-ASCII ident code point
+  follows the 2021 rule for now; adopting the pinned edition's narrower set is
+  a deliberate later change.
+- `Offset`: a byte offset into the text a tokenizer reads.
+- `limits`: `Limits`, `DepthExcess`, the `Meter` contract through which a host
+  admits work and storage, and the charged helpers `grow`, `copy_str` and
+  `copy_boxed`.
+- `match_ignore_ascii_case!`: ASCII case-insensitive matching of a string
+  against lowercase literal arms.
+
+There is no tokenizer, document or parser yet. The
+[coverage map](docs/conformance-coverage.md) lists the clauses of the pinned
+edition with their tests and claims only what those tests establish.
 
 ## Edition
 
@@ -39,6 +52,7 @@ Run from the repository root:
 
 ```sh
 cargo check --offline --locked -j 1 -p surgeist-css-parser
+cargo test --offline --locked -j 1 -p surgeist-css-parser
 cargo clippy --offline --locked -j 1 -p surgeist-css-parser --all-targets -- -F unsafe-code -D warnings
 cargo fmt -p surgeist-css-parser -- --check
 ```
