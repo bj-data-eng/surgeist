@@ -158,7 +158,10 @@ where
             SequenceScope {
                 reset: EncounterReset::Group,
                 stop_at_forced: true,
-                max_formatted: count,
+                // Ordinary replay must finish the same unconstrained Always
+                // backtracking as its reference. Authenticate its retained count
+                // below only after completion; quality trials may prune early.
+                max_formatted: goal.and(count),
                 goal,
                 goal_after: after,
                 goal_before: before,
