@@ -2,7 +2,7 @@
 use crate::css::support::isolated_stack;
 
 use crate::css::support::authored_syntax::checked_supports_condition as construct;
-use surgeist_css::CssSupportsConditionKind;
+use surgeist_css::query::CssConditionKind;
 
 #[test]
 fn supported_supports_depth_and_owned_child_lifetimes_fit_an_ordinary_caller_stack() {
@@ -27,24 +27,48 @@ fn supported_supports_depth_and_owned_child_lifetimes_fit_an_ordinary_caller_sta
                 let condition = construct(&source);
                 let cloned = condition.clone();
                 assert_eq!(condition, cloned);
-                assert_eq!(condition.serialize().unwrap().as_css(), source);
-                assert_eq!(cloned.serialize().unwrap().as_css(), source);
+                assert_eq!(
+                    condition
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
+                    source
+                );
+                assert_eq!(
+                    cloned
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
+                    source
+                );
                 drop(condition);
-                assert_eq!(cloned.serialize().unwrap().as_css(), source);
+                assert_eq!(
+                    cloned
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
+                    source
+                );
                 drop(cloned);
             }
             let child_source = format!("{}(width:1px){}", "not (".repeat(253), ")".repeat(253));
             let parent = construct(&format!("({child_source}) and future()"));
-            let CssSupportsConditionKind::And(children) = parent.kind() else {
+            let CssConditionKind::And(children) = parent.kind() else {
                 panic!("conjunction")
             };
             let child = children.conditions()[0].clone();
             let expected = format!("({child_source})");
-            assert_eq!(child.serialize().unwrap().as_css(), expected);
+            assert_eq!(
+                child.serialize_tokens(Default::default()).unwrap().as_css(),
+                expected
+            );
             drop(parent);
             let copy = child.clone();
             assert_eq!(copy, child);
-            assert_eq!(copy.serialize().unwrap().as_css(), expected);
+            assert_eq!(
+                copy.serialize_tokens(Default::default()).unwrap().as_css(),
+                expected
+            );
             drop(child);
             drop(copy);
         },

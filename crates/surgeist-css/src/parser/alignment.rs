@@ -1,9 +1,9 @@
 //! Box Alignment 3 grammar for the selected six longhands and three shorthands.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 
-use crate::alignment::*;
+use crate::values::layout::alignment::*;
 
 fn keyword<'i, 't>(input: &mut Parser<'i, 't>) -> Result<String, ParseError<'i, Error>> {
     Ok(input
@@ -132,7 +132,7 @@ longhand!(parse_justify_items_value, CssJustifyItemsValue, true);
 longhand!(parse_align_self_value, CssAlignSelfValue, false);
 longhand!(parse_justify_self_value, CssJustifySelfValue, false);
 
-pub(super) fn parse_place_content_value<'i, 't>(
+pub(crate) fn parse_place_content_value<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssPlaceContentValue, ParseError<'i, Error>> {
     let align = parse_align_content_value(input)?;
@@ -146,7 +146,7 @@ pub(super) fn parse_place_content_value<'i, 't>(
     }
 }
 
-pub(super) fn parse_place_items_value<'i, 't>(
+pub(crate) fn parse_place_items_value<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssPlaceItemsValue, ParseError<'i, Error>> {
     if let Ok(pair) = input.try_parse(|input| {
@@ -171,7 +171,7 @@ pub(super) fn parse_place_items_value<'i, 't>(
     }
 }
 
-pub(super) fn parse_place_self_value<'i, 't>(
+pub(crate) fn parse_place_self_value<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssPlaceSelfValue, ParseError<'i, Error>> {
     if let Ok(pair) = input.try_parse(|input| {

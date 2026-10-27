@@ -2,8 +2,22 @@
 //! Input was issued by the original checked component owner. This adapter
 //! retains only types/lengths, not an expression projection or cloned syntax.
 
-use super::{bounded_expression as engine, *};
-use crate::utf16_value::Control;
+use super::bounded_expression as engine;
+use crate::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueRef, CssNumericTokenKind, CssValueOrigin,
+    CssValueTokenRef,
+};
+#[cfg(test)]
+use crate::numeric::expression::NumericInputContext;
+use crate::numeric::expression::{
+    AdmissionPolicy, CalculationRoot, CssNumericConstructionErrorKind, Result,
+    intrinsic_token_type, trivia,
+};
+use crate::numeric::{
+    CssMathFunction, CssNumericConstant, CssNumericConstructionError, CssNumericType,
+    ordinary_expression,
+};
+use crate::values::color_adjust::utf16_value::Control;
 use std::mem::size_of;
 
 #[derive(Clone, Copy)]
@@ -22,7 +36,7 @@ struct Scratch<'a> {
 }
 type Checked<T> = std::result::Result<Result<T>, ()>;
 
-pub(super) fn check(
+pub(crate) fn check(
     component: &CssComponentValue,
     policy: AdmissionPolicy,
     control: &Control<'_>,
@@ -430,7 +444,7 @@ fn canonical_length(
                     strategy,
                 } => {
                     let mut total = function
-                        .name()
+                        .as_str()
                         .len()
                         .checked_add(2)
                         .and_then(|length| {
@@ -470,13 +484,12 @@ fn canonical_length(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssUtf16ValueStorage};
+    use crate::source::{CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssUtf16ValueStorage};
     use std::cell::Cell;
 
     fn limits() -> CssUtf16PropertyValueLimits {
         CssUtf16PropertyValueLimits {
             input: CssUtf16InputLimits::default(),
-            syntax: CssComponentValueLimits::default(),
             max_work: 1_000_000,
             max_live_bytes: 16_000_000,
             max_retained_bytes: 16_000_000,
@@ -498,7 +511,7 @@ mod tests {
             "round(up, 2.5, 1)",
             "sin(30deg)",
         ] {
-            let values = crate::parse_component_values(source).unwrap();
+            let values = crate::component::values::parse_component_values(source).unwrap();
             let component = &values.items()[0];
             let original = component.origin().clone();
             let admit = |_| Ok(());
@@ -554,7 +567,7 @@ mod tests {
                 CssNumericConstructionErrorKind::RecoveredComponent,
             ),
         ] {
-            let values = crate::parse_component_values(source).unwrap();
+            let values = crate::component::values::parse_component_values(source).unwrap();
             let component = &values.items()[0];
             let admit = |_| Ok(());
             let release = |_| {};
@@ -575,7 +588,9 @@ mod tests {
 
     #[test]
     fn every_reached_math_admission_can_refuse_without_retaining_scratch_or_changing_input() {
-        let values = crate::parse_component_values("calc(2.5 + max(1, min(3, 4)) / 2)").unwrap();
+        let values =
+            crate::component::values::parse_component_values("calc(2.5 + max(1, min(3, 4)) / 2)")
+                .unwrap();
         let component = &values.items()[0];
         let before = values.clone();
         let count = Cell::new(0);
@@ -609,7 +624,7 @@ mod tests {
             );
             assert_eq!(
                 control.failure(),
-                Some(crate::utf16_value::Failure::Admission)
+                Some(crate::values::color_adjust::utf16_value::Failure::Admission)
             );
             assert_eq!(control.live().bytes(), 0, "cut {cut}");
             assert_eq!(released.get(), 0, "cut {cut}");

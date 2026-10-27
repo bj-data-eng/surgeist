@@ -2,26 +2,31 @@
 //! resource resolution later treats it as an invalid resource.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#url-empty
 
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssContentValue, CssContentValueItem, CssCursor,
-    CssCursorImageSource, CssCursorKeyword, CssImageValue, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssMaskLayer, CssMaskList, CssPropertyNameRef, CssRecoveryAction,
-    CssUrl, CssUrlModifier, CssValueOrigin, parse_property_value, parse_style_attribute,
-    validate_style_attribute,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
 };
+use surgeist_css::values::common::{CssUrl, CssUrlModifier};
+use surgeist_css::values::content::{CssContentValue, CssContentValueItem};
+use surgeist_css::values::effects::{CssMaskLayer, CssMaskList};
+use surgeist_css::values::image::CssImageValue;
+use surgeist_css::values::ui::{CssCursor, CssCursorImageSource, CssCursorKeyword};
 
 fn assert_url_payload(name: &str, value: CssKnownPropertyValueRef<'_>, expected: &str) {
     match value {
         CssKnownPropertyValueRef::BackgroundImage(value) => assert!(matches!(
-            value.images().images(),
+            value.value().images(),
             [CssImageValue::Url(url)] if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::MaskImage(value) => assert!(matches!(
-            value.images().images(),
+            value.value().images(),
             [CssImageValue::Url(url)] if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::BorderImageSource(value) => assert!(matches!(
-            value.source(),
+            value.value(),
             CssImageValue::Url(url) if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::ListStyleImage(value) => assert!(matches!(
@@ -40,11 +45,11 @@ fn assert_url_payload(name: &str, value: CssKnownPropertyValueRef<'_>, expected:
                     && images.fallback() == CssCursorKeyword::Auto
         )),
         CssKnownPropertyValueRef::Background(value) => assert!(matches!(
-            value.background().layers(),
+            value.value().layers(),
             [layer] if matches!(layer.image(), Some(CssImageValue::Url(url)) if url.as_str() == expected)
         )),
         CssKnownPropertyValueRef::BorderImage(value) => assert!(matches!(
-            value.border_image().source(),
+            value.value().source(),
             Some(CssImageValue::Url(url)) if url.as_str() == expected
         )),
         CssKnownPropertyValueRef::ListStyle(value) => assert!(matches!(
@@ -78,10 +83,16 @@ fn assert_clean_url(name: &str, authored: &str, expected: &str) {
         authored.to_owned()
     };
     let source = format!("{name}: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1, "{source}");
-    assert!(validate_style_attribute(&source).is_ok(), "{source}");
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok(),
+        "{source}"
+    );
     let known = report.syntax()[0].known().expect("known URL property");
     assert_eq!(known.property().canonical_name(), name);
     assert_url_payload(
@@ -129,7 +140,7 @@ fn quoted_whitespace_remains_data_and_nonempty_urls_remain_valid() {
 fn empty_quoted_url_keeps_modifiers_and_valid_neighbors() {
     let source =
         "color: red; background-image: url(\"\" cors integrity(\"sha256\")) !important; width: 2px";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 3);
     assert_eq!(
@@ -147,7 +158,7 @@ fn empty_quoted_url_keeps_modifiers_and_valid_neighbors() {
     else {
         panic!("expected typed background image");
     };
-    let [CssImageValue::Url(url)] = value.images().images() else {
+    let [CssImageValue::Url(url)] = value.value().images() else {
         panic!("expected one URL image");
     };
     assert_eq!(url.as_str(), "");
@@ -162,9 +173,10 @@ fn empty_quoted_url_keeps_modifiers_and_valid_neighbors() {
 #[test]
 fn checked_component_construction_keeps_programmatic_empty_url_origin() {
     let url = CssComponentValue::try_url("").unwrap();
-    let components = CssComponentValues::try_new(vec![url]).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
+    let components = CssComponentValues::try_new(vec![url], Default::default()).unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage)),
         components,
         CssImportance::Important,
     )
@@ -185,7 +197,7 @@ fn checked_component_construction_keeps_programmatic_empty_url_origin() {
 fn malformed_urls_and_modifier_tokens_drop_only_their_declaration() {
     for invalid in ["url(foo\"bar)", "url(\"\" 2)"] {
         let source = format!("color: red; background-image: {invalid}; width: 2px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -201,7 +213,11 @@ fn malformed_urls_and_modifier_tokens_drop_only_their_declaration() {
             CssKnownProperty::Width
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
             "{source}"
         );

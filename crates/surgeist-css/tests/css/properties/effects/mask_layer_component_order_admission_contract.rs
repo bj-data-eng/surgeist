@@ -5,7 +5,24 @@
 //! No future serializer API or additional mask fields are required by these tests.
 
 use crate::css::support::check_property_components;
-use surgeist_css::*;
+use crate::css::support::position_view::CartesianPosition as _;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::values::background::{
+    CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize,
+};
+use surgeist_css::values::common::CssUrl;
+use surgeist_css::values::effects::{CssMaskLayer, CssMaskList};
+use surgeist_css::values::image::CssImageValue;
+use surgeist_css::values::position::{CssHorizontalPosition, CssVerticalPosition};
 
 const ORDERS: &[&str] = &[
     "url(mask.png) 3.000e1px top / contain no-repeat",
@@ -66,9 +83,11 @@ fn exact_layer(declaration: &CssDeclaration, source: &str) {
     let CssHorizontalPosition::Offset(offset) = physical.horizontal() else {
         panic!("offset")
     };
-    assert!(matches!(offset.literal_component().unwrap().view(),
+    assert!(
+        matches!(offset.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
-        if number.representation() == "3.000e1" && unit == "px"));
+        if number.representation() == "3.000e1" && unit == "px")
+    );
     assert!(matches!(physical.vertical(), CssVerticalPosition::Top));
     let CssValueOrigin::Parsed(origin) = offset.origin() else {
         panic!("parsed offset")
@@ -99,7 +118,7 @@ fn exact_layer(declaration: &CssDeclaration, source: &str) {
 }
 
 fn checked_mask(value: &str, grammar: bool) -> CssDeclaration {
-    let components = parse_component_values(value).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let declaration =
         check_property_components(CssKnownProperty::Mask, components.clone(), grammar)
             .unwrap_or_else(|error| panic!("{value}: {error:?}"));
@@ -116,7 +135,7 @@ fn checked_mask(value: &str, grammar: bool) -> CssDeclaration {
 fn parsed_permutations_retain_all_fields_exact_origins_importance_and_siblings() {
     for value in ORDERS {
         let source = format!("/*😀*/color:red; mask:{value}!important; width:1px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
         let [before, declaration, after] = report.syntax().as_slice() else {
             panic!("three declarations")
@@ -144,7 +163,10 @@ fn parsed_permutations_retain_all_fields_exact_origins_importance_and_siblings()
 fn validator_admits_all_six_component_group_orders() {
     for value in ORDERS {
         assert!(
-            validate_style_attribute(&format!("mask:{value}!important; color:blue")).is_ok(),
+            CssParser::default()
+                .parse_block_contents(format!("mask:{value}!important; color:blue"))
+                .into_validation_result()
+                .is_ok(),
             "{value}"
         );
     }
@@ -167,10 +189,15 @@ fn checked_grammar_admits_permutations_with_supplied_components_and_origins() {
 #[test]
 fn optional_second_repeat_size_and_position_stop_at_following_groups() {
     for value in PREFIXES {
-        let report = parse_style_attribute(&format!("mask:{value}"));
+        let report = CssParser::default().parse_block_contents(format!("mask:{value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
         assert_eq!(mask(&report.syntax()[0]).layers().len(), 1);
-        assert!(validate_style_attribute(&format!("mask:{value}")).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("mask:{value}"))
+                .into_validation_result()
+                .is_ok()
+        );
         checked_mask(value, false);
         checked_mask(value, true);
     }
@@ -185,11 +212,16 @@ fn layer_boundaries_and_existing_complete_orders_remain_admitted() {
         "no-repeat, none",
         "none, url(mask.png) center / contain no-repeat",
     ] {
-        let report = parse_style_attribute(&format!("mask:{value}"));
+        let report = CssParser::default().parse_block_contents(format!("mask:{value}"));
         assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
         let count = if value.contains(',') { 2 } else { 1 };
         assert_eq!(mask(&report.syntax()[0]).layers().len(), count);
-        assert!(validate_style_attribute(&format!("mask:{value}")).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("mask:{value}"))
+                .into_validation_result()
+                .is_ok()
+        );
         assert_eq!(mask(&checked_mask(value, false)).layers().len(), count);
         assert_eq!(mask(&checked_mask(value, true)).layers().len(), count);
     }
@@ -199,7 +231,7 @@ fn layer_boundaries_and_existing_complete_orders_remain_admitted() {
 fn malformed_groups_drop_only_local_declaration_with_exact_recovery_coordinates() {
     for value in INVALID {
         let source = format!("/*😀*/color:red; mask:{value}!important; width:1px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [before, after] = report.syntax().as_slice() else {
             panic!("only siblings survive: {value}")
         };
@@ -209,10 +241,13 @@ fn malformed_groups_drop_only_local_declaration_with_exact_recovery_coordinates(
             panic!("one diagnostic: {value}")
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("typed property error")
-        };
-        assert_eq!(detail.property(), CssKnownProperty::Mask);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "typed property error"
+        );
+        assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Mask);
         let start = source.find("mask:").unwrap();
         let end = start + source[start..].find(';').unwrap() + 1;
         position(diagnostic.span().start(), &source, start);
@@ -224,10 +259,14 @@ fn malformed_groups_drop_only_local_declaration_with_exact_recovery_coordinates(
 fn validator_rejects_duplicate_groups_invalid_sizes_and_empty_layers() {
     for value in INVALID {
         let source = format!("mask:{value}; color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(!report.diagnostics().is_empty(), "{value}");
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
             "{value}"
         );
@@ -235,26 +274,30 @@ fn validator_rejects_duplicate_groups_invalid_sizes_and_empty_layers() {
 }
 
 fn checked_rejects(value: &str, grammar: bool) {
-    let components = parse_component_values(value).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let result = if grammar {
-        parse_property_value_for_grammar(
-            CssKnownProperty::Mask.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssKnownProperty::Mask.grammar()),
             components,
             CssImportance::Normal,
         )
     } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Mask),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Mask)),
             components,
             CssImportance::Normal,
         )
     };
     let error = result.expect_err("malformed mask layer");
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("typed grammar error: {error:?}")
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Mask);
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "typed grammar error: {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Mask);
 }
 
 #[test]

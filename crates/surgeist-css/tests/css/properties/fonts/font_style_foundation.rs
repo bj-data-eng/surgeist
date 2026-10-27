@@ -5,7 +5,14 @@ use crate::css::support::important_declaration as declaration;
 use crate::css::support::known_property;
 use crate::css::support::named_property::assert_checked_value_rejected_at;
 use crate::css::support::{checked_grammar_declaration, selected_grammar};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssPropertyKindRef, CssPropertyNameRef,
+};
 
 #[test]
 fn normal_and_italic_remain_valid_style_controls() {
@@ -75,7 +82,7 @@ fn exact_outside_angles_and_wrong_domains_drop_only_the_style_declaration() {
         ("left right", "right"),
     ] {
         let source = format!("color:red;font-style:{invalid};color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid style diagnostic: {source}: {report:?}");
         };
@@ -89,7 +96,12 @@ fn exact_outside_angles_and_wrong_domains_drop_only_the_style_declaration() {
             2,
             "valid neighbors survive: {source}"
         );
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
         assert_checked_value_rejected_at(known_property("font-style"), invalid, rest);
     }
 }
@@ -110,7 +122,7 @@ fn inherited_normal_style_has_one_longhand_contribution_and_strict_reentry() {
     };
     let normal = declaration("font-style", "normal");
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&normal).expect("intrinsic style expansion")
+        normal.expand().expect("intrinsic style expansion")
     else {
         panic!("one style contribution");
     };
@@ -129,7 +141,7 @@ fn inherited_normal_style_has_one_longhand_contribution_and_strict_reentry() {
     ] {
         let source = declaration("font-style", spelling);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("symbolic global contributes once");
         };
@@ -142,24 +154,23 @@ fn inherited_normal_style_has_one_longhand_contribution_and_strict_reentry() {
     }
 
     let source = declaration("font-style", "var(--slant)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("unresolved style remains pending");
     };
-    assert_eq!(
+    assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
-    assert!(matches!(
+    assert!(
         pending
-            .reenter(parse_component_values("oblique 0").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "oblique 0").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
-    let replacement = parse_component_values("oblique 90deg").unwrap();
+            .replacement_error()
+            .is_some()
+    );
+    let replacement = CssComponentValues::parse(&CssParser::default(), "oblique 90deg").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("strict replacement contributes a style");
     };
@@ -170,7 +181,7 @@ fn inherited_normal_style_has_one_longhand_contribution_and_strict_reentry() {
     assert!(item.source().same_occurrence(&source));
     assert_eq!(item.replacement_components(), Some(&replacement));
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&declaration("all", "initial")).unwrap()
+        declaration("all", "initial").expand().unwrap()
     else {
         panic!("all contributes its universal reset");
     };
@@ -193,7 +204,7 @@ fn shorthand_consumes_angle_math_but_leaves_size_math_for_font_size() {
         "oblique calc(10deg) italic 16px serif",
     ] {
         let source = format!("color:red;font:{invalid};color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid shorthand diagnostic: {source}: {report:?}");
         };

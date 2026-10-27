@@ -4,9 +4,27 @@
 //! Motion1 WD20241105 §2.1.1; CSSOM WD20210826 §2.1 and the public
 //! immutable provenance/resource/whole-production contracts supply the oracles.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_parsed_span as original;
 use crate::css::support::value_assertions::property_rejection;
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssDeclarationList, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssBoxSize, CssSizeValue};
+use surgeist_css::values::font::{
+    CssFontFamilyList, CssFontFamilyName, CssFontFamilyNameKind, CssFontValue, CssGenericFontFamily,
+};
+use surgeist_css::values::position::{CssHorizontalPosition, CssPositionRef, CssVerticalPosition};
+use surgeist_css::values::transform::{CssOffsetPathKind, CssOffsetPathRef};
+use surgeist_css::{CssParseReport, CssParser};
 
 const TWENTY: &str =
     "F01,F02,F03,F04,F05,F06,F07,F08,F09,F10,F11,F12,F13,F14,F15,F16,F17,F18,F19,F20";
@@ -18,9 +36,9 @@ const NAMES: [&str; 20] = [
 
 fn families(declaration: &CssDeclaration) -> &CssFontFamilyList {
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::FontFamily(value) => value.families(),
+        CssKnownPropertyValueRef::FontFamily(value) => value.value(),
         CssKnownPropertyValueRef::Font(value) => {
-            let CssFontValue::Explicit(value) = value.font() else {
+            let CssFontValue::Explicit(value) = value.value() else {
                 panic!("explicit font tail");
             };
             value.families()
@@ -30,15 +48,21 @@ fn families(declaration: &CssDeclaration) -> &CssFontFamilyList {
 }
 
 fn parity(source: &str) -> CssParseReport<CssDeclarationList> {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     if report.is_clean() {
         assert_eq!(
-            validate_style_attribute(source),
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result(),
             Ok(report.syntax().clone())
         );
     } else {
         assert_eq!(
-            validate_style_attribute(source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
         );
     }
@@ -48,33 +72,35 @@ fn parity(source: &str) -> CssParseReport<CssDeclarationList> {
 fn atomic_bytes(declaration: &CssDeclaration, expected: &str) {
     let before = declaration.clone();
     let components = declaration.value_components().clone();
-    let exact = CssSpecifiedValueSerializationLimits::new(10_000, 10_000, expected.len());
-    assert_eq!(
-        declaration.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
-    assert_eq!(
+    let exact = CssSerializationLimits::new(10_000, 10_000, expected.len());
+    assert_eq!(declaration.serialize_specified(exact).unwrap(), expected);
+    assert!(
         declaration
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(
                 10_000,
                 10_000,
                 expected.len() - 1,
             ))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            .is_byte_limit()
     );
     assert_eq!(declaration, &before);
     assert!(declaration.same_occurrence(&before));
     assert_eq!(declaration.value_components(), &components);
-    assert_eq!(declaration.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let reparsed = parity(expected);
     assert!(reparsed.is_clean(), "{:?}", reparsed.diagnostics());
     let [reparsed] = reparsed.syntax().as_slice() else {
         panic!("one complete emitted declaration");
     };
     assert_eq!(reparsed.importance(), declaration.importance());
-    assert_eq!(reparsed.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        reparsed.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -105,9 +131,10 @@ fn twenty_family_repetitions_keep_order_and_use_one_atomic_output_budget() {
         91,
     );
 
-    let components = parse_component_values(TWENTY).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::FontFamily),
+    let components = CssComponentValues::parse(&CssParser::default(), TWENTY).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::FontFamily)),
         components.clone(),
         CssImportance::Important,
     )
@@ -133,34 +160,32 @@ fn twenty_family_repetitions_keep_order_and_use_one_atomic_output_budget() {
         );
         assert_eq!(
             values
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    40, 40, 98
-                ))
+                .serialize_specified(CssSerializationLimits::new(40, 40, 98))
                 .unwrap(),
             TWENTY_CSS,
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(39, 40, 98),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(39, 40, 98),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(40, 39, 98),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(40, 39, 98),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(40, 40, 97),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(40, 40, 97),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                values
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&values.serialize_specified(limits).unwrap_err()),
                 kind
             );
-            assert_eq!(values.serialize_specified().unwrap(), TWENTY_CSS);
+            assert_eq!(
+                values.serialize_specified(Default::default()).unwrap(),
+                TWENTY_CSS
+            );
         }
         atomic_bytes(
             declaration,
@@ -168,16 +193,20 @@ fn twenty_family_repetitions_keep_order_and_use_one_atomic_output_budget() {
         );
     }
     assert_eq!(
-        report.syntax()[1].to_specified_css().unwrap(),
+        report.syntax()[1]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "width: 2px;"
     );
 }
 
 #[test]
-fn a_resource_denied_tail_discards_the_whole_twenty_member_declaration_locally() {
+fn a_resource_denied_tail_refuses_the_whole_contents_with_both_siblings() {
     // Resource admission precedes semantic family admission. The final f() is
     // not a family; its depth257 is a native structural denial, not a synthetic
-    // twenty-one-item grammar cap. There are no unmatched/implicit delimiters.
+    // twenty-one-item grammar cap. Block contents charges every component once
+    // against the component limits (Syntax 3 (2026 CRD) §5.5.5), so the denial
+    // refuses the whole input, the source-valid color and width included.
     let source = format!(
         "color:red;font-family:{TWENTY},{}x{};width:2px;",
         "f(".repeat(257),
@@ -188,26 +217,18 @@ fn a_resource_denied_tail_discards_the_whole_twenty_member_declaration_locally()
     // nested bytes and its semicolon:102+772+1 =875. The later width is10 bytes.
     assert_eq!(source.len(), 885);
     let report = parity(&source);
-    let [color, width] = report.syntax().as_slice() else {
-        panic!("no partial family list survives; both source-valid siblings do");
-    };
-    assert_eq!(color.known().unwrap().property(), CssKnownProperty::Color);
-    assert_eq!(width.known().unwrap().property(), CssKnownProperty::Width);
-    assert_eq!(width.position().unwrap().byte_offset().value(), 875);
-    assert_eq!(width.to_specified_css().unwrap(), "width: 2px;");
+    assert!(report.syntax().is_empty());
+    crate::css::support::parse_report::assert_contents_refused(&report, &source, "tail");
     let [diagnostic] = report.diagnostics() else {
-        panic!("one closed, locally resource-denied declaration");
+        panic!("one resource refusal");
     };
-    assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
     assert_eq!(diagnostic.error().position().byte_offset().value(), 614);
-    assert_eq!(diagnostic.span().start().byte_offset().value(), 10);
-    assert_eq!(diagnostic.span().end().byte_offset().value(), 875);
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("the structural owner reports its resource fault");
-    };
-    assert_eq!(detail.limit(), 256);
-    assert_eq!(detail.enclosing_production().as_str(), "css.declaration");
+    assert!(
+        diagnostic
+            .error()
+            .component_error()
+            .is_some_and(surgeist_css::component::CssComponentValueError::is_nesting_limit)
+    );
 }
 
 #[test]
@@ -244,7 +265,9 @@ fn string_escapes_and_continuations_keep_decoded_family_identity_in_imported_fon
             assert_eq!(literal.generic_family(), None);
             assert_eq!(generic.generic_family(), Some(CssGenericFontFamily::Serif));
             assert_eq!(
-                families(declaration).serialize_specified().unwrap(),
+                families(declaration)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("{canonical}, serif")
             );
         }
@@ -252,9 +275,11 @@ fn string_escapes_and_continuations_keep_decoded_family_identity_in_imported_fon
             family,
             &format!("font-family: {canonical}, serif !important;"),
         );
-        let supplied = parse_component_values(&format!("{authored},serif")).unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::FontFamily),
+        let supplied =
+            CssComponentValues::parse(&CssParser::default(), format!("{authored},serif")).unwrap();
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::FontFamily)),
             supplied.clone(),
             CssImportance::Important,
         )
@@ -262,7 +287,7 @@ fn string_escapes_and_continuations_keep_decoded_family_identity_in_imported_fon
         assert_eq!(checked.value_components(), &supplied);
         assert_eq!(families(&checked).families()[0].as_str(), decoded);
         assert_eq!(
-            checked.to_specified_css().unwrap(),
+            checked.serialize_specified(Default::default()).unwrap(),
             format!("font-family: {canonical}, serif !important;")
         );
     }
@@ -272,19 +297,29 @@ fn string_escapes_and_continuations_keep_decoded_family_identity_in_imported_fon
 fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_retry() {
     const AUTHORED: &str = r"+2\50 X";
     const EXPECTED: &str = "width: 2px !important;";
-    let parsed = parse_component_values(AUTHORED).unwrap().items()[0].clone();
+    let parsed = CssComponentValues::parse(&CssParser::default(), AUTHORED)
+        .unwrap()
+        .items()[0]
+        .clone();
     original(parsed.origin(), AUTHORED, 0, 7);
     for component in [
         parsed,
         CssComponentValue::try_dimension("+2", "PX").unwrap(),
     ] {
-        let exact =
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(component.clone()).unwrap();
-        assert_eq!(exact.literal_component(), Some(&component));
+        let exact = CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+            component.clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            exact.literal().map(|literal| literal.component()),
+            Some(&component)
+        );
         assert_eq!(exact.origin(), component.origin());
-        let components = CssComponentValues::try_new(vec![component.clone()]).unwrap();
-        let declaration = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
+        let components =
+            CssComponentValues::try_new(vec![component.clone()], Default::default()).unwrap();
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
             components.clone(),
             CssImportance::Important,
         )
@@ -301,39 +336,49 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
         let CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(value)) = value.value() else {
             panic!("an exact literal length");
         };
-        assert_eq!(value.literal_component(), Some(&component));
+        assert_eq!(
+            value.literal().map(|literal| literal.component()),
+            Some(&component)
+        );
         assert_eq!(value.origin(), component.origin());
         atomic_bytes(&declaration, EXPECTED);
 
         // A valid prefix cannot make a residual value complete. Supplied
         // components remain reusable; the successful declaration is immutable.
-        let residual = CssComponentValues::try_new(vec![
-            component.clone(),
-            CssComponentValue::try_ident("auto").unwrap(),
-        ])
+        let residual = CssComponentValues::try_new(
+            vec![
+                component.clone(),
+                CssComponentValue::try_ident("auto").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         property_rejection(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Width),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
                 residual.clone(),
                 CssImportance::Normal,
             ),
             CssKnownProperty::Width,
         );
         assert_eq!(declaration.value_components(), &components);
-        assert_eq!(declaration.to_specified_css().unwrap(), EXPECTED);
+        assert_eq!(
+            declaration.serialize_specified(Default::default()).unwrap(),
+            EXPECTED
+        );
     }
     let negative = CssComponentValue::try_dimension("-1e-999", "px").unwrap();
-    assert_eq!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(negative.clone())
+    assert!(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(negative.clone())
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::OutOfRange,
+            .is_out_of_range()
     );
     property_rejection(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
-            CssComponentValues::try_new(vec![negative]).unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
+            CssComponentValues::try_new(vec![negative], Default::default()).unwrap(),
             CssImportance::Normal,
         ),
         CssKnownProperty::Width,
@@ -342,7 +387,10 @@ fn checked_exact_numeric_origins_survive_whole_declaration_output_failure_and_re
     let [width, height] = report.syntax().as_slice() else {
         panic!("the exact negative is rejected rather than underflowed to zero");
     };
-    assert_eq!(width.to_specified_css().unwrap(), EXPECTED);
+    assert_eq!(
+        width.serialize_specified(Default::default()).unwrap(),
+        EXPECTED
+    );
     assert_eq!(height.known().unwrap().property(), CssKnownProperty::Height);
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejected range atom");
@@ -369,9 +417,10 @@ fn a_greedy_imported_position_stops_before_the_whole_angle_function_and_rejects_
             panic!("ray and later sibling");
         };
         assert_eq!(width.known().unwrap().property(), CssKnownProperty::Width);
-        let supplied = parse_component_values(authored).unwrap();
-        let checked = parse_property_value_for_grammar(
-            CssKnownProperty::OffsetPath.grammar(),
+        let supplied = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssKnownProperty::OffsetPath.grammar()),
             supplied.clone(),
             CssImportance::Important,
         )
@@ -402,11 +451,17 @@ fn a_greedy_imported_position_stops_before_the_whole_angle_function_and_rejects_
             let CssVerticalPosition::BottomOffset(bottom) = position.vertical() else {
                 panic!("bottom edge offset");
             };
-            assert_eq!(right.serialize_specified().unwrap(), "1px");
-            assert_eq!(bottom.serialize_specified().unwrap(), "2%");
+            assert_eq!(
+                right.serialize_specified(Default::default()).unwrap(),
+                "1px"
+            );
+            assert_eq!(
+                bottom.serialize_specified(Default::default()).unwrap(),
+                "2%"
+            );
             assert!(ray.angle().calculation().is_some());
             assert_eq!(
-                ray.serialize_specified().unwrap(),
+                ray.serialize_specified(Default::default()).unwrap(),
                 "ray(calc(270deg) contain at right 1px bottom 2%)"
             );
             let original_source = if declaration.position().is_some() {
@@ -458,10 +513,11 @@ fn a_greedy_imported_position_stops_before_the_whole_angle_function_and_rejects_
             diagnostic.span().end().byte_offset().value(),
             23 + invalid.len()
         );
-        let supplied = parse_component_values(invalid).unwrap();
+        let supplied = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
         property_rejection(
-            parse_property_value_for_grammar(
-                CssKnownProperty::OffsetPath.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(CssKnownProperty::OffsetPath.grammar()),
                 supplied,
                 CssImportance::Important,
             ),

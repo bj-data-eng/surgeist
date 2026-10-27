@@ -7,7 +7,22 @@
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, Stats, StatsAlloc};
 use std::alloc::System;
 use std::hint::black_box;
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssTokenKind};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssSvgGlyphOrientationVerticalValue,
+};
+use surgeist_css::query::media::{
+    CssMediaLeaf, CssMediaRangeRef, CssUnknownMediaFeatureReason, CssUnknownMediaFeatureRef,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::values::transform::CssRotate;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 #[global_allocator]
 static GLOBAL: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
@@ -80,29 +95,43 @@ fn media_group_sample(payload: usize, grouped: bool) -> Stats {
     } else {
         enclosed.clone()
     };
-    let input = parse_component_values(&source).unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     let expected = if grouped {
         &children(&input.items()[0]).items()[0]
     } else {
         &input.items()[0]
     };
     let expected_origin = expected.origin().clone();
-    let (result, stats) = measured(|| CssMediaCondition::try_from_components(black_box(input)));
+    let (result, stats) = measured(|| {
+        CssCondition::<CssMediaLeaf>::try_from_components(black_box(input), Default::default())
+    });
     let condition = result.expect("explicit group around a valid general-enclosed function");
     let inner = if grouped {
-        let CssMediaConditionKind::Parenthesized(inner) = condition.kind() else {
+        let CssConditionKind::Parenthesized(inner) = condition.kind() else {
             panic!("the group is preserved");
         };
         inner.as_ref()
     } else {
         &condition
     };
-    let CssMediaConditionKind::GeneralEnclosed(enclosed_value) = inner.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed_value)) = inner.kind() else {
         panic!("the future function remains opaque");
     };
     assert_same_snapshot(enclosed_value.component().origin(), &expected_origin);
-    assert_eq!(enclosed_value.serialize().unwrap().as_css(), enclosed);
-    assert_eq!(condition.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        enclosed_value
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        enclosed
+    );
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     stats
 }
 
@@ -113,7 +142,7 @@ fn media_value_sample(payload: usize, inside: bool) -> Stats {
     } else {
         format!("Future({comment})")
     };
-    let input = parse_component_values(&source).unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     let expected_origin = input.items()[0].origin().clone();
     let expected_function = if inside {
         children(&input.items()[0]).items().last().unwrap()
@@ -121,18 +150,27 @@ fn media_value_sample(payload: usize, inside: bool) -> Stats {
         &input.items()[0]
     }
     .clone();
-    let (result, stats) = measured(|| CssMediaCondition::try_from_components(black_box(input)));
+    let (result, stats) = measured(|| {
+        CssCondition::<CssMediaLeaf>::try_from_components(black_box(input), Default::default())
+    });
     let condition = result.expect("complete feature or opaque function");
     if !inside {
-        let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+        let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind()
+        else {
             panic!("the control retains its opaque future function");
         };
         assert_same_snapshot(enclosed.component().origin(), &expected_origin);
         assert_eq!(enclosed.component(), &expected_function);
-        assert_eq!(condition.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
         return stats;
     }
-    let CssMediaConditionKind::UnknownFeature(feature) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(feature)) = condition.kind() else {
         panic!("unknown feature has an explicit semantic result");
     };
     assert_eq!(feature.name(), "future");
@@ -147,8 +185,17 @@ fn media_value_sample(payload: usize, inside: bool) -> Stats {
     assert_same_snapshot(value.items()[0].origin(), expected_function.origin());
     assert_eq!(value.items(), &[expected_function]);
     let expected = format!("calc(1{comment})");
-    assert_eq!(value.serialize().unwrap().as_css(), expected);
-    assert_eq!(condition.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        expected
+    );
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     stats
 }
 
@@ -178,7 +225,7 @@ fn rejected_sample(payload: usize, property: CssKnownProperty, inside: bool) -> 
     } else {
         format!("calc({first} + 1s){comment} {companion}")
     };
-    let input = parse_component_values(&source).unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     let rate = property == CssKnownProperty::VoiceRate;
     let expected = if rate {
         input.items()[0].origin()
@@ -187,19 +234,21 @@ fn rejected_sample(payload: usize, property: CssKnownProperty, inside: bool) -> 
     }
     .clone();
     let (result, stats) = measured(|| {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             black_box(input),
             CssImportance::Important,
         )
     });
     let error = result.expect_err("a time cannot be added to this property's numeric domain");
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("{property:?}: contextual numeric rejection: {error:?}");
-    };
-    assert_eq!(detail.property(), property);
-    let token = detail
+    assert_eq!(
+        error.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "{property:?}: contextual numeric rejection: {error:?}"
+    );
+    assert_eq!(error.known_property(), Some(property));
+    let token = error
         .encountered()
         .expect("the incompatible dimension is present");
     assert_eq!(
@@ -212,7 +261,8 @@ fn rejected_sample(payload: usize, property: CssKnownProperty, inside: bool) -> 
         "{property:?}: {error:?}"
     );
     assert_eq!(token.authored(), if rate { "calc(" } else { "1s" });
-    let CssSerializedOrigin::Token(actual) = error.origin() else {
+    let origin = error.origin();
+    let CssSerializedOrigin::Token(actual) = &origin else {
         panic!("responsible literal");
     };
     assert_same_snapshot(actual, &expected);
@@ -236,27 +286,30 @@ fn conflicting_speech_sample(payload: usize, property: CssKnownProperty, inside:
     } else {
         format!("high {comment}calc(1Hz) absolute")
     };
-    let input = parse_component_values(&source).unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     let expected = input.items().last().unwrap().origin().clone();
     let (result, stats) = measured(|| {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             black_box(input),
             CssImportance::Normal,
         )
     });
     let error = result.expect_err("a relative level cannot be combined with absolute");
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("the conflicting absolute keyword is the present-token rejection: {error:?}");
-    };
-    assert_eq!(detail.property(), property);
-    let token = detail
+    assert_eq!(
+        error.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "the conflicting absolute keyword is the present-token rejection: {error:?}"
+    );
+    assert_eq!(error.known_property(), Some(property));
+    let token = error
         .encountered()
         .expect("the conflicting absolute keyword is present");
     assert_eq!(token.kind(), CssTokenKind::Ident);
     assert_eq!(token.authored(), "absolute");
-    let CssSerializedOrigin::Token(actual) = error.origin() else {
+    let origin = error.origin();
+    let CssSerializedOrigin::Token(actual) = &origin else {
         panic!("original conflicting keyword");
     };
     assert_same_snapshot(actual, &expected);
@@ -268,15 +321,16 @@ const SVG: CssParserContext =
 
 fn svg_sample(payload: usize, svg: bool) -> Stats {
     let source = format!("calc(90deg/*{}*/)", "x".repeat(payload));
-    let input = parse_component_values(&source).unwrap();
+    let input = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     let expected_origin = input.items()[0].origin().clone();
     let (result, stats) = measured(|| {
-        SVG.parse_property_value(
-            if svg {
+        CssDeclaration::try_from_components(
+            &CssParser::new(SVG, Default::default()),
+            CssPropertyTarget::Property(if svg {
                 CssPropertyNameRef::SvgGlyphOrientationVertical
             } else {
                 CssPropertyNameRef::Known(CssKnownProperty::Rotate)
-            },
+            }),
             black_box(input),
             CssImportance::Normal,
         )
@@ -304,11 +358,19 @@ fn svg_sample(payload: usize, svg: bool) -> Stats {
     };
     let calculation = angle.calculation().unwrap();
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         source
     );
     assert_eq!(
-        calculation.components().serialize().unwrap().as_css(),
+        calculation
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         source
     );
     assert_same_snapshot(
@@ -318,7 +380,7 @@ fn svg_sample(payload: usize, svg: bool) -> Stats {
     assert_eq!(
         CssSvgGlyphOrientationVerticalValue::try_from_angle(angle.clone())
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "calc(90deg)"
     );
@@ -328,31 +390,34 @@ fn svg_sample(payload: usize, svg: bool) -> Stats {
 fn retained_mixed_svg_outputs_survive_input_and_sibling_drop() {
     let (first, second, original) = {
         let source = String::from("/*😀*/90deg");
-        let parsed = parse_component_values(&source).unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
         let leaf = parsed.items().last().unwrap().clone();
         let original = leaf.origin().clone();
-        let input = CssComponentValues::try_new(vec![
-            CssComponentValue::try_function(
-                "cAlC",
-                CssComponentValues::try_new(vec![leaf]).unwrap(),
-            )
-            .unwrap(),
-        ])
+        let input = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_function(
+                    "cAlC",
+                    CssComponentValues::try_new(vec![leaf], Default::default()).unwrap(),
+                )
+                .unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
-        let first = SVG
-            .parse_property_value(
-                CssPropertyNameRef::SvgGlyphOrientationVertical,
-                input.clone(),
-                CssImportance::Normal,
-            )
-            .unwrap();
-        let second = SVG
-            .parse_property_value(
-                CssPropertyNameRef::SvgGlyphOrientationVertical,
-                input,
-                CssImportance::Normal,
-            )
-            .unwrap();
+        let first = CssDeclaration::try_from_components(
+            &CssParser::new(SVG, Default::default()),
+            CssPropertyTarget::Property(CssPropertyNameRef::SvgGlyphOrientationVertical),
+            input.clone(),
+            CssImportance::Normal,
+        )
+        .unwrap();
+        let second = CssDeclaration::try_from_components(
+            &CssParser::new(SVG, Default::default()),
+            CssPropertyTarget::Property(CssPropertyNameRef::SvgGlyphOrientationVertical),
+            input,
+            CssImportance::Normal,
+        )
+        .unwrap();
         (first, second, original)
     };
     drop(first);
@@ -372,38 +437,48 @@ fn retained_mixed_svg_outputs_survive_input_and_sibling_drop() {
         panic!("original parsed leaf");
     };
     assert_eq!(origin.span().start().byte_offset().value(), 8);
-    assert_eq!(components.serialize().unwrap().as_css(), "cAlC(90deg)");
-    assert_eq!(value.serialize_specified().unwrap(), "calc(90deg)");
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "cAlC(90deg)"
+    );
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "calc(90deg)"
+    );
 }
 
 fn retained_mixed_media_outputs_survive_input_and_sibling_drop() {
     let (first, second, original) = {
         let source = String::from("/*😀*/1e2");
-        let parsed = parse_component_values(&source).unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
         let leaf = parsed.items().last().unwrap().clone();
         let original = leaf.origin().clone();
         let function = CssComponentValue::try_function(
             "Future",
-            CssComponentValues::try_new(vec![leaf]).unwrap(),
+            CssComponentValues::try_new(vec![leaf], Default::default()).unwrap(),
         )
         .unwrap();
         let group = CssComponentValue::try_block(
             CssBlockKind::Parenthesis,
-            CssComponentValues::try_new(vec![function]).unwrap(),
+            CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
         )
         .unwrap();
-        let input = CssComponentValues::try_new(vec![group]).unwrap();
+        let input = CssComponentValues::try_new(vec![group], Default::default()).unwrap();
         (
-            CssMediaCondition::try_from_components(input.clone()).unwrap(),
-            CssMediaCondition::try_from_components(input).unwrap(),
+            CssCondition::<CssMediaLeaf>::try_from_components(input.clone(), Default::default())
+                .unwrap(),
+            CssCondition::<CssMediaLeaf>::try_from_components(input, Default::default()).unwrap(),
             original,
         )
     };
     drop(first);
-    let CssMediaConditionKind::Parenthesized(inner) = second.kind() else {
+    let CssConditionKind::Parenthesized(inner) = second.kind() else {
         panic!("explicit group");
     };
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) = inner.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = inner.kind() else {
         panic!("future function");
     };
     assert!(matches!(second.origin(), CssValueOrigin::Programmatic));
@@ -417,7 +492,13 @@ fn retained_mixed_media_outputs_survive_input_and_sibling_drop() {
         panic!("original parsed leaf");
     };
     assert_eq!(origin.span().start().byte_offset().value(), 8);
-    assert_eq!(second.serialize().unwrap().as_css(), "(Future(1e2))");
+    assert_eq!(
+        second
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "(Future(1e2))"
+    );
 }
 
 fn main() {

@@ -2,11 +2,25 @@
 //! #numbers and #calc-range; Transitions 1 WD 2026-01-08
 //! #propdef-transition-duration, #propdef-transition-delay and #single-transition;
 //! Animations 1 WD 2023-03-02 #animation-duration, #animation-delay and
-//! #typedef-single-animation. Exact coefficient identity and structural aggregate
-//! equality are authored-model contracts. Raw component/calculation origins remain
-//! observable. These existing-API tests do not require a time serializer.
+//! #typedef-single-animation. Times and their aggregates compare exact values
+//! (CSS Typed OM 1 "equal numeric values"); raw component and calculation
+//! origins remain observable. These existing-API tests do not require a time
+//! serializer.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssCalculation, CssTime};
+use surgeist_css::property::{
+    CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::animation::{
+    CssAnimationComponents, CssAnimationIterationCount, CssAnimationList, CssDelayList,
+    CssDurationList, CssEasing, CssTransitionList,
+};
 
 const TIME_PROPERTIES: [CssKnownProperty; 6] = [
     CssKnownProperty::TransitionDuration,
@@ -28,22 +42,22 @@ enum TimingAggregate {
 fn aggregate(declaration: &CssDeclaration) -> TimingAggregate {
     match declaration.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::TransitionDuration(value) => {
-            TimingAggregate::Durations(value.durations().clone())
+            TimingAggregate::Durations(value.value().clone())
         }
         CssKnownPropertyValueRef::AnimationDuration(value) => {
-            TimingAggregate::Durations(value.durations().clone())
+            TimingAggregate::Durations(value.value().clone())
         }
         CssKnownPropertyValueRef::TransitionDelay(value) => {
-            TimingAggregate::Delays(value.delays().clone())
+            TimingAggregate::Delays(value.value().clone())
         }
         CssKnownPropertyValueRef::AnimationDelay(value) => {
-            TimingAggregate::Delays(value.delays().clone())
+            TimingAggregate::Delays(value.value().clone())
         }
         CssKnownPropertyValueRef::Transition(value) => {
-            TimingAggregate::Transitions(value.transitions().clone())
+            TimingAggregate::Transitions(value.value().clone())
         }
         CssKnownPropertyValueRef::Animation(value) => {
-            TimingAggregate::Animations(value.animations().clone())
+            TimingAggregate::Animations(value.value().clone())
         }
         other => panic!("typed time property: {other:?}"),
     }
@@ -84,17 +98,23 @@ fn slots(property: CssKnownProperty) -> &'static [bool] {
 
 fn declaration(property: CssKnownProperty, body: &str, prefix: &str) -> CssDeclaration {
     let source = format!("{prefix}{}:{body}", property.canonical_name());
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(
-        validate_style_attribute(&source),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result(),
         Ok(report.syntax().clone())
     );
     let declaration = report.syntax().last().expect("retained time declaration");
     assert_eq!(declaration.known().unwrap().property(), property);
     assert_eq!(authored(declaration), body);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         body
     );
     declaration.clone()
@@ -105,21 +125,23 @@ fn huge_ordinary_times_are_clean(property: CssKnownProperty) {
     for &delay_slot in slots(property) {
         let body = value(property, "1e999s", delay_slot);
         let source = format!("{}:{body}", property.canonical_name());
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         if !report.is_clean() {
             failures.push(format!("{source}: {:?}", report.diagnostics()));
             continue;
         }
         let parsed = declaration(property, &body, "");
-        let components = parse_component_values(&body).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &body).unwrap();
         for result in [
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Normal,
             ),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Normal,
             ),
@@ -159,7 +181,24 @@ fn distinct_coefficients_remain_distinct(property: CssKnownProperty, first: &str
     );
 }
 
-fn raw_calculations(declaration: &CssDeclaration) -> Vec<CssTimeCalculation> {
+/// Equal numeric values with different spellings compare equal in typed
+/// aggregates, while the authored components stay distinct.
+fn equal_coefficients_compare_equal(property: CssKnownProperty, first: &str, second: &str) {
+    for &delay_slot in slots(property) {
+        let first_body = value(property, first, delay_slot);
+        let second_body = value(property, second, delay_slot);
+        let first = declaration(property, &first_body, "");
+        let second = declaration(property, &second_body, "");
+        assert_ne!(first.value_components(), second.value_components());
+        assert!(
+            aggregate(&first) == aggregate(&second),
+            "{}: {first_body:?} equals {second_body:?}",
+            property.canonical_name()
+        );
+    }
+}
+
+fn raw_calculations(declaration: &CssDeclaration) -> Vec<CssCalculation<CssTime>> {
     declaration
         .value_components()
         .items()
@@ -172,8 +211,10 @@ fn raw_calculations(declaration: &CssDeclaration) -> Vec<CssTimeCalculation> {
                 return None;
             }
             Some(
-                CssTimeCalculation::try_from_components(
-                    CssComponentValues::try_new(vec![component.clone()]).unwrap(),
+                CssCalculation::<CssTime>::try_from_components(
+                    CssComponentValues::try_new(vec![component.clone()], Default::default())
+                        .unwrap(),
+                    Default::default(),
                 )
                 .unwrap(),
             )
@@ -199,11 +240,11 @@ fn aggregate_identity_ignores_calculation_origins(property: CssKnownProperty) {
             right.origin(),
             "original source origins differ"
         );
-        assert_ne!(left, right, "raw calculation equality includes origins");
+        assert_eq!(left, right, "calculation equality ignores origins");
         assert_ne!(left.components(), right.components());
         assert_eq!(
-            left.serialize().unwrap().as_css(),
-            right.serialize().unwrap().as_css()
+            left.serialize_tokens(Default::default()).unwrap().as_css(),
+            right.serialize_tokens(Default::default()).unwrap().as_css()
         );
     }
     assert!(
@@ -219,12 +260,13 @@ fn concatenate(parts: &[CssComponentValues]) -> CssComponentValues {
             .iter()
             .flat_map(|part| part.items().iter().cloned())
             .collect(),
+        Default::default(),
     )
     .unwrap()
 }
 
 fn recovered_function(source: &str) -> (CssComponentValues, CssValueOrigin) {
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let CssComponentValueRef::Function(function) = components.items()[0].view() else {
         panic!("recovered function fixture")
     };
@@ -253,17 +295,27 @@ fn constructors_reject_first_original_closure(property: CssKnownProperty) {
         ("pending envelope", pending.clone(), pending_origin.clone()),
         (
             "CSS-wide envelope with later recovery",
-            concatenate(&[parse_component_values("initial ").unwrap(), late.clone()]),
+            concatenate(&[
+                CssComponentValues::parse(&CssParser::default(), "initial ").unwrap(),
+                late.clone(),
+            ]),
             late_origin.clone(),
         ),
         (
             "later time child",
-            concatenate(&[parse_component_values(prefix).unwrap(), late.clone()]),
+            concatenate(&[
+                CssComponentValues::parse(&CssParser::default(), prefix).unwrap(),
+                late.clone(),
+            ]),
             late_origin.clone(),
         ),
         (
             "first of two mixed-source closures",
-            concatenate(&[pending, parse_component_values(" ").unwrap(), nested]),
+            concatenate(&[
+                pending,
+                CssComponentValues::parse(&CssParser::default(), " ").unwrap(),
+                nested,
+            ]),
             pending_origin,
         ),
     ];
@@ -273,25 +325,27 @@ fn constructors_reject_first_original_closure(property: CssKnownProperty) {
         for (front_door, result) in [
             (
                 "property",
-                parse_property_value(
-                    CssPropertyNameRef::Known(property),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                     components.clone(),
                     CssImportance::Important,
                 ),
             ),
             (
                 "grammar",
-                parse_property_value_for_grammar(
-                    property.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(property.grammar()),
                     components.clone(),
                     CssImportance::Important,
                 ),
             ),
         ] {
             match result {
-                Err(error) if matches!(error.kind(), CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_)))
-                    && error.origin() == &CssSerializedOrigin::End(Some(first_origin.clone())) => {},
-                Err(error) => failures.push(format!("{front_door}/{label}: expected UnexpectedEnd at {first_origin:?}; actual {:?} at {:?}", error.kind(), error.origin())),
+                Err(error) if error.code() == Some(CssErrorCode::UnexpectedEnd)
+                    && error.origin() == CssSerializedOrigin::End(Some(first_origin.clone())) => {},
+                Err(error) => failures.push(format!("{front_door}/{label}: expected UnexpectedEnd at {first_origin:?}; actual {:?} at {:?}", error, error.origin())),
                 Ok(_) => failures.push(format!("{front_door}/{label}: expected UnexpectedEnd at {first_origin:?}; actual accepted declaration")),
             }
             assert_eq!(
@@ -344,8 +398,8 @@ macro_rules! time_property_tests {
                 constructors_reject_first_original_closure(PROPERTY);
             }
             #[test]
-            fn lexical_coefficient_spelling_remains_distinct() {
-                distinct_coefficients_remain_distinct(PROPERTY, "1s", "1.0s");
+            fn lexical_coefficient_spelling_compares_equal() {
+                equal_coefficients_compare_equal(PROPERTY, "1s", "1.0s");
             }
         }
     };
@@ -366,7 +420,7 @@ time_property_tests!(animation, Animation, "1e-999s", "2e-999s");
 fn assert_invalid_duration(property: CssKnownProperty, coefficient: &str) {
     let body = value(property, coefficient, false);
     let source = format!("{}:{body};color:red", property.canonical_name());
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [retained] = report.syntax().as_slice() else {
         panic!(
             "invalid duration dropped; only color remains: {source}: actual declaration count {}",
@@ -388,12 +442,19 @@ fn assert_invalid_duration(property: CssKnownProperty, coefficient: &str) {
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("property grammar error")
-    };
-    assert_eq!(detail.property(), property);
+    let detail = diagnostic.error();
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "property grammar error"
+    );
+    assert_eq!(detail.known_property().unwrap(), property);
+    assert_eq!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -441,14 +502,18 @@ fn ordinary_range_malformed_unit_and_trailing_junk_controls() {
                 value(property, invalid, false)
             };
             let source = format!("{}:{body}", property.canonical_name());
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.syntax().is_empty(), "{source}");
             crate::css::support::value_assertions::assert_first_property_rejection(
                 report.diagnostics(),
                 property,
             );
             crate::css::support::value_assertions::assert_first_property_rejection(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 property,
             );
         }
@@ -459,14 +524,18 @@ fn ordinary_range_malformed_unit_and_trailing_junk_controls() {
     ] {
         for invalid in ["0", "1hz", "1s junk", "1s,"] {
             let source = format!("{}:{invalid}", property.canonical_name());
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.syntax().is_empty(), "{source}");
             crate::css::support::value_assertions::assert_first_property_rejection(
                 report.diagnostics(),
                 property,
             );
             crate::css::support::value_assertions::assert_first_property_rejection(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 property,
             );
         }
@@ -544,7 +613,7 @@ fn parsed_recovered_math_is_retained_with_non_clean_validation() {
     for property in TIME_PROPERTIES {
         let body = value(property, "calc(-1s", false);
         let source = format!("{}:{body}", property.canonical_name());
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(
             report.syntax().len(),
             1,
@@ -562,7 +631,11 @@ fn parsed_recovered_math_is_retained_with_non_clean_validation() {
                 )
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -572,9 +645,9 @@ fn parsed_recovered_math_is_retained_with_non_clean_validation() {
 fn both_timing_families_retain_pending_substitution_occurrences() {
     for property in TIME_PROPERTIES {
         let source = format!("{}:var(--time)", property.canonical_name());
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-        let CssExpansion::Pending(handle) = expand_declaration(&report.syntax()[0]).unwrap() else {
+        let CssExpansion::Pending(handle) = report.syntax()[0].expand().unwrap() else {
             panic!("timing substitution is pending")
         };
         assert!(handle.source().same_occurrence(&report.syntax()[0]));
@@ -602,7 +675,7 @@ fn animation_component_assembly_compares_time_children_without_provenance() {
             ..CssAnimationComponents::default()
         }
     };
-    assert_ne!(raw_calculations(&first), raw_calculations(&second));
+    assert_eq!(raw_calculations(&first), raw_calculations(&second));
     assert!(
         components(&first) == components(&second),
         "animation component assembly ignores time origins"
@@ -640,10 +713,12 @@ fn shorthand_signed_tiny_delays_have_distinct_typed_identity() {
 #[test]
 fn non_time_iteration_and_easing_controls_preserve_exact_values_and_ranges() {
     let source = "animation-iteration-count:2.5,calc(1 + 1),infinite;transition-timing-function:cubic-bezier(0.1,-2,0.9,3),steps(2,jump-none)";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(
-        validate_style_attribute(source),
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result(),
         Ok(report.syntax().clone())
     );
     let CssKnownPropertyValueRef::AnimationIterationCount(counts) = report.syntax()[0]
@@ -654,17 +729,20 @@ fn non_time_iteration_and_easing_controls_preserve_exact_values_and_ranges() {
     else {
         panic!("iteration")
     };
-    assert_eq!(counts.iteration_counts().values().len(), 3);
-    let CssAnimationIterationCount::Number(number) = &counts.iteration_counts().values()[0] else {
+    assert_eq!(counts.value().values().len(), 3);
+    let CssAnimationIterationCount::Number(number) = &counts.value().values()[0] else {
         panic!("literal iteration")
     };
-    assert_eq!(number.serialize_specified().unwrap(), "2.5");
+    assert_eq!(
+        number.serialize_specified(Default::default()).unwrap(),
+        "2.5"
+    );
     assert!(matches!(
-        counts.iteration_counts().values()[1],
+        counts.value().values()[1],
         CssAnimationIterationCount::Number(ref value) if value.calculation().is_some()
     ));
     assert!(matches!(
-        counts.iteration_counts().values()[2],
+        counts.value().values()[2],
         CssAnimationIterationCount::Infinite
     ));
     let CssKnownPropertyValueRef::TransitionTimingFunction(easing) = report.syntax()[1]
@@ -676,7 +754,7 @@ fn non_time_iteration_and_easing_controls_preserve_exact_values_and_ranges() {
         panic!("easing")
     };
     assert!(matches!(
-        easing.timing_functions().values(),
+        easing.value().values(),
         [CssEasing::CubicBezier(_), CssEasing::Steps(_)]
     ));
     for (source, property) in [
@@ -694,7 +772,11 @@ fn non_time_iteration_and_easing_controls_preserve_exact_values_and_ranges() {
         ),
     ] {
         crate::css::support::value_assertions::assert_first_property_rejection(
-            validate_style_attribute(source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             property,
         );
     }
@@ -702,20 +784,53 @@ fn non_time_iteration_and_easing_controls_preserve_exact_values_and_ranges() {
 
 // Functional evidence for the adopted public time API, appended after the immutable RED prefix.
 mod construction {
+    use crate::css::support::failure_classes::NumericFailure;
+    use crate::css::support::failure_classes::numeric_failure;
+    use crate::css::support::failure_classes::serialization_failure;
     use std::error::Error as _;
-    use surgeist_css::*;
+    use surgeist_css::CssParser;
+    use surgeist_css::component::{
+        CssComponentValueRef, CssComponentValues, CssNumericTokenKind, CssSerializedOrigin,
+        CssValueOrigin,
+    };
+    use surgeist_css::declaration::{CssDeclaration, CssImportance};
+    use surgeist_css::diagnostic::CssErrorCode;
+    use surgeist_css::numeric::{
+        CssCalculation, CssNonNegative, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit,
+    };
+    use surgeist_css::property::{
+        CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+    };
+    use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+    use surgeist_css::values::animation::{
+        CssAnimation, CssAnimationComponents, CssAnimationList, CssDelayList, CssDurationList,
+        CssTransition, CssTransitionList,
+    };
 
-    fn literal(number: &str, unit: CssTimeUnit) -> CssTimeLiteral {
-        CssTimeLiteral::try_new(number, unit).unwrap()
+    fn literal(number: &str, unit: CssTimeUnit) -> CssNumericLiteral<CssTime> {
+        CssNumericLiteral::<CssTime>::try_new(number, unit).unwrap()
     }
-    fn time(number: &str, unit: CssTimeUnit) -> CssTimeValue {
-        CssTimeValue::from_literal(literal(number, unit))
+    fn time(number: &str, unit: CssTimeUnit) -> CssNumeric<CssTime> {
+        CssNumeric::<CssTime>::try_from_literal(literal(number, unit)).unwrap()
     }
-    fn calculation(source: &str) -> CssTimeCalculation {
-        CssTimeCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap()
+    /// The specified serialization of one ordinary time literal.
+    fn literal_specified(
+        literal: &CssNumericLiteral<CssTime>,
+        limits: CssSerializationLimits,
+    ) -> Result<String, CssSerializationError> {
+        CssNumeric::<CssTime>::try_from_literal(literal.clone())
+            .unwrap()
+            .serialize_specified(limits)
     }
-    fn parsed_duration(source: &str) -> CssDuration {
-        let report = parse_style_attribute(source);
+    fn calculation(source: &str) -> CssCalculation<CssTime> {
+        CssCalculation::<CssTime>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+            Default::default(),
+        )
+        .unwrap()
+    }
+    fn parsed_duration(source: &str) -> CssNumeric<CssTime, CssNonNegative> {
+        let report = CssParser::default().parse_block_contents(source);
         let wrapper = report
             .syntax()
             .iter()
@@ -724,7 +839,7 @@ mod construction {
                 _ => None,
             })
             .expect("duration fixture");
-        wrapper.durations().values()[0].clone()
+        wrapper.value().values()[0].clone()
     }
 
     #[test]
@@ -761,9 +876,10 @@ mod construction {
                 CssNumericTokenKind::Integer,
             ),
         ] {
-            let components = parse_component_values(source).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
             let component = components.items()[0].clone();
-            let value = CssTimeLiteral::try_from_component(component.clone()).unwrap();
+            let value =
+                CssNumericLiteral::<CssTime>::try_from_component(component.clone()).unwrap();
             assert_eq!(value.component(), &component);
             assert_eq!(value.origin(), component.origin());
             assert_eq!(value.unit(), unit);
@@ -783,50 +899,51 @@ mod construction {
     #[test]
     fn intrinsic_literal_errors_retain_the_responsible_component_origin() {
         for source in ["0", "1px", "1%", "infinity", "NaN", "\"1s\"", "calc(1s)"] {
-            let components = parse_component_values(source).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
             let component = components.items()[0].clone();
-            let error = CssTimeLiteral::try_from_component(component.clone()).unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
-            assert_eq!(error.origin(), component.origin());
+            let error =
+                CssNumericLiteral::<CssTime>::try_from_component(component.clone()).unwrap_err();
+            assert!(error.is_root_domain_mismatch(), "{error:?}");
+            assert_eq!(error.origin(), Some(component.origin()));
         }
         for invalid in ["", "NaN", "infinity", "1 2", "1s"] {
-            assert!(CssTimeLiteral::try_new(invalid, CssTimeUnit::Seconds).is_err());
+            assert!(CssNumericLiteral::<CssTime>::try_new(invalid, CssTimeUnit::Seconds).is_err());
         }
     }
 
     #[test]
     fn exact_calculation_convenience_normalizes_only_an_ordinary_root() {
-        let raw = CssTimeCalculation::try_literal("-1e999", CssTimeUnit::Milliseconds).unwrap();
+        let raw =
+            CssCalculation::<CssTime>::try_literal("-1e999", CssTimeUnit::Milliseconds).unwrap();
         let root_component = raw.components().items()[0].clone();
-        let value = CssTimeValue::try_from_calculation(raw).unwrap();
+        let value = CssNumeric::<CssTime>::try_from_calculation(raw).unwrap();
         assert!(value.calculation().is_none());
         assert_eq!(value.literal().unwrap().component(), &root_component);
         for source in ["calc(1s)", "calc((1s))", "min(1s, 2s)"] {
             let raw = calculation(source);
             let origin = raw.origin().clone();
-            let value = CssTimeValue::try_from_calculation(raw.clone()).unwrap();
+            let value = CssNumeric::<CssTime>::try_from_calculation(raw.clone()).unwrap();
             assert!(value.literal().is_none(), "{source}");
             assert_eq!(value.calculation(), Some(&raw));
             assert_eq!(value.origin(), &origin);
         }
         for source in ["1", "calc(1px)", "calc(1%)"] {
-            let error =
-                CssTimeCalculation::try_from_components(parse_component_values(source).unwrap())
-                    .unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNumericConstructionErrorKind::RootDomainMismatch
-            );
+            let error = CssCalculation::<CssTime>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default(),
+            )
+            .unwrap_err();
+            assert!(error.is_root_domain_mismatch(), "{error:?}");
         }
     }
 
     #[test]
     fn duration_checks_the_exact_nonzero_sign_without_projecting_calculations() {
         for number in ["-1", "-1e-999", "-0.00000000000000001", "-1e999"] {
-            let value = time(number, CssTimeUnit::Milliseconds);
+            let value = literal(number, CssTimeUnit::Milliseconds);
             let origin = value.origin().clone();
-            let error = CssDuration::try_new(value).unwrap_err();
-            assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+            let error = CssNumeric::<CssTime, CssNonNegative>::try_from_literal(value).unwrap_err();
+            assert!(error.is_out_of_range(), "{error:?}");
             assert_eq!(error.origin(), Some(&origin));
             assert_eq!(error.path(), None);
             assert!(error.source().is_none());
@@ -834,55 +951,63 @@ mod construction {
         for number in ["-0", "-0e999", "0e-999", "1e-999", "1e999"] {
             let value = time(number, CssTimeUnit::Seconds);
             let origin = value.origin().clone();
-            let duration = CssDuration::try_new(value.clone()).unwrap();
-            assert_eq!(duration.time(), &value);
+            let duration = CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+                value.literal().unwrap().clone(),
+            )
+            .unwrap();
+            assert_eq!(duration.clone().into_any_range(), value);
             assert_eq!(duration.origin(), &origin);
         }
         let raw = calculation("calc(-1s)");
         let duration =
-            CssDuration::try_new(CssTimeValue::try_from_calculation(raw.clone()).unwrap()).unwrap();
-        assert_eq!(duration.time().calculation(), Some(&raw));
-        assert_eq!(duration.serialize_specified().unwrap(), "calc(-1s)");
+            CssNumeric::<CssTime, CssNonNegative>::try_from_calculation(raw.clone()).unwrap();
+        assert_eq!(duration.calculation(), Some(&raw));
+        assert_eq!(
+            duration.serialize_specified(Default::default()).unwrap(),
+            "calc(-1s)"
+        );
     }
 
     #[test]
     fn strict_admission_and_aggregate_construction_reject_original_recovery() {
         let source = "transition-duration: calc(1s";
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         crate::css::support::value_assertions::assert_first_code(
             report.diagnostics(),
             CssErrorCode::UnexpectedEnd,
         );
         crate::css::support::value_assertions::assert_first_code(
-            validate_style_attribute(source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             CssErrorCode::UnexpectedEnd,
         );
         let duration = parsed_duration(source);
-        let raw = duration.time().calculation().unwrap().clone();
+        let raw = duration.calculation().unwrap().clone();
         let component = raw.components().items()[0].clone();
         let CssComponentValueRef::Function(function) = component.view() else {
             panic!("calc");
         };
         let closing = function.closing_origin().clone();
         assert!(matches!(closing, CssValueOrigin::ImplicitClosure { .. }));
-        let error = CssTimeValue::try_from_calculation(raw.clone()).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RecoveredComponent
-        );
+        let error = CssNumeric::<CssTime>::try_from_calculation(raw.clone()).unwrap_err();
+        assert!(error.is_recovered_component(), "{error:?}");
         assert_eq!(error.origin(), Some(&closing));
         assert_eq!(error.path(), None);
         assert!(error.source().is_none());
-        let error = CssDuration::try_new(duration.time().clone()).unwrap_err();
+        let error =
+            CssNumeric::<CssTime, CssNonNegative>::try_from_calculation(raw.clone()).unwrap_err();
         assert_eq!(error.origin(), Some(&closing));
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RecoveredComponent
-        );
+        assert!(error.is_recovered_component(), "{error:?}");
         assert!(CssDurationList::try_new(vec![duration.clone()]).is_none());
-        assert!(CssDelayList::try_new(vec![duration.time().clone()]).is_none());
+        assert!(CssDelayList::try_new(vec![duration.clone().into_any_range()]).is_none());
         assert!(CssTransition::try_new(None, Some(duration.clone()), None, None).is_none());
-        assert!(CssTransition::try_new(None, None, Some(duration.time().clone()), None).is_none());
+        assert!(
+            CssTransition::try_new(None, None, Some(duration.clone().into_any_range()), None)
+                .is_none()
+        );
         assert!(
             CssAnimation::try_new(CssAnimationComponents {
                 duration: Some(duration.clone()),
@@ -892,12 +1017,12 @@ mod construction {
         );
         assert!(
             CssAnimation::try_new(CssAnimationComponents {
-                delay: Some(duration.time().clone()),
+                delay: Some(duration.clone().into_any_range()),
                 ..Default::default()
             })
             .is_none()
         );
-        let report = parse_style_attribute("transition: opacity calc(1s");
+        let report = CssParser::default().parse_block_contents("transition: opacity calc(1s");
         let CssKnownPropertyValueRef::Transition(wrapper) = report.syntax()[0]
             .known()
             .unwrap()
@@ -906,8 +1031,8 @@ mod construction {
         else {
             panic!("transition recovery");
         };
-        assert!(CssTransitionList::try_new(wrapper.transitions().values().to_vec()).is_none());
-        let report = parse_style_attribute("animation: fade calc(1s");
+        assert!(CssTransitionList::try_new(wrapper.value().values().to_vec()).is_none());
+        let report = CssParser::default().parse_block_contents("animation: fade calc(1s");
         let CssKnownPropertyValueRef::Animation(wrapper) = report.syntax()[0]
             .known()
             .unwrap()
@@ -916,45 +1041,58 @@ mod construction {
         else {
             panic!("animation recovery");
         };
-        assert!(CssAnimationList::try_new(wrapper.animations().values().to_vec()).is_none());
+        assert!(CssAnimationList::try_new(wrapper.value().values().to_vec()).is_none());
         // Observation of recovered syntax is not clean construction.
-        assert_eq!(raw.serialize().unwrap().as_css(), "calc(1s)");
+        assert_eq!(
+            raw.serialize_tokens(Default::default()).unwrap().as_css(),
+            "calc(1s)"
+        );
     }
 
     #[test]
-    fn raw_identity_and_semantic_timing_identity_have_distinct_origin_policies() {
+    fn raw_and_semantic_timing_identity_ignore_origins() {
         let a = parsed_duration("transition-duration: 1s");
         let b = parsed_duration("color:red; transition-duration: 1s");
-        assert_ne!(a.time(), b.time());
-        assert_ne!(a.time().literal(), b.time().literal());
-        assert_ne!(a.origin(), b.origin());
+        // Numeric values and their owners compare by value, ignoring origins.
         assert_eq!(a, b);
+        assert_eq!(a.literal(), b.literal());
+        assert_ne!(a.origin(), b.origin());
         assert_eq!(
             CssDurationList::try_new(vec![a.clone()]),
             CssDurationList::try_new(vec![b.clone()])
         );
         assert_eq!(
-            CssDelayList::try_new(vec![a.time().clone()]),
-            CssDelayList::try_new(vec![b.time().clone()])
+            CssDelayList::try_new(vec![a.clone().into_any_range()]),
+            CssDelayList::try_new(vec![b.clone().into_any_range()])
         );
         assert_eq!(
-            CssTransition::try_new(None, Some(a.clone()), Some(a.time().clone()), None),
-            CssTransition::try_new(None, Some(b.clone()), Some(b.time().clone()), None)
+            CssTransition::try_new(
+                None,
+                Some(a.clone()),
+                Some(a.clone().into_any_range()),
+                None
+            ),
+            CssTransition::try_new(
+                None,
+                Some(b.clone()),
+                Some(b.clone().into_any_range()),
+                None
+            )
         );
         assert_eq!(
             CssAnimationComponents {
                 duration: Some(a.clone()),
-                delay: Some(a.time().clone()),
+                delay: Some(a.clone().into_any_range()),
                 ..Default::default()
             },
             CssAnimationComponents {
                 duration: Some(b.clone()),
-                delay: Some(b.time().clone()),
+                delay: Some(b.clone().into_any_range()),
                 ..Default::default()
             }
         );
+        assert_eq!(a, parsed_duration("transition-duration: 1.0s"));
         for source in [
-            "transition-duration: 1.0s",
             "transition-duration: 1000ms",
             "transition-duration: calc(1s)",
         ] {
@@ -968,16 +1106,17 @@ mod construction {
         assert!(CssDelayList::try_new(vec![]).is_none());
         assert!(CssTransition::try_new(None, None, None, None).is_none());
         assert!(CssAnimation::try_new(Default::default()).is_none());
-        let zero = CssDuration::try_new(time("-0e999", CssTimeUnit::Milliseconds)).unwrap();
+        let zero = CssNumeric::<CssTime, CssNonNegative>::try_from_literal(literal(
+            "-0e999",
+            CssTimeUnit::Milliseconds,
+        ))
+        .unwrap();
         let transition = CssTransition::try_new(None, Some(zero.clone()), None, None).unwrap();
         assert_eq!(transition.duration(), Some(&zero));
         assert!(transition.delay().is_none());
         assert!(transition.property().is_none());
         assert!(transition.timing_function().is_none());
-        assert_eq!(
-            zero.time().literal().unwrap().numeric().representation(),
-            "-0e999"
-        );
+        assert_eq!(zero.literal().unwrap().numeric().representation(), "-0e999");
         assert_ne!(
             transition,
             CssTransition::try_new(None, None, Some(time("0", CssTimeUnit::Seconds)), None)
@@ -1002,13 +1141,17 @@ mod construction {
         ] {
             let value = literal(number, unit);
             let before = value.clone();
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                literal_specified(&value, Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(value.numeric().representation(), number);
             assert_eq!(value.unit(), unit);
             assert_eq!(value, before);
             assert_eq!(
-                CssTimeValue::from_literal(value.clone())
-                    .serialize_specified()
+                CssNumeric::<CssTime>::try_from_literal(value.clone())
+                    .unwrap()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 expected
             );
@@ -1017,7 +1160,7 @@ mod construction {
         for unit in [CssTimeUnit::Seconds, CssTimeUnit::Milliseconds] {
             for number in ["-0", "+0e999", "-0e-999"] {
                 let value = literal(number, unit);
-                assert_eq!(value.serialize_specified().unwrap(), "0s");
+                assert_eq!(literal_specified(&value, Default::default()).unwrap(), "0s");
                 assert_eq!(value.numeric().representation(), number);
                 assert_eq!(value.unit(), unit);
             }
@@ -1026,27 +1169,25 @@ mod construction {
 
     #[test]
     fn ordinary_and_calculation_resource_boundaries_are_independently_counted() {
-        use CssSpecifiedValueSerializationErrorKind as K;
-        use CssSpecifiedValueSerializationLimits as L;
+        use crate::css::support::failure_classes::SerializationFailure as K;
+        use CssSerializationLimits as L;
         let ordinary = time("1", CssTimeUnit::Milliseconds);
         let ordinary_literal = ordinary.literal().unwrap().clone();
-        let ordinary_duration = CssDuration::try_new(ordinary.clone()).unwrap();
+        let ordinary_duration =
+            CssNumeric::<CssTime, CssNonNegative>::try_from_literal(ordinary_literal.clone())
+                .unwrap();
         assert_eq!(
-            ordinary_literal
-                .serialize_specified_with_limits(L::new(1, 1, 6))
-                .unwrap(),
+            literal_specified(&ordinary_literal, L::new(1, 1, 6)).unwrap(),
             "0.001s"
         );
         assert_eq!(
             ordinary_duration
-                .serialize_specified_with_limits(L::new(1, 1, 6))
+                .serialize_specified(L::new(1, 1, 6))
                 .unwrap(),
             "0.001s"
         );
         assert_eq!(
-            ordinary
-                .serialize_specified_with_limits(L::new(1, 1, 6))
-                .unwrap(),
+            ordinary.serialize_specified(L::new(1, 1, 6)).unwrap(),
             "0.001s"
         );
         for (limits, kind) in [
@@ -1056,35 +1197,28 @@ mod construction {
         ] {
             let before = ordinary.clone();
             assert_eq!(
-                ordinary
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&ordinary.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(
-                ordinary_literal
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&literal_specified(&ordinary_literal, limits).unwrap_err()),
                 kind
             );
             assert_eq!(
-                ordinary_duration
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&ordinary_duration.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(ordinary, before);
         }
         // Calc + Sum + two leaves: 4 inputs; two scalar leaves + one combined scalar: 3 projections.
-        let value = CssTimeValue::try_from_calculation(calculation("calc(1s + 2s)")).unwrap();
-        let duration = CssDuration::try_new(value.clone()).unwrap();
+        let value =
+            CssNumeric::<CssTime>::try_from_calculation(calculation("calc(1s + 2s)")).unwrap();
+        let duration = CssNumeric::<CssTime, CssNonNegative>::try_from_calculation(
+            value.calculation().unwrap().clone(),
+        )
+        .unwrap();
         assert_eq!(
-            duration
-                .serialize_specified_with_limits(L::new(4, 3, 8))
-                .unwrap(),
+            duration.serialize_specified(L::new(4, 3, 8)).unwrap(),
             "calc(3s)"
         );
         for (limits, kind) in [
@@ -1093,30 +1227,33 @@ mod construction {
             (L::new(4, 3, 7), K::ByteLimit),
         ] {
             let before = value.clone();
-            let raw_before = value.calculation().unwrap().serialize().unwrap();
+            let raw_before = value
+                .calculation()
+                .unwrap()
+                .serialize_tokens(Default::default())
+                .unwrap();
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(
-                duration
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&duration.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(value, before);
             assert_eq!(
-                value.calculation().unwrap().serialize().unwrap().as_css(),
+                value
+                    .calculation()
+                    .unwrap()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 raw_before.as_css()
             );
         }
         assert_eq!(
             time("1", CssTimeUnit::Seconds)
-                .serialize_specified_with_limits(L::new(1, 1, 2))
+                .serialize_specified(L::new(1, 1, 2))
                 .unwrap(),
             "1s"
         );
@@ -1124,7 +1261,7 @@ mod construction {
 
     #[test]
     fn large_decimal_expansion_fails_atomically_without_a_scientific_fallback() {
-        let limits = CssSpecifiedValueSerializationLimits::new(1, 1, 32);
+        let limits = CssSerializationLimits::new(1, 1, 32);
         for (number, tiny) in [
             ("1e999", false),
             ("1e-999", true),
@@ -1133,14 +1270,12 @@ mod construction {
             let value = literal(number, CssTimeUnit::Milliseconds);
             let before = value.clone();
             if tiny {
-                assert_eq!(value.serialize_specified_with_limits(limits).unwrap(), "0s");
+                assert_eq!(literal_specified(&value, limits).unwrap(), "0s");
             } else {
-                assert_eq!(
-                    value
-                        .serialize_specified_with_limits(limits)
+                assert!(
+                    literal_specified(&value, limits)
                         .unwrap_err()
-                        .kind(),
-                    CssSpecifiedValueSerializationErrorKind::ByteLimit
+                        .is_byte_limit()
                 );
             }
             assert_eq!(value, before);
@@ -1158,45 +1293,65 @@ mod construction {
             ("calc(1e999s * 1)", format!("calc({:.0}s)", f64::MAX)),
             ("calc(1e-999s)", "calc(0s)".to_owned()),
         ] {
-            let value = CssTimeValue::try_from_calculation(calculation(source)).unwrap();
+            let value = CssNumeric::<CssTime>::try_from_calculation(calculation(source)).unwrap();
             let before = value.clone();
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(value, before);
         }
-        let value = CssTimeValue::try_from_calculation(calculation("min(1s, 2s)")).unwrap();
-        assert_eq!(value.serialize_specified().unwrap(), "calc(1s)");
+        let value =
+            CssNumeric::<CssTime>::try_from_calculation(calculation("min(1s, 2s)")).unwrap();
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "calc(1s)"
+        );
         assert!(value.calculation().is_some());
         for (source, kind) in [
-            ("(1s)", CssNumericConstructionErrorKind::RootDomainMismatch),
+            ("(1s)", NumericFailure::RootDomainMismatch),
             (
                 "calc(sibling-index() * 1s)",
-                CssNumericConstructionErrorKind::UnknownFunction,
+                NumericFailure::UnknownFunction,
             ),
         ] {
             assert_eq!(
-                CssTimeCalculation::try_from_components(parse_component_values(source).unwrap())
+                numeric_failure(
+                    &CssCalculation::<CssTime>::try_from_components(
+                        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                        Default::default()
+                    )
                     .unwrap_err()
-                    .kind(),
-                &kind
+                ),
+                kind
             );
         }
     }
     #[test]
     fn checked_negative_duration_maps_to_the_original_later_mixed_source_token() {
-        let negative = parse_component_values("-1e-999s").unwrap().items()[0].clone();
-        let mut items = parse_component_values("1s, ").unwrap().items().to_vec();
+        let negative = CssComponentValues::parse(&CssParser::default(), "-1e-999s")
+            .unwrap()
+            .items()[0]
+            .clone();
+        let mut items = CssComponentValues::parse(&CssParser::default(), "1s, ")
+            .unwrap()
+            .items()
+            .to_vec();
         items.push(negative.clone());
-        let components = CssComponentValues::try_new(items).unwrap();
+        let components = CssComponentValues::try_new(items, Default::default()).unwrap();
         let before = components.clone();
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::TransitionDuration),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::TransitionDuration,
+            )),
             components.clone(),
             CssImportance::Normal,
         )
         .unwrap_err();
         assert_eq!(
             error.origin(),
-            &CssSerializedOrigin::Token(negative.origin().clone())
+            CssSerializedOrigin::Token(negative.origin().clone())
         );
         assert_eq!(components, before);
     }

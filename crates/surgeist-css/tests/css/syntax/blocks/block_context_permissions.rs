@@ -10,12 +10,15 @@ use descriptor_phases::*;
 use crate::css::support::authored_syntax::{
     assert_strict_rejection, known_properties as properties,
 };
-use surgeist_css::{
-    CssDeclarationContextRef, CssDeclarationList, CssErrorCode, CssFontDisplay,
-    CssFontFaceDescriptorKind, CssFontFeatureValueKind, CssFontFeatureValuesItem, CssImportance,
-    CssKeyframeSelector, CssKnownProperty, CssNamespaceContext, CssRecoveryAction, CssRule,
-    ErrorKind, parse_declaration_list_text, parse_sheet, parse_style_block,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclarationList, CssImportance};
+use surgeist_css::diagnostic::{CssDeclarationContextRef, CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::font_face::{CssFontDisplay, CssFontFaceDescriptorKind};
+use surgeist_css::rule::font_feature_values::{CssFontFeatureValueKind, CssFontFeatureValuesItem};
+use surgeist_css::rule::keyframes::CssKeyframeSelector;
+use surgeist_css::rule::{CssRule, CssStyleBlock};
+use surgeist_css::selector::CssNamespaceContext;
 
 fn ordered_style_contents(declarations: &CssDeclarationList, rules: &[CssRule]) {
     assert_eq!(properties(declarations), [CssKnownProperty::Color]);
@@ -42,7 +45,11 @@ fn ordered_style_contents(declarations: &CssDeclarationList, rules: &[CssRule]) 
 #[test]
 fn same_authored_contents_have_style_permissions_in_real_brace_front_and_sheet_but_not_raw_list() {
     let body = "color:red!important; @unknown {width:100px;} color:blue; &{opacity:.5}; height:2px";
-    let block_report = parse_style_block(&format!("{{{body}}}"), &CssNamespaceContext::default());
+    let block_report = CssStyleBlock::parse(
+        &CssParser::default(),
+        format!("{{{body}}}"),
+        &CssNamespaceContext::default(),
+    );
     let block = block_report.syntax().as_ref().unwrap();
     ordered_style_contents(block.declarations(), block.rules());
     assert_eq!(
@@ -54,7 +61,7 @@ fn same_authored_contents_have_style_permissions_in_real_brace_front_and_sheet_b
         [CssRecoveryAction::DropAtRule]
     );
 
-    let sheet_report = parse_sheet(&format!(".parent{{{body}}}"));
+    let sheet_report = CssParser::default().parse_sheet(format!(".parent{{{body}}}"));
     let [CssRule::Style(style)] = sheet_report.syntax().rules() else {
         panic!("real parent style")
     };
@@ -68,7 +75,7 @@ fn same_authored_contents_have_style_permissions_in_real_brace_front_and_sheet_b
         [CssRecoveryAction::DropAtRule]
     );
 
-    let raw_report = parse_declaration_list_text(body);
+    let raw_report = CssParser::default().parse_block_contents(body);
     assert_eq!(
         properties(raw_report.syntax()),
         [
@@ -87,9 +94,11 @@ fn same_authored_contents_have_style_permissions_in_real_brace_front_and_sheet_b
             .iter()
             .map(|d| d.action())
             .collect::<Vec<_>>(),
+        // §5.5.5: the at-rule is consumed whole, and the nested `&{..}` is
+        // reconsumed as a qualified rule that the declaration list cannot hold.
         [
-            CssRecoveryAction::DropDeclaration,
-            CssRecoveryAction::DropDeclaration
+            CssRecoveryAction::DropAtRule,
+            CssRecoveryAction::DropQualifiedRule
         ]
     );
     assert_strict_rejection(
@@ -115,7 +124,7 @@ fn terminal_priority_is_admitted_for_cascade_properties_and_recovered_locally_fo
         "@font-face{font-family:Demo; font-display:swap!important; src:url(demo); font-weight:400}",
         "b{opacity:.5}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [
         CssRule::Style(style),
         CssRule::Keyframes(keyframes),
@@ -180,22 +189,26 @@ fn terminal_priority_is_admitted_for_cascade_properties_and_recovered_locally_fo
             "!"
         );
     }
-    let ErrorKind::InvalidDeclarationAnnotation(keyframe) = keyframe_diagnostic.error().kind()
-    else {
-        panic!("keyframe annotation error")
-    };
+    let keyframe = keyframe_diagnostic.error();
+    assert_eq!(
+        keyframe.code(),
+        CssErrorCode::InvalidDeclarationAnnotation,
+        "keyframe annotation error"
+    );
     assert!(matches!(
-        keyframe.context(),
+        keyframe.declaration_context().unwrap(),
         CssDeclarationContextRef::Keyframe(_)
     ));
-    let ErrorKind::InvalidDeclarationAnnotation(descriptor) = descriptor_diagnostic.error().kind()
-    else {
-        panic!("descriptor annotation error")
-    };
-    let CssDeclarationContextRef::Descriptor {
+    let descriptor = descriptor_diagnostic.error();
+    assert_eq!(
+        descriptor.code(),
+        CssErrorCode::InvalidDeclarationAnnotation,
+        "descriptor annotation error"
+    );
+    let Some(CssDeclarationContextRef::Descriptor {
         at_rule,
         descriptor,
-    } = descriptor.context()
+    }) = descriptor.declaration_context()
     else {
         panic!("font descriptor context")
     };
@@ -208,7 +221,7 @@ fn terminal_priority_is_admitted_for_cascade_properties_and_recovered_locally_fo
 #[test]
 fn keyframe_rule_list_rejects_at_rules_and_arbitrary_qualified_children_between_defined_blocks() {
     let source = "@keyframes k{from{opacity:0} @media all{to{opacity:.5}} .bad{opacity:.5} to{opacity:1}} a{width:1px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Keyframes(keyframes), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("keyframes and later sibling")
     };
@@ -249,7 +262,7 @@ fn keyframe_rule_list_rejects_at_rules_and_arbitrary_qualified_children_between_
 fn selected_page_consumer_retains_margin_children_and_removes_invalid_qualified_children() {
     // Current Page3 admission retains its canonical margin children separately.
     let source = "@page{margin-top:1px!important; @top-left{content:'title'} .nested{color:red} margin-bottom:2px} a{width:3px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Page(page), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("page and later style")
     };
@@ -264,7 +277,9 @@ fn selected_page_consumer_retains_margin_children_and_removes_invalid_qualified_
     assert_eq!(properties(after.declarations()), [CssKnownProperty::Width]);
     assert_eq!(page.margin_rules().len(), 1);
     assert_eq!(
-        page.margin_rules()[0].serialize_cssom().unwrap(),
+        page.margin_rules()[0]
+            .serialize_cssom(Default::default())
+            .unwrap(),
         "@top-left { content: \"title\"; }"
     );
     let [nested_style] = report.diagnostics() else {
@@ -279,7 +294,7 @@ fn font_feature_values_mixed_body_retains_defined_blocks_and_display_while_remov
 {
     // Selected Fonts4 §6.9.1 expressly admits font-display and defined blocks.
     let source = "@font-feature-values Demo{font-display:swap; @stylistic{first:1} @unknown{lost:2} .nested{color:red}; @swash{last:3}} a{width:1px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::FontFeatureValues(features), CssRule::Style(after)] = report.syntax().rules()
     else {
         panic!("font owner and later sibling")
@@ -339,7 +354,7 @@ fn malformed_font_mixed_list_unit_is_one_nested_qualified_rule() {
     // qualified rule with a `;` stop token, so its block ends the unit and the
     // following feature block survives.
     let source = "@font-feature-values Demo{font-display:swap; @stylistic{first:1} @unknown{lost:2} .nested{color:red} @swash{last:3}} a{width:1px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::FontFeatureValues(features), CssRule::Style(after)] = report.syntax().rules()
     else {
         panic!("font owner and outer later sibling")
@@ -381,7 +396,7 @@ fn malformed_font_mixed_list_unit_is_one_nested_qualified_rule() {
 fn same_conditional_body_rejects_top_level_declarations_and_retains_style_ancestor_ordered_runs() {
     let body = "height:2px; a{opacity:.5} width:1px;";
     let top_source = format!("@media all{{{body}}} b{{color:red}}");
-    let top = parse_sheet(&top_source);
+    let top = CssParser::default().parse_sheet(&top_source);
     let [CssRule::Media(media), CssRule::Style(after)] = top.syntax().rules() else {
         panic!("top-level group and sibling")
     };
@@ -412,7 +427,7 @@ fn same_conditional_body_rejects_top_level_declarations_and_retains_style_ancest
         ]
     );
 
-    let nested = parse_sheet(&format!(".parent{{@media all{{{body}}}}}"));
+    let nested = CssParser::default().parse_sheet(format!(".parent{{@media all{{{body}}}}}"));
     assert!(nested.is_clean(), "{nested:?}");
     let [CssRule::Style(parent)] = nested.syntax().rules() else {
         panic!("actual style ancestor")

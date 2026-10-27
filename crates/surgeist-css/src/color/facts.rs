@@ -3,11 +3,10 @@
 //! Creating this borrowed envelope does not scan or copy arrays. Operation
 //! actions validate individual headers/units and perform influencing lookups.
 
-use crate::{
-    ColorSpace, CssColorProfileComponentName, CssColorProfileName, CssColorProfileRenderingIntent,
-    CssSystemColor,
-};
+use crate::color::{CssColorProfileComponentName, CssColorProfileName, CssSystemColor};
+use crate::rule::color_profile::CssColorProfileRenderingIntent;
 use surgeist_color::Color;
+use surgeist_color::ColorSpace;
 
 /// Immutable fact-set identity and revision supplied by its actual owner.
 ///
@@ -51,8 +50,11 @@ pub enum CssColorPropertyFacts {
 /// The effective source-selected scheme, not inferred from `normal`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssColorSchemeFact {
+    /// The used scheme is light; `light-dark()` selects its first color.
     Light,
+    /// The used scheme is dark; `light-dark()` selects its second color.
     Dark,
+    /// No used scheme is supplied; reaching `light-dark()` is then an unavailable-fact error.
     Unavailable,
 }
 
@@ -103,10 +105,15 @@ impl CssColorPaletteEntry {
 /// Known profile availability differs from facts that have not been supplied.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssColorProfileAvailability {
+    /// Availability has not been observed; reaching the profile is an unavailable-fact error.
     Unknown,
+    /// The profile is known not to exist; a color using it is standard-invalid.
     Absent,
+    /// The profile exists but is not loaded; a color using it is standard-invalid.
     NotLoaded,
+    /// The profile is known to be invalid; a color using it is standard-invalid.
     Invalid,
+    /// The profile is loaded; its metadata, including a nonzero parameter count, is then checked before use.
     Loaded,
 }
 
@@ -165,9 +172,15 @@ impl<'a> CssColorProfileBinding<'a> {
 #[derive(Clone, Copy, Debug)]
 pub enum CssColorProfileConversion<'a> {
     /// The selected conversion operation is not implemented for this actual profile.
-    Unsupported { profile: CssColorFactIdentity },
+    Unsupported {
+        /// Identity and revision of the profile whose conversion is unsupported.
+        profile: CssColorFactIdentity,
+    },
     /// The required conversion facts are absent.
-    Unavailable { profile: CssColorFactIdentity },
+    Unavailable {
+        /// Identity and revision of the profile whose conversion facts are absent.
+        profile: CssColorFactIdentity,
+    },
     /// One concrete conversion, joined to exact profile/input/intent/target facts.
     Resolved(CssColorProfileConversionRecord<'a>),
 }
@@ -208,10 +221,15 @@ impl<'a> CssColorProfileConversionRecord<'a> {
 /// Device processing knowledge; Unknown does not select a known fallback.
 #[derive(Clone, Copy, Debug)]
 pub enum CssDeviceColorFact<'a> {
+    /// Device processing knowledge has not been supplied; reaching `device-cmyk()` is an unavailable-fact error.
     Unknown,
+    /// No device processing exists; `device-cmyk()` uses its naive CMYK-to-sRGB conversion.
     Absent,
+    /// Device processing exists but is unsupported; `device-cmyk()` uses its naive CMYK-to-sRGB conversion.
     Unsupported,
+    /// Device processing data is known to be invalid; `device-cmyk()` uses its naive CMYK-to-sRGB conversion.
     Invalid,
+    /// Device processing yields a color outside the required Lab space; `device-cmyk()` uses its naive CMYK-to-sRGB conversion.
     WrongSpace,
     /// The operation checks input channels/profile/intent and Lab result before use.
     Resolved(CssColorProfileConversionRecord<'a>),
@@ -229,7 +247,8 @@ pub struct CssColorFacts<'a> {
     pub(crate) device: CssDeviceColorFact<'a>,
 }
 impl<'a> CssColorFacts<'a> {
-    /// Borrows explicit facts without allocating, scanning, guessing palette entries or resolving them.
+    /// Borrows explicit facts without allocating, scanning, guessing palette entries or resolving
+    /// them.
     #[must_use]
     pub const fn new(
         identity: CssColorFactIdentity,

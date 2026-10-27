@@ -1,9 +1,11 @@
-use surgeist_css::{
-    CssEncoding, CssEncodingSelection, CssInputDecodeError, CssRule, CssStylesheetDecodeHints,
-    CssStylesheetDecodeLimits, CssStylesheetLocation, CssStylesheetParseOptions,
-    CssSupportsConditionKind, CssValueOrigin, decode_stylesheet_bytes,
-    decode_stylesheet_bytes_with_limits, parse_decoded_stylesheet, parse_sheet,
-    parse_sheet_with_options,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::CssRule;
+use surgeist_css::source::{
+    CssDecodedStylesheetInput, CssEncoding, CssEncodingSelection, CssStylesheetDecodeHints,
+    CssStylesheetDecodeLimits, CssStylesheetLocation,
 };
 
 fn hints(label: &str) -> CssStylesheetDecodeHints<'_> {
@@ -30,7 +32,9 @@ fn standard_labels_are_validated_and_replacement_labels_remain_recognized() {
     for label in ["", "not-an-encoding", "utf-8\0", "\u{a0}utf-8"] {
         assert_eq!(CssEncoding::for_label(label), None);
     }
-    let decoded = decode_stylesheet_bytes(b"anything", hints("iso-2022-kr")).unwrap();
+    let decoded =
+        CssDecodedStylesheetInput::decode(b"anything", hints("iso-2022-kr"), Default::default())
+            .unwrap();
     assert_eq!(decoded.source().as_str(), "�");
     assert_eq!(decoded.encoding().name(), "replacement");
     assert_eq!(decoded.selection(), CssEncodingSelection::Protocol);
@@ -58,7 +62,8 @@ fn unicode_legacy_east_asian_and_stateful_encodings_have_literal_outputs() {
         ("iso-2022-jp", &b"AAA\x1B(J\\\x1B(BZ"[..], "AAA¥Z"),
         ("x-user-defined", &b"\x80"[..], "\u{f780}"),
     ] {
-        let decoded = decode_stylesheet_bytes(bytes, hints(label)).unwrap();
+        let decoded =
+            CssDecodedStylesheetInput::decode(bytes, hints(label), Default::default()).unwrap();
         assert_eq!(decoded.source().as_str(), expected, "{label}");
         assert!(!decoded.had_replacements(), "{label}");
         assert_eq!(decoded.original_bytes(), bytes);
@@ -74,7 +79,8 @@ fn every_encoded_bom_overrides_even_recognized_replacement_fallback() {
         (&b"\xFE\xFF\0a\0{\0}"[..], "a{}", "UTF-16BE"),
     ] {
         for label in ["windows-1252", "replacement", "utf-16be"] {
-            let decoded = decode_stylesheet_bytes(bytes, hints(label)).unwrap();
+            let decoded =
+                CssDecodedStylesheetInput::decode(bytes, hints(label), Default::default()).unwrap();
             assert_eq!(decoded.source().as_str(), text);
             assert_eq!(decoded.encoding().name(), encoding);
             assert_eq!(decoded.selection(), CssEncodingSelection::ByteOrderMark);
@@ -82,8 +88,12 @@ fn every_encoded_bom_overrides_even_recognized_replacement_fallback() {
             assert_eq!(decoded.original_bytes(), bytes);
         }
     }
-    let empty_bom =
-        decode_stylesheet_bytes(b"\xEF\xBB\xBF", CssStylesheetDecodeHints::default()).unwrap();
+    let empty_bom = CssDecodedStylesheetInput::decode(
+        b"\xEF\xBB\xBF",
+        CssStylesheetDecodeHints::default(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(empty_bom.source().as_str(), "");
     assert_eq!(empty_bom.selection(), CssEncodingSelection::ByteOrderMark);
 }
@@ -92,32 +102,35 @@ fn every_encoded_bom_overrides_even_recognized_replacement_fallback() {
 fn fallback_order_is_protocol_then_exact_prefix_then_environment_then_utf8() {
     let bytes = b"@charset \"windows-1252\";\x80";
     let environment = CssEncoding::for_label("windows-1251").unwrap();
-    let protocol = decode_stylesheet_bytes(
+    let protocol = CssDecodedStylesheetInput::decode(
         bytes,
         CssStylesheetDecodeHints {
             protocol_label: Some("utf-8"),
             environment_encoding: Some(environment),
         },
+        Default::default(),
     )
     .unwrap();
     assert_eq!(protocol.selection(), CssEncodingSelection::Protocol);
     assert_eq!(protocol.source().as_str(), "@charset \"windows-1252\";�");
-    let prefix = decode_stylesheet_bytes(
+    let prefix = CssDecodedStylesheetInput::decode(
         bytes,
         CssStylesheetDecodeHints {
             protocol_label: Some("invalid"),
             environment_encoding: Some(environment),
         },
+        Default::default(),
     )
     .unwrap();
     assert_eq!(prefix.selection(), CssEncodingSelection::CharsetPrefix);
     assert_eq!(prefix.source().as_str(), "@charset \"windows-1252\";€");
-    let environment_input = decode_stylesheet_bytes(
+    let environment_input = CssDecodedStylesheetInput::decode(
         b"\xC0",
         CssStylesheetDecodeHints {
             protocol_label: Some("invalid"),
             environment_encoding: Some(environment),
         },
+        Default::default(),
     )
     .unwrap();
     assert_eq!(
@@ -125,7 +138,8 @@ fn fallback_order_is_protocol_then_exact_prefix_then_environment_then_utf8() {
         CssEncodingSelection::Environment
     );
     assert_eq!(environment_input.source().as_str(), "А");
-    let default = decode_stylesheet_bytes(b"\xC0", hints("invalid")).unwrap();
+    let default =
+        CssDecodedStylesheetInput::decode(b"\xC0", hints("invalid"), Default::default()).unwrap();
     assert_eq!(default.selection(), CssEncodingSelection::DefaultUtf8);
     assert_eq!(default.source().as_str(), "�");
 }
@@ -146,12 +160,13 @@ fn malformed_prefixes_and_unknown_labels_fall_through_to_environment() {
         &b"@charset \"utf-8\0\";\x80"[..],
         &b"@charset \"\";\x80"[..],
     ] {
-        let decoded = decode_stylesheet_bytes(
+        let decoded = CssDecodedStylesheetInput::decode(
             bytes,
             CssStylesheetDecodeHints {
                 protocol_label: None,
                 environment_encoding: Some(environment),
             },
+            Default::default(),
         )
         .unwrap();
         assert_eq!(
@@ -171,14 +186,23 @@ fn prefix_terminator_at_byte_1024_is_admitted_but_1025_is_not() {
     bytes.extend_from_slice(b"\";\x80");
     assert_eq!(bytes.len(), 1025);
     assert_eq!(&bytes[1022..1024], b"\";");
-    let boundary = decode_stylesheet_bytes(&bytes, CssStylesheetDecodeHints::default()).unwrap();
+    let boundary = CssDecodedStylesheetInput::decode(
+        &bytes,
+        CssStylesheetDecodeHints::default(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(boundary.selection(), CssEncodingSelection::CharsetPrefix);
     assert!(boundary.source().as_str().ends_with("\";€"));
     bytes.insert(22, b' ');
     assert_eq!(bytes.len(), 1026);
     assert_eq!(&bytes[1023..1025], b"\";");
-    let past_boundary =
-        decode_stylesheet_bytes(&bytes, CssStylesheetDecodeHints::default()).unwrap();
+    let past_boundary = CssDecodedStylesheetInput::decode(
+        &bytes,
+        CssStylesheetDecodeHints::default(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(past_boundary.selection(), CssEncodingSelection::DefaultUtf8);
     assert!(past_boundary.source().as_str().ends_with("\";�"));
 }
@@ -187,20 +211,25 @@ fn prefix_terminator_at_byte_1024_is_admitted_but_1025_is_not() {
 fn utf16_prefix_remapping_does_not_change_protocol_or_environment() {
     for label in ["utf-16le", "utf-16be", "utf-16"] {
         let bytes = format!("@charset \"{label}\";a{{}}");
-        let decoded =
-            decode_stylesheet_bytes(bytes.as_bytes(), CssStylesheetDecodeHints::default()).unwrap();
+        let decoded = CssDecodedStylesheetInput::decode(
+            bytes.as_bytes(),
+            CssStylesheetDecodeHints::default(),
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(decoded.encoding().name(), "UTF-8");
         assert_eq!(decoded.selection(), CssEncodingSelection::CharsetPrefix);
         assert_eq!(decoded.source().as_str(), bytes);
     }
     let bytes = b"a\0{\0}\0";
     let encoding = CssEncoding::for_label("utf-16le").unwrap();
-    let decoded = decode_stylesheet_bytes(
+    let decoded = CssDecodedStylesheetInput::decode(
         bytes,
         CssStylesheetDecodeHints {
             protocol_label: None,
             environment_encoding: Some(encoding),
         },
+        Default::default(),
     )
     .unwrap();
     assert_eq!(decoded.encoding().name(), "UTF-16LE");
@@ -219,11 +248,14 @@ fn final_incomplete_sequences_replace_once_and_valid_replacement_scalar_is_not_a
         (&b"A\x82"[..], "shift_jis", "A�"),
         (&b"AAA\x1B(J\\\x1B(BZ\x1B"[..], "iso-2022-jp", "AAA¥Z�"),
     ] {
-        let decoded = decode_stylesheet_bytes(bytes, hints(label)).unwrap();
+        let decoded =
+            CssDecodedStylesheetInput::decode(bytes, hints(label), Default::default()).unwrap();
         assert_eq!(decoded.source().as_str(), text, "{label}");
         assert!(decoded.had_replacements());
     }
-    let decoded = decode_stylesheet_bytes("�".as_bytes(), hints("utf-8")).unwrap();
+    let decoded =
+        CssDecodedStylesheetInput::decode("�".as_bytes(), hints("utf-8"), Default::default())
+            .unwrap();
     assert_eq!(decoded.source().as_str(), "�");
     assert!(!decoded.had_replacements());
 }
@@ -232,41 +264,47 @@ fn final_incomplete_sequences_replace_once_and_valid_replacement_scalar_is_not_a
 fn limits_are_atomic_exact_in_original_and_decoded_byte_units() {
     let bytes = b"\x80\xE9";
     let exact = CssStylesheetDecodeLimits::new(2, 5);
-    let decoded = decode_stylesheet_bytes_with_limits(bytes, hints("windows-1252"), exact).unwrap();
+    let decoded = CssDecodedStylesheetInput::decode(bytes, hints("windows-1252"), exact).unwrap();
     assert_eq!(decoded.source().as_str(), "€é");
-    assert_eq!(
-        decode_stylesheet_bytes_with_limits(
+    assert!(
+        CssDecodedStylesheetInput::decode(
             bytes,
             hints("windows-1252"),
             CssStylesheetDecodeLimits::new(1, 5)
-        ),
-        Err(CssInputDecodeError::OriginalByteLimit)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_original_byte_limit()
     );
-    assert_eq!(
-        decode_stylesheet_bytes_with_limits(
+    assert!(
+        CssDecodedStylesheetInput::decode(
             bytes,
             hints("windows-1252"),
             CssStylesheetDecodeLimits::new(2, 4)
-        ),
-        Err(CssInputDecodeError::DecodedUtf8ByteLimit)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_decoded_utf8_byte_limit()
     );
     assert_eq!(
-        decode_stylesheet_bytes_with_limits(bytes, hints("windows-1252"), exact)
+        CssDecodedStylesheetInput::decode(bytes, hints("windows-1252"), exact)
             .unwrap()
             .source()
             .as_str(),
         "€é"
     );
-    assert_eq!(
-        decode_stylesheet_bytes_with_limits(
+    assert!(
+        CssDecodedStylesheetInput::decode(
             "😀".as_bytes(),
             hints("utf-8"),
             CssStylesheetDecodeLimits::new(4, 3)
-        ),
-        Err(CssInputDecodeError::DecodedUtf8ByteLimit)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_decoded_utf8_byte_limit()
     );
     assert_eq!(
-        decode_stylesheet_bytes_with_limits(
+        CssDecodedStylesheetInput::decode(
             b"\xEF\xBB\xBF",
             hints("utf-8"),
             CssStylesheetDecodeLimits::new(3, 0)
@@ -277,7 +315,7 @@ fn limits_are_atomic_exact_in_original_and_decoded_byte_units() {
         ""
     );
     assert_eq!(
-        decode_stylesheet_bytes_with_limits(
+        CssDecodedStylesheetInput::decode(
             b"",
             hints("utf-8"),
             CssStylesheetDecodeLimits::new(0, 0)
@@ -291,8 +329,18 @@ fn limits_are_atomic_exact_in_original_and_decoded_byte_units() {
 
 #[test]
 fn content_equality_does_not_merge_separate_input_or_snapshot_identity() {
-    let first = decode_stylesheet_bytes(b"a{}", CssStylesheetDecodeHints::default()).unwrap();
-    let second = decode_stylesheet_bytes(b"a{}", CssStylesheetDecodeHints::default()).unwrap();
+    let first = CssDecodedStylesheetInput::decode(
+        b"a{}",
+        CssStylesheetDecodeHints::default(),
+        Default::default(),
+    )
+    .unwrap();
+    let second = CssDecodedStylesheetInput::decode(
+        b"a{}",
+        CssStylesheetDecodeHints::default(),
+        Default::default(),
+    )
+    .unwrap();
     let cloned = first.clone();
     assert_eq!(first, second);
     assert!(!first.same_input(&second));
@@ -308,13 +356,18 @@ fn utf16_sheet_components_share_decoded_snapshot_with_utf8_and_utf16_coordinates
     for unit in text.encode_utf16() {
         bytes.extend_from_slice(&unit.to_le_bytes());
     }
-    let input = decode_stylesheet_bytes(&bytes, hints("windows-1252")).unwrap();
-    let report = parse_decoded_stylesheet(&input, None);
+    let input =
+        CssDecodedStylesheetInput::decode(&bytes, hints("windows-1252"), Default::default())
+            .unwrap();
+    let report = CssParser::default()
+        .parse_sheet_bytes(&input)
+        .with_location(None);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("supports rule")
     };
-    let CssSupportsConditionKind::Declaration(declaration) = rule.condition().kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = rule.condition().kind()
+    else {
         panic!("declaration condition")
     };
     let CssValueOrigin::Parsed(origin) = declaration.property_component().origin() else {
@@ -335,11 +388,17 @@ fn utf16_sheet_components_share_decoded_snapshot_with_utf8_and_utf16_coordinates
 #[test]
 fn byte_composition_preserves_prefilter_source_and_string_recovery() {
     let text = "/*😀*/\r\n\x0c\r@supports (width: 2px){a{--x:a\0b; mystery:1; color:red}}";
-    let input =
-        decode_stylesheet_bytes(text.as_bytes(), CssStylesheetDecodeHints::default()).unwrap();
+    let input = CssDecodedStylesheetInput::decode(
+        text.as_bytes(),
+        CssStylesheetDecodeHints::default(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(input.source().as_str(), text);
-    let report = parse_decoded_stylesheet(&input, None);
-    let control = parse_sheet(text);
+    let report = CssParser::default()
+        .parse_sheet_bytes(&input)
+        .with_location(None);
+    let control = CssParser::default().parse_sheet(text);
     assert_eq!(report, control);
     assert_eq!(report.diagnostics().len(), 1);
     let position = report.diagnostics()[0].error().position();
@@ -348,7 +407,8 @@ fn byte_composition_preserves_prefilter_source_and_string_recovery() {
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("supports rule")
     };
-    let CssSupportsConditionKind::Declaration(declaration) = rule.condition().kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = rule.condition().kind()
+    else {
         panic!("supports declaration")
     };
     let CssValueOrigin::Parsed(origin) = declaration.property_component().origin() else {
@@ -362,9 +422,10 @@ fn byte_composition_preserves_prefilter_source_and_string_recovery() {
 
 #[test]
 fn byte_prefix_text_is_preserved_and_uses_the_current_string_grammar() {
-    let input = decode_stylesheet_bytes(
+    let input = CssDecodedStylesheetInput::decode(
         b"@charset \"windows-1252\";a{--x:\x80}",
         CssStylesheetDecodeHints::default(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(
@@ -372,27 +433,40 @@ fn byte_prefix_text_is_preserved_and_uses_the_current_string_grammar() {
         "@charset \"windows-1252\";a{--x:€}"
     );
     assert_eq!(
-        parse_decoded_stylesheet(&input, None),
-        parse_sheet("@charset \"windows-1252\";a{--x:€}")
+        CssParser::default()
+            .parse_sheet_bytes(&input)
+            .with_location(None),
+        CssParser::default().parse_sheet("@charset \"windows-1252\";a{--x:€}")
     );
 }
 
 #[test]
 fn symbolic_location_is_optional_and_shared_between_byte_and_unicode_fronts() {
     let location = CssStylesheetLocation::new("../sheet.css?x=%2f#原".to_owned());
-    let input = decode_stylesheet_bytes(b"a{}", CssStylesheetDecodeHints::default()).unwrap();
-    assert_eq!(parse_sheet("a{}").syntax().location(), None);
+    let input = CssDecodedStylesheetInput::decode(
+        b"a{}",
+        CssStylesheetDecodeHints::default(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
-        parse_decoded_stylesheet(&input, None).syntax().location(),
+        CssParser::default().parse_sheet("a{}").syntax().location(),
         None
     );
-    let bytes_report = parse_decoded_stylesheet(&input, Some(location.clone()));
-    let unicode_report = parse_sheet_with_options(
-        "a{}",
-        CssStylesheetParseOptions {
-            location: Some(location.clone()),
-        },
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet_bytes(&input)
+            .with_location(None)
+            .syntax()
+            .location(),
+        None
     );
+    let bytes_report = CssParser::default()
+        .parse_sheet_bytes(&input)
+        .with_location(Some(location.clone()));
+    let unicode_report = CssParser::default()
+        .parse_sheet("a{}")
+        .with_location(Some(location.clone()));
     assert_eq!(bytes_report, unicode_report);
     assert_eq!(bytes_report.syntax().location(), Some(&location));
     assert_eq!(
@@ -401,7 +475,9 @@ fn symbolic_location_is_optional_and_shared_between_byte_and_unicode_fronts() {
     );
     let empty = CssStylesheetLocation::new(String::new());
     assert_eq!(
-        parse_decoded_stylesheet(&input, Some(empty))
+        CssParser::default()
+            .parse_sheet_bytes(&input)
+            .with_location(Some(empty))
             .syntax()
             .location()
             .unwrap()
@@ -411,8 +487,10 @@ fn symbolic_location_is_optional_and_shared_between_byte_and_unicode_fronts() {
     // The Unicode front treats U+FEFF as authored text, whereas encoded BOMs
     // belong to decoding. Reuse the real existing Unicode pipeline as control.
     assert_eq!(
-        parse_sheet_with_options("\u{feff}a{}", CssStylesheetParseOptions::default()),
-        parse_sheet("\u{feff}a{}")
+        CssParser::default()
+            .parse_sheet("\u{feff}a{}")
+            .with_location(None),
+        CssParser::default().parse_sheet("\u{feff}a{}")
     );
 }
 
@@ -423,13 +501,20 @@ fn malformed_utf16_sheet_diagnostics_address_decoded_source_not_network_bytes() 
     for unit in text.encode_utf16() {
         bytes.extend_from_slice(&unit.to_le_bytes());
     }
-    let input = decode_stylesheet_bytes(&bytes, CssStylesheetDecodeHints::default()).unwrap();
-    let report = parse_decoded_stylesheet(&input, None);
+    let input = CssDecodedStylesheetInput::decode(
+        &bytes,
+        CssStylesheetDecodeHints::default(),
+        Default::default(),
+    )
+    .unwrap();
+    let report = CssParser::default()
+        .parse_sheet_bytes(&input)
+        .with_location(None);
     assert_eq!(report.diagnostics().len(), 1);
     let diagnostic = &report.diagnostics()[0];
     assert_eq!(
         diagnostic.error().code(),
-        surgeist_css::CssErrorCode::UnknownProperty
+        surgeist_css::diagnostic::CssErrorCode::UnknownProperty
     );
     assert_eq!(diagnostic.error().position().byte_offset().value(), 10);
     assert_eq!(diagnostic.error().position().column().value(), 8);
@@ -445,18 +530,26 @@ fn malformed_utf16_sheet_diagnostics_address_decoded_source_not_network_bytes() 
 #[test]
 fn null_filtering_changes_token_semantics_while_preserving_unfiltered_snapshot() {
     let text = "@supports (wid\0th: 2px){}";
-    let input =
-        decode_stylesheet_bytes(text.as_bytes(), CssStylesheetDecodeHints::default()).unwrap();
-    let report = parse_decoded_stylesheet(&input, None);
+    let input = CssDecodedStylesheetInput::decode(
+        text.as_bytes(),
+        CssStylesheetDecodeHints::default(),
+        Default::default(),
+    )
+    .unwrap();
+    let report = CssParser::default()
+        .parse_sheet_bytes(&input)
+        .with_location(None);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("supports rule")
     };
-    let CssSupportsConditionKind::Declaration(declaration) = rule.condition().kind() else {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = rule.condition().kind()
+    else {
         panic!("supports declaration")
     };
-    let surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Ident(name)) =
-        declaration.property_component().view()
+    let surgeist_css::component::CssComponentValueRef::Token(
+        surgeist_css::component::CssValueTokenRef::Ident(name),
+    ) = declaration.property_component().view()
     else {
         panic!("identifier token")
     };
@@ -487,14 +580,20 @@ fn replacement_charset_prefix_and_environment_are_selected_unless_a_bom_override
     let replacement = CssEncoding::for_label("iso-2022-kr").unwrap();
     for label in ["iso-2022-kr", "csiso2022kr", "hz-gb-2312", "iso-2022-cn"] {
         let bytes = format!("@charset \"{label}\";a{{color:red}}");
-        let decoded =
-            decode_stylesheet_bytes(bytes.as_bytes(), CssStylesheetDecodeHints::default()).unwrap();
+        let decoded = CssDecodedStylesheetInput::decode(
+            bytes.as_bytes(),
+            CssStylesheetDecodeHints::default(),
+            Default::default(),
+        )
+        .unwrap();
         assert_eq!(decoded.encoding().name(), "replacement", "{label}");
         assert_eq!(decoded.selection(), CssEncodingSelection::CharsetPrefix);
         assert_eq!(decoded.source().as_str(), "\u{FFFD}", "{label}");
         assert!(decoded.had_replacements());
         assert_eq!(decoded.original_bytes(), bytes.as_bytes());
-        let report = parse_decoded_stylesheet(&decoded, None);
+        let report = CssParser::default()
+            .parse_sheet_bytes(&decoded)
+            .with_location(None);
         assert!(report.syntax().rules().is_empty(), "{label}: {report:?}");
     }
 
@@ -502,20 +601,30 @@ fn replacement_charset_prefix_and_environment_are_selected_unless_a_bom_override
         protocol_label,
         environment_encoding: Some(replacement),
     };
-    let decoded = decode_stylesheet_bytes(b"a{color:red}", environment(None)).unwrap();
+    let decoded =
+        CssDecodedStylesheetInput::decode(b"a{color:red}", environment(None), Default::default())
+            .unwrap();
     assert_eq!(decoded.encoding().name(), "replacement");
     assert_eq!(decoded.selection(), CssEncodingSelection::Environment);
     assert_eq!(decoded.source().as_str(), "\u{FFFD}");
     assert!(decoded.had_replacements());
     // Step 2 precedes the environment: an exact prefix still selects UTF-8.
-    let decoded = decode_stylesheet_bytes(b"@charset \"utf-8\";a{}", environment(None)).unwrap();
+    let decoded = CssDecodedStylesheetInput::decode(
+        b"@charset \"utf-8\";a{}",
+        environment(None),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(decoded.encoding().name(), "UTF-8");
     assert_eq!(decoded.selection(), CssEncodingSelection::CharsetPrefix);
     assert_eq!(decoded.source().as_str(), "@charset \"utf-8\";a{}");
     // Step 1 precedes both: a protocol label wins over a replacement prefix.
-    let decoded =
-        decode_stylesheet_bytes(b"@charset \"iso-2022-kr\";a{}", environment(Some("utf-8")))
-            .unwrap();
+    let decoded = CssDecodedStylesheetInput::decode(
+        b"@charset \"iso-2022-kr\";a{}",
+        environment(Some("utf-8")),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(decoded.encoding().name(), "UTF-8");
     assert_eq!(decoded.selection(), CssEncodingSelection::Protocol);
     assert_eq!(decoded.source().as_str(), "@charset \"iso-2022-kr\";a{}");
@@ -533,7 +642,8 @@ fn replacement_charset_prefix_and_environment_are_selected_unless_a_bom_override
             environment(None),
             environment(Some("iso-2022-kr")),
         ] {
-            let decoded = decode_stylesheet_bytes(&bytes, hints).unwrap();
+            let decoded =
+                CssDecodedStylesheetInput::decode(&bytes, hints, Default::default()).unwrap();
             assert_eq!(decoded.encoding().name(), encoding);
             assert_eq!(decoded.selection(), CssEncodingSelection::ByteOrderMark);
             assert_eq!(decoded.source().as_str(), text);

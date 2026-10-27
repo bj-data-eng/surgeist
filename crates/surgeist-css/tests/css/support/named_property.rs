@@ -8,7 +8,14 @@
 
 use super::authored_property::{self, ParserFront};
 use super::{declaration, known_property, selected_grammar};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssError, CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssExpansionError, CssKnownProperty,
+    CssLonghandContribution, CssLonghandContributions, CssPropertyTarget, CssPropertyValueError,
+};
 
 /// The sole clean style-attribute declaration of `property`, written with
 /// `importance`, that keeps the property identity.
@@ -53,8 +60,13 @@ pub fn validated_important_property_declaration(
 pub fn normal_grammar_components(
     name: &str,
     components: CssComponentValues,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    parse_property_value_for_grammar(selected_grammar(name), components, CssImportance::Normal)
+) -> Result<CssDeclaration, CssPropertyValueError> {
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(selected_grammar(name)),
+        components,
+        CssImportance::Normal,
+    )
 }
 
 /// The important text front of `property`, by name or, when `grammar` is
@@ -100,7 +112,11 @@ pub fn accepted_by_attribute_and_grammar(name: &str, value: &str) {
         );
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -114,15 +130,14 @@ pub fn invalid_named_value(name: &str, value: &str) {
 
 /// `error` is the grammar of `property` rejecting its value.
 #[track_caller]
-pub fn assert_property_grammar_error(
-    error: &CssPropertyValueParseError,
-    property: CssKnownProperty,
-) {
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("{property:?}: expected a property grammar rejection, got {error:?}")
-    };
-    assert_eq!(detail.property(), property, "{error:?}");
+pub fn assert_property_grammar_error(error: &CssPropertyValueError, property: CssKnownProperty) {
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "{property:?}: expected a property grammar rejection, got {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), property, "{error:?}");
 }
 
 /// Byte offset in `value` of the token that first violates the grammar,
@@ -153,8 +168,8 @@ pub fn assert_checked_value_rejected_at<'a>(
     rest: impl Into<Option<&'a str>>,
 ) {
     let rest = rest.into();
-    let components = parse_component_values(value).unwrap();
-    let serialized = components.serialize().unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), value, "authored component text");
     let expected = rest.map(|rest| {
         serialized
@@ -173,7 +188,7 @@ pub fn assert_checked_value_rejected_at<'a>(
             assert_property_grammar_error(&error, property);
             if let Some(expected) = expected {
                 assert_eq!(
-                    error.origin(),
+                    &error.origin(),
                     expected,
                     "{property:?}: {value:?} (grammar: {grammar}): responsible token {rest:?}"
                 );
@@ -187,16 +202,19 @@ pub fn assert_checked_value_rejected_at<'a>(
 /// `value` from which `rest` remains.
 #[track_caller]
 pub fn assert_value_diagnostic_at<'a>(
-    error: &Error,
+    error: &CssError,
     property: CssKnownProperty,
     value_start: usize,
     value: &str,
     rest: impl Into<Option<&'a str>>,
 ) {
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("{value:?}: expected a property grammar diagnostic, got {error:?}")
-    };
-    assert_eq!(detail.property(), property, "{value:?}");
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "{value:?}: expected a property grammar diagnostic, got {error:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), property, "{value:?}");
     if let Some(rest) = rest.into() {
         assert_eq!(
             error.position().byte_offset().value(),
@@ -233,14 +251,14 @@ pub fn assert_origin_at(origin: &CssSerializedOrigin, text: &str, rest: &str) {
 /// programmatic, so it carries no authored position.
 #[track_caller]
 pub fn assert_programmatic_rejection(
-    result: Result<CssDeclaration, CssPropertyValueParseError>,
+    result: Result<CssDeclaration, CssPropertyValueError>,
     property: CssKnownProperty,
 ) {
     let error = result.unwrap_err();
     assert_property_grammar_error(&error, property);
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+        CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
     );
 }
 
@@ -253,12 +271,12 @@ pub fn assert_invalid_replacement_at<'a>(
     text: &str,
     rest: impl Into<Option<&'a str>>,
 ) {
-    let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+    let Some(error) = error.replacement_error() else {
         panic!("{text:?}: expected an invalid replacement, got {error:?}")
     };
     assert_property_grammar_error(error, property);
     if let Some(rest) = rest.into() {
-        assert_origin_at(error.origin(), text, rest);
+        assert_origin_at(&error.origin(), text, rest);
     }
 }
 
@@ -266,12 +284,9 @@ pub fn assert_invalid_replacement_at<'a>(
 /// was closed only by the end of input, fails at that original implicit
 /// closure.
 #[track_caller]
-pub fn assert_implicit_closure_rejection(error: &CssPropertyValueParseError, text: &str) {
+pub fn assert_implicit_closure_rejection(error: &CssPropertyValueError, text: &str) {
     assert!(
-        matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-        ),
+        error.code() == Some(CssErrorCode::UnexpectedEnd),
         "{text:?}: expected an unexpected end, got {error:?}"
     );
     let CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { opening, at })) =
@@ -295,7 +310,7 @@ fn assert_attribute_rejected_at(
 ) {
     let prefix = format!("color:red;{name}:");
     let css = format!("{prefix}{value};color:blue");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert_eq!(
         report
             .syntax()
@@ -315,7 +330,11 @@ fn assert_attribute_rejected_at(
     );
     assert_value_diagnostic_at(diagnostic.error(), property, prefix.len(), value, rest);
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -348,8 +367,9 @@ pub fn invalid_named_value_at<'a>(name: &str, value: &str, rest: impl Into<Optio
 /// The longhand contributions of a completed expansion of `source`.
 #[track_caller]
 pub fn longhand_contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap_or_else(|error| panic!("expansion: {error:?}"))
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source
+        .expand()
+        .unwrap_or_else(|error| panic!("expansion: {error:?}"))
     else {
         panic!("completed longhand contributions: {source:?}")
     };
@@ -376,7 +396,10 @@ pub fn accepted_through_every_front(name: &str, input: &str, canonical: &str) {
     let expected = format!("{name}: {canonical} !important;");
     for source in named_fronts(name, input) {
         let before = source.clone();
-        assert_eq!(source.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            source.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert!(source.known().unwrap().property_value().is_some());
         assert!(source.known().unwrap().global().is_none());
         assert!(source.known().unwrap().substitution_dependent().is_none());
@@ -392,7 +415,7 @@ pub fn accepted_through_every_front(name: &str, input: &str, canonical: &str) {
     }
     assert_eq!(
         super::authored_checked_declaration(name, canonical, true)
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         expected
     );

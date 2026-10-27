@@ -1,6 +1,12 @@
 //! Existing-callable authored admission contracts from Pseudo4 WD20250627.
 //! These selectors remain symbolic: admission does not assert live matching.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPartName, CssPseudoElement, CssPseudoElementSegment, CssSelector,
+};
 
 fn same_semantics(left: &CssSelector, left_source: &str, right: &CssSelector, right_source: &str) {
     let (CssSelector::Compound(left), CssSelector::Compound(right)) = (left, right) else {
@@ -59,8 +65,12 @@ fn admitted(cases: &[(&str, &str)]) -> Vec<CssSelector> {
     let reports: Vec<_> = cases
         .iter()
         .map(|(source, _)| {
-            let selector = parse_selector(source, &CssNamespaceContext::default());
-            let sheet = parse_sheet(&format!("{source}{{color:red}}"));
+            let selector = CssSelector::parse(
+                &CssParser::default(),
+                source,
+                &CssNamespaceContext::default(),
+            );
+            let sheet = CssParser::default().parse_sheet(format!("{source}{{color:red}}"));
             (selector, sheet)
         })
         .collect();
@@ -78,12 +88,18 @@ fn admitted(cases: &[(&str, &str)]) -> Vec<CssSelector> {
         );
         let value = selector.syntax().as_ref().unwrap();
         assert!(value.has_pseudo_elements(), "{source}");
-        assert_eq!(value.to_specified_css().unwrap(), *expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            *expected
+        );
         let [CssRule::Style(rule)] = sheet.syntax().rules() else {
             unreachable!()
         };
         let sheet_value = rule.selectors().selectors()[0].selector();
-        assert_eq!(sheet_value.to_specified_css().unwrap(), *expected);
+        assert_eq!(
+            sheet_value.serialize_specified(Default::default()).unwrap(),
+            *expected
+        );
         same_semantics(
             value,
             source,
@@ -91,10 +107,19 @@ fn admitted(cases: &[(&str, &str)]) -> Vec<CssSelector> {
             &format!("{source}{{color:red}}"),
         );
         assert_eq!(rule.declarations().len(), 1);
-        let replay = parse_selector(expected, &CssNamespaceContext::default());
+        let replay = CssSelector::parse(
+            &CssParser::default(),
+            expected,
+            &CssNamespaceContext::default(),
+        );
         assert!(replay.is_clean(), "{expected}: {replay:?}");
         let replay_value = replay.syntax().as_ref().unwrap();
-        assert_eq!(replay_value.to_specified_css().unwrap(), *expected);
+        assert_eq!(
+            replay_value
+                .serialize_specified(Default::default())
+                .unwrap(),
+            *expected
+        );
         same_semantics(value, source, replay_value, expected);
     }
     reports
@@ -105,8 +130,13 @@ fn admitted(cases: &[(&str, &str)]) -> Vec<CssSelector> {
 
 fn rejected(cases: &[&str]) {
     for source in cases {
-        let selector = parse_selector(source, &CssNamespaceContext::default());
-        let sheet = parse_sheet(&format!("{source}{{color:red}}.after{{color:blue}}"));
+        let selector = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
+        let sheet =
+            CssParser::default().parse_sheet(format!("{source}{{color:red}}.after{{color:blue}}"));
         assert_eq!(
             (
                 selector.is_clean(),

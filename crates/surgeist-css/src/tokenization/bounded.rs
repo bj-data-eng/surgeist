@@ -42,6 +42,8 @@ pub(crate) enum Error {
 #[derive(Clone, Copy, Debug)]
 enum Decoder {
     Ready,
+    /// Encoding's UTF-8 decoder state: the lead's payload bits, the bytes
+    /// still needed and the smallest code point of the sequence's length.
     Utf8 {
         start: usize,
         value: u32,
@@ -174,6 +176,11 @@ impl InputCursor {
         Ok(true)
     }
 
+    /// Encoding (UTF-8 decoder): a lead byte is 00..7F or C2..F4, and each
+    /// continuation byte lies within the bounds its lead selected. The bounds
+    /// after E0, ED, F0 and F4 reject overlong forms, surrogates and code
+    /// points above U+10FFFF at the second byte, the first unit that proves
+    /// the sequence malformed.
     fn validate_utf8(&self, byte: u8) -> Result<(), Error> {
         match self.decoder {
             Decoder::Ready if byte <= 0x7f || (0xc2..=0xf4).contains(&byte) => Ok(()),
@@ -182,12 +189,22 @@ impl InputCursor {
                 left,
                 minimum,
                 ..
-            } if (0x80..=0xbf).contains(&byte) => {
-                let candidate = (value << 6) | u32::from(byte & 0x3f);
-                if left == 1 && (candidate < minimum || char::from_u32(candidate).is_none()) {
-                    Err(Error::InvalidUtf8)
-                } else {
+            } => {
+                // The second byte of a three-byte sequence still needs two
+                // bytes, and of a four-byte sequence three; there `value` is
+                // the lead's payload, so 0 and 0xD are E0 and ED, 0 and 4 are
+                // F0 and F4. Every other continuation lies in 80..BF.
+                let (lower, upper) = match (minimum, left, value) {
+                    (0x800, 2, 0x0) => (0xa0, 0xbf),
+                    (0x800, 2, 0xd) => (0x80, 0x9f),
+                    (0x10000, 3, 0x0) => (0x90, 0xbf),
+                    (0x10000, 3, 0x4) => (0x80, 0x8f),
+                    _ => (0x80, 0xbf),
+                };
+                if (lower..=upper).contains(&byte) {
                     Ok(())
+                } else {
+                    Err(Error::InvalidUtf8)
                 }
             }
             _ => Err(Error::InvalidUtf8),

@@ -14,12 +14,16 @@
 //! https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#supported-filter-functions
 //! https://www.w3.org/TR/2023/WD-css-animations-1-20230302/#animation-iteration-count
 
-use surgeist_css::{
-    CssAnimationIterationCount, CssBorderImageRepeatKeyword, CssBorderImageSliceComponent,
-    CssBorderImageWidthComponent, CssDeclaration, CssErrorCode, CssFilter, CssFilterAmount,
-    CssFilterFunction, CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, ErrorKind, parse_sheet, parse_style_attribute,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::animation::CssAnimationIterationCount;
+use surgeist_css::values::border::{
+    CssBorderImageRepeatKeyword, CssBorderImageSliceComponent, CssBorderImageWidthComponent,
 };
+use surgeist_css::values::effects::{CssFilter, CssFilterAmount, CssFilterFunction};
 
 const AMOUNT_FUNCTIONS: [&str; 7] = [
     "brightness",
@@ -105,11 +109,14 @@ fn assert_declarations(
             CssRecoveryAction::DropDeclaration,
             "{source}"
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected a property-value diagnostic");
-        };
+        let detail = diagnostic.error();
         assert_eq!(
-            detail.property(),
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected a property-value diagnostic"
+        );
+        assert_eq!(
+            detail.known_property().unwrap(),
             expected,
             "{source}: rejected the wrong property"
         );
@@ -125,7 +132,7 @@ fn assert_declarations(
 
 fn assert_case(declaration: &str, expected: CssKnownProperty, admitted: bool) {
     let source = format!("width: 2px; {declaration}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         report.is_clean(),
         admitted,
@@ -141,7 +148,7 @@ fn assert_case(declaration: &str, expected: CssKnownProperty, admitted: bool) {
     );
 
     let sheet_source = format!(".subject {{ {source} }}");
-    let sheet = parse_sheet(&sheet_source);
+    let sheet = CssParser::default().parse_sheet(&sheet_source);
     assert_eq!(
         sheet.is_clean(),
         admitted,
@@ -379,8 +386,8 @@ fn ordinary_border_image_arity_fill_and_auto_keep_their_typed_aggregate_roles() 
             assert_clean(&format!("{name}: {value}"), property);
         }
     }
-    let report =
-        parse_style_attribute("border-image-slice: fill 10 20%; border-image-width: auto 2");
+    let report = CssParser::default()
+        .parse_block_contents("border-image-slice: fill 10 20%; border-image-width: auto 2");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderImageSlice(slice) = report.syntax()[0]
         .known()
@@ -390,8 +397,8 @@ fn ordinary_border_image_arity_fill_and_auto_keep_their_typed_aggregate_roles() 
     else {
         panic!("typed slice");
     };
-    assert!(slice.slice().fill());
-    let [top, right, bottom, left] = slice.slice().values();
+    assert!(slice.value().fill());
+    let [top, right, bottom, left] = slice.value().values();
     assert!(matches!(top, CssBorderImageSliceComponent::Number(_)));
     assert!(matches!(right, CssBorderImageSliceComponent::Percentage(_)));
     assert_eq!(top, bottom);
@@ -404,7 +411,7 @@ fn ordinary_border_image_arity_fill_and_auto_keep_their_typed_aggregate_roles() 
     else {
         panic!("typed width");
     };
-    let [top, right, bottom, left] = width.widths().values();
+    let [top, right, bottom, left] = width.value().values();
     assert!(matches!(top, CssBorderImageWidthComponent::Auto));
     assert!(matches!(right, CssBorderImageWidthComponent::Number(_)));
     assert_eq!(top, bottom);
@@ -413,8 +420,8 @@ fn ordinary_border_image_arity_fill_and_auto_keep_their_typed_aggregate_roles() 
 
 #[test]
 fn ordinary_border_image_shorthand_preserves_explicit_members_and_omissions() {
-    let report =
-        parse_style_attribute("border-image: 10 fill; border-image: 10 / auto / 2 round space");
+    let report = CssParser::default()
+        .parse_block_contents("border-image: 10 fill; border-image: 10 / auto / 2 round space");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderImage(first) = report.syntax()[0]
         .known()
@@ -424,7 +431,7 @@ fn ordinary_border_image_shorthand_preserves_explicit_members_and_omissions() {
     else {
         panic!("first shorthand");
     };
-    let first = first.border_image();
+    let first = first.value();
     assert!(first.slice().unwrap().fill());
     assert!(first.source().is_none());
     assert!(first.width().is_none());
@@ -438,7 +445,7 @@ fn ordinary_border_image_shorthand_preserves_explicit_members_and_omissions() {
     else {
         panic!("second shorthand");
     };
-    let second = second.border_image();
+    let second = second.value();
     assert!(second.source().is_none());
     assert!(second.slice().is_some());
     assert!(matches!(
@@ -461,7 +468,7 @@ fn omitted_filter_amounts_preserve_all_seven_function_identities_and_order() {
     let functions = AMOUNT_FUNCTIONS.map(|name| format!("{name}()")).join(" ");
     for name in ["filter", "backdrop-filter"] {
         let source = format!("{name}: {functions}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let value = report.syntax()[0]
             .known()
@@ -504,8 +511,8 @@ fn ordinary_animation_fractional_zero_infinite_counts_and_omission_keep_list_ord
         "animation: fade 1s 2.5, other 2s infinite",
         CssKnownProperty::Animation,
     );
-    let report =
-        parse_style_attribute("animation-iteration-count: 2.5, 0, infinite; animation: fade 1s");
+    let report = CssParser::default()
+        .parse_block_contents("animation-iteration-count: 2.5, 0, infinite; animation: fade 1s");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::AnimationIterationCount(counts) = report.syntax()[0]
         .known()
@@ -516,7 +523,7 @@ fn ordinary_animation_fractional_zero_infinite_counts_and_omission_keep_list_ord
         panic!("typed counts");
     };
     assert!(matches!(
-        counts.iteration_counts().values(),
+        counts.value().values(),
         [
             CssAnimationIterationCount::Number(_),
             CssAnimationIterationCount::Number(_),
@@ -531,12 +538,8 @@ fn ordinary_animation_fractional_zero_infinite_counts_and_omission_keep_list_ord
     else {
         panic!("typed animation");
     };
-    assert_eq!(animation.animations().values().len(), 1);
-    assert!(
-        animation.animations().values()[0]
-            .iteration_count()
-            .is_none()
-    );
+    assert_eq!(animation.value().values().len(), 1);
+    assert!(animation.value().values()[0].iteration_count().is_none());
 }
 
 #[test]

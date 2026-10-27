@@ -5,7 +5,17 @@
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-declarations-rule
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-nesting
 use crate::css::support::rules::normalized_declarations as declarations;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem,
+    CssNormalizedSheet, CssRuleContext, CssRuleContextKindRef, CssSelectorBinding,
+    CssSelectorContext,
+};
+use surgeist_css::rule::{CssRule, CssScopeRule, CssStyleBlock};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssSelector, CssSelectorCombinator, CssStyleSelector,
+};
 
 fn rules(sheet: &CssNormalizedSheet) -> Vec<&CssRuleContext> {
     sheet
@@ -19,9 +29,12 @@ fn rules(sheet: &CssNormalizedSheet) -> Vec<&CssRuleContext> {
 }
 
 fn clean(source: &str) -> CssNormalizedSheet {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    normalize_sheet(report.syntax()).expect("supported color normalization")
+    report
+        .syntax()
+        .normalize(Default::default())
+        .expect("supported color normalization")
 }
 
 fn color(declaration: &CssNormalizedDeclaration, source: &str, value: &str, order: usize) {
@@ -38,7 +51,7 @@ fn color(declaration: &CssNormalizedDeclaration, source: &str, value: &str, orde
         declaration
             .source()
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         value
@@ -79,7 +92,7 @@ fn fragment_child_value(scope: &CssScopeRule) {
         .rules()
         .iter()
         .find_map(|rule| match rule {
-            CssScopedRule::Style(style) => Some(style),
+            CssRule::Style(style) => Some(style),
             _ => None,
         })
         .expect("valid scoped child remains");
@@ -91,7 +104,11 @@ fn fragment_child_value(scope: &CssScopeRule) {
         "color"
     );
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "blue"
     );
 }
@@ -172,11 +189,11 @@ fn explicit_scope_boundaries_survive_without_rebinding_inherited_selectors() {
     };
     assert_eq!(
         root.selectors(),
-        &[CssScopeSelector::Selector(CssSelector::Class(
+        &[CssStyleSelector::Selector(CssSelector::Class(
             "root".into()
         ))]
     );
-    let [CssScopeSelector::Selector(CssSelector::Complex(limit))] = limit.selectors() else {
+    let [CssStyleSelector::Selector(CssSelector::Complex(limit))] = limit.selectors() else {
         panic!("one descendant limit")
     };
     let start = limit.first();
@@ -243,7 +260,7 @@ fn scope_groups_and_inner_scopes_keep_full_ancestry_and_source_order() {
     };
     assert_eq!(
         root.selectors(),
-        &[CssScopeSelector::Selector(CssSelector::Class(
+        &[CssStyleSelector::Selector(CssSelector::Class(
             "inner".into()
         ))]
     );
@@ -314,9 +331,9 @@ fn unstyled_scope_rule_list_recovery_does_not_admit_declarations() {
         "@scope{@media screen{.child{color:blue}color:red;}}",
         "@media screen{@scope{.child{color:blue}color:red;}}",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(!report.is_clean());
-        let normalized = normalize_report(&report).unwrap();
+        let normalized = report.normalize(Default::default()).unwrap();
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let values = declarations(normalized.syntax());
         assert_eq!(values.len(), 1);
@@ -337,7 +354,7 @@ fn unstyled_scope_rule_list_recovery_does_not_admit_declarations() {
         "@scope{@media screen{color:red;.child{color:blue}}}",
         "@media screen{@scope{color:red;.child{color:blue}}}",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid qualified rule: {source}")
         };
@@ -348,7 +365,7 @@ fn unstyled_scope_rule_list_recovery_does_not_admit_declarations() {
             diagnostic.span().end().byte_offset().value(),
             start + "color:red".len()
         );
-        let normalized = normalize_report(&report).unwrap();
+        let normalized = report.normalize(Default::default()).unwrap();
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let values = declarations(normalized.syntax());
         assert_eq!(values.len(), 1, "{source}");
@@ -363,7 +380,11 @@ fn unstyled_scope_rule_list_recovery_does_not_admit_declarations() {
 #[test]
 fn public_style_fragments_admit_scope_runs_with_ordinary_boundaries() {
     let ns = CssNamespaceContext::default();
-    let report = parse_rule(".p{@scope (.root){color:red;.child{color:blue}}}", &ns);
+    let report = CssRule::parse(
+        &CssParser::default(),
+        ".p{@scope (.root){color:red;.child{color:blue}}}",
+        &ns,
+    );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let Some(CssRule::Style(style)) = report.syntax() else {
         panic!("style fragment")
@@ -373,25 +394,33 @@ fn public_style_fragments_admit_scope_runs_with_ordinary_boundaries() {
     };
     assert_eq!(
         scope.root().unwrap().selectors(),
-        &[CssScopeSelector::Selector(CssSelector::Class(
+        &[CssStyleSelector::Selector(CssSelector::Class(
             "root".into()
         ))]
     );
     fragment_child_value(scope);
-    let block = parse_style_block("{@scope (.root){color:red;.child{color:blue}}}", &ns);
+    let block = CssStyleBlock::parse(
+        &CssParser::default(),
+        "{@scope (.root){color:red;.child{color:blue}}}",
+        &ns,
+    );
     assert!(block.is_clean(), "{:?}", block.diagnostics());
     let [CssRule::Scope(scope)] = block.syntax().as_ref().unwrap().rules() else {
         panic!("block scope")
     };
     assert_eq!(
         scope.root().unwrap().selectors(),
-        &[CssScopeSelector::Selector(CssSelector::Class(
+        &[CssStyleSelector::Selector(CssSelector::Class(
             "root".into()
         ))]
     );
     fragment_child_value(scope);
     // New authored run payload checks belong in the later new-variant tests.
-    let unstyled = parse_rule("@scope (.root){.child{color:blue}color:red;}", &ns);
+    let unstyled = CssRule::parse(
+        &CssParser::default(),
+        "@scope (.root){.child{color:blue}color:red;}",
+        &ns,
+    );
     assert!(!unstyled.is_clean());
     let Some(CssRule::Scope(scope)) = unstyled.syntax() else {
         panic!("scope fragment retained")
@@ -484,7 +513,7 @@ fn scoped_runs_survive_bounded_group_and_scope_carrier_splits() {
 #[test]
 fn retained_scoped_run_consumes_exact_normalization_resources_atomically() {
     let source = ".p{@scope{color:red}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     // Do not preempt this resource oracle with cleanliness: on the old behavior,
     // normalization succeeds because the declaration run was lost.
     for (limits, resource, limit) in [
@@ -509,22 +538,20 @@ fn retained_scoped_run_consumes_exact_normalization_resources_atomically() {
             0,
         ),
     ] {
-        let error = normalize_sheet_with_limits(report.syntax(), limits)
+        let error = report
+            .syntax()
+            .normalize(limits)
             .expect_err("retained run must consume its budget");
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-        );
+        assert_eq!(error.exhausted_limit(), Some((resource, limit)));
         assert_eq!(
             error.position().unwrap().byte_offset().value(),
             source.find("color").unwrap()
         );
     }
-    let sheet = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(2, 3, 1, 1).unwrap(),
-    )
-    .unwrap();
+    let sheet = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(2, 3, 1, 1).unwrap())
+        .unwrap();
     let values = declarations(&sheet);
     assert_eq!(values.len(), 1);
     color(values[0], source, "red", 0);

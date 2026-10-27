@@ -7,8 +7,26 @@
 //! https://www.w3.org/TR/2026/WD-css-transitions-1-20260108/#transition-property-property
 //! https://www.w3.org/TR/2026/WD-css-transitions-1-20260108/#transition-shorthand-property
 
+use crate::css::support::value_assertions::checked_range;
 use crate::css::support::value_assertions::validated_sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::numeric::{CssNonNegative, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::CssKeyframesName;
+use surgeist_css::values::animation::{
+    CssAnimationList, CssAnimationName, CssAnimationNameList, CssTransition, CssTransitionList,
+    CssTransitionProperty, CssTransitionPropertyList,
+};
+use surgeist_css::values::common::{CssCustomIdent, CssIdent};
+use surgeist_css::values::layout::{
+    CssGridGeneralTrackComponent, CssGridLineName, CssGridLineNames, CssGridTrackList,
+};
 
 fn transition_properties(value: &str) -> CssTransitionPropertyList {
     let declaration = declaration(&format!("transition-property:{value}"));
@@ -17,7 +35,7 @@ fn transition_properties(value: &str) -> CssTransitionPropertyList {
     else {
         panic!("transition-property");
     };
-    value.properties().clone()
+    value.value().clone()
 }
 
 fn transitions(value: &str) -> CssTransitionList {
@@ -27,7 +45,7 @@ fn transitions(value: &str) -> CssTransitionList {
     else {
         panic!("transition");
     };
-    value.transitions().clone()
+    value.value().clone()
 }
 
 fn animation_names(value: &str) -> CssAnimationNameList {
@@ -37,7 +55,7 @@ fn animation_names(value: &str) -> CssAnimationNameList {
     else {
         panic!("animation-name");
     };
-    value.names().clone()
+    value.value().clone()
 }
 
 fn animations(value: &str) -> CssAnimationList {
@@ -47,7 +65,7 @@ fn animations(value: &str) -> CssAnimationList {
     else {
         panic!("animation");
     };
-    value.animations().clone()
+    value.value().clone()
 }
 
 fn assert_transition_property_name(authored: &str, decoded: &str) {
@@ -56,7 +74,7 @@ fn assert_transition_property_name(authored: &str, decoded: &str) {
         value.properties(),
         [CssTransitionProperty::Custom(name)] if name.as_str() == decoded
     ));
-    let css = value.serialize_specified().unwrap();
+    let css = value.serialize_specified(Default::default()).unwrap();
     assert_eq!(css, decoded);
     assert_eq!(transition_properties(&css), value);
 }
@@ -70,12 +88,12 @@ fn assert_transition_name(authored: &str, decoded: &str) {
         item.property(),
         Some(CssTransitionProperty::Custom(name)) if name.as_str() == decoded
     ));
-    let duration = item.duration().unwrap().time().literal().unwrap();
+    let duration = item.duration().unwrap().literal().unwrap();
     assert_eq!(duration.numeric().representation(), "1");
     assert_eq!(duration.unit(), CssTimeUnit::Seconds);
     assert!(item.delay().is_none());
     assert!(item.timing_function().is_none());
-    let css = value.serialize_specified().unwrap();
+    let css = value.serialize_specified(Default::default()).unwrap();
     assert_eq!(css, format!("{decoded} 1s"));
     assert_eq!(transitions(&css), value);
 }
@@ -86,7 +104,7 @@ fn assert_animation_name(authored: &str, decoded: &str) {
         value.names(),
         [CssAnimationName::Custom(name)] if name.as_str() == decoded
     ));
-    let css = value.serialize_specified().unwrap();
+    let css = value.serialize_specified(Default::default()).unwrap();
     assert_eq!(css, decoded);
     assert_eq!(animation_names(&css), value);
 }
@@ -100,33 +118,36 @@ fn assert_animation_shorthand_name(authored: &str, decoded: &str) {
         item.name(),
         Some(CssAnimationName::Custom(name)) if name.as_str() == decoded
     ));
-    let duration = item.duration().unwrap().time().literal().unwrap();
+    let duration = item.duration().unwrap().literal().unwrap();
     assert_eq!(duration.numeric().representation(), "1");
     assert_eq!(duration.unit(), CssTimeUnit::Seconds);
     assert!(item.delay().is_none());
     assert!(item.timing_function().is_none());
-    let css = value.serialize_specified().unwrap();
+    let css = value.serialize_specified(Default::default()).unwrap();
     assert_eq!(css, format!("1s {decoded}"));
     assert_eq!(animations(&css), value);
 }
 
 fn assert_keyframes_ident(authored: &str, decoded: &str) {
     let source = format!("@keyframes {authored} {{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Keyframes(rule)] = report.syntax().rules() else {
         panic!("one retained keyframes rule");
     };
     assert!(matches!(rule.name(), CssKeyframesName::Ident(name) if name.as_str() == decoded));
-    let css = report.syntax().to_specified_css().unwrap();
+    let css = report
+        .syntax()
+        .serialize_specified(Default::default())
+        .unwrap();
     assert_eq!(css, format!("@keyframes {decoded} {{ }}"));
-    let reparsed = parse_sheet(&css);
+    let reparsed = CssParser::default().parse_sheet(&css);
     assert!(reparsed.is_clean());
     let [CssRule::Keyframes(reparsed_rule)] = reparsed.syntax().rules() else {
         panic!("one reparsed keyframes rule");
     };
     assert_eq!(reparsed_rule.name(), rule.name());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let [CssNormalizedItem::Rule(context)] = normalized.items() else {
         panic!("one normalized terminal rule");
     };
@@ -140,7 +161,7 @@ fn assert_keyframes_ident(authored: &str, decoded: &str) {
 
 fn assert_rejected_property(property: CssKnownProperty, value: &str, responsible: Option<&str>) {
     let source = format!("{}:{value};color:red", property.canonical_name());
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(!report.is_clean(), "{source}");
     let [diagnostic] = report.diagnostics() else {
         panic!(
@@ -153,10 +174,13 @@ fn assert_rejected_property(property: CssKnownProperty, value: &str, responsible
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("typed property grammar error");
-    };
-    assert_eq!(detail.property(), property);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "typed property grammar error"
+    );
+    assert_eq!(detail.known_property().unwrap(), property);
     if let Some(responsible) = responsible {
         let offset = source.find(responsible).unwrap();
         assert_eq!(diagnostic.error().position().byte_offset().value(), offset);
@@ -179,7 +203,7 @@ fn assert_rejected_property(property: CssKnownProperty, value: &str, responsible
 
 fn assert_rejected_keyframes_name(authored: &str) {
     let source = format!("@keyframes {authored} {{}} .after {{color:red}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(!report.is_clean(), "{source}");
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid keyframes prelude: {:?}", report.diagnostics());
@@ -189,10 +213,13 @@ fn assert_rejected_keyframes_name(authored: &str) {
         CssErrorCode::InvalidAtRulePrelude
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
-    let ErrorKind::InvalidAtRulePrelude(detail) = diagnostic.error().kind() else {
-        panic!("typed at-rule prelude error");
-    };
-    assert_eq!(detail.name().as_str(), "keyframes");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidAtRulePrelude,
+        "typed at-rule prelude error"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "keyframes");
     let position = diagnostic.error().position().byte_offset().value();
     assert!(diagnostic.span().start().byte_offset().value() <= position);
     assert!(position <= diagnostic.span().end().byte_offset().value());
@@ -220,11 +247,13 @@ fn grid_tracks(value: &str) -> CssGridTrackList {
 }
 
 fn one_second_transition(property: CssTransitionProperty) -> CssTransition {
-    let time =
-        CssTimeValue::from_literal(CssTimeLiteral::try_new("1", CssTimeUnit::Seconds).unwrap());
+    let time = CssNumeric::<CssTime>::try_from_literal(
+        CssNumericLiteral::<CssTime>::try_new("1", CssTimeUnit::Seconds).unwrap(),
+    )
+    .unwrap();
     CssTransition::try_new(
         Some(property),
-        Some(CssDuration::try_new(time).unwrap()),
+        Some(checked_range::<CssTime, CssNonNegative>(&time).unwrap()),
         None,
         None,
     )
@@ -601,7 +630,10 @@ fn grid_track_names_preserve_empty_group() {
         panic!("empty authored line-name group");
     };
     assert!(names.names().is_empty());
-    assert_eq!(value.serialize_specified().unwrap(), "[] 1fr");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "[] 1fr"
+    );
 }
 
 #[test]
@@ -615,7 +647,7 @@ fn grid_track_names_preserve_duplicates_and_case() {
     assert_eq!(names.names().len(), 3);
     assert_ne!(names.names()[0], names.names()[1]);
     assert_eq!(names.names()[0], names.names()[2]);
-    let css = value.serialize_specified().unwrap();
+    let css = value.serialize_specified(Default::default()).unwrap();
     assert_eq!(css, "[Start start Start] 1fr");
     assert_eq!(grid_tracks(&css), value);
 }
@@ -726,7 +758,10 @@ fn checked_transition_shorthand_list_rejects_trailing_none() {
 fn transition_property_accepts_singleton_none() {
     let value = transition_properties("NoNe");
     assert_eq!(value.properties(), &[CssTransitionProperty::None]);
-    assert_eq!(value.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "none"
+    );
 }
 
 #[test]
@@ -736,13 +771,19 @@ fn transition_shorthand_accepts_singleton_none() {
         value.values()[0].property(),
         Some(CssTransitionProperty::None)
     ));
-    assert_eq!(value.serialize_specified().unwrap(), "none 1s");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "none 1s"
+    );
 }
 
 #[test]
 fn checked_transition_property_list_accepts_singleton_none() {
     let value = CssTransitionPropertyList::try_new(vec![CssTransitionProperty::None]).unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "none");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "none"
+    );
 }
 
 #[test]
@@ -750,7 +791,10 @@ fn checked_transition_shorthand_list_accepts_singleton_none() {
     let value =
         CssTransitionList::try_new(vec![one_second_transition(CssTransitionProperty::None)])
             .unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "none 1s");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "none 1s"
+    );
 }
 
 #[test]
@@ -771,7 +815,7 @@ fn transition_property_preserves_unknown_case_and_duplicate_indices() {
     assert_ne!(first, second);
     assert_eq!(first, third);
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "Unknown, unknown, Unknown"
     );
 }
@@ -806,7 +850,10 @@ fn animation_shorthand_disambiguates_easing_keyword_name() {
     assert!(
         matches!(value.values()[0].name(), Some(CssAnimationName::Custom(name)) if name.as_str() == "ease")
     );
-    assert_eq!(value.serialize_specified().unwrap(), "ease ease");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "ease ease"
+    );
     assert_eq!(animations("ease ease"), value);
 }
 
@@ -821,7 +868,10 @@ fn transition_shorthand_disambiguates_easing_keyword_name() {
     assert!(
         matches!(value.values()[0].property(), Some(CssTransitionProperty::Custom(name)) if name.as_str() == "ease")
     );
-    assert_eq!(value.serialize_specified().unwrap(), "ease ease");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "ease ease"
+    );
     assert_eq!(transitions("ease ease"), value);
 }
 
@@ -837,7 +887,7 @@ fn keyframes_reject_none_identifier() {
 
 #[test]
 fn keyframes_accept_quoted_none_name() {
-    let report = parse_sheet("@keyframes \"none\" {}");
+    let report = CssParser::default().parse_sheet("@keyframes \"none\" {}");
     assert!(report.is_clean());
     let [CssRule::Keyframes(rule)] = report.syntax().rules() else {
         panic!("keyframes");

@@ -1,9 +1,20 @@
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
-use surgeist_css::*;
+use crate::css::support::value_assertions::positive_literal;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValueRef, CssValueTokenRef};
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::values::border::{CssLineStyle, CssLineWidth};
+use surgeist_css::values::box_model::{CssBoxSize, CssSizeValue};
+use surgeist_css::values::layout::{CssColumnCount, CssColumnFill, CssColumnSpan};
 
 #[test]
 fn multicolumn_properties_retain_typed_structure() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "column-count: 3; ",
         "column-fill: balance-all; ",
         "column-rule: thick dashed rebeccapurple; ",
@@ -22,22 +33,22 @@ fn multicolumn_properties_retain_typed_structure() {
         panic!("expected column-count");
     };
     assert!(matches!(
-        count.count(),
-        CssColumnCount::Count(CssPositiveIntegerValue::Literal(value)) if value.integer().numeric().representation() == "3"
+        count.value(),
+        CssColumnCount::Count(value) if value.literal().is_some_and(|value| value.numeric().representation() == "3")
     ));
 
     let CssKnownPropertyValueRef::ColumnFill(fill) = ordinary(&report.syntax()[1]) else {
         panic!("expected column-fill");
     };
-    assert_eq!(*fill.fill(), CssColumnFill::BalanceAll);
+    assert_eq!(*fill.value(), CssColumnFill::BalanceAll);
 
     let CssKnownPropertyValueRef::ColumnRule(rule) = ordinary(&report.syntax()[2]) else {
         panic!("expected column-rule");
     };
-    assert!(matches!(rule.rule().width(), Some(CssLineWidth::Thick)));
-    assert_eq!(rule.rule().style(), Some(CssLineStyle::Dashed));
+    assert!(matches!(rule.value().width(), Some(CssLineWidth::Thick)));
+    assert_eq!(rule.value().style(), Some(CssLineStyle::Dashed));
     assert_eq!(
-        rule.rule()
+        rule.value()
             .color()
             .and_then(|color| color.named())
             .map(|color| color.name()),
@@ -52,17 +63,17 @@ fn multicolumn_properties_retain_typed_structure() {
     let CssKnownPropertyValueRef::ColumnRuleStyle(style) = ordinary(&report.syntax()[4]) else {
         panic!("expected column-rule-style");
     };
-    assert_eq!(*style.style(), CssLineStyle::Double);
+    assert_eq!(*style.value(), CssLineStyle::Double);
 
     let CssKnownPropertyValueRef::ColumnRuleWidth(width) = ordinary(&report.syntax()[5]) else {
         panic!("expected column-rule-width");
     };
     assert!(matches!(
-        width.width(),
+        width.value(),
         CssLineWidth::Length(value)
             if value.calculation().is_none()
                 && matches!(
-                    value.literal_component().map(CssComponentValue::view),
+                    value.literal().map(|literal| literal.component()).map(CssComponentValue::view),
                     Some(CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }))
                         if number.representation() == "2" && unit == "px"
                 )
@@ -71,34 +82,34 @@ fn multicolumn_properties_retain_typed_structure() {
     let CssKnownPropertyValueRef::ColumnSpan(span) = ordinary(&report.syntax()[6]) else {
         panic!("expected column-span");
     };
-    assert_eq!(*span.span(), CssColumnSpan::All);
+    assert_eq!(*span.value(), CssColumnSpan::All);
 
     let CssKnownPropertyValueRef::ColumnWidth(width) = ordinary(&report.syntax()[7]) else {
         panic!("expected column-width");
     };
     assert!(matches!(
-        width.width(),
-        CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(value))
-            if value.serialize_specified().unwrap() == "12em"
+        width.value(),
+        CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(value))
+            if value.serialize_specified(Default::default()).unwrap() == "12em"
     ));
 
     let CssKnownPropertyValueRef::Columns(columns) = ordinary(&report.syntax()[8]) else {
         panic!("expected columns");
     };
     assert!(matches!(
-        columns.columns().count(),
-        CssColumnCount::Count(CssPositiveIntegerValue::Literal(value)) if value.integer().numeric().representation() == "4"
+        columns.value().count(),
+        CssColumnCount::Count(value) if value.literal().is_some_and(|value| value.numeric().representation() == "4")
     ));
     assert!(matches!(
-        columns.columns().width(),
-        CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(value))
-            if value.serialize_specified().unwrap() == "10rem"
+        columns.value().width(),
+        CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(value))
+            if value.serialize_specified(Default::default()).unwrap() == "10rem"
     ));
 }
 
 #[test]
 fn multicolumn_shorthands_accept_permutations_and_preserve_omitted_components() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "columns: 12em; columns: 2; columns: auto 12em; ",
         "columns: 2 auto; columns: auto auto; columns: 12em 2; ",
         "column-rule: red solid 2px; column-rule: dashed; column-rule: thin blue",
@@ -110,13 +121,13 @@ fn multicolumn_shorthands_accept_permutations_and_preserve_omitted_components() 
         let CssKnownPropertyValueRef::Columns(value) = ordinary(&report.syntax()[index]) else {
             panic!("expected columns");
         };
-        assert!(matches!(value.columns().count(), CssColumnCount::Auto));
+        assert!(matches!(value.value().count(), CssColumnCount::Auto));
     }
     for index in [1, 3] {
         let CssKnownPropertyValueRef::Columns(value) = ordinary(&report.syntax()[index]) else {
             panic!("expected columns");
         };
-        assert!(matches!(value.columns().width(), CssColumnWidth::Auto));
+        assert!(matches!(value.value().width(), CssSizeValue::Auto));
     }
     for index in [4, 5] {
         let CssKnownPropertyValueRef::Columns(value) = ordinary(&report.syntax()[index]) else {
@@ -131,31 +142,31 @@ fn multicolumn_shorthands_accept_permutations_and_preserve_omitted_components() 
     let CssKnownPropertyValueRef::ColumnRule(complete) = ordinary(&report.syntax()[6]) else {
         panic!("expected column-rule");
     };
-    assert!(complete.rule().width().is_some());
-    assert!(complete.rule().style().is_some());
-    assert!(complete.rule().color().is_some());
+    assert!(complete.value().width().is_some());
+    assert!(complete.value().style().is_some());
+    assert!(complete.value().color().is_some());
 
     let CssKnownPropertyValueRef::ColumnRule(style_only) = ordinary(&report.syntax()[7]) else {
         panic!("expected column-rule");
     };
-    assert!(style_only.rule().width().is_none());
-    assert_eq!(style_only.rule().style(), Some(CssLineStyle::Dashed));
-    assert!(style_only.rule().color().is_none());
+    assert!(style_only.value().width().is_none());
+    assert_eq!(style_only.value().style(), Some(CssLineStyle::Dashed));
+    assert!(style_only.value().color().is_none());
 
     let CssKnownPropertyValueRef::ColumnRule(width_color) = ordinary(&report.syntax()[8]) else {
         panic!("expected column-rule");
     };
     assert!(matches!(
-        width_color.rule().width(),
+        width_color.value().width(),
         Some(CssLineWidth::Thin)
     ));
-    assert!(width_color.rule().style().is_none());
-    assert!(width_color.rule().color().is_some());
+    assert!(width_color.value().style().is_none());
+    assert!(width_color.value().color().is_some());
 }
 
 #[test]
 fn multicolumn_calculations_remain_symbolic_and_checked_constructors_reject_literals() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "column-count: calc(1 + 2); ",
         "column-width: calc(10px - 20px); ",
         "column-rule-width: calc(1px * 2)",
@@ -165,45 +176,45 @@ fn multicolumn_calculations_remain_symbolic_and_checked_constructors_reject_lite
     let CssKnownPropertyValueRef::ColumnCount(count) = ordinary(&report.syntax()[0]) else {
         panic!("expected column-count");
     };
-    assert!(matches!(
-        count.count(),
-        CssColumnCount::Count(CssPositiveIntegerValue::Calculation(_))
-    ));
+    assert!(matches!(count.value(), CssColumnCount::Count(value) if value.calculation().is_some()));
     let CssKnownPropertyValueRef::ColumnWidth(width) = ordinary(&report.syntax()[1]) else {
         panic!("expected column-width");
     };
     assert!(matches!(
-        width.width(),
-        CssColumnWidth::BoxSize(CssBoxSize::LengthPercentage(value))
+        width.value(),
+        CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(value))
             if value.calculation().is_some()
     ));
     let CssKnownPropertyValueRef::ColumnRuleWidth(width) = ordinary(&report.syntax()[2]) else {
         panic!("expected column-rule-width");
     };
     assert!(matches!(
-        width.width(),
+        width.value(),
         CssLineWidth::Length(value) if value.calculation().is_some()
     ));
 
     assert!(
-        surgeist_css::CssPositiveIntegerLiteral::try_new(
-            surgeist_css::CssIntegerLiteral::from_i32(0)
-        )
+        positive_literal(surgeist_css::numeric::CssNumericLiteral::<
+            surgeist_css::numeric::CssInteger,
+        >::from_i32(0))
         .is_none()
     );
     assert!(
-        surgeist_css::CssPositiveIntegerLiteral::try_new(
-            surgeist_css::CssIntegerLiteral::from_i32(-1)
-        )
+        positive_literal(surgeist_css::numeric::CssNumericLiteral::<
+            surgeist_css::numeric::CssInteger,
+        >::from_i32(-1))
         .is_none()
     );
     for (css, kind) in [
-        ("-1px", CssNumericConstructionErrorKind::OutOfRange),
-        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("-1px", NumericFailure::OutOfRange),
+        ("auto", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            surgeist_css::CssSpecifiedNonNegativeLength::try_from_component,
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+            surgeist_css::numeric::CssNumeric::<
+                surgeist_css::numeric::CssLength,
+                surgeist_css::numeric::CssNonNegative,
+            >::try_from_component,
+            surgeist_css::component::CssComponentValue::try_token(css).unwrap(),
             kind,
         );
     }
@@ -223,7 +234,7 @@ fn every_multicolumn_property_keeps_globals_and_substitutions_distinct() {
         ("columns", CssKnownProperty::Columns),
     ] {
         let source = format!("{name}: inherit; {name}: var(--multicol, initial)");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 2, "{source}");
         assert_eq!(report.syntax()[0].known().unwrap().property(), property);
@@ -264,7 +275,7 @@ fn multicolumn_mutations_drop_exact_declaration_and_retain_siblings() {
     ] {
         let declaration = format!("{name}: {invalid};");
         let source = format!("--emoji: \"😀\"; color: red; {declaration} width: 1px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 3, "{source}");
         assert_eq!(
             report.syntax()[1].known().unwrap().property(),
@@ -312,19 +323,22 @@ fn multicolumn_mutations_drop_exact_declaration_and_retain_siblings() {
             "{source}",
         );
         assert!(
-            matches!(
-                diagnostic.error().kind(),
-                ErrorKind::InvalidPropertyValue(detail)
-                    if detail.property().canonical_name() == name
-            ) || matches!(
-                (name, diagnostic.error().kind()),
-                ("column-rule-color", ErrorKind::InvalidColorSyntax(_))
-            ),
+            (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+                && diagnostic
+                    .error()
+                    .known_property()
+                    .unwrap()
+                    .canonical_name()
+                    == name)
+                || (name == "column-rule-color"
+                    && diagnostic.error().code() == CssErrorCode::InvalidColorSyntax),
             "{source}",
         );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects invalid multicolumn syntax")
                 .diagnostics(),
             report.diagnostics(),
@@ -333,7 +347,9 @@ fn multicolumn_mutations_drop_exact_declaration_and_retain_siblings() {
     }
 }
 
-fn ordinary(declaration: &surgeist_css::CssDeclaration) -> CssKnownPropertyValueRef<'_> {
+fn ordinary(
+    declaration: &surgeist_css::declaration::CssDeclaration,
+) -> CssKnownPropertyValueRef<'_> {
     declaration
         .known()
         .expect("known declaration")

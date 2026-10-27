@@ -3,7 +3,29 @@
 //! Typed Result admission preserves the published callable graph-rejection expectations.
 //! Color5 checked LightDark and Values4 math/URL providers remain independent controls.
 //! Independent function-depth expectations and matched provider controls.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssLightDarkColor, CssNamedColor};
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssCalculation, CssLength, CssLengthPercentage, CssNonNegative,
+    CssNumeric,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget,
+};
+use surgeist_css::values::common::{
+    CssIdent, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
+};
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop, CssImage,
+    CssImageValue, CssLightDarkImage, CssLinearGradient, CssLinearGradientDirection,
+    CssRadialEllipseSize, CssRadialGradient, CssRadialSize,
+};
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
+};
 
 fn named(name: &str) -> CssColor {
     CssColor::from_named(CssNamedColor::try_new(name).unwrap())
@@ -23,26 +45,34 @@ fn math(functions: usize, leaf: &str) -> CssComponentValues {
     for _ in 0..functions {
         text = format!("calc({text})");
     }
-    let values = parse_component_values(&text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
     assert_eq!(values.nesting_depth() as usize, functions);
     values
 }
 
-fn lp(functions: usize) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(math(functions, "1px")).unwrap(),
+fn lp(functions: usize) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_calculation(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
+            math(functions, "1px"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
 
-fn nnlp(functions: usize) -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(math(functions, "1px")).unwrap(),
+fn nnlp(functions: usize) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
+            math(functions, "1px"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
 
-fn stops(color: CssColor, position: Option<CssSpecifiedLengthPercentage>) -> CssColorStopList {
+fn stops(color: CssColor, position: Option<CssNumeric<CssLengthPercentage>>) -> CssColorStopList {
     CssColorStopList::try_new(vec![
         CssColorStopListItem::Stop(Box::new(CssGradientColorStop::from_color(color, position))),
         CssColorStopListItem::Stop(Box::new(CssGradientColorStop::from_color(
@@ -84,9 +114,10 @@ fn preserves_rejection_and_retry(invalid: CssImageValue, valid: CssImageValue) {
     for _ in 0..2 {
         // The graph-rejection expectation is unchanged from the published RED.
         // Typed admission now distinguishes structural failure from non-image None.
-        assert_eq!(
-            CssImage::try_new(invalid.clone()).unwrap_err(),
-            CssImageConstructionError::NestingLimit,
+        assert!(
+            CssImage::try_new(invalid.clone())
+                .unwrap_err()
+                .is_nesting_limit(),
             "whole graph exceeds 256 retained function levels"
         );
         assert_eq!(invalid, invalid_before);
@@ -134,8 +165,12 @@ fn numeric_gradient(functions: usize, role: NumericRole, repeating: bool) -> Css
     let plain_stops = || stops(named("red"), None);
     let gradient = match role {
         NumericRole::Direction => {
-            let angle = CssAngleValue::try_from_calculation(
-                CssAngleCalculation::try_from_components(math(functions, "1deg")).unwrap(),
+            let angle = CssNumeric::<CssAngle>::try_from_calculation(
+                CssCalculation::<CssAngle>::try_from_components(
+                    math(functions, "1deg"),
+                    Default::default(),
+                )
+                .unwrap(),
             )
             .unwrap();
             CssGradient::Linear(CssLinearGradient::new(
@@ -165,8 +200,12 @@ fn numeric_gradient(functions: usize, role: NumericRole, repeating: bool) -> Css
             CssGradient::Linear(CssLinearGradient::new(None, stops))
         }
         NumericRole::Circle => {
-            let radius = CssSpecifiedNonNegativeLength::try_from_calculation(
-                CssLengthCalculation::try_from_components(math(functions, "1px")).unwrap(),
+            let radius = CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(
+                CssCalculation::<CssLength>::try_from_components(
+                    math(functions, "1px"),
+                    Default::default(),
+                )
+                .unwrap(),
             )
             .unwrap();
             CssGradient::Radial(
@@ -183,11 +222,17 @@ fn numeric_gradient(functions: usize, role: NumericRole, repeating: bool) -> Css
             let pair = if matches!(role, NumericRole::EllipseX) {
                 CssRadialEllipseSize::new(
                     nnlp(functions),
-                    CssSpecifiedNonNegativeLengthPercentage::zero(),
+                    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                        CssComponentValue::try_number("0").unwrap(),
+                    )
+                    .unwrap(),
                 )
             } else {
                 CssRadialEllipseSize::new(
-                    CssSpecifiedNonNegativeLengthPercentage::zero(),
+                    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                        CssComponentValue::try_number("0").unwrap(),
+                    )
+                    .unwrap(),
                     nnlp(functions),
                 )
             };
@@ -282,13 +327,15 @@ fn color_provider_control_admits_256_and_refuses_257_before_image_composition() 
     let value = color_chain(256);
     let before = value.clone();
     for _ in 0..2 {
-        assert_eq!(
-            CssLightDarkColor::try_new(value.clone(), named("blue")).unwrap_err(),
-            CssColorConstructionError::NestingLimit
+        assert!(
+            CssLightDarkColor::try_new(value.clone(), named("blue"))
+                .unwrap_err()
+                .is_nesting_limit()
         );
-        assert_eq!(
-            CssLightDarkColor::try_new(named("blue"), value.clone()).unwrap_err(),
-            CssColorConstructionError::NestingLimit
+        assert!(
+            CssLightDarkColor::try_new(named("blue"), value.clone())
+                .unwrap_err()
+                .is_nesting_limit()
         );
         assert_eq!(value, before);
         assert!(CssLightDarkColor::try_new(color_chain(255), named("blue")).is_ok());
@@ -301,11 +348,14 @@ fn numeric_provider_control_retains_the_complete_256_level_original_components()
         let components = math(256, leaf);
         let before = components.clone();
         if leaf == "1px" {
-            let length =
-                CssLengthPercentageCalculation::try_from_components(components.clone()).unwrap();
+            let length = CssCalculation::<CssLengthPercentage>::try_from_components(
+                components.clone(),
+                Default::default(),
+            )
+            .unwrap();
             assert_eq!(length.components(), &before);
             assert_eq!(
-                CssSpecifiedLengthPercentage::try_from_calculation(length)
+                CssNumeric::<CssLengthPercentage>::try_from_calculation(length)
                     .unwrap()
                     .calculation()
                     .unwrap()
@@ -313,10 +363,14 @@ fn numeric_provider_control_retains_the_complete_256_level_original_components()
                 &before
             );
         } else {
-            let angle = CssAngleCalculation::try_from_components(components.clone()).unwrap();
+            let angle = CssCalculation::<CssAngle>::try_from_components(
+                components.clone(),
+                Default::default(),
+            )
+            .unwrap();
             assert_eq!(angle.components(), &before);
             assert_eq!(
-                CssAngleValue::try_from_calculation(angle)
+                CssNumeric::<CssAngle>::try_from_calculation(angle)
                     .unwrap()
                     .calculation()
                     .unwrap()
@@ -339,30 +393,34 @@ fn image_pair_provider_control_counts_its_own_enclosing_function_and_cached_chil
     let before = image.clone();
     preserves_acceptance(&image); // CssImage itself adds no CSS function level.
     for _ in 0..2 {
-        assert_eq!(
-            CssLightDarkImage::try_new(image.clone(), CssImageValue::None).unwrap_err(),
-            CssImageConstructionError::NestingLimit
+        assert!(
+            CssLightDarkImage::try_new(image.clone(), CssImageValue::None)
+                .unwrap_err()
+                .is_nesting_limit()
         );
-        assert_eq!(
-            CssLightDarkImage::try_new(CssImageValue::None, image.clone()).unwrap_err(),
-            CssImageConstructionError::NestingLimit
+        assert!(
+            CssLightDarkImage::try_new(CssImageValue::None, image.clone())
+                .unwrap_err()
+                .is_nesting_limit()
         );
         assert_eq!(image, before);
     }
     // Gradient1 + color254 + pair1 = 256. Increasing color by one rejects.
     assert!(CssLightDarkImage::try_new(color_gradient(254, 0), CssImageValue::None).is_ok());
-    assert_eq!(
-        CssLightDarkImage::try_new(color_gradient(255, 0), CssImageValue::None).unwrap_err(),
-        CssImageConstructionError::NestingLimit
+    assert!(
+        CssLightDarkImage::try_new(color_gradient(255, 0), CssImageValue::None)
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }
 
 #[test]
 fn none_and_low_depth_image_controls_preserve_every_family_and_payload() {
     for _ in 0..2 {
-        assert_eq!(
-            CssImage::try_new(CssImageValue::None).unwrap_err(),
-            CssImageConstructionError::NotImage
+        assert!(
+            CssImage::try_new(CssImageValue::None)
+                .unwrap_err()
+                .is_not_image()
         );
     }
     preserves_acceptance(&CssImageValue::Url(CssUrl::new("a.svg")));
@@ -377,29 +435,30 @@ fn none_and_low_depth_image_controls_preserve_every_family_and_payload() {
 
 #[test]
 fn mixed_source_numeric_components_survive_admission_and_failed_enclosing_composition() {
-    let parsed = parse_component_values("/*😀*/1px").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "/*😀*/1px").unwrap();
     let parsed_before = parsed.clone();
     let mut components = parsed.clone();
     for _ in 0..256 {
-        components = CssComponentValues::try_new(vec![
-            CssComponentValue::try_function("calc", components).unwrap(),
-        ])
+        components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_function("calc", components).unwrap()],
+            Default::default(),
+        )
         .unwrap();
     }
     assert_eq!(components.nesting_depth(), 256);
     let before = components.clone();
-    let calculation =
-        CssLengthPercentageCalculation::try_from_components(components.clone()).unwrap();
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(calculation.components(), &before);
-    let position = CssSpecifiedLengthPercentage::try_from_calculation(calculation).unwrap();
+    let position = CssNumeric::<CssLengthPercentage>::try_from_calculation(calculation).unwrap();
     let invalid = CssImageValue::Gradient(CssGradient::Linear(CssLinearGradient::new(
         None,
         stops(named("red"), Some(position.clone())),
     )));
-    assert_eq!(
-        CssImage::try_new(invalid).unwrap_err(),
-        CssImageConstructionError::NestingLimit
-    );
+    assert!(CssImage::try_new(invalid).unwrap_err().is_nesting_limit());
     assert_eq!(position.calculation().unwrap().components(), &before);
     assert_eq!(components, before);
     assert_eq!(parsed, parsed_before);
@@ -407,14 +466,20 @@ fn mixed_source_numeric_components_survive_admission_and_failed_enclosing_compos
 
 fn cursor_fronts(text: &str, admitted: bool) {
     let p = CssKnownProperty::Cursor;
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let before = values.clone();
     for grammar in [false, true] {
         let result = if grammar {
-            parse_property_value_for_grammar(p.grammar(), values.clone(), CssImportance::Important)
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(p.grammar()),
+                values.clone(),
+                CssImportance::Important,
+            )
         } else {
-            parse_property_value(
-                CssPropertyNameRef::Known(p),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(p)),
                 values.clone(),
                 CssImportance::Important,
             )
@@ -424,21 +489,26 @@ fn cursor_fronts(text: &str, admitted: bool) {
             assert_eq!(source.value_components(), &before);
             assert_eq!(source.importance(), CssImportance::Important);
         } else {
-            assert!(matches!(
-                result.unwrap_err().kind(),
-                CssPropertyValueErrorKind::Grammar(_)
-            ));
+            assert!(result.unwrap_err().code().is_some());
         }
     }
     for report in [
-        parse_property_value_text(text, CssPropertyNameRef::Known(p), CssImportance::Important),
-        parse_property_value_text_for_grammar(text, p.grammar(), CssImportance::Important),
+        CssParser::default().parse_property_value(
+            text,
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(p)),
+            CssImportance::Important,
+        ),
+        CssParser::default().parse_property_value(
+            text,
+            CssPropertyTextTarget::Grammar(p.grammar()),
+            CssImportance::Important,
+        ),
     ] {
         assert_eq!(report.is_clean(), admitted);
         assert_eq!(report.syntax().is_some(), admitted);
     }
     let css = format!("color:red;cursor:{text}!important;color:blue");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     if admitted {
         assert!(report.is_clean());
         assert_eq!(report.syntax().len(), 3);

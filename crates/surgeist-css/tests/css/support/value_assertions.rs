@@ -8,7 +8,68 @@
 
 use std::fmt::Debug;
 
-use surgeist_css::*;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::component_failure;
+use crate::css::support::failure_classes::numeric_failure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueError, CssComponentValueRef, CssComponentValues,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance, CssSpecifiedDeclarationBlock};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryDiagnostic, CssTokenSummary};
+use surgeist_css::numeric::{
+    CssCalculation, CssInteger, CssLength, CssNumber, CssNumeric, CssNumericConstructionError,
+    CssNumericLiteral, CssNumericRoot, CssPositive, CssRange,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansionError, CssKnownProperty, CssKnownPropertyValueRef,
+    CssPropertyNameRef, CssPropertyValueError,
+};
+use surgeist_css::query::media::CssMediaQuery;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::{
+    CssRuleSerializationError, CssSerializationError, CssSerializationLimits,
+};
+use surgeist_css::values::common::CssUrl;
+use surgeist_css::values::effects::CssFilter;
+use surgeist_css::values::image::CssImageValue;
+
+/// The specified serialization of one ordinary literal, which the unrestricted
+/// range always admits.
+pub fn literal_specified<T: CssNumericRoot>(
+    literal: &CssNumericLiteral<T>,
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
+    CssNumeric::<T>::try_from_literal(literal.clone())
+        .expect("the unrestricted range admits every literal")
+        .serialize_specified(limits)
+}
+
+/// Checked construction of `value` under range `R`: a literal is range-checked
+/// and retained math must be closed.
+pub fn checked_range<T: CssNumericRoot, R: CssRange<T>>(
+    value: &CssNumeric<T>,
+) -> Result<CssNumeric<T, R>, CssNumericConstructionError> {
+    match (value.literal(), value.calculation()) {
+        (Some(literal), _) => CssNumeric::try_from_literal(literal.clone()),
+        (_, Some(calculation)) => CssNumeric::try_from_calculation(calculation.clone()),
+        (None, None) => unreachable!("a numeric value is a literal or math"),
+    }
+}
+
+/// The literal itself when the `[1,∞]` integer range admits it.
+pub fn positive_literal(
+    literal: CssNumericLiteral<CssInteger>,
+) -> Option<CssNumericLiteral<CssInteger>> {
+    CssNumeric::<CssInteger, CssPositive>::try_from_literal(literal.clone())
+        .is_ok()
+        .then_some(literal)
+}
 
 /// Asserts that checked numeric construction rejected its input with `kind`
 /// at `origin` (the responsible component's origin, or `None` when the
@@ -16,11 +77,11 @@ use surgeist_css::*;
 #[track_caller]
 pub fn assert_numeric_rejected<T: Debug>(
     result: Result<T, CssNumericConstructionError>,
-    kind: CssNumericConstructionErrorKind,
+    kind: NumericFailure,
     origin: Option<&CssValueOrigin>,
 ) {
     let error = result.expect_err("checked numeric construction must reject");
-    assert_eq!(error.kind(), &kind, "{error:?}");
+    assert_eq!(numeric_failure(&error), kind, "{error:?}");
     assert_eq!(error.origin(), origin, "{error:?}");
 }
 
@@ -28,10 +89,10 @@ pub fn assert_numeric_rejected<T: Debug>(
 #[track_caller]
 pub fn assert_numeric_kind<T: Debug>(
     result: Result<T, CssNumericConstructionError>,
-    kind: CssNumericConstructionErrorKind,
+    kind: NumericFailure,
 ) {
     let error = result.expect_err("checked numeric construction must reject");
-    assert_eq!(error.kind(), &kind, "{error:?}");
+    assert_eq!(numeric_failure(&error), kind, "{error:?}");
 }
 
 /// Asserts that checked numeric construction exceeded a resource limit, and
@@ -39,18 +100,14 @@ pub fn assert_numeric_kind<T: Debug>(
 #[track_caller]
 pub fn assert_numeric_resource<T: Debug>(
     result: Result<T, CssNumericConstructionError>,
-    limit: CssComponentValueErrorKind,
+    limit: ComponentFailure,
 ) {
     let error = result.expect_err("checked numeric construction must exceed a limit");
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::ResourceLimit,
-        "{error:?}"
-    );
+    assert!(error.is_resource_limit(), "{error:?}");
     let source = std::error::Error::source(&error)
         .and_then(|source| source.downcast_ref::<CssComponentValueError>())
         .unwrap_or_else(|| panic!("component limit source: {error:?}"));
-    assert_eq!(source.kind(), limit, "{error:?}");
+    assert_eq!(component_failure(source), limit, "{error:?}");
 }
 
 /// Asserts that `construct` rejects the single `component` with `kind` at
@@ -59,7 +116,7 @@ pub fn assert_numeric_resource<T: Debug>(
 pub fn assert_component_rejected<T: Debug>(
     construct: fn(CssComponentValue) -> Result<T, CssNumericConstructionError>,
     component: CssComponentValue,
-    kind: CssNumericConstructionErrorKind,
+    kind: NumericFailure,
 ) {
     let origin = component.origin().clone();
     assert_numeric_rejected(construct(component), kind, Some(&origin));
@@ -72,48 +129,45 @@ pub fn assert_component_rejected<T: Debug>(
 #[track_caller]
 pub fn assert_calculation_rejected<T: Debug>(
     result: Result<T, CssNumericConstructionError>,
-    kind: Option<CssNumericConstructionErrorKind>,
+    kind: Option<NumericFailure>,
 ) {
-    use CssNumericConstructionErrorKind as K;
     let error = result.expect_err("calculation construction must reject");
     match kind {
-        Some(kind) => assert_eq!(error.kind(), &kind, "{error:?}"),
+        Some(kind) => assert_eq!(numeric_failure(&error), kind, "{error:?}"),
         None => assert!(
-            matches!(
-                error.kind(),
-                K::EmptyValue
-                    | K::MalformedExpression
-                    | K::UnknownFunction
-                    | K::Arity
-                    | K::InvalidArgumentType
-                    | K::IncompatibleTypes
-                    | K::RootDomainMismatch
-            ),
+            (error.is_empty_value()
+                || error.is_malformed_expression()
+                || error.is_unknown_function()
+                || error.is_arity()
+                || error.is_invalid_argument_type()
+                || error.is_incompatible_types()
+                || error.is_root_domain_mismatch()),
             "{error:?}"
         ),
     }
 }
 
-/// The property-grammar detail of a checked property-value rejection.
+/// Asserts that a checked property-value failure is a property-grammar rejection.
 #[track_caller]
-pub fn property_grammar_error(error: &CssPropertyValueParseError) -> &CssPropertyValueError {
-    let CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) = error.kind()
-    else {
-        panic!("property grammar rejection: {error:?}")
-    };
-    detail
+pub fn property_grammar_error(error: &CssPropertyValueError) -> &CssPropertyValueError {
+    assert_eq!(
+        error.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "property grammar rejection: {error:?}"
+    );
+    error
 }
 
 /// The grammar detail of a checked property value that `property`'s grammar
 /// rejected.
 #[track_caller]
 pub fn property_rejection(
-    result: Result<CssDeclaration, CssPropertyValueParseError>,
+    result: Result<CssDeclaration, CssPropertyValueError>,
     property: CssKnownProperty,
 ) -> CssPropertyValueError {
     let error = result.expect_err("checked property value must reject");
     let detail = property_grammar_error(&error);
-    assert_eq!(detail.property(), property, "{error:?}");
+    assert_eq!(detail.known_property(), Some(property), "{error:?}");
     detail.clone()
 }
 
@@ -121,7 +175,7 @@ pub fn property_rejection(
 /// the authored token `encountered` (`None` when the value ended first).
 #[track_caller]
 pub fn assert_property_rejected(
-    result: Result<CssDeclaration, CssPropertyValueParseError>,
+    result: Result<CssDeclaration, CssPropertyValueError>,
     property: CssKnownProperty,
     encountered: Option<&str>,
 ) {
@@ -141,11 +195,11 @@ pub fn replacement_rejection(
     property: CssKnownProperty,
 ) -> CssPropertyValueError {
     let error = result.expect_err("reentry must reject the replacement");
-    let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+    let Some(error) = error.replacement_error() else {
         panic!("invalid replacement: {error:?}")
     };
     let detail = property_grammar_error(error);
-    assert_eq!(detail.property(), property, "{error:?}");
+    assert_eq!(detail.known_property(), Some(property), "{error:?}");
     detail.clone()
 }
 
@@ -195,23 +249,27 @@ pub fn assert_first_property_diagnostic(
         CssErrorCode::InvalidPropertyValue,
         responsible,
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostics[0].error().kind() else {
-        unreachable!("checked by code")
-    };
-    assert_eq!(detail.property(), property, "{source}");
+    let detail = diagnostics[0].error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "checked by code"
+    );
+    assert_eq!(detail.known_property().unwrap(), property, "{source}");
 }
 
 /// Asserts that a CSSOM rule projection failed atomically on the `kind`
 /// resource budget.
 #[track_caller]
 pub fn assert_rule_resource<T: Debug>(
-    result: Result<T, CssRuleCssomSerializationError>,
-    kind: CssSpecifiedValueSerializationErrorKind,
+    result: Result<T, CssRuleSerializationError>,
+    kind: SerializationFailure,
 ) {
     let error = result.expect_err("rule projection must exceed its budget");
+    assert!(error.is_resource_limit(), "{error:?}");
     assert_eq!(
-        error.kind(),
-        CssRuleCssomSerializationErrorKind::Resource(kind),
+        error.serialization_error().map(serialization_failure),
+        Some(kind),
         "{error:?}"
     );
 }
@@ -223,10 +281,13 @@ pub fn assert_first_property_rejection(
     property: CssKnownProperty,
 ) {
     let first = diagnostics.first().expect("a diagnostic");
-    let ErrorKind::InvalidPropertyValue(detail) = first.error().kind() else {
-        panic!("invalid property value: {first:?}")
-    };
-    assert_eq!(detail.property(), property, "{first:?}");
+    let detail = first.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "invalid property value: {first:?}"
+    );
+    assert_eq!(detail.known_property().unwrap(), property, "{first:?}");
 }
 
 /// Asserts that `origin` is parsed from `source` and spans `start..end`.
@@ -243,7 +304,7 @@ pub fn assert_parsed_span(origin: &CssValueOrigin, source: &str, start: usize, e
 /// The first non-whitespace component of input that must tokenize.
 #[track_caller]
 pub fn first_token(text: &str) -> CssComponentValue {
-    parse_component_values(text)
+    CssComponentValues::parse(&CssParser::default(), text)
         .unwrap()
         .items()
         .iter()
@@ -259,18 +320,26 @@ pub fn first_token(text: &str) -> CssComponentValue {
 
 /// A specified number built from a checked number calculation.
 #[track_caller]
-pub fn calculated_number(source: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap(),
+pub fn calculated_number(source: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
 
 /// A specified length built from a checked length calculation.
 #[track_caller]
-pub fn calculated_length(source: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap(),
+pub fn calculated_length(source: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -284,8 +353,14 @@ pub fn assert_calculated_number(source: &str, expected: &str) {
     let calculation = value.calculation().unwrap();
     let components = calculation.components().clone();
     let ty = calculation.numeric_type();
-    assert_eq!(components.serialize().unwrap().as_css(), source);
-    let result = value.serialize_specified();
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.origin(), before.origin());
     assert_eq!(value.calculation().unwrap().components(), &components);
@@ -342,14 +417,18 @@ pub fn specified_property_value(
     property: CssKnownProperty,
 ) -> Option<String> {
     block
-        .property_value(CssPropertyNameRef::Known(property))
+        .property_value(CssPropertyNameRef::Known(property), Default::default())
         .unwrap()
 }
 
 /// The one rule of a clean default-namespace rule parse.
 #[track_caller]
 pub fn clean_rule(source: &str) -> CssRule {
-    let report = parse_rule(source, &CssNamespaceContext::default());
+    let report = CssRule::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{source}: {report:?}");
     report.syntax().clone().expect("one admitted rule")
 }
@@ -357,30 +436,40 @@ pub fn clean_rule(source: &str) -> CssRule {
 /// The one media query of a clean CSSOM media-query parse.
 #[track_caller]
 pub fn clean_media_query(source: &str) -> CssMediaQuery {
-    let report = parse_cssom_media_query(source);
+    let report = CssMediaQuery::parse_medium(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report.into_parts().0.expect("one clean media query")
 }
 
 /// The resource-limit kind of a media CSSOM serialization failure.
 #[track_caller]
-pub fn media_resource_kind(
-    error: &CssMediaCssomSerializationError,
-) -> CssSpecifiedValueSerializationErrorKind {
-    let CssMediaCssomSerializationError::Resource { error, .. } = error else {
-        panic!("expected resource failure: {error:?}");
-    };
-    error.kind()
+pub fn media_resource_kind(error: &CssSerializationError) -> SerializationFailure {
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
+    let kind = serialization_failure(error);
+    assert!(
+        matches!(
+            kind,
+            Kind::InputNodeLimit
+                | Kind::ProjectionNodeLimit
+                | Kind::ByteLimit
+                | Kind::DepthLimit
+                | Kind::CapacityOverflow
+        ),
+        "expected resource failure: {error:?}"
+    );
+    kind
 }
 
 /// The sole declaration of the clean style attribute `css`, which the
 /// validator accepts with the same declarations.
 #[track_caller]
 pub fn validated_sole_declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     assert_eq!(
-        validate_style_attribute(css),
+        CssParser::default()
+            .parse_block_contents(css)
+            .into_validation_result(),
         Ok(report.syntax().clone()),
         "{css}"
     );
@@ -418,7 +507,7 @@ pub fn background_image_url(text: &str) -> CssUrl {
     else {
         panic!("ordinary background image: {text}")
     };
-    let [CssImageValue::Url(url)] = images.images().images() else {
+    let [CssImageValue::Url(url)] = images.value().images() else {
         panic!("one URL: {text}")
     };
     url.clone()

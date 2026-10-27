@@ -6,7 +6,23 @@
 use std::fmt::Debug;
 use std::ops::Range;
 
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssDeclarationList, CssImportance};
+use surgeist_css::diagnostic::{CssError, CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::normalize::{CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet};
+use surgeist_css::property::{
+    CssKnownProperty, CssPropertyGrammar, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyValueError,
+};
+use surgeist_css::query::container::{
+    CssContainerLeaf, CssContainerName, CssContainerNameList, CssContainerNames,
+};
+use surgeist_css::query::supports::{CssSupportsDeclaration, CssSupportsLeaf};
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssBlockFragment, CssImportRule, CssSheet};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::source::{CssParsedOrigin, CssSourcePosition, CssSourceSpan};
+use surgeist_css::{CssParseReport, CssParser, CssValidationFailure};
 
 /// The parsed origin of an authored occurrence.
 #[track_caller]
@@ -78,22 +94,27 @@ pub fn component_token(source: &str) -> CssComponentValue {
 /// Supplied components as one checked sequence.
 #[track_caller]
 pub fn component_list(items: Vec<CssComponentValue>) -> CssComponentValues {
-    CssComponentValues::try_new(items).unwrap()
+    CssComponentValues::try_new(items, Default::default()).unwrap()
 }
 
 /// A container condition checked from the components of `source`.
 #[track_caller]
-pub fn checked_container_condition(source: &str) -> CssContainerCondition {
-    CssContainerCondition::try_from_components(parse_component_values(source).unwrap()).unwrap()
+pub fn checked_container_condition(source: &str) -> CssCondition<CssContainerLeaf> {
+    CssCondition::<CssContainerLeaf>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
 }
 
 /// A supports condition checked from the components of `source` with the
 /// default namespace context.
 #[track_caller]
-pub fn checked_supports_condition(source: &str) -> CssSupportsCondition {
-    CssSupportsCondition::try_from_components(
-        parse_component_values(source).unwrap(),
+pub fn checked_supports_condition(source: &str) -> CssCondition<CssSupportsLeaf> {
+    CssCondition::<CssSupportsLeaf>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap()
 }
@@ -101,7 +122,11 @@ pub fn checked_supports_condition(source: &str) -> CssSupportsCondition {
 /// A supports declaration checked from the components of `source`.
 #[track_caller]
 pub fn checked_supports_declaration(source: &str) -> CssSupportsDeclaration {
-    CssSupportsDeclaration::try_from_components(parse_component_values(source).unwrap()).unwrap()
+    CssSupportsDeclaration::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
 }
 
 /// An import rule checked from the components of `source` with the default
@@ -109,16 +134,17 @@ pub fn checked_supports_declaration(source: &str) -> CssSupportsDeclaration {
 #[track_caller]
 pub fn checked_import_rule(source: &str) -> CssImportRule {
     CssImportRule::try_from_components(
-        parse_component_values(source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap()
 }
 
 /// The declaration of a declaration-kind supports condition.
 #[track_caller]
-pub fn supports_declaration(condition: &CssSupportsCondition) -> &CssSupportsDeclaration {
-    let CssSupportsConditionKind::Declaration(value) = condition.kind() else {
+pub fn supports_declaration(condition: &CssCondition<CssSupportsLeaf>) -> &CssSupportsDeclaration {
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(value)) = condition.kind() else {
         panic!("declaration condition: {condition:?}")
     };
     value
@@ -174,7 +200,7 @@ pub fn normalized_declarations(sheet: &CssNormalizedSheet) -> Vec<&CssNormalized
 /// The declaration retained by a clean `parse_declaration` of `source`.
 #[track_caller]
 pub fn parsed_declaration(source: &str) -> CssDeclaration {
-    let report = parse_declaration(source);
+    let report = CssDeclaration::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report
         .syntax()
@@ -204,9 +230,10 @@ pub fn grammar_checked_declaration(
     value: &str,
     importance: CssImportance,
 ) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        CssPropertyGrammar::from_name(name).expect("known grammar"),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(CssPropertyGrammar::from_name(name).expect("known grammar")),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         importance,
     )
     .unwrap()
@@ -285,7 +312,12 @@ pub fn assert_strict_rejection<T: Debug>(
 #[track_caller]
 pub fn assert_unclean_sheet(source: &str, report: &CssParseReport<CssSheet>) {
     assert!(!report.is_clean());
-    assert_strict_rejection(validate_sheet(source), report.diagnostics());
+    assert_strict_rejection(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
+        report.diagnostics(),
+    );
     assert_strict_rejection(
         report.clone().into_validation_result(),
         report.diagnostics(),
@@ -313,22 +345,45 @@ pub fn assert_diagnostics(
     assert_eq!(actual, expected, "{diagnostics:?}");
 }
 
-/// Asserts that `kind` reports an invalid value of `property` whose grammar
+/// Asserts that `error` reports an invalid value of `property` whose grammar
 /// first failed at the authored token `token`, or at EOF when it is `None`.
 #[track_caller]
 pub fn assert_invalid_property_value(
-    kind: &ErrorKind,
+    error: &CssError,
     property: CssKnownProperty,
     token: Option<&str>,
 ) {
-    let ErrorKind::InvalidPropertyValue(detail) = kind else {
-        panic!("invalid property value: {kind:?}")
-    };
-    assert_eq!(detail.property(), property, "{kind:?}");
     assert_eq!(
-        detail.encountered().map(|token| token.authored()),
+        error.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "{error:?}"
+    );
+    assert_eq!(error.known_property(), Some(property), "{error:?}");
+    assert_eq!(
+        error.encountered().map(|token| token.authored()),
         token,
-        "{kind:?}"
+        "{error:?}"
+    );
+}
+
+/// [`assert_invalid_property_value`] for a checked property-value failure, which
+/// reports the same grammar facts without an authored position.
+#[track_caller]
+pub fn assert_checked_invalid_property_value(
+    error: &CssPropertyValueError,
+    property: CssKnownProperty,
+    token: Option<&str>,
+) {
+    assert_eq!(
+        error.code(),
+        Some(CssErrorCode::InvalidPropertyValue),
+        "{error:?}"
+    );
+    assert_eq!(error.known_property(), Some(property), "{error:?}");
+    assert_eq!(
+        error.encountered().map(|token| token.authored()),
+        token,
+        "{error:?}"
     );
 }
 

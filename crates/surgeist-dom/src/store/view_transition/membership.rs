@@ -22,7 +22,9 @@ pub(super) struct OwnedMembership {
     pub custody: MembershipCustody,
 }
 
-fn name_key(name: &surgeist_css::CssViewTransitionIdent) -> KeyView<'_, 0> {
+fn name_key(
+    name: &surgeist_css::values::view_transition::CssViewTransitionIdent,
+) -> KeyView<'_, 0> {
     KeyView {
         words: [],
         used: 0,
@@ -40,8 +42,13 @@ fn element_key(node: NodeId) -> KeyView<'static, 3> {
 impl TransitionMembership {
     pub(in crate::store) fn name_owner<'a>(
         &self,
-        name: &surgeist_css::CssViewTransitionIdent,
-        mut records: impl FnMut(RecordKey) -> Result<&'a surgeist_css::CssViewTransitionIdent, DomError>,
+        name: &surgeist_css::values::view_transition::CssViewTransitionIdent,
+        mut records: impl FnMut(
+            RecordKey,
+        ) -> Result<
+            &'a surgeist_css::values::view_transition::CssViewTransitionIdent,
+            DomError,
+        >,
         step: &mut dyn FnMut() -> Result<(), DomError>,
     ) -> Result<Option<RecordKey>, DomError> {
         self.forest.lookup(
@@ -164,10 +171,15 @@ impl OwnedMembership {
     }
     pub(super) fn replace_name<'a>(
         &mut self,
-        name: &surgeist_css::CssViewTransitionIdent,
+        name: &surgeist_css::values::view_transition::CssViewTransitionIdent,
         expected: Option<RecordKey>,
         next: RecordKey,
-        mut records: impl FnMut(RecordKey) -> Result<&'a surgeist_css::CssViewTransitionIdent, DomError>,
+        mut records: impl FnMut(
+            RecordKey,
+        ) -> Result<
+            &'a surgeist_css::values::view_transition::CssViewTransitionIdent,
+            DomError,
+        >,
         edit: exact_forest::Edit<'_>,
     ) -> Result<(), DomError> {
         let registry = edit.registry;

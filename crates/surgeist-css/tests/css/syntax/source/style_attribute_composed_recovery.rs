@@ -1,13 +1,16 @@
-//! Attribute-front composition tests. Style Attributes REC20131107
-//! §3 supplies empty slots and the unbraced-root closer rule (a `}` is an
-//! invalid token, not a terminator); selected CSS2 §4.2 supplies
-//! malformed-declaration recovery, read with Syntax 3 (2026 CRD) §5.5.6
-//! "consume the remnants of a bad declaration" (not nested): a malformed start
-//! is discarded through the next root `;`. Existing public original-source,
-//! diagnostic and structural-limit contracts supply coordinates and errors.
+//! Attribute-front composition tests. A style attribute is Syntax 3 (2026 CRD)
+//! §5.5.5 block contents (#1353 decision 1): a root `}` ends the contents, the
+//! component values of a nested declaration end at `}` (§5.5.6 step 5), and
+//! a unit that is not a declaration is reconsumed as a qualified rule with `;`
+//! as its stop token (§5.5.3). Existing public original-source, diagnostic and
+//! structural-limit contracts supply coordinates and errors.
 
 use crate::css::support::authored_syntax::assert_position_at as position;
-use surgeist_css::*;
+use surgeist_css::declaration::{CssDeclaration, CssDeclarationList, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::{CssParseReport, CssParser};
 
 fn region(
     origin: &CssParsedOrigin,
@@ -37,40 +40,32 @@ fn assert_declaration(
     region(name_origin, source, name.0, name.1);
     region(value_origin, source, value.0, value.1);
     assert!(name_origin.source().same_snapshot(value_origin.source()));
-    assert_eq!(declaration.to_specified_css().unwrap(), expected_css);
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        expected_css
+    );
 }
 
 fn report_with_validation_parity(source: &str) -> CssParseReport<CssDeclarationList> {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     if report.is_clean() {
         assert_eq!(
-            validate_style_attribute(source).unwrap(),
+            CssParser::default()
+                .parse_block_contents(source)
+                .into_validation_result()
+                .unwrap(),
             report.syntax().clone()
         );
     } else {
-        let rejected = validate_style_attribute(source).unwrap_err();
+        let rejected = CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap_err();
         assert_eq!(rejected.first(), &report.diagnostics()[0]);
         assert_eq!(rejected.diagnostics(), report.diagnostics());
         assert_eq!(rejected.into_diagnostics(), report.diagnostics());
     }
     report
-}
-
-fn stray_curly(
-    diagnostic: &CssRecoveryDiagnostic,
-    start: (usize, u32, u32),
-    end: (usize, u32, u32),
-) {
-    assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedToken);
-    assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    position(diagnostic.error().position(), start);
-    position(diagnostic.span().start(), start);
-    position(diagnostic.span().end(), end);
-    let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-        panic!("a real stray root token");
-    };
-    assert_eq!(detail.encountered().kind(), CssTokenKind::CloseCurlyBracket);
-    assert_eq!(detail.encountered().authored(), "}");
 }
 
 #[test]
@@ -113,92 +108,68 @@ fn multiple_empty_slots_comments_and_trailing_delimiters_preserve_only_declarati
 }
 
 #[test]
-fn adjacent_root_curly_starts_a_malformed_declaration_through_the_next_semicolon() {
-    const SOURCE: &str = "}color:red;width:2px";
-    let report = report_with_validation_parity(SOURCE);
-    let [width] = report.syntax().as_slice() else {
-        panic!("the closer's malformed declaration is discarded; the next one remains");
-    };
-    let [diagnostic] = report.diagnostics() else {
-        panic!("the malformed declaration is one rejected unit");
-    };
-    stray_curly(diagnostic, (0, 0, 0), (10, 0, 10));
-    assert_declaration(
-        width,
-        SOURCE,
-        CssKnownProperty::Width,
-        ((11, 0, 11), (16, 0, 16)),
-        ((17, 0, 17), (20, 0, 20)),
-        CssImportance::Normal,
-        "width: 2px;",
-    );
+fn adjacent_root_curly_ends_the_contents() {
+    for source in ["}color:red;width:2px", "} color:red", "}"] {
+        let report = report_with_validation_parity(source);
+        assert!(report.syntax().is_empty(), "{source:?}: {report:?}");
+        assert!(report.is_clean(), "{source:?}: {report:?}");
+    }
 }
 
 #[test]
-fn supplementary_comments_and_crlf_keep_original_root_error_and_sibling_coordinates() {
-    const SOURCE: &str = "/*😀*/\r\n/*😀*/}color:red;width:2px";
+fn supplementary_comments_and_crlf_keep_original_coordinates_up_to_the_root_closer() {
+    const SOURCE: &str = "/*😀*/\r\n/*😀*/color:red;}width:2px";
     // Each comment is 8 UTF8 bytes but 6 UTF16 code units; CRLF is one line break.
     assert_eq!(SOURCE.len(), 38);
     let report = report_with_validation_parity(SOURCE);
-    let [width] = report.syntax().as_slice() else {
-        panic!("the Unicode prefix keeps original coordinates for the remnant and sibling");
+    assert!(report.is_clean(), "{:?}", report.diagnostics());
+    let [color] = report.syntax().as_slice() else {
+        panic!("the declaration before the root closer remains and the rest is never read");
     };
-    let [diagnostic] = report.diagnostics() else {
-        panic!("the closer's malformed declaration has one diagnostic");
-    };
-    stray_curly(diagnostic, (18, 1, 6), (28, 1, 16));
     assert_declaration(
-        width,
+        color,
         SOURCE,
-        CssKnownProperty::Width,
-        ((29, 1, 17), (34, 1, 22)),
-        ((35, 1, 23), (38, 1, 26)),
+        CssKnownProperty::Color,
+        ((18, 1, 6), (23, 1, 11)),
+        ((24, 1, 12), (27, 1, 15)),
         CssImportance::Normal,
-        "width: 2px;",
+        "color: red;",
     );
-    assert_eq!(width.parsed_name().unwrap().source().as_str(), SOURCE);
+    assert_eq!(color.parsed_name().unwrap().source().as_str(), SOURCE);
 }
 
 #[test]
-fn curly_inside_a_value_rejects_its_complete_declaration_instead_of_repairing_it() {
+fn a_curly_closer_ends_a_declaration_value_and_then_the_contents() {
+    // §5.5.6 step 5: the component values of a nested declaration end at `}`,
+    // so `color:` has no value and is dropped; the `}` then ends the contents.
     const SOURCE: &str = "color:}red;width:2px";
     let report = report_with_validation_parity(SOURCE);
-    let [width] = report.syntax().as_slice() else {
-        panic!("the malformed color unit is discarded and the later width remains");
-    };
+    assert!(report.syntax().is_empty(), "{report:?}");
     let [diagnostic] = report.diagnostics() else {
-        panic!("one malformed value is one rejected declaration");
+        panic!("one dropped declaration: {report:?}");
     };
     assert_eq!(
         diagnostic.error().code(),
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    position(diagnostic.error().position(), (6, 0, 6));
-    position(diagnostic.span().start(), (0, 0, 0));
-    position(diagnostic.span().end(), (11, 0, 11));
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("the ordinary property's value boundary owns this closer");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Color);
     assert_eq!(
-        detail.encountered().unwrap().kind(),
-        CssTokenKind::CloseCurlyBracket
+        diagnostic.error().known_property().unwrap(),
+        CssKnownProperty::Color
     );
-    assert_eq!(detail.encountered().unwrap().authored(), "}");
-    assert_declaration(
-        width,
-        SOURCE,
-        CssKnownProperty::Width,
-        ((11, 0, 11), (16, 0, 16)),
-        ((17, 0, 17), (20, 0, 20)),
-        CssImportance::Normal,
-        "width: 2px;",
-    );
+    position(diagnostic.span().start(), (0, 0, 0));
+    position(diagnostic.span().end(), (6, 0, 6));
+    // A value before the closer is retained.
+    let report = report_with_validation_parity("width:2px}color:red");
+    let [width] = report.syntax().as_slice() else {
+        panic!("the declaration before the closer remains");
+    };
+    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(width.known().unwrap().property(), CssKnownProperty::Width);
 }
 
 #[test]
-fn a_closed_depth257_value_has_local_resource_recovery_and_keeps_the_later_width() {
+fn a_closed_depth257_value_refuses_the_whole_contents() {
     // These are literal native function tokens, not checked component wrappers.
     let accepted = format!(
         "--deep: {}x{};width:2px;",
@@ -227,33 +198,15 @@ fn a_closed_depth257_value_has_local_resource_recovery_and_keeps_the_later_width
         "f(".repeat(257),
         ")".repeat(257)
     );
-    // Prefix8 + 257 opening tokens of2 + x1 + 257 closing tokens + ;1 =781.
-    // The first denied function is prefix8 + 256*2 =520.
     assert_eq!(source.len(), 791);
+    // Block contents charges every component once against the 256-level ceiling,
+    // so one over-limit value refuses the whole contents, later siblings included.
     let report = report_with_validation_parity(&source);
-    let [width] = report.syntax().as_slice() else {
-        panic!("the complete over-limit unit is dropped locally before the valid sibling");
-    };
+    assert!(report.syntax().is_empty(), "{report:?}");
     let [diagnostic] = report.diagnostics() else {
-        panic!("a fully closed resource-denied unit needs no implicit-EOF repair");
+        panic!("one resource diagnostic: {report:?}");
     };
-    assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-    position(diagnostic.error().position(), (520, 0, 520));
+    assert!(diagnostic.error().is_resource_refusal(), "{diagnostic:?}");
     position(diagnostic.span().start(), (0, 0, 0));
-    position(diagnostic.span().end(), (781, 0, 781));
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("the structural resource owner supplies the typed failure");
-    };
-    assert_eq!(detail.limit(), 256);
-    assert_eq!(detail.enclosing_production().as_str(), "css.declaration");
-    assert_declaration(
-        width,
-        &source,
-        CssKnownProperty::Width,
-        ((781, 0, 781), (786, 0, 786)),
-        ((787, 0, 787), (790, 0, 790)),
-        CssImportance::Normal,
-        "width: 2px;",
-    );
+    position(diagnostic.span().end(), (791, 0, 791));
 }

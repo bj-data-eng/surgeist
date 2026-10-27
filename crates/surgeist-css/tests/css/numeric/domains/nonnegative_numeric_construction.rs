@@ -5,44 +5,88 @@
 //! https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#supported-filter-functions
 //! https://www.w3.org/TR/2023/WD-css-animations-1-20230302/#animation-iteration-count
 
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_component_rejected;
 use crate::css::support::value_assertions::first_token as token;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationType, CssLength, CssLengthPercentage, CssNonNegative, CssNumber,
+    CssNumeric, CssPercentage, CssTimeUnit,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{
+    CssAnimation, CssAnimationComponents, CssAnimationIterationCount,
+    CssAnimationIterationCountList, CssAnimationName,
+};
+use surgeist_css::values::border::{
+    CssBorderImage, CssBorderImageOutset, CssBorderImageOutsetComponent, CssBorderImageSlice,
+    CssBorderImageSliceComponent, CssBorderImageWidth, CssBorderImageWidthComponent,
+};
+use surgeist_css::values::effects::{
+    CssFilter, CssFilterAmount, CssFilterFunction, CssFilterFunctionList,
+};
+use surgeist_css::values::font::{CssFontFaceWidth, CssFontWidth};
 
-fn number(text: &str) -> CssSpecifiedNonNegativeNumber {
-    CssSpecifiedNonNegativeNumber::try_from_component(CssComponentValue::try_number(text).unwrap())
-        .unwrap()
+fn number(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
+    CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
+        CssComponentValue::try_number(text).unwrap(),
+    )
+    .unwrap()
 }
-fn percentage(text: &str) -> CssSpecifiedNonNegativePercentage {
-    CssSpecifiedNonNegativePercentage::try_from_component(
+fn percentage(text: &str) -> CssNumeric<CssPercentage, CssNonNegative> {
+    CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token(text).unwrap(),
     )
     .unwrap()
 }
-fn number_math(text: &str) -> CssSpecifiedNonNegativeNumber {
-    CssSpecifiedNonNegativeNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(parse_component_values(text).unwrap()).unwrap(),
+fn number_math(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
+    CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
-fn percentage_math(text: &str) -> CssSpecifiedNonNegativePercentage {
-    CssSpecifiedNonNegativePercentage::try_from_calculation(
-        CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-            .unwrap(),
+fn percentage_math(text: &str) -> CssNumeric<CssPercentage, CssNonNegative> {
+    CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssPercentage>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
-fn number_text(value: &CssSpecifiedNonNegativeNumber) -> &str {
-    let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) =
-        value.literal_component().unwrap().view()
+fn number_text(value: &CssNumeric<CssNumber, CssNonNegative>) -> &str {
+    let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = value
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("number")
     };
     number.representation()
 }
-fn percentage_text(value: &CssSpecifiedNonNegativePercentage) -> &str {
-    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) =
-        value.literal_component().unwrap().view()
+fn percentage_text(value: &CssNumeric<CssPercentage, CssNonNegative>) -> &str {
+    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = value
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("percentage")
     };
@@ -70,15 +114,20 @@ fn shared_nonnegative_scalars_keep_exact_huge_tiny_positive_and_signed_zero_lexe
         assert_eq!(number_text(&n), text);
         assert_eq!(percentage_text(&p), text);
         assert!(
-            matches!(n.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.kind() == kind)
+            matches!(n.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.kind() == kind)
         );
         assert!(
-            matches!(p.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.kind() == kind)
+            matches!(p.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.kind() == kind)
         );
         assert_eq!(n.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(p.origin(), &CssValueOrigin::Programmatic);
     }
-    assert_eq!(percentage("250%").serialize_specified().unwrap(), "250%");
+    assert_eq!(
+        percentage("250%")
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "250%"
+    );
 }
 
 #[test]
@@ -86,38 +135,37 @@ fn ordinary_tiny_negatives_and_wrong_domains_return_exact_errors_with_origins() 
     for text in ["-1e-999", "-0.00000000000000000001", "-1"] {
         let input = token(&format!("  {text}"));
         let origin = input.origin().clone();
-        let error = CssSpecifiedNonNegativeNumber::try_from_component(input).unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        let error = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(input).unwrap_err();
+        assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(&origin));
         let input = token(&format!("  {text}%"));
         let origin = input.origin().clone();
-        let error = CssSpecifiedNonNegativePercentage::try_from_component(input).unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        let error =
+            CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(input).unwrap_err();
+        assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(&origin));
     }
     for text in ["1px", "1deg", "auto"] {
-        assert_eq!(
-            CssSpecifiedNonNegativeNumber::try_from_component(token(text))
+        assert!(
+            CssNumeric::<CssNumber, CssNonNegative>::try_from_component(token(text))
                 .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
+                .is_root_domain_mismatch()
         );
-        assert_eq!(
-            CssSpecifiedNonNegativePercentage::try_from_component(token(text))
+        assert!(
+            CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(token(text))
                 .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
+                .is_root_domain_mismatch()
         );
     }
     assert_component_rejected(
-        CssSpecifiedNonNegativeNumber::try_from_component,
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component,
         token("1%"),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     assert_component_rejected(
-        CssSpecifiedNonNegativePercentage::try_from_component,
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component,
         token("0"),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
 }
 
@@ -127,28 +175,30 @@ fn bare_nonnegative_roots_recheck_range_and_actual_math_remains_symbolic() {
         assert_eq!(number_text(&number_math(text)), text);
         assert_eq!(percentage_text(&percentage_math(&format!("{text}%"))), text);
     }
-    let number_root =
-        CssNumberCalculation::try_from_components(parse_component_values("-1e-999").unwrap())
-            .unwrap();
-    assert_eq!(
-        CssSpecifiedNonNegativeNumber::try_from_calculation(number_root)
+    let number_root = CssCalculation::<CssNumber>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "-1e-999").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    assert!(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(number_root)
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::OutOfRange
+            .is_out_of_range()
     );
-    let percentage_root =
-        CssPercentageCalculation::try_from_components(parse_component_values("-1e-999%").unwrap())
-            .unwrap();
-    assert_eq!(
-        CssSpecifiedNonNegativePercentage::try_from_calculation(percentage_root)
+    let percentage_root = CssCalculation::<CssPercentage>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "-1e-999%").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    assert!(
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(percentage_root)
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::OutOfRange
+            .is_out_of_range()
     );
     let n = number_math("calc(-1)");
     let p = percentage_math("calc(-1%)");
-    assert!(n.literal_component().is_none());
-    assert!(p.literal_component().is_none());
+    assert!(n.literal().map(|literal| literal.component()).is_none());
+    assert!(p.literal().map(|literal| literal.component()).is_none());
     assert_eq!(
         n.calculation().unwrap().result_type(),
         CssCalculationType::Number
@@ -157,13 +207,19 @@ fn bare_nonnegative_roots_recheck_range_and_actual_math_remains_symbolic() {
         p.calculation().unwrap().result_type(),
         CssCalculationType::Percentage
     );
-    assert_eq!(n.serialize_specified().unwrap(), "calc(-1)");
-    assert_eq!(p.serialize_specified().unwrap(), "calc(-1%)");
+    assert_eq!(
+        n.serialize_specified(Default::default()).unwrap(),
+        "calc(-1)"
+    );
+    assert_eq!(
+        p.serialize_specified(Default::default()).unwrap(),
+        "calc(-1%)"
+    );
     assert_eq!(
         n.calculation()
             .unwrap()
             .components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "calc(-1)"
@@ -172,7 +228,7 @@ fn bare_nonnegative_roots_recheck_range_and_actual_math_remains_symbolic() {
         p.calculation()
             .unwrap()
             .components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "calc(-1%)"
@@ -189,25 +245,28 @@ fn bare_nonnegative_roots_recheck_range_and_actual_math_remains_symbolic() {
 }
 
 #[test]
-fn direct_number_provenance_and_established_percentage_equality_remain_distinct() {
-    let n = CssSpecifiedNonNegativeNumber::try_from_component(token("  1.250")).unwrap();
-    let p = CssSpecifiedNonNegativePercentage::try_from_component(token("  1.250%")).unwrap();
+fn direct_number_and_percentage_equality_ignore_provenance_and_spelling() {
+    let n = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(token("  1.250")).unwrap();
+    let p =
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(token("  1.250%")).unwrap();
     let CssValueOrigin::Parsed(origin) = n.origin() else {
         panic!("parsed number origin")
     };
     assert_eq!(origin.source().as_str(), "  1.250");
     assert_eq!(origin.span().start().byte_offset().value(), 2);
-    assert_ne!(n, number("1.250"));
+    assert_eq!(n, number("1.250"));
+    assert_eq!(n, number("1.25"));
     assert_eq!(p, percentage("1.250%"));
-    assert_ne!(p, percentage("1.25%"));
+    assert_eq!(p, percentage("1.25%"));
+    assert_eq!(p.literal().unwrap().numeric().representation(), "1.250");
     let a = number_math("calc(1 + 2)");
     let b = number_math("  calc(1 + 2)");
-    assert_ne!(a, b);
-    assert_ne!(a.calculation().unwrap(), b.calculation().unwrap());
+    assert_eq!(a, b);
+    assert_eq!(a.calculation().unwrap(), b.calculation().unwrap());
     let a = percentage_math("calc(1% + 2%)");
     let b = percentage_math("  calc(1% + 2%)");
     assert_eq!(a, b);
-    assert_ne!(a.calculation().unwrap(), b.calculation().unwrap());
+    assert_eq!(a.calculation().unwrap(), b.calculation().unwrap());
 }
 
 fn filter_amounts(value: &CssFilter) -> [&CssFilterAmount; 7] {
@@ -287,7 +346,7 @@ fn filter_and_backdrop_parsers_preserve_all_amount_roles_and_exact_payloads() {
             .map(|name| format!("{name}({amount})"))
             .join(" ");
             let source = format!("{property}: {value}");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{:?}", report.diagnostics());
             let value = match report.syntax()[0]
                 .known()
@@ -323,7 +382,11 @@ fn filter_and_backdrop_parsers_preserve_all_amount_roles_and_exact_payloads() {
                     ("calc(-1)", CssFilterAmount::Number(value)) => {
                         let calculation = value.calculation().expect("symbolic calculation");
                         assert_eq!(
-                            calculation.components().serialize().unwrap().as_css(),
+                            calculation
+                                .components()
+                                .serialize_tokens(Default::default())
+                                .unwrap()
+                                .as_css(),
                             amount
                         );
                         assert_origin(calculation.origin(), &source, start, 5);
@@ -331,7 +394,11 @@ fn filter_and_backdrop_parsers_preserve_all_amount_roles_and_exact_payloads() {
                     ("calc(-1%)", CssFilterAmount::Percentage(value)) => {
                         let calculation = value.calculation().expect("symbolic calculation");
                         assert_eq!(
-                            calculation.components().serialize().unwrap().as_css(),
+                            calculation
+                                .components()
+                                .serialize_tokens(Default::default())
+                                .unwrap()
+                                .as_css(),
                             amount
                         );
                         assert_origin(calculation.origin(), &source, start, 5);
@@ -345,7 +412,7 @@ fn filter_and_backdrop_parsers_preserve_all_amount_roles_and_exact_payloads() {
 
 #[test]
 fn filter_aggregate_equality_ignores_numeric_origins_without_erasing_roles_or_order() {
-    let parsed = CssSpecifiedNonNegativeNumber::try_from_component(token("  1")).unwrap();
+    let parsed = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(token("  1")).unwrap();
     assert_eq!(
         CssFilterAmount::Number(parsed),
         CssFilterAmount::Number(number("1"))
@@ -354,7 +421,7 @@ fn filter_aggregate_equality_ignores_numeric_origins_without_erasing_roles_or_or
         CssFilterAmount::Number(number_math("calc(1 + 2)")),
         CssFilterAmount::Number(number_math("  calc(1 + 2)"))
     );
-    assert_ne!(
+    assert_eq!(
         CssFilterAmount::Number(number("1")),
         CssFilterAmount::Number(number("1.0"))
     );
@@ -454,7 +521,7 @@ fn border_slice_width_and_outset_retain_percentage_length_keyword_and_math_roles
     assert!(
         matches!(&slice.values()[1], CssBorderImageSliceComponent::Number(value) if value.calculation().is_some())
     );
-    let length_percentage = CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+    let length_percentage = CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token("25%").unwrap(),
     )
     .unwrap();
@@ -469,12 +536,12 @@ fn border_slice_width_and_outset_retain_percentage_length_keyword_and_math_roles
         CssBorderImageWidthComponent::Auto
     ));
     assert!(
-        matches!(&width.values()[1], CssBorderImageWidthComponent::LengthPercentage(value) if matches!(value.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.representation() == "25"))
+        matches!(&width.values()[1], CssBorderImageWidthComponent::LengthPercentage(value) if matches!(value.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.representation() == "25"))
     );
     assert!(
         matches!(&width.values()[2], CssBorderImageWidthComponent::Number(value) if value.calculation().is_some())
     );
-    let length = CssSpecifiedNonNegativeLength::try_from_component(
+    let length = CssNumeric::<CssLength, CssNonNegative>::try_from_component(
         CssComponentValue::try_token("2px").unwrap(),
     )
     .unwrap();
@@ -520,7 +587,7 @@ fn border_shorthand_construction_preserves_coupling_omission_and_exact_structure
     assert!(explicit.source().is_none());
     assert!(explicit.repeat().is_none());
     assert_ne!(omitted, explicit);
-    let parsed = CssSpecifiedNonNegativeNumber::try_from_component(token("  1")).unwrap();
+    let parsed = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(token("  1")).unwrap();
     assert_eq!(
         CssBorderImageSliceComponent::Number(parsed.clone()),
         CssBorderImageSliceComponent::Number(number("1"))
@@ -554,13 +621,13 @@ fn border_shorthand_construction_preserves_coupling_omission_and_exact_structure
     assert_ne!(
         CssBorderImageOutsetComponent::Number(number("2")),
         CssBorderImageOutsetComponent::Length(
-            CssSpecifiedNonNegativeLength::try_from_component(
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token("2px").unwrap()
             )
             .unwrap()
         )
     );
-    assert_ne!(
+    assert_eq!(
         CssBorderImageWidthComponent::Number(number("1")),
         CssBorderImageWidthComponent::Number(number("1.0"))
     );
@@ -604,14 +671,15 @@ fn border_shorthand_construction_preserves_coupling_omission_and_exact_structure
 
 #[test]
 fn border_expansion_initials_use_exact_programmatic_zero_hundred_percent_and_one() {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Border),
-        parse_component_values("solid").unwrap(),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Border)),
+        CssComponentValues::parse(&CssParser::default(), "solid").unwrap(),
         CssImportance::Important,
     )
     .unwrap();
     let CssExpansion::Contributions(CssContributions::Longhands(contributions)) =
-        expand_declaration(&declaration).unwrap()
+        declaration.expand().unwrap()
     else {
         panic!("border-image contributions")
     };
@@ -714,8 +782,10 @@ fn iteration_constructor_retains_fraction_zero_infinite_math_nonempty_order_and_
 }
 
 #[test]
-fn iteration_aggregate_equality_ignores_only_numeric_origins_and_preserves_ast_roles_order() {
-    let parsed = CssSpecifiedNonNegativeNumber::try_from_component(token("  .5")).unwrap();
+fn iteration_aggregate_equality_ignores_numeric_origins_and_spelling_and_preserves_ast_roles_order()
+{
+    let parsed =
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(token("  .5")).unwrap();
     assert_eq!(
         CssAnimationIterationCount::Number(parsed),
         CssAnimationIterationCount::Number(number(".5"))
@@ -724,7 +794,7 @@ fn iteration_aggregate_equality_ignores_only_numeric_origins_and_preserves_ast_r
         CssAnimationIterationCount::Number(number_math("calc(1 + 2)")),
         CssAnimationIterationCount::Number(number_math("  calc(1 + 2)"))
     );
-    assert_ne!(
+    assert_eq!(
         CssAnimationIterationCount::Number(number("1")),
         CssAnimationIterationCount::Number(number("1.0"))
     );
@@ -748,9 +818,7 @@ fn iteration_aggregate_equality_ignores_only_numeric_origins_and_preserves_ast_r
 
 #[test]
 fn iteration_longhand_and_shorthand_keep_shared_exact_counts_and_authored_omission() {
-    let report = parse_style_attribute(
-        "animation-iteration-count: .5, infinite, 1e999, calc(-1); animation: fade 1s .5; animation: fade 1s",
-    );
+    let report = CssParser::default().parse_block_contents("animation-iteration-count: .5, infinite, 1e999, calc(-1); animation: fade 1s .5; animation: fade 1s");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 3);
     let CssKnownPropertyValueRef::AnimationIterationCount(counts) = report.syntax()[0]
@@ -766,7 +834,7 @@ fn iteration_longhand_and_shorthand_keep_shared_exact_counts_and_authored_omissi
         CssAnimationIterationCount::Infinite,
         CssAnimationIterationCount::Number(huge),
         CssAnimationIterationCount::Number(math),
-    ] = counts.iteration_counts().values()
+    ] = counts.value().values()
     else {
         panic!("ordered counts")
     };
@@ -786,14 +854,14 @@ fn iteration_longhand_and_shorthand_keep_shared_exact_counts_and_authored_omissi
         else {
             panic!("animation shorthand")
         };
-        let [animation] = wrapper.animations().values() else {
+        let [animation] = wrapper.value().values() else {
             panic!("one animation")
         };
         assert!(
             matches!(animation.name(), Some(CssAnimationName::Custom(name)) if name.as_str() == "fade")
         );
         assert!(
-            matches!(animation.duration().and_then(|value| value.time().literal()), Some(value) if value.numeric().representation() == "1" && value.unit() == CssTimeUnit::Seconds)
+            matches!(animation.duration().and_then(|value| value.literal()), Some(value) if value.numeric().representation() == "1" && value.unit() == CssTimeUnit::Seconds)
         );
         if supplied {
             assert!(
@@ -810,44 +878,32 @@ fn shared_nonnegative_projection_limits_are_atomic_and_percentage_ranges_share_b
     let n = number("12.50");
     let p = percentage("12.50%");
     assert_eq!(
-        n.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 4))
+        n.serialize_specified(CssSerializationLimits::new(1, 1, 4))
             .unwrap(),
         "12.5"
     );
     assert_eq!(
-        p.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 5))
+        p.serialize_specified(CssSerializationLimits::new(1, 1, 5))
             .unwrap(),
         "12.5%"
     );
     for (input, projection, bytes, kind) in [
-        (
-            0,
-            1,
-            10,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            1,
-            0,
-            10,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
-        (1, 1, 3, CssSpecifiedValueSerializationErrorKind::ByteLimit),
+        (0, 1, 10, SerializationFailure::InputNodeLimit),
+        (1, 0, 10, SerializationFailure::ProjectionNodeLimit),
+        (1, 1, 3, SerializationFailure::ByteLimit),
     ] {
         assert_eq!(
-            n.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                input, projection, bytes
-            ))
-            .unwrap_err()
-            .kind(),
+            serialization_failure(
+                &n.serialize_specified(CssSerializationLimits::new(input, projection, bytes))
+                    .unwrap_err()
+            ),
             kind
         );
         assert_eq!(
-            p.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                input, projection, bytes
-            ))
-            .unwrap_err()
-            .kind(),
+            serialization_failure(
+                &p.serialize_specified(CssSerializationLimits::new(input, projection, bytes))
+                    .unwrap_err()
+            ),
             kind
         );
     }
@@ -859,36 +915,28 @@ fn shared_nonnegative_projection_limits_are_atomic_and_percentage_ranges_share_b
     };
     assert_eq!(
         range
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 8))
+            .serialize_specified(CssSerializationLimits::new(3, 3, 8))
             .unwrap(),
         "75% 125%"
     );
     for (input, projection, bytes, kind) in [
-        (
-            2,
-            3,
-            8,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            3,
-            2,
-            8,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
-        (3, 3, 7, CssSpecifiedValueSerializationErrorKind::ByteLimit),
+        (2, 3, 8, SerializationFailure::InputNodeLimit),
+        (3, 2, 8, SerializationFailure::ProjectionNodeLimit),
+        (3, 3, 7, SerializationFailure::ByteLimit),
     ] {
         assert_eq!(
-            range
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    input, projection, bytes
-                ))
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &range
+                    .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
+                    .unwrap_err()
+            ),
             kind
         );
     }
-    assert_eq!(range.serialize_specified().unwrap(), "75% 125%");
+    assert_eq!(
+        range.serialize_specified(Default::default()).unwrap(),
+        "75% 125%"
+    );
 }
 
 fn assert_origin(origin: &CssValueOrigin, source: &str, start: usize, length: usize) {
@@ -903,7 +951,7 @@ fn assert_origin(origin: &CssValueOrigin, source: &str, start: usize, length: us
 #[test]
 fn border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
     let source = "border-image-slice: +01.25 2.50%; border-image-width: 3e2; border-image-outset: -0; animation-iteration-count: .5, calc(-1)";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean());
     assert_eq!(report.syntax().len(), 4);
     let CssKnownPropertyValueRef::BorderImageSlice(slice) = report.syntax()[0]
@@ -919,7 +967,7 @@ fn border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
         CssBorderImageSliceComponent::Percentage(percentage),
         _,
         _,
-    ] = slice.slice().values()
+    ] = slice.value().values()
     else {
         panic!("number/percentage edges");
     };
@@ -935,7 +983,7 @@ fn border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
     else {
         panic!("width");
     };
-    let CssBorderImageWidthComponent::Number(number) = &width.widths().values()[0] else {
+    let CssBorderImageWidthComponent::Number(number) = &width.value().values()[0] else {
         panic!("number width");
     };
     assert_eq!(number_text(number), "3e2");
@@ -948,13 +996,13 @@ fn border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
     else {
         panic!("outset");
     };
-    let CssBorderImageOutsetComponent::Number(number) = &outset.outsets().values()[0] else {
+    let CssBorderImageOutsetComponent::Number(number) = &outset.value().values()[0] else {
         panic!("number outset");
     };
     assert_eq!(number_text(number), "-0");
     assert_origin(number.origin(), source, 80, 2);
     assert!(
-        matches!(number.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.kind() == CssNumericTokenKind::Integer)
+        matches!(number.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.kind() == CssNumericTokenKind::Integer)
     );
     let CssKnownPropertyValueRef::AnimationIterationCount(counts) = report.syntax()[3]
         .known()
@@ -967,19 +1015,23 @@ fn border_and_iteration_payloads_keep_exact_source_coordinates_and_kinds() {
     let [
         CssAnimationIterationCount::Number(fraction),
         CssAnimationIterationCount::Number(math),
-    ] = counts.iteration_counts().values()
+    ] = counts.value().values()
     else {
         panic!("ordered scalar counts");
     };
     assert_eq!(number_text(fraction), ".5");
     assert_origin(fraction.origin(), source, 111, 2);
     assert!(
-        matches!(fraction.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.kind() == CssNumericTokenKind::Number)
+        matches!(fraction.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.kind() == CssNumericTokenKind::Number)
     );
     let calculation = math.calculation().expect("symbolic number function");
     assert_origin(calculation.origin(), source, 115, 5);
     assert_eq!(
-        calculation.components().serialize().unwrap().as_css(),
+        calculation
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "calc(-1)"
     );
 }

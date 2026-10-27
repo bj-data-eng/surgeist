@@ -2,11 +2,18 @@
 //! Pinned WebKit 73aa6c89 CSSFontFeatureValuesRule.cpp setter requires complete
 //! native nongeneric prelude consumption; its getter uses comma-space joining.
 //! Native CSS Syntax EOF recovery is distinct from a clean-report policy.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueError, CssComponentValueLimits, CssValueOrigin};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::rule::font_face::{CssFontFaceFamily, serialize_font_face_family_list};
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesFamilyList;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParseReport, CssParser, CssParserContext, CssParserMode};
 
 fn list(source: &str) -> CssFontFeatureValuesFamilyList {
-    let report = parse_font_feature_values_family_list(source);
+    let report = CssFontFeatureValuesFamilyList::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {report:?}");
     report.syntax().clone().expect("complete literal list")
 }
@@ -17,8 +24,8 @@ fn component_error(
     report
         .diagnostics()
         .iter()
-        .find_map(|diagnostic| match diagnostic.error().kind() {
-            ErrorKind::InvalidComponentValue(error) => Some(error.as_ref()),
+        .find_map(|diagnostic| match diagnostic.error().code() {
+            CssErrorCode::InvalidComponentValue => diagnostic.error().component_error(),
             _ => None,
         })
         .expect("typed component resource failure")
@@ -37,10 +44,10 @@ fn native_literal_names_decode_escapes_and_serialize_in_order() {
         ["serif", "A B", "A B", "1Face", "日本語", "a\"b", ""]
     );
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         r#""serif", A B, A B, "1Face", 日本語, "a\"b", """#
     );
-    let reparsed = list(&value.serialize_specified().unwrap());
+    let reparsed = list(&value.serialize_specified(Default::default()).unwrap());
     assert_eq!(reparsed.families(), value.families());
 }
 
@@ -65,14 +72,14 @@ fn reserved_generics_and_incomplete_lists_reject_the_whole_input() {
         "A, 12",
         "'bad\nname'",
     ] {
-        let report = parse_font_feature_values_family_list(source);
+        let report = CssFontFeatureValuesFamilyList::parse(&CssParser::default(), source);
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         assert!(!report.diagnostics().is_empty(), "{source}");
         assert!(
             !report
                 .diagnostics()
                 .iter()
-                .any(|d| matches!(d.error().kind(), ErrorKind::InvalidComponentValue(_))),
+                .any(|d| d.error().code() == CssErrorCode::InvalidComponentValue),
             "syntax rejection is not resource exhaustion: {source}"
         );
     }
@@ -116,21 +123,25 @@ fn original_member_occurrences_survive_input_drop_and_programmatic_lists_claim_n
     let constructed = CssFontFeatureValuesFamilyList::try_new(value.families().to_vec()).unwrap();
     assert_eq!(constructed.origin(), &CssValueOrigin::Programmatic);
     assert!(constructed.family_origin(0).is_none());
-    assert_eq!(constructed.serialize_specified().unwrap(), "A, 日本語");
     assert_eq!(
+        constructed.serialize_specified(Default::default()).unwrap(),
+        "A, 日本語"
+    );
+    assert!(
         CssFontFeatureValuesFamilyList::try_new(vec![])
             .unwrap_err()
-            .kind(),
-        CssFontFeatureValuesErrorKind::EmptyFamilies
+            .is_empty_families()
     );
     let quirks = CssParserContext::new(CssParserMode::Quirks).with_svg_glyph_orientation_vertical();
     assert_eq!(
-        quirks
-            .parse_font_feature_values_family_list(&expected)
-            .syntax()
-            .as_ref()
-            .unwrap()
-            .families(),
+        CssFontFeatureValuesFamilyList::parse(
+            &CssParser::new(quirks, Default::default()),
+            &expected
+        )
+        .syntax()
+        .as_ref()
+        .unwrap()
+        .families(),
         value.families()
     );
 }
@@ -138,7 +149,7 @@ fn original_member_occurrences_survive_input_drop_and_programmatic_lists_claim_n
 #[test]
 fn valid_eof_recovery_retains_literal_names_and_original_source() {
     for (source, name) in [("'Demo", "Demo"), ("Demo/*unterminated", "Demo")] {
-        let report = parse_font_feature_values_family_list(source);
+        let report = CssFontFeatureValuesFamilyList::parse(&CssParser::default(), source);
         assert!(!report.is_clean(), "{source}: {report:?}");
         let value = report
             .syntax()
@@ -149,11 +160,14 @@ fn valid_eof_recovery_retains_literal_names_and_original_source() {
             panic!("parsed")
         };
         assert_eq!(origin.source().as_str(), source);
-        assert_eq!(value.serialize_specified().unwrap(), "Demo");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "Demo"
+        );
     }
     // Syntax 3 §4.3.5: the newline makes a <bad-string-token>, which no
     // <family-name> admits.
-    let report = parse_font_feature_values_family_list("A, 'bad\n");
+    let report = CssFontFeatureValuesFamilyList::parse(&CssParser::default(), "A, 'bad\n");
     assert!(report.syntax().is_none());
     ExpectedRejection::new(CssErrorCode::InvalidAtRulePrelude)
         .in_rule("font-feature-values")
@@ -164,54 +178,62 @@ fn valid_eof_recovery_retains_literal_names_and_original_source() {
 fn complete_input_limits_include_later_members_and_retry_has_no_partial_state() {
     let source = "A,日"; // Three components and six UTF-8 bytes.
     let exact = CssComponentValueLimits::try_new(0, 3, source.len()).unwrap();
-    let report = parse_font_feature_values_family_list_with_limits(source, exact);
+    let report = CssFontFeatureValuesFamilyList::parse(
+        &CssParser::new(CssParserContext::default(), exact),
+        source,
+    );
     assert!(report.is_clean(), "{report:?}");
     assert_eq!(report.syntax().as_ref().unwrap().families().len(), 2);
     let short = CssComponentValueLimits::try_new(0, 2, source.len()).unwrap();
-    let failed = parse_font_feature_values_family_list_with_limits(source, short);
+    let failed = CssFontFeatureValuesFamilyList::parse(
+        &CssParser::new(CssParserContext::default(), short),
+        source,
+    );
     let error = component_error(&failed);
-    assert_eq!(error.kind(), CssComponentValueErrorKind::ComponentLimit);
+    assert!(error.is_component_limit(), "{error:?}");
     let CssValueOrigin::Parsed(origin) = error.origin() else {
         panic!("later token origin")
     };
     assert_eq!(origin.span().start().byte_offset().value(), 2);
     assert_eq!(origin.source().as_str(), source);
-    let failed = parse_font_feature_values_family_list_with_limits(
+    let failed = CssFontFeatureValuesFamilyList::parse(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(0, 3, source.len() - 1).unwrap(),
+        ),
         source,
-        CssComponentValueLimits::try_new(0, 3, source.len() - 1).unwrap(),
     );
-    assert_eq!(
-        component_error(&failed).kind(),
-        CssComponentValueErrorKind::ByteLimit
-    );
+    assert!(component_error(&failed).is_byte_limit());
     assert!(
         matches!(component_error(&failed).origin(), CssValueOrigin::UnretainedInput { byte_length } if *byte_length == source.len())
     );
-    let failed = parse_font_feature_values_family_list_with_limits(
+    let failed = CssFontFeatureValuesFamilyList::parse(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(0, 99, 99).unwrap(),
+        ),
         "A, f(B)",
-        CssComponentValueLimits::try_new(0, 99, 99).unwrap(),
     );
-    assert_eq!(
-        component_error(&failed).kind(),
-        CssComponentValueErrorKind::NestingLimit
-    );
+    assert!(component_error(&failed).is_nesting_limit());
     // Resource admission covers even trailing syntax that grammar would reject.
-    let failed = parse_font_feature_values_family_list_with_limits(
+    let failed = CssFontFeatureValuesFamilyList::parse(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(0, 2, 99).unwrap(),
+        ),
         "A;B",
-        CssComponentValueLimits::try_new(0, 2, 99).unwrap(),
     );
+    assert!(component_error(&failed).is_component_limit());
     assert_eq!(
-        component_error(&failed).kind(),
-        CssComponentValueErrorKind::ComponentLimit
-    );
-    assert_eq!(
-        CssParserContext::default()
-            .parse_font_feature_values_family_list_with_limits(source, exact)
-            .syntax()
-            .as_ref()
-            .unwrap()
-            .serialize_specified()
-            .unwrap(),
+        CssFontFeatureValuesFamilyList::parse(
+            &CssParser::new(CssParserContext::default(), exact),
+            source
+        )
+        .syntax()
+        .as_ref()
+        .unwrap()
+        .serialize_specified(Default::default())
+        .unwrap(),
         "A, 日"
     );
 }
@@ -225,52 +247,43 @@ fn literal_slice_writer_charges_all_members_and_separators_atomically() {
     ];
     let before = families.clone();
     let expected = "A, \"serif\", 日";
-    let exact = CssSpecifiedValueSerializationLimits::new(3, 3, expected.len());
+    let exact = CssSerializationLimits::new(3, 3, expected.len());
     assert_eq!(
-        serialize_font_face_family_list_with_limits(&families, exact).unwrap(),
+        serialize_font_face_family_list(&families, exact).unwrap(),
         expected
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(2, 3, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(3, 2, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(3, 3, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 2),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(3, 3, 2),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            serialize_font_face_family_list_with_limits(&families, limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&serialize_font_face_family_list(&families, limits).unwrap_err()),
             kind
         );
         assert_eq!(families, before);
     }
     assert_eq!(
-        serialize_font_face_family_list_with_limits(&families, exact).unwrap(),
+        serialize_font_face_family_list(&families, exact).unwrap(),
         expected
     );
     let checked = CssFontFeatureValuesFamilyList::try_new(families).unwrap();
+    assert_eq!(checked.serialize_specified(exact).unwrap(), expected);
     assert_eq!(
-        checked.serialize_specified_with_limits(exact).unwrap(),
-        expected
-    );
-    assert_eq!(
-        serialize_font_face_family_list_with_limits(
-            &[],
-            CssSpecifiedValueSerializationLimits::new(0, 0, 0)
-        )
-        .unwrap(),
+        serialize_font_face_family_list(&[], CssSerializationLimits::new(0, 0, 0)).unwrap(),
         ""
     );
 }
@@ -292,14 +305,14 @@ fn trivia_and_original_line_endings_are_charged_without_rewriting_occurrences() 
         );
     }
     let source = "A/*x*/,B"; // Ident, comment, comma, ident: four components.
-    let limited = parse_font_feature_values_family_list_with_limits(
+    let limited = CssFontFeatureValuesFamilyList::parse(
+        &CssParser::new(
+            CssParserContext::default(),
+            CssComponentValueLimits::try_new(0, 3, source.len()).unwrap(),
+        ),
         source,
-        CssComponentValueLimits::try_new(0, 3, source.len()).unwrap(),
     );
-    assert_eq!(
-        component_error(&limited).kind(),
-        CssComponentValueErrorKind::ComponentLimit
-    );
+    assert!(component_error(&limited).is_component_limit());
     let CssValueOrigin::Parsed(origin) = component_error(&limited).origin() else {
         panic!("original member")
     };
@@ -308,14 +321,17 @@ fn trivia_and_original_line_endings_are_charged_without_rewriting_occurrences() 
         source.find('B').unwrap()
     );
     assert!(
-        parse_font_feature_values_family_list_with_limits(
-            source,
-            CssComponentValueLimits::try_new(0, 4, source.len()).unwrap()
+        CssFontFeatureValuesFamilyList::parse(
+            &CssParser::new(
+                CssParserContext::default(),
+                CssComponentValueLimits::try_new(0, 4, source.len()).unwrap()
+            ),
+            source
         )
         .is_clean()
     );
     let source = "/*😀*/\r\nA, 12";
-    let rejected = parse_font_feature_values_family_list(source);
+    let rejected = CssFontFeatureValuesFamilyList::parse(&CssParser::default(), source);
     assert!(rejected.syntax().is_none());
     assert_eq!(
         rejected.diagnostics()[0]

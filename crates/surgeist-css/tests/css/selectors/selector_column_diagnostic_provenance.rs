@@ -3,11 +3,13 @@
 //! Column is admitted, but its required right compound cannot begin with `!`;
 //! Nesting 1 §3.1 requires ignoring the invalid child without losing its parent.
 
-use surgeist_css::{
-    CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssRecoveryAction, CssRule,
-    CssSelector, CssSelectorCombinator, CssSourcePosition, CssTokenKind, ErrorKind, parse_selector,
-    parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceConstraint, CssNamespaceContext, CssSelector, CssSelectorCombinator,
 };
+use surgeist_css::source::CssSourcePosition;
 
 fn assert_position(position: CssSourcePosition, source: &str, byte: usize) {
     assert_eq!(position.byte_offset().value(), byte, "{source}");
@@ -20,7 +22,7 @@ fn assert_position(position: CssSourcePosition, source: &str, byte: usize) {
 }
 
 fn rejected_column(source: &str) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("invalid nested rule must retain only its parent: {report:?}");
     };
@@ -35,9 +37,12 @@ fn rejected_column(source: &str) {
     // its required right compound; lookahead must preserve that token's origin.
     let invalid_rhs = source.find('!').unwrap();
     assert_position(diagnostic.error().position(), source, invalid_rhs);
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("structured selector error");
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "structured selector error"
+    );
     let encountered = detail.encountered().expect("invalid right-hand delimiter");
     assert_eq!(encountered.kind(), CssTokenKind::Delim);
     assert_eq!(encountered.authored(), "!");
@@ -59,7 +64,11 @@ fn invalid_column_rhs_preserves_utf8_and_utf16_delimiter_coordinates() {
 
 #[test]
 fn single_namespace_separator_after_whitespace_remains_a_descendant() {
-    let report = parse_selector("svg |leaf", &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        "svg |leaf",
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let Some(CssSelector::Complex(selector)) = report.syntax() else {
         panic!("two descendant compounds: {report:?}");

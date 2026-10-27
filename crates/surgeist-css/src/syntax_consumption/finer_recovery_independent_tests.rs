@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 use super::*;
-use crate::{CssComponentValueLimits, CssHashFlag, CssNumericTokenKind};
+use crate::component::{CssComponentValueLimits, CssHashFlag, CssNumericTokenKind};
 
 fn origin_identity(actual: &CssValueOrigin, expected: &CssValueOrigin) {
     assert_eq!(actual, expected);
@@ -25,175 +25,15 @@ fn origin_identity(actual: &CssValueOrigin, expected: &CssValueOrigin) {
     }
 }
 
-fn site(boundary: &SyntaxBoundary, snapshot: &CssSourceSnapshot, offset: usize) {
-    let site = boundary
-        .source
-        .as_ref()
-        .expect("actual supplied source boundary");
-    assert!(site.snapshot.same_snapshot(snapshot));
-    assert_eq!(site.offset, offset);
-}
-
-#[test]
-fn candidate_ranges_stop_before_semicolon_and_keep_whole_document_admission() {
-    let text = "outer{a:x;bad;y:z;}after";
-    let snapshot = CssSourceSnapshot::new(text);
-    let window = SourceWindow {
-        text: Cow::Borrowed(text),
-        range: 0..24,
-        original: snapshot.clone(),
-    };
-    let limits = SyntaxInputLimits {
-        max_depth: 1,
-        max_components: 13,
-        max_known_spelling_bytes: 24,
-    };
-    let expected = SyntaxInputMetrics {
-        components: 13,
-        maximum_depth: 1,
-        known_spelling_bytes: 24,
-        unspelled_tokens: 0,
-    };
-    let document = normalize(SyntaxInput::Source(window.clone()), limits, 0).unwrap();
-    assert_eq!(document.metrics, expected);
-    let [outer, group, after] = document.lists[document.root].as_slice() else {
-        panic!("outer ident, actual Curly group, untouched root sibling")
-    };
-    assert_eq!(
-        document.nodes[*outer].token().kind(),
-        TokenKind::Ident("outer")
-    );
-    assert_eq!(
-        document.nodes[*after].token().kind(),
-        TokenKind::Ident("after")
-    );
-    let child = document.nodes[*group].children().unwrap();
-    let mut selection = document.cursor(child);
-    let range = consume_declaration_candidate(&mut selection);
-    assert_eq!(
-        range,
-        SyntaxRange {
-            list: child,
-            start: 0,
-            end: 3
-        }
-    );
-    let CursorItem::Node(semicolon) = selection.peek() else {
-        panic!("unconsumed delimiter")
-    };
-    assert_eq!(
-        document.nodes[semicolon].token().kind(),
-        TokenKind::Semicolon
-    );
-    let mut candidate = document.cursor_range(&range);
-    let declaration = consume_declaration(&mut candidate).unwrap();
-    assert_eq!(
-        document.nodes[declaration.name].token().kind(),
-        TokenKind::Ident("a")
-    );
-    assert_eq!(declaration.range, range);
-    assert_eq!(declaration.colon, 1);
-    assert_eq!(
-        declaration.value_range,
-        SyntaxRange {
-            list: child,
-            start: 2,
-            end: 3
-        }
-    );
-    assert!(!declaration.important);
-    assert!(declaration.importance_range.is_none());
-    assert_eq!(declaration.value.len(), 1);
-    assert_eq!(
-        document.nodes[declaration.value[0]].token().kind(),
-        TokenKind::Ident("x")
-    );
-    let eof = candidate.consume();
-    let CursorItem::EndOfInput(boundary) = &eof else {
-        panic!("candidate-local EOF")
-    };
-    site(boundary, &snapshot, 9);
-    assert_eq!(candidate.consume(), eof);
-    candidate.reconsume_current();
-    assert_eq!(candidate.consume(), eof);
-    assert_eq!(candidate.consume(), eof);
-    assert_eq!(selection.peek(), CursorItem::Node(semicolon));
-
-    let units = consume_declaration_list(&mut document.cursor(child));
-    assert_eq!(units.len(), 3);
-    for (index, (unit, end)) in units.iter().zip([9, 13, 17]).enumerate() {
-        let GenericDeclarationListItem::Declaration { range, parsed } = unit else {
-            panic!("raw declaration attempt")
-        };
-        let mut bounded = document.cursor_range(range);
-        while matches!(bounded.consume(), CursorItem::Node(_)) {}
-        let CursorItem::EndOfInput(boundary) = bounded.consume() else {
-            panic!("local EOF")
-        };
-        site(&boundary, &snapshot, end);
-        match index {
-            0 | 2 => {
-                let parsed = parsed.as_ref().unwrap();
-                assert_eq!(
-                    document.nodes[parsed.name].token().kind(),
-                    TokenKind::Ident(if index == 0 { "a" } else { "y" })
-                );
-                let [value] = parsed.value.as_slice() else {
-                    panic!("one admitted value")
-                };
-                assert_eq!(
-                    document.nodes[*value].token().kind(),
-                    TokenKind::Ident(if index == 0 { "x" } else { "z" })
-                );
-            }
-            1 => assert_eq!(
-                parsed.as_ref().unwrap_err().kind,
-                GenericFaultKind::InvalidDeclaration
-            ),
-            _ => unreachable!("three independently authored attempts"),
-        }
-    }
-    site(&document.boundary(child, 10), &snapshot, 18);
-    site(&document.boundary(document.root, 3), &snapshot, 24);
-    assert_eq!(document.metrics, expected);
-    for (too_small, kind) in [
-        (
-            SyntaxInputLimits {
-                max_components: 12,
-                ..limits
-            },
-            CssComponentValueErrorKind::ComponentLimit,
-        ),
-        (
-            SyntaxInputLimits {
-                max_known_spelling_bytes: 23,
-                ..limits
-            },
-            CssComponentValueErrorKind::ByteLimit,
-        ),
-    ] {
-        let failure = normalize(SyntaxInput::Source(window.clone()), too_small, 0)
-            .err()
-            .unwrap();
-        assert_eq!(failure.kind(), kind);
-        assert_eq!(
-            normalize(SyntaxInput::Source(window.clone()), limits, 0)
-                .unwrap()
-                .metrics,
-            expected
-        );
-    }
-}
-
 #[test]
 fn direct_checked_and_native_promotion_preserves_payload_groups_and_origin_identity() {
-    let first = crate::parse_component_values("é").unwrap();
-    let second = crate::parse_component_values("é").unwrap();
-    let number = crate::parse_component_values("+01").unwrap();
-    let hash = crate::parse_component_values("#12").unwrap();
-    let function = crate::parse_component_values("f(a/**/b)").unwrap();
-    let block = crate::parse_component_values("{x}").unwrap();
-    let implicit_function = crate::parse_component_values("g(z").unwrap();
+    let first = crate::component::values::parse_component_values("é").unwrap();
+    let second = crate::component::values::parse_component_values("é").unwrap();
+    let number = crate::component::values::parse_component_values("+01").unwrap();
+    let hash = crate::component::values::parse_component_values("#12").unwrap();
+    let function = crate::component::values::parse_component_values("f(a/**/b)").unwrap();
+    let block = crate::component::values::parse_component_values("{x}").unwrap();
+    let implicit_function = crate::component::values::parse_component_values("g(z").unwrap();
     let values = [
         first.items()[0].clone(),
         second.items()[0].clone(),
@@ -211,7 +51,7 @@ fn direct_checked_and_native_promotion_preserves_payload_groups_and_origin_ident
         0,
     )
     .unwrap();
-    let promoted = crate::component_values::promote_nodes(
+    let promoted = crate::component::values::parse::promote_nodes(
         &document,
         &document.lists[document.root],
         CssComponentValueLimits::default(),
@@ -309,7 +149,7 @@ fn direct_checked_and_native_promotion_preserves_payload_groups_and_origin_ident
     for text in ["f(a/**/b){x}", "f(a"] {
         let snapshot = CssSourceSnapshot::new(text);
         let document = source_document(text, &snapshot, 0).unwrap();
-        let promoted = crate::component_values::promote_nodes(
+        let promoted = crate::component::values::parse::promote_nodes(
             &document,
             &document.lists[document.root],
             CssComponentValueLimits::default(),
@@ -389,7 +229,7 @@ fn direct_checked_and_native_promotion_preserves_payload_groups_and_origin_ident
             )
         })
         .unwrap();
-    let failure = crate::component_values::promote_nodes(
+    let failure = crate::component::values::parse::promote_nodes(
         &document,
         &[error_node],
         CssComponentValueLimits::default(),

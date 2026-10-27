@@ -1,13 +1,17 @@
 //! Parsed style rules and declarations keep their authored property identity.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::selector::CssSelector;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
 
 #[test]
 fn parsed_style_rule_is_explicit_rule_variant() {
-    let sheet = parse_sheet(".panel { width: 10px; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(".panel { width: 10px; }")
+        .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("style sheet should parse exactly one rule");
     };

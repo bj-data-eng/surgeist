@@ -15,11 +15,12 @@
 
 use crate::css::support::property_admission::Responsible::{self, At};
 use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
-use surgeist_css::{
-    CssDeclaration, CssErrorCode, CssImportance, CssKnownProperty as Property,
-    CssKnownPropertyValueRef, CssPropertyNameRef, CssRecoveryAction, CssTokenKind, ErrorKind,
-    parse_component_values, parse_property_value, parse_style_attribute, validate_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::property::CssKnownProperty as Property;
+use surgeist_css::property::{CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget};
 
 const TEMPLATE_AXES: [Property; 2] = [Property::GridTemplateRows, Property::GridTemplateColumns];
 
@@ -192,7 +193,7 @@ fn a_flexible_minimum_inside_auto_repeat_reports_its_source_token() {
             "{}:repeat(auto-fit, minmax(1fr, 10px)); color:red",
             property.canonical_name()
         );
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid minimum: {source}: {report:?}");
         };
@@ -206,9 +207,12 @@ fn a_flexible_minimum_inside_auto_repeat_reports_its_source_token() {
             diagnostic.error().position().column().value() as usize,
             responsible
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("a Grid grammar error");
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "a Grid grammar error"
+        );
         let token = detail.encountered().expect("responsible fraction");
         assert_eq!(token.kind(), CssTokenKind::Dimension);
         assert_eq!(token.authored(), "1fr");
@@ -222,7 +226,7 @@ fn assert_accepted(property: Property, authored: &str) {
 
 fn assert_accepted_with_spelling(property: Property, spelling: &str, authored: &str) {
     let source = format!("color:red;{spelling}:  {authored} !IMPORTANT;width:3px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(
         properties(report.syntax().as_slice()),
@@ -243,14 +247,22 @@ fn assert_accepted_with_spelling(property: Property, spelling: &str, authored: &
         name.span().end().byte_offset().value(),
         "color:red;".len() + spelling.len()
     );
-    assert!(validate_style_attribute(&source).is_ok(), "{source}");
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok(),
+        "{source}"
+    );
     assert_checked(property, authored);
 }
 
 fn assert_checked(property: Property, authored: &str) {
-    let components = parse_component_values(authored).expect("balanced authored components");
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(property),
+    let components = CssComponentValues::parse(&CssParser::default(), authored)
+        .expect("balanced authored components");
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
         components.clone(),
         CssImportance::Important,
     )
@@ -261,18 +273,22 @@ fn assert_checked(property: Property, authored: &str) {
     assert!(checked.position().is_none());
     assert!(checked.parsed_name().is_none());
     assert!(checked.parsed_value().is_none());
-    let original_tokens = components.serialize().unwrap();
-    let retained_tokens = checked.value_components().serialize().unwrap();
+    let original_tokens = components.serialize_tokens(Default::default()).unwrap();
+    let retained_tokens = checked
+        .value_components()
+        .serialize_tokens(Default::default())
+        .unwrap();
     assert_eq!(retained_tokens.as_css(), original_tokens.as_css());
     assert_eq!(retained_tokens.segments(), original_tokens.segments());
     assert_eq!(
         retained_tokens.origin_at(retained_tokens.as_css().len()),
         original_tokens.origin_at(original_tokens.as_css().len())
     );
-    let surgeist_css::CssValueOrigin::Parsed(original) = components.items()[0].origin() else {
+    let surgeist_css::component::CssValueOrigin::Parsed(original) = components.items()[0].origin()
+    else {
         panic!("the supplied first token has parsed provenance");
     };
-    let surgeist_css::CssValueOrigin::Parsed(retained) =
+    let surgeist_css::component::CssValueOrigin::Parsed(retained) =
         checked.value_components().items()[0].origin()
     else {
         panic!("checked construction retains the first token's provenance");
@@ -284,7 +300,7 @@ fn assert_rejected<'a>(property: Property, authored: &str, token: impl Into<Resp
     let token = token.into();
     let dropped = format!("{}:{authored};", property.canonical_name());
     let source = format!("color:red;{dropped}width:3px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         properties(report.syntax().as_slice()),
         [Property::Color, Property::Width],
@@ -299,7 +315,7 @@ fn assert_rejected<'a>(property: Property, authored: &str, token: impl Into<Resp
         "{source}"
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_invalid_value(diagnostic.error().kind(), property, token);
+    assert_invalid_value(diagnostic.error(), property, token);
     let start = "color:red;".len();
     assert_eq!(diagnostic.span().start().byte_offset().value(), start);
     assert_eq!(
@@ -307,13 +323,18 @@ fn assert_rejected<'a>(property: Property, authored: &str, token: impl Into<Resp
         start + dropped.len()
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_checked_rejected(
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
-            parse_component_values(authored).unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+            CssComponentValues::parse(&CssParser::default(), authored).unwrap(),
             CssImportance::Normal,
         ),
         property,

@@ -8,7 +8,20 @@
 
 use crate::css::support::{declaration_color, parsed_color as parsed};
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssNamedColor, CssRelativeColor, CssRelativeColorChannel,
+    CssRelativeColorEnvironment, CssRelativeColorExpression, CssRelativeColorExpressionValue,
+    CssRelativeColorFunction, CssRelativeColorResultDomain,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::CssCalculationType;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssLonghandValueRef,
+};
 
 #[derive(Clone, Copy)]
 struct Space {
@@ -101,13 +114,14 @@ impl Space {
 
 fn expression(value: CssComponentValue, space: Space, alpha: bool) -> CssRelativeColorExpression {
     CssRelativeColorExpression::try_from_components(
-        CssComponentValues::try_new(vec![value]).unwrap(),
+        CssComponentValues::try_new(vec![value], Default::default()).unwrap(),
         space.environment(),
         if alpha {
             CssRelativeColorResultDomain::Alpha
         } else {
             CssRelativeColorResultDomain::NumberPercentage
         },
+        Default::default(),
     )
     .unwrap()
 }
@@ -126,6 +140,7 @@ fn math(
             .into_iter()
             .map(|token| CssComponentValue::try_token(token).unwrap())
             .collect(),
+        Default::default(),
     )
     .unwrap();
     expression(
@@ -172,7 +187,10 @@ fn signature(color: &CssColor, space: Space) -> &CssRelativeColor {
 }
 fn projection_unchanged(color: &CssColor, expected: &str) {
     let before = color.clone();
-    assert_eq!(color.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        color.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(color, &before);
 }
 fn channel(value: &CssRelativeColorExpression, expected: CssRelativeColorChannel) {
@@ -335,7 +353,12 @@ fn reference_math_retains_number_and_percentage_result_types_in_every_space() {
             }
             let before = color.clone();
             // The selected specified phase retains unresolved reference math.
-            assert!(color.to_specified_css().unwrap().contains("calc("));
+            assert!(
+                color
+                    .serialize_specified(Default::default())
+                    .unwrap()
+                    .contains("calc(")
+            );
             assert_eq!(color, before);
         }
     }
@@ -453,7 +476,7 @@ fn nested_and_contextual_origins_are_retained_without_conversion() {
 
 fn rejected(text: &str) {
     let source = format!("color:{text};opacity:0.5");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.diagnostics().len(), 1, "{source}");
     let diagnostic = &report.diagnostics()[0];
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidColorSyntax);
@@ -472,7 +495,10 @@ fn rejected(text: &str) {
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Opacity
     );
-    let failure = validate_style_attribute(&source).unwrap_err();
+    let failure = CssParser::default()
+        .parse_block_contents(&source)
+        .into_validation_result()
+        .unwrap_err();
     assert_eq!(failure.diagnostics(), report.diagnostics());
 }
 
@@ -533,24 +559,28 @@ fn checked_payloads_reject_environment_and_result_slot_mismatches() {
             (channels.clone(), Some(direct("0", space, false))),
             (channels, Some(direct("0", other, true))),
         ] {
-            assert_eq!(
+            assert!(
                 CssRelativeColor::try_new(
                     CssRelativeColorFunction::Color(space.value),
                     CssColor::current_color(),
                     channels,
                     alpha
                 )
-                .unwrap_err(),
-                CssColorConstructionError::InvalidExpressionEnvironment
+                .unwrap_err()
+                .is_invalid_expression_environment()
             );
         }
         for token in ["1deg", "1px", "1s"] {
             assert!(
                 CssRelativeColorExpression::try_from_components(
-                    CssComponentValues::try_new(vec![CssComponentValue::try_token(token).unwrap()])
-                        .unwrap(),
+                    CssComponentValues::try_new(
+                        vec![CssComponentValue::try_token(token).unwrap()],
+                        Default::default()
+                    )
+                    .unwrap(),
                     space.environment(),
-                    CssRelativeColorResultDomain::NumberPercentage
+                    CssRelativeColorResultDomain::NumberPercentage,
+                    Default::default(),
                 )
                 .is_err()
             );
@@ -595,13 +625,13 @@ fn expanded_and_normalized_transport_preserves_relative_graph_and_occurrence() {
             "color(from red {} -20% none 2 / calc(alpha * 0.5))",
             space.spelling
         );
-        let report = parse_style_attribute(&format!("color:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("color:{text}"));
         assert!(report.is_clean());
         let declaration = &report.syntax()[0];
-        assert_transport(&expand_declaration(declaration).unwrap(), declaration);
-        let report = parse_sheet(&format!(".a{{color:{text}}}"));
+        assert_transport(&declaration.expand().unwrap(), declaration);
+        let report = CssParser::default().parse_sheet(format!(".a{{color:{text}}}"));
         assert!(report.is_clean());
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let declarations: Vec<_> = normalized
             .items()
             .iter()

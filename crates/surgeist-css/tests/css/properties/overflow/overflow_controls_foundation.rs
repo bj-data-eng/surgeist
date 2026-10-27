@@ -8,7 +8,17 @@ use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandValue, CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::values::text::CssTextOverflow;
 
 const NAMES: [&str; 4] = [
     "overflow-clip-margin",
@@ -202,7 +212,7 @@ fn four_controls_expand_to_one_authored_ordinary_contribution() {
         for value in values {
             for source in [declaration(name, value), checked(name, value)] {
                 let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-                    expand_declaration(&source).unwrap()
+                    source.expand().unwrap()
                 else {
                     panic!("{name}:{value} has one ordinary contribution")
                 };
@@ -226,7 +236,7 @@ fn four_controls_expand_to_one_authored_ordinary_contribution() {
 fn css_wide_all_and_pending_reentry_preserve_property_and_source() {
     let all_source = declaration("all", "initial");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all_source).unwrap()
+        all_source.expand().unwrap()
     else {
         panic!("symbolic all reset")
     };
@@ -242,7 +252,7 @@ fn css_wide_all_and_pending_reentry_preserve_property_and_source() {
             let source = declaration(name, text);
             checked(name, text);
             let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("{name} has one symbolic global")
             };
@@ -256,7 +266,7 @@ fn css_wide_all_and_pending_reentry_preserve_property_and_source() {
         }
         for pending in ["var(--control)", "env(--control)"] {
             let source = declaration(name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("{name} keeps substitution pending")
             };
             assert!(handle.source().same_occurrence(&source));
@@ -265,19 +275,22 @@ fn css_wide_all_and_pending_reentry_preserve_property_and_source() {
             } else {
                 "none"
             };
-            assert!(matches!(
+            assert!(
                 handle
-                    .reenter(parse_component_values(invalid_value).unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), invalid_value).unwrap()
+                    )
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert_eq!(
+                    .replacement_error()
+                    .is_some()
+            );
+            assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             let replacement_text = match name {
                 "overflow-clip-margin" => "border-box 2px",
@@ -286,7 +299,8 @@ fn css_wide_all_and_pending_reentry_preserve_property_and_source() {
                 "text-overflow" => "ellipsis",
                 _ => unreachable!(),
             };
-            let replacement = parse_component_values(replacement_text).unwrap();
+            let replacement =
+                CssComponentValues::parse(&CssParser::default(), replacement_text).unwrap();
             let CssContributions::Longhands(items) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("{name} reenters to one ordinary contribution")
@@ -303,7 +317,7 @@ fn css_wide_all_and_pending_reentry_preserve_property_and_source() {
             assert_eq!(item.source().importance(), CssImportance::Important);
             assert_eq!(item.replacement_components(), Some(&replacement));
             let CssContributions::Longhands(globals) = handle
-                .reenter(parse_component_values("inherit").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
                 .unwrap()
             else {
                 panic!("{name} reenters to one symbolic global")
@@ -320,13 +334,13 @@ fn css_wide_all_and_pending_reentry_preserve_property_and_source() {
 #[test]
 fn normalization_preserves_authored_control_order_after_invalid_recovery() {
     let sheet = ".a{overflow-clip-margin:2px content-box;scroll-behavior:smooth;scrollbar-gutter:both-edges;scrollbar-gutter:stable both-edges;text-overflow:ellipsis}";
-    let report = parse_sheet(sheet);
+    let report = CssParser::default().parse_sheet(sheet);
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid gutter diagnostic: {:?}", report.diagnostics())
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -354,7 +368,7 @@ fn normalization_preserves_authored_control_order_after_invalid_recovery() {
         assert_eq!(
             item.source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             authored

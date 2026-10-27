@@ -1,13 +1,27 @@
 //! Functional tests for new typed fronts; no executable RED preceded these APIs.
 //! Filter1 WD20181218 §§9.13,10,11.5 supplies identities and intrinsic initials;
 //! Values4/CSSOM and the selected exact Color/opacity owners supply projection.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_reentry_rejected;
 use crate::css::support::retained_checked_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssSystemColor;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{CssCalculationType, CssNumericDimension};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::effects::{
+    CssColorInterpolationFilters, CssOpacityScalarKind, CssOpacityValue,
+};
 
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("terminal contribution")
     };
@@ -52,40 +66,39 @@ fn interpolation_typed_choices_keep_auto_distinct_and_emit_lowercase_keywords() 
         ),
     ] {
         let before = value;
-        assert_eq!(value.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    canonical.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, canonical.len()))
                 .unwrap(),
             canonical
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, canonical.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, canonical.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, canonical.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, canonical.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, canonical.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, canonical.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(value, before);
-            assert_eq!(value.serialize_specified().unwrap(), canonical);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                canonical
+            );
         }
         for text in [authored, canonical] {
             let source = declaration(CssKnownProperty::ColorInterpolationFilters, text);
@@ -199,7 +212,10 @@ fn flood_and_lighting_wrappers_contribute_the_same_unresolved_color_payload() {
                     _ => panic!("property-coupled color contribution"),
                 };
             assert_eq!(contributed, value);
-            assert_eq!(contributed.to_specified_css().unwrap(), specified);
+            assert_eq!(
+                contributed.serialize_specified(Default::default()).unwrap(),
+                specified
+            );
         }
     }
 }
@@ -230,7 +246,12 @@ fn flood_scalar_payload_preserves_exact_original_kind_token_and_origin() {
             source.value_components().items()[0].origin()
         );
         assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
-        assert_eq!(opacity(&source).serialize_specified().unwrap(), specified);
+        assert_eq!(
+            opacity(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            specified
+        );
         let values = contributions(&source);
         let CssContributionValueRef::Ordinary(CssLonghandValueRef::FloodOpacity(contributed)) =
             values.items()[0].value()
@@ -274,7 +295,10 @@ fn flood_math_payloads_retain_checked_roots_and_unresolved_percentage_hint() {
             }
             _ => panic!("matching exact numeric root"),
         }
-        assert_eq!(value.serialize_specified().unwrap(), specified);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            specified
+        );
         let values = contributions(&source);
         let CssContributionValueRef::Ordinary(CssLonghandValueRef::FloodOpacity(contributed)) =
             values.items()[0].value()
@@ -287,11 +311,9 @@ fn flood_math_payloads_retain_checked_roots_and_unresolved_percentage_hint() {
 
 #[test]
 fn normalization_and_pending_retry_expose_property_coupled_typed_payloads() {
-    let report = parse_sheet(
-        ".x{flood-color:red;flood-opacity:-25%;lighting-color:currentcolor;color-interpolation-filters:auto}",
-    );
+    let report = CssParser::default().parse_sheet(".x{flood-color:red;flood-opacity:-25%;lighting-color:currentcolor;color-interpolation-filters:auto}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let mut order = 0;
     for item in normalized.items() {
         let CssNormalizedItem::Declaration(declaration) = item else {
@@ -341,15 +363,15 @@ fn normalization_and_pending_retry_expose_property_coupled_typed_payloads() {
     assert_eq!(order, 4);
 
     let source = declaration(CssKnownProperty::FloodOpacity, "var(--alpha)");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending alpha")
     };
     assert_reentry_rejected(
-        handle.reenter(parse_component_values("red").unwrap()),
+        handle.reenter(CssComponentValues::parse(&CssParser::default(), "red").unwrap()),
         CssKnownProperty::FloodOpacity,
         Some("red"),
     );
-    let replacement = parse_component_values("-25%").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "-25%").unwrap();
     let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("alpha terminal")
     };

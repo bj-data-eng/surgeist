@@ -1,23 +1,24 @@
 //! The selected MQ5 edition supersedes MQ4; public support metadata identifies
 //! the effective definitions while retaining historical feature lookup IDs.
-use surgeist_css::{
-    CssFeatureKind, CssMediaConditionKind, CssMediaQuery, CssNormalizedItem, CssRuleContextKindRef,
-    CssSupportStatus, feature_metadata, normalize_sheet, parse_component_values, parse_media_query,
-    parse_sheet, validate_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery};
 
 const MQ5: &str = "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/";
 
 fn known(source: &str, name: &str) {
-    let report = parse_media_query(source);
+    let report = CssMediaQuery::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("condition query: {source}");
     };
-    let CssMediaConditionKind::Feature(feature) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(feature)) = condition.kind() else {
         panic!("known feature: {source}");
     };
-    assert_eq!(feature.name(), name);
+    assert_eq!(feature.as_str(), name);
 }
 
 fn effective(id: &str) {
@@ -127,7 +128,7 @@ fn display_mode_cites_its_published_descriptor_instead_of_repository_baseline() 
 #[test]
 fn query_grammar_rows_cite_the_selected_effective_edition() {
     for source in ["screen", "not future()", "(color) or (hover)"] {
-        assert!(parse_media_query(source).is_clean());
+        assert!(CssMediaQuery::parse(&CssParser::default(), source).is_clean());
     }
     for id in [
         "baseline.media.type",
@@ -146,10 +147,16 @@ fn normalization_preserves_import_alternatives_and_symbolic_media_origins() {
         "@import 'x' layer(theme) and (color);",
         "@media (-2px < width <= calc(1em + 1px)) {}"
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean());
-    assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let [
         CssNormalizedItem::Rule(import),
         CssNormalizedItem::Rule(media),
@@ -163,28 +170,36 @@ fn normalization_preserves_import_alternatives_and_symbolic_media_origins() {
     assert!(import.layer().is_none());
     assert!(import.supports().is_none());
     assert_eq!(
-        import.serialize().unwrap().as_css(),
+        import
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "@import 'x' layer(theme) and (color);"
     );
     let CssRuleContextKindRef::Media(media) = media.kind() else {
         panic!("media context");
     };
     assert_eq!(
-        media.serialize().unwrap().as_css(),
+        media.serialize_tokens(Default::default()).unwrap().as_css(),
         "(-2px < width <= calc(1em + 1px))"
     );
     let constructed = CssMediaQuery::try_from_components(
-        parse_component_values("(-2px < width <= calc(1em + 1px))").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "(-2px < width <= calc(1em + 1px))")
+            .unwrap(),
+        Default::default(),
     )
     .unwrap();
     let CssMediaQuery::Condition(condition) = &constructed else {
         panic!("checked condition");
     };
     assert!(
-        matches!(condition.kind(), CssMediaConditionKind::Feature(feature) if feature.name() == "width")
+        matches!(condition.kind(), CssConditionKind::Leaf(CssMediaLeaf::Feature(feature)) if feature.as_str() == "width")
     );
     assert_eq!(
-        constructed.serialize().unwrap().as_css(),
+        constructed
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "(-2px < width <= calc(1em + 1px))"
     );
     let [query] = media.queries() else {

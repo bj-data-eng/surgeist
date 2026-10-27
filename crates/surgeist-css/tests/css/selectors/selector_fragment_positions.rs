@@ -7,11 +7,13 @@
 //! the name, after the colon(s), not the cursor after consuming the name.
 //! Rule and forgiving-member recovery units retain their full original spans.
 
-use surgeist_css::{
-    CssErrorCode, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, CssSelector, CssSourcePosition, CssTokenKind, ErrorKind,
-    parse_sheet, validate_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
 };
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssPseudoClass, CssPseudoSelectorListItem, CssSelector};
+use surgeist_css::source::CssSourcePosition;
 
 fn assert_position(actual: CssSourcePosition, expected: (usize, u32, u32)) {
     assert_eq!(
@@ -38,9 +40,12 @@ fn assert_named_error(
     assert_eq!(diagnostic.action(), action);
     assert_eq!(diagnostic.span().start().byte_offset().value(), span.0);
     assert_eq!(diagnostic.span().end().byte_offset().value(), span.1);
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("typed selector details");
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "typed selector details"
+    );
     assert_eq!(
         detail.production().unwrap().as_str(),
         "baseline.selector.complex"
@@ -59,7 +64,7 @@ fn assert_rejected_rule(
     span: (usize, usize),
     spelling: &str,
 ) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Style(after)] = report.syntax().rules() else {
         panic!("reject the invalid rule and retain the following valid rule");
     };
@@ -71,7 +76,10 @@ fn assert_rejected_rule(
     let [diagnostic] = report.diagnostics() else {
         panic!("one unknown pseudo name: {:?}", report.diagnostics());
     };
-    let failure = validate_sheet(source).expect_err("recovered syntax is not clean validation");
+    let failure = CssParser::default()
+        .parse_sheet(source)
+        .into_validation_result()
+        .expect_err("recovered syntax is not clean validation");
     assert_eq!(failure.diagnostics(), report.diagnostics());
     assert_named_error(
         diagnostic,
@@ -110,7 +118,7 @@ fn unknown_pseudo_name_positions_respect_unicode_comments_and_crlf() {
 #[test]
 fn forgiving_unknown_named_pseudo_reports_name_without_blaming_following_comma() {
     let source = ":is(:test,.ok){color:red}.after{color:blue}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Style(first), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("retain both the recovered selector rule and its following rule");
     };
@@ -134,7 +142,11 @@ fn forgiving_unknown_named_pseudo_reports_name_without_blaming_following_comma()
         panic!("only the unknown member is discarded")
     };
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_named_error(
@@ -149,9 +161,15 @@ fn forgiving_unknown_named_pseudo_reports_name_without_blaming_following_comma()
 #[test]
 fn known_named_and_escaped_pseudo_controls_stay_clean() {
     for source in [":hover{}", "::before{}", r":h\6fver{}", ":is(:hover,.ok){}"] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
-        assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+        assert_eq!(
+            CssParser::default()
+                .parse_sheet(source)
+                .into_validation_result()
+                .unwrap(),
+            *report.syntax()
+        );
     }
 }

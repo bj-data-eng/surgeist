@@ -5,11 +5,19 @@
 use crate::css::support::checked_grammar_declaration as checked;
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandValue, CssPropertyKindRef, CssPropertyTarget,
+};
 
 fn one_ordinary(source: &CssDeclaration) -> CssLonghandValue {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("overflow-wrap expands")
+        source.expand().expect("overflow-wrap expands")
     else {
         panic!("one ordinary overflow-wrap contribution")
     };
@@ -111,19 +119,25 @@ fn canonical_grammar_accepts_three_keywords_and_recovers_from_other_values() {
     }
     for value in ["none", "break-all", "normal anywhere", "1px"] {
         let source = format!("color:red;{name}:{value};color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid-value diagnostic: {source}")
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
         assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-        assert!(validate_style_attribute(&source).is_err());
         assert!(
-            parse_property_value_for_grammar(
-                grammar(name),
-                parse_component_values(value).unwrap(),
-                CssImportance::Normal,
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
+        assert!(
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(grammar(name)),
+                CssComponentValues::parse(&CssParser::default(), value).unwrap(),
+                CssImportance::Normal
             )
             .is_err(),
             "checked construction accepted {name}:{value}"
@@ -142,8 +156,7 @@ fn alias_and_canonical_keywords_expand_once_with_original_source() {
         }
     }
     let alias = declaration("word-wrap", "anywhere");
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&alias).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = alias.expand().unwrap()
     else {
         panic!("alias contributes to canonical longhand")
     };
@@ -164,7 +177,7 @@ fn alias_and_canonical_keywords_expand_once_with_original_source() {
         let source = declaration("word-wrap", spelling);
         checked("word-wrap", spelling);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("one symbolic global contribution")
         };
@@ -181,25 +194,24 @@ fn alias_and_canonical_keywords_expand_once_with_original_source() {
 #[test]
 fn pending_alias_reentry_completes_once_and_rejects_invalid_replacements() {
     let source = declaration("word-wrap", "var(--wrap)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("substitution remains pending")
     };
     assert!(pending.source().same_occurrence(&source));
-    assert_eq!(
+    assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
-    assert!(matches!(
+    assert!(
         pending
-            .reenter(parse_component_values("none").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "none").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
-    let replacement = parse_component_values("normal").unwrap();
+            .replacement_error()
+            .is_some()
+    );
+    let replacement = CssComponentValues::parse(&CssParser::default(), "normal").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("replacement completes canonical longhand")
     };

@@ -2,10 +2,10 @@
 //! Numeric execution, integer rounding and range clamping belong to resolution.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#math
 
-use surgeist_css::parse_style_attribute;
+use surgeist_css::CssParser;
 
 fn accepted(declaration: &str) {
-    let report = parse_style_attribute(declaration);
+    let report = CssParser::default().parse_block_contents(declaration);
     assert!(
         report.is_clean(),
         "{declaration}: {:?}",
@@ -15,7 +15,7 @@ fn accepted(declaration: &str) {
 }
 
 fn rejected(declaration: &str) {
-    let report = parse_style_attribute(declaration);
+    let report = CssParser::default().parse_block_contents(declaration);
     assert!(
         !report.is_clean(),
         "{declaration} must not match its grammar"

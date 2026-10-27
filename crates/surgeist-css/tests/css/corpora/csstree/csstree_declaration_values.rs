@@ -1,6 +1,8 @@
 //! Selected Syntax 3, Variables 1 and Filter Effects 1 declaration admission.
 //! Expectations derive from the original input, independently of the corpus oracle.
-use surgeist_css::{CssErrorCode, CssRecoveryAction, parse_declaration};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
 
 #[test]
 fn raw_declaration_corpus_obeys_selected_grammar() {
@@ -319,7 +321,7 @@ fn raw_declaration_corpus_obeys_selected_grammar() {
         let matching: Vec<_> = cases.iter().filter(|case| case["id"] == id).collect();
         assert_eq!(matching.len(), 1, "one original input for {id}");
         let input = matching[0]["input"].as_str().unwrap();
-        let report = parse_declaration(input);
+        let report = CssDeclaration::parse(&CssParser::default(), input);
         assert_eq!(report.is_clean(), clean, "{id}: {report:?}");
         assert_eq!(report.syntax().is_some(), clean, "{id}: {report:?}");
         let mut expected_class = serde_json::json!({

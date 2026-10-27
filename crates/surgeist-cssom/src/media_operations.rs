@@ -1,7 +1,10 @@
 //! Source MediaList operations over the shared live collection owner.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::*;
-use surgeist_css::*;
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParseReport, CssParser};
 
 /// A source mutation's disposition and original recovered parser diagnostics.
 /// Publication is reported separately by the enclosing batch commit.
@@ -27,10 +30,10 @@ impl CssomSnapshot {
     pub(crate) fn media_text(
         &self,
         id: &CssomMediaListId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         self.media(id)?
-            .serialize_cssom_with_limits(limits)
+            .serialize_cssom(limits)
             .map(|text| text.as_css().to_owned())
             .map_err(CssomError::Media)
     }
@@ -42,14 +45,14 @@ impl CssomSnapshot {
         &self,
         id: &CssomMediaListId,
         index: usize,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Option<String>, CssomError> {
         self.media(id)?
             .queries()
             .get(index)
             .map(|query| {
                 query
-                    .serialize_cssom_with_limits(limits)
+                    .serialize_cssom(limits)
                     .map(|text| text.as_css().to_owned())
                     .map_err(CssomError::Media)
             })
@@ -74,9 +77,10 @@ impl CssomBatch {
                 });
             }
             check_input(source, &this.limits)?;
-            let (value, diagnostics) = recovered(parse_media_query_list(source))?;
+            let (value, diagnostics) =
+                recovered(CssMediaQueryList::parse(&CssParser::default(), source))?;
             value
-                .serialize_cssom_with_limits(this.limits.css)
+                .serialize_cssom(this.limits.css)
                 .map_err(CssomError::Media)?;
             Ok(CssomMediaEdit {
                 changed: this.set_media(id, value)?,
@@ -110,7 +114,8 @@ impl CssomBatch {
         self.apply(|this| {
             this.staged.media(id)?;
             check_input(source, &this.limits)?;
-            let (candidate, diagnostics) = recovered(parse_cssom_media_query(source))?;
+            let (candidate, diagnostics) =
+                recovered(CssMediaQuery::parse_medium(&CssParser::default(), source))?;
             let Some(candidate) = candidate else {
                 return Ok(CssomMediaEdit {
                     changed: false,
@@ -137,7 +142,7 @@ impl CssomBatch {
             scan.push(candidate.clone());
             scan.extend_from_slice(current.queries());
             let texts = CssMediaQueryList::new(scan)
-                .serialize_cssom_members_with_limits(this.limits.css)
+                .serialize_cssom_members(this.limits.css)
                 .map_err(CssomError::Media)?;
             let candidate_text = texts[0].as_css();
             let found = texts[1..]

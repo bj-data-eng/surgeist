@@ -1,7 +1,16 @@
 //! `@keyframes` (CSS Animations 1) authored structure, constructors and strict
 //! parsing through the public stylesheet parser.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::{
+    CssKeyframePercent, CssKeyframeSelector, CssKeyframesIdent, CssKeyframesName, CssKeyframesRule,
+    CssKeyframesString,
+};
+use surgeist_css::values::animation::CssAnimationName;
+use surgeist_css::values::common::CssCustomIdent;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
@@ -15,14 +24,15 @@ fn keyframes_rule(rule: &CssRule) -> &CssKeyframesRule {
 
 #[test]
 fn keyframes_rule_parser_accepts_strict_blocks() {
-    let sheet = parse_sheet(
-        r#"@keyframes fade {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"@keyframes fade {
             from { opacity: 0; transform: translateX(0px); }
             50% { opacity: 0.5; }
             to { opacity: 1; transform: translateX(10px); }
         }"#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one keyframes rule");
     };
@@ -55,13 +65,14 @@ fn keyframes_rule_parser_accepts_strict_blocks() {
 
 #[test]
 fn keyframes_rule_parser_accepts_string_names_and_selector_lists() {
-    let sheet = parse_sheet(
-        r#"@keyframes "fade in" {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"@keyframes "fade in" {
             0%, 100% { opacity: 1; }
         }
         .panel { animation-name: "fade in"; animation: "fade in" 120ms ease; }"#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let [keyframes, style] = sheet.rules() else {
         panic!("expected keyframes and style rules");
     };
@@ -90,13 +101,13 @@ fn keyframes_rule_parser_accepts_string_names_and_selector_lists() {
         Some(CssKnownProperty::Animation)
     );
 
-    let names = property_payload!(declarations[0], AnimationName, names);
+    let names = property_payload!(declarations[0], AnimationName, value);
     assert_eq!(
         names.names(),
         &[CssAnimationName::String(CssKeyframesString::new("fade in"))]
     );
 
-    let animations = property_payload!(declarations[1], Animation, animations);
+    let animations = property_payload!(declarations[1], Animation, value);
     assert_eq!(
         animations.values()[0].name(),
         Some(&CssAnimationName::String(CssKeyframesString::new(
@@ -107,14 +118,12 @@ fn keyframes_rule_parser_accepts_string_names_and_selector_lists() {
 
 #[test]
 fn keyframes_rule_parser_accepts_keyframes_inside_conditional_groups() {
-    let sheet = parse_sheet(
-        r#"@media screen {
+    let sheet = CssParser::default().parse_sheet(r#"@media screen {
             @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
         }
         @container sidebar (inline-size > 30rem) {
             @keyframes slide { 0% { transform: translateX(0px); } 100% { transform: translateX(10px); } }
-        }"#,
-    )
+        }"#)
     .expect("clean parse report");
 
     let [media, container] = sheet.rules() else {

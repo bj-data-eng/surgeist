@@ -5,7 +5,16 @@
 //! while ui_interaction_authored_contract.rs retains the published callable RED.
 
 use crate::css::support::authored_checked_declaration;
-use surgeist_css::*;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownPropertyValueRef, CssLonghandValue,
+    CssLonghandValueRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::ui::CssResize;
 
 fn declaration(name: &str, text: &str) -> CssDeclaration {
     authored_checked_declaration(name, text, false)
@@ -24,7 +33,7 @@ fn exact_payload(source: &CssDeclaration, ordinary: &CssLonghandValue) {
             CssKnownPropertyValueRef::CaretColor(expected),
             CssLonghandValueRef::CaretColor(actual),
         ) => {
-            assert_eq!(actual, expected.caret());
+            assert_eq!(actual, expected.value());
         }
         (CssKnownPropertyValueRef::Cursor(expected), CssLonghandValueRef::Cursor(actual)) => {
             assert_eq!(actual, expected.value());
@@ -42,7 +51,7 @@ fn exact_payload(source: &CssDeclaration, ordinary: &CssLonghandValue) {
             assert_eq!(actual, expected.value());
         }
         (CssKnownPropertyValueRef::Resize(expected), CssLonghandValueRef::Resize(actual)) => {
-            assert_eq!(actual, expected.resize());
+            assert_eq!(actual, expected.value());
         }
         _ => panic!("property-specific UI borrowed projection"),
     }
@@ -50,14 +59,17 @@ fn exact_payload(source: &CssDeclaration, ordinary: &CssLonghandValue) {
 
 #[test]
 fn logical_resize_variants_emit_authored_axes_and_enforce_exact_primitive_limits() {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
+    use CssSerializationLimits as Limits;
     for (value, expected) in [(CssResize::Block, "block"), (CssResize::Inline, "inline")] {
         let before = value;
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(1, 1, expected.len()))
+                .serialize_specified(Limits::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
@@ -67,32 +79,32 @@ fn logical_resize_variants_emit_authored_axes_and_enforce_exact_primitive_limits
             (Limits::new(1, 1, expected.len() - 1), Kind::ByteLimit),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(value, before);
         }
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(1, 1, expected.len()))
+                .serialize_specified(Limits::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
         for source in [
             declaration("resize", expected),
-            parse_style_attribute(&format!("resize:{expected}!important")).syntax()[0].clone(),
+            CssParser::default()
+                .parse_block_contents(format!("resize:{expected}!important"))
+                .syntax()[0]
+                .clone(),
         ] {
             let CssKnownPropertyValueRef::Resize(wrapper) =
                 source.known().unwrap().property_value().unwrap()
             else {
                 panic!("logical resize keyword")
             };
-            assert_eq!(*wrapper.resize(), value);
+            assert_eq!(*wrapper.value(), value);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("one logical Resize terminal")
             };
@@ -109,14 +121,12 @@ fn logical_resize_variants_emit_authored_axes_and_enforce_exact_primitive_limits
 
 #[test]
 fn new_ui_borrowed_views_preserve_complete_authored_payloads_and_occurrences() {
-    let report = parse_style_attribute(
-        "caret-color:contrast-color(hsl(0 100% 50%))!important;cursor:image-set(\"first.png\" type(\"not a MIME type\") 96.000dpi,url(second.png)) -3.500 +4.250, pointer!important;pointer-events:none!important;-webkit-user-select:contain!important;resize:inline!important",
-    );
+    let report = CssParser::default().parse_block_contents("caret-color:contrast-color(hsl(0 100% 50%))!important;cursor:image-set(\"first.png\" type(\"not a MIME type\") 96.000dpi,url(second.png)) -3.500 +4.250, pointer!important;pointer-events:none!important;-webkit-user-select:contain!important;resize:inline!important");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     for source in report.syntax().iter() {
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("ordinary UI terminal")
         };
@@ -145,13 +155,14 @@ fn new_ui_borrowed_views_retain_replacement_graphs_under_original_occurrences() 
     ] {
         let source = declaration(name, "var(--ui)");
         let before = source.clone();
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending UI occurrence")
         };
-        let replacement = parse_component_values(text).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let snapshot = replacement.clone();
-        let expected = parse_property_value_for_grammar(
-            source.known().unwrap().grammar(),
+        let expected = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(source.known().unwrap().grammar()),
             replacement.clone(),
             CssImportance::Important,
         )

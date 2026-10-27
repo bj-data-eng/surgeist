@@ -4,13 +4,17 @@
 //! repaired serialization can expose an implicit origin, but cannot close input.
 //! No new borrowed variants or family expansion capability are required.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
 
 fn rejection_failures(property: CssKnownProperty, source: &str) -> Vec<String> {
     let mut failures = Vec::new();
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let before = components.clone();
-    let serialized = components.serialize().unwrap();
+    let serialized = components.serialize_tokens(Default::default()).unwrap();
     // Scan actual emitted origin mappings; do not infer an EOF position from
     // the repaired CSS length or assume the implicit ending is a suffix.
     let origin = (0..serialized.as_css().len())
@@ -30,16 +34,18 @@ fn rejection_failures(property: CssKnownProperty, source: &str) -> Vec<String> {
     for (front, result) in [
         (
             "property",
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Important,
             ),
         ),
         (
             "grammar",
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Important,
             ),
@@ -47,10 +53,8 @@ fn rejection_failures(property: CssKnownProperty, source: &str) -> Vec<String> {
     ] {
         match result {
             Err(error)
-                if matches!(
-                    error.kind(),
-                    CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-                ) && error.origin() == &CssSerializedOrigin::End(Some(origin.clone())) => {}
+                if error.code() == Some(CssErrorCode::UnexpectedEnd)
+                    && error.origin() == CssSerializedOrigin::End(Some(origin.clone())) => {}
             Err(error) => failures.push(format!(
                 "{front}/{source}: expected original implicit EOF; actual {error:?}"
             )),
@@ -78,17 +82,19 @@ fn assert_recovered_inputs_rejected(property: CssKnownProperty, sources: &[&str]
 
 fn assert_complete(property: CssKnownProperty, sources: &[&str]) {
     for &source in sources {
-        let components = parse_component_values(source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let before = components.clone();
         for declaration in [
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Important,
             )
             .unwrap(),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Important,
             )

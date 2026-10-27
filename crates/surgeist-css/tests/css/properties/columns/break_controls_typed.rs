@@ -1,4 +1,13 @@
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssBreakBetween, CssBreakInside};
 
 #[test]
 fn checked_keyword_domains_render_every_canonical_value_with_exact_limits() {
@@ -16,36 +25,32 @@ fn checked_keyword_domains_render_every_canonical_value_with_exact_limits() {
         (CssBreakBetween::AvoidRegion, "avoid-region"),
         (CssBreakBetween::Region, "region"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, expected.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, expected.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, expected.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
@@ -57,36 +62,32 @@ fn checked_keyword_domains_render_every_canonical_value_with_exact_limits() {
         (CssBreakInside::AvoidColumn, "avoid-column"),
         (CssBreakInside::AvoidRegion, "avoid-region"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len()))
                 .unwrap(),
             expected
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, expected.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, expected.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, expected.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
@@ -116,11 +117,18 @@ fn constructed_components_retain_programmatic_provenance_and_typed_mapping() {
         ),
     ] {
         let grammar = CssPropertyGrammar::from_name(name).unwrap();
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(source).unwrap()])
-                .unwrap();
-        let declaration =
-            parse_property_value_for_grammar(grammar, components, CssImportance::Normal).unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(source).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(grammar),
+            components,
+            CssImportance::Normal,
+        )
+        .unwrap();
         assert!(declaration.position().is_none());
         assert!(matches!(
             declaration.value_components().items()[0].origin(),
@@ -135,10 +143,18 @@ fn constructed_components_retain_programmatic_provenance_and_typed_mapping() {
         }
     }
     let grammar = CssPropertyGrammar::from_name("page-break-inside").unwrap();
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("avoid").unwrap()]).unwrap();
-    let declaration =
-        parse_property_value_for_grammar(grammar, components, CssImportance::Normal).unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("avoid").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar),
+        components,
+        CssImportance::Normal,
+    )
+    .unwrap();
     assert!(matches!(
         declaration.value_components().items()[0].origin(),
         CssValueOrigin::Programmatic
@@ -186,7 +202,7 @@ fn parsed_wrappers_keep_authored_spelling_and_distinct_legacy_grammar() {
         ),
     ] {
         let source = format!("{name}:{authored}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let declaration = &report.syntax()[0];
         let known = declaration.known().unwrap();
@@ -204,7 +220,8 @@ fn parsed_wrappers_keep_authored_spelling_and_distinct_legacy_grammar() {
             _ => panic!("expected before or after"),
         }
     }
-    let report = parse_style_attribute("break-inside:avoid-region;page-break-inside:avoid");
+    let report = CssParser::default()
+        .parse_block_contents("break-inside:avoid-region;page-break-inside:avoid");
     assert!(report.is_clean());
     for (declaration, (expected, grammar)) in report.syntax().iter().zip([
         (CssBreakInside::AvoidRegion, "break-inside"),

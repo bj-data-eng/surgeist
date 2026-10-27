@@ -1,7 +1,10 @@
-use surgeist_css::{
-    CssErrorCode, CssKeyframeSelector, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
-    CssPseudoElementSegment, CssRecoveryAction, CssRule, CssScopedRule, CssSelector, ErrorKind,
-    parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::CssKeyframeSelector;
+use surgeist_css::selector::{
+    CssPseudoClass, CssPseudoElement, CssPseudoElementSegment, CssSelector,
 };
 
 fn style_name(rule: &CssRule) -> &str {
@@ -17,7 +20,9 @@ fn style_name(rule: &CssRule) -> &str {
     name
 }
 
-fn property_names(declarations: &surgeist_css::CssKeyframeDeclarationList) -> Vec<&str> {
+fn property_names(
+    declarations: &surgeist_css::rule::keyframes::CssKeyframeDeclarationList,
+) -> Vec<&str> {
     declarations
         .iter()
         .map(|declaration| match declaration.property_name() {
@@ -30,7 +35,7 @@ fn property_names(declarations: &surgeist_css::CssKeyframeDeclarationList) -> Ve
 
 fn assert_drop(
     source: &str,
-    diagnostic: &surgeist_css::CssRecoveryDiagnostic,
+    diagnostic: &surgeist_css::diagnostic::CssRecoveryDiagnostic,
     unit: &str,
     occurrence: usize,
     code: CssErrorCode,
@@ -71,7 +76,7 @@ fn nested_structural_group_contexts_retain_siblings_around_balanced_at_rule_fail
     ];
 
     for source in cases {
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let children = match &report.syntax().rules()[0] {
             CssRule::LayerBlock(rule) => rule.rules(),
             CssRule::Media(rule) => rule.rules(),
@@ -96,10 +101,13 @@ fn nested_structural_group_contexts_retain_siblings_around_balanced_at_rule_fail
             CssRecoveryAction::DropAtRule,
             start,
         );
-        let ErrorKind::UnknownAtRule(detail) = diagnostic.error().kind() else {
-            panic!("expected unknown at-rule detail");
-        };
-        assert_eq!(detail.name().as_str(), "mystery");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::UnknownAtRule,
+            "expected unknown at-rule detail"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), "mystery");
     }
 }
 
@@ -108,7 +116,7 @@ fn nested_structural_qualified_failures_recover_in_group_scope_and_style_context
     let failed = ".bad:is(.one, .two), { color: black; }";
     let group_source =
         format!("@media screen {{ .before {{ color: red; }} {failed} .after {{ color: blue; }} }}");
-    let group = parse_sheet(&group_source);
+    let group = CssParser::default().parse_sheet(&group_source);
     let [CssRule::Media(media)] = group.syntax().rules() else {
         panic!("expected retained media rule");
     };
@@ -127,13 +135,13 @@ fn nested_structural_qualified_failures_recover_in_group_scope_and_style_context
 
     let scope_source =
         format!("@scope {{ .before {{ color: red; }} {failed} .after {{ color: blue; }} }}");
-    let scope = parse_sheet(&scope_source);
+    let scope = CssParser::default().parse_sheet(&scope_source);
     let [CssRule::Scope(scope_rule)] = scope.syntax().rules() else {
         panic!("expected retained scope rule");
     };
     assert!(matches!(
         scope_rule.rules().rules(),
-        [CssScopedRule::Style(_), CssScopedRule::Style(_)]
+        [CssRule::Style(_), CssRule::Style(_)]
     ));
     let scope_start = scope_source.find(failed).unwrap();
     assert_drop(
@@ -149,7 +157,7 @@ fn nested_structural_qualified_failures_recover_in_group_scope_and_style_context
     let style_source = format!(
         ".host {{ color: red; & .before {{ width: 1px; }} {failed} & .after {{ height: 2px; }} opacity: 1; }}"
     );
-    let style = parse_sheet(&style_source);
+    let style = CssParser::default().parse_sheet(&style_source);
     let [CssRule::Style(parent)] = style.syntax().rules() else {
         panic!("expected authored parent");
     };
@@ -180,7 +188,7 @@ fn nested_structural_repeated_failures_retain_empty_permitted_group_and_later_si
     let second = ".bad, { color: red; }";
     let source = format!("@layer empty {{ {first} {second} }} .after {{ color: blue; }}");
 
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [CssRule::LayerBlock(layer), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("expected empty layer and later style sibling");
     };
@@ -214,7 +222,7 @@ fn nested_invalid_language_retains_valid_pseudo_siblings_in_authored_order() {
     let source = format!(
         "@media screen {{ .before:target {{ color: red; }} {first} {second} .after:visited {{ color: blue; }} }}"
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
 
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("expected retained media group")
@@ -280,7 +288,7 @@ fn nested_structural_style_and_scope_at_rule_failures_keep_authored_siblings() {
     let style_source = format!(
         ".host {{ color: red; & .before {{ width: 1px; }} {failed} & .after {{ height: 2px; }} opacity: 1; }}"
     );
-    let style = parse_sheet(&style_source);
+    let style = CssParser::default().parse_sheet(&style_source);
     let [CssRule::Style(parent)] = style.syntax().rules() else {
         panic!("expected authored parent");
     };
@@ -305,13 +313,13 @@ fn nested_structural_style_and_scope_at_rule_failures_keep_authored_siblings() {
 
     let scope_source =
         format!("@scope {{ .before {{ color: red; }} {failed} .after {{ color: blue; }} }}");
-    let scope = parse_sheet(&scope_source);
+    let scope = CssParser::default().parse_sheet(&scope_source);
     let [CssRule::Scope(scope_rule)] = scope.syntax().rules() else {
         panic!("expected retained scope rule");
     };
     assert!(matches!(
         scope_rule.rules().rules(),
-        [CssScopedRule::Style(_), CssScopedRule::Style(_)]
+        [CssRule::Style(_), CssRule::Style(_)]
     ));
     let scope_start = scope_source.find(failed).unwrap();
     assert_drop(
@@ -333,7 +341,7 @@ fn nested_structural_keyframes_recover_blocks_and_declarations_in_authored_order
         "@keyframes fade {{ from {{ opacity: 0; {invalid_declaration} width: 1px; }} {invalid_selector} to {{ opacity: 1; }} }} .after {{ color: blue; }}"
     );
 
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [CssRule::Keyframes(keyframes), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("expected recovered keyframes and later style sibling");
     };
@@ -378,7 +386,7 @@ fn nested_structural_keyframe_declaration_loss_retains_empty_authored_parents() 
     let empty_block = format!("from {{ {invalid_declaration} }}");
     let source = format!("@keyframes fade {{ {empty_block} }} .after {{ color: blue; }}");
 
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [CssRule::Keyframes(keyframes), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("expected the empty keyframe parent and later style rule");
     };
@@ -407,7 +415,7 @@ fn nested_structural_keyframes_drop_nested_children_and_invalid_blocks_only() {
         "@keyframes fade {{ from {{ opacity: 0; }} {malformed} {invalid_selector} to {{ opacity: 1; }} }}"
     );
 
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let [CssRule::Keyframes(keyframes)] = report.syntax().rules() else {
         panic!("expected representable keyframes after dropping malformed blocks");
     };
@@ -434,12 +442,15 @@ fn nested_structural_keyframes_drop_nested_children_and_invalid_blocks_only() {
         CssRecoveryAction::DropAtRule,
         source.find("@media").unwrap(),
     );
-    let ErrorKind::InvalidAtRulePlacement(detail) = report.diagnostics()[0].error().kind() else {
-        panic!("expected keyframe at-rule placement detail");
-    };
-    assert_eq!(detail.name().as_str(), "media");
+    let detail = report.diagnostics()[0].error();
     assert_eq!(
-        detail.expected_context().as_str(),
+        detail.code(),
+        CssErrorCode::InvalidAtRulePlacement,
+        "expected keyframe at-rule placement detail"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "media");
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a keyframe declaration list"
     );
     assert_drop(

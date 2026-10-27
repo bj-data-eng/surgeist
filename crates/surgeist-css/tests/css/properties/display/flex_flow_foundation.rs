@@ -2,11 +2,20 @@
 //! `flex-flow` sets both, including the initial of an omitted component.
 
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssLonghandContribution,
+    CssLonghandValue, CssPropertyKindRef,
+};
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("ordinary flex direction/wrap contributions")
     };
@@ -127,26 +136,26 @@ fn unordered_flow_components_and_omissions_contribute_both_specified_values() {
 #[test]
 fn pending_flow_reentry_checks_complete_grammar_and_preserves_original_source() {
     let source = declaration("flex-flow:var(--flow)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("substitution remains pending")
     };
     for invalid in ["row column", "wrap nowrap", "row wrap nowrap", "row / wrap"] {
-        assert!(matches!(
+        assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
-    let replacement = parse_component_values("wrap-reverse column").unwrap();
+    let replacement =
+        CssComponentValues::parse(&CssParser::default(), "wrap-reverse column").unwrap();
     for _ in 0..2 {
         let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
         else {
@@ -173,7 +182,7 @@ fn pending_flow_reentry_checks_complete_grammar_and_preserves_original_source() 
 
 #[test]
 fn normalized_flow_keeps_mixed_order_and_rejects_a_missing_member_budget() {
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         ".a{flex-direction:column;flex-flow:row column;flex-flow:wrap-reverse;flex-wrap:wrap}",
     );
     assert_eq!(report.diagnostics().len(), 1);
@@ -181,7 +190,7 @@ fn normalized_flow_keeps_mixed_order_and_rejects_a_missing_member_budget() {
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -221,14 +230,8 @@ fn normalized_flow_keeps_mixed_order_and_rejects_a_missing_member_budget() {
         );
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2
-        }
-    ));
+    let error = report.syntax().normalize(limits).unwrap_err();
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Contributions, 2)));
     assert_eq!(
         error.declaration().unwrap().known().unwrap().property(),
         CssKnownProperty::FlexFlow

@@ -1,8 +1,10 @@
-use surgeist_css::{
-    CssBorderColorShorthand, CssBorderColors, CssBoxSideKind, CssColor, CssColorComponent,
-    CssGlobalKeyword, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
-    parse_style_attribute,
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssColorComponent};
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
 };
+use surgeist_css::values::common::{CssBoxSideKind, CssFourSides};
 
 // CSS Backgrounds and Borders 3, 2024-03-11, section 3.1 defines <color>{1,4}.
 // The selected Color 4 publication supplies the component color grammar.
@@ -16,7 +18,7 @@ fn one_through_four_border_colors_are_retained_with_their_valid_sibling() {
         "lab(50% 20 30) /**/ rgb(1 2 3 / none)",
     ] {
         let source = format!("border-color: {authored}; opacity: 0.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 2, "{source}");
         let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
@@ -38,7 +40,7 @@ fn one_through_four_border_colors_are_retained_with_their_valid_sibling() {
 
 #[test]
 fn single_border_color_preserves_its_typed_value() {
-    let report = parse_style_attribute("border-color: currentcolor");
+    let report = CssParser::default().parse_block_contents("border-color: currentcolor");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
@@ -49,8 +51,8 @@ fn single_border_color_preserves_its_typed_value() {
     else {
         panic!("expected border-color wrapper");
     };
-    assert_eq!(value.value().authored_values().len(), 1);
-    assert!(value.value().authored_values()[0].is_current_color());
+    assert_eq!(value.value().authored().len(), 1);
+    assert!(value.value().authored()[0].is_current_color());
 }
 
 #[test]
@@ -65,7 +67,7 @@ fn invalid_border_color_counts_and_components_recover_at_the_next_declaration() 
         "red initial",
     ] {
         let source = format!("border-color: {authored}; opacity: 0.5");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(
             report.syntax().len(),
             1,
@@ -91,7 +93,7 @@ fn border_color_globals_and_pending_substitution_keep_their_declared_value_branc
         ("revert-layer", CssGlobalKeyword::RevertLayer),
     ] {
         let source = format!("border-color: {authored}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{source}");
         let known = report.syntax()[0].known().expect("known border-color");
@@ -101,7 +103,7 @@ fn border_color_globals_and_pending_substitution_keep_their_declared_value_branc
     }
 
     let source = "border-color: red var(--remaining-colors, blue green)";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     let known = report.syntax()[0].known().expect("known border-color");
@@ -113,9 +115,13 @@ fn border_color_globals_and_pending_substitution_keep_their_declared_value_branc
     assert!(known.property_value().is_none());
 }
 
-fn border_color_value(authored: &str) -> surgeist_css::CssBorderColorPropertyValue {
+fn border_color_value(
+    authored: &str,
+) -> surgeist_css::property::CssPropertyValue<
+    surgeist_css::values::common::CssFourSides<surgeist_css::color::CssColor>,
+> {
     let source = format!("border-color: {authored}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1, "{source}");
     let CssKnownPropertyValueRef::BorderColor(value) = report.syntax()[0]
@@ -129,14 +135,9 @@ fn border_color_value(authored: &str) -> surgeist_css::CssBorderColorPropertyVal
     value.clone()
 }
 
-fn named_sides(colors: &CssBorderColors) -> [&str; 4] {
-    [colors.top(), colors.right(), colors.bottom(), colors.left()]
-        .map(|color| color.named().expect("named side color").name())
-}
-
-fn named_assignments(colors: &CssBorderColorShorthand) -> [&str; 4] {
+fn named_assignments(colors: &CssFourSides<CssColor>) -> [&str; 4] {
     colors
-        .assigned_values()
+        .assigned()
         .map(|color| color.named().expect("named assigned color").name())
 }
 
@@ -163,7 +164,7 @@ fn border_color_sides_preserve_current_color_and_exact_authored_color_components
     let value = border_color_value(authored);
     assert_eq!(value.as_css(), authored);
     let colors = value.value();
-    let [top, right, bottom, left] = colors.assigned_values();
+    let [top, right, bottom, left] = colors.assigned();
     assert_eq!(top.named().unwrap().name(), "red");
     let rgb = right.rgb_value().expect("authored rgb side");
     let [
@@ -204,35 +205,35 @@ fn border_color_sides_preserve_current_color_and_exact_authored_color_components
 #[test]
 fn checked_border_colors_enforce_component_count_and_the_same_side_expansion() {
     let values: Vec<CssColor> = ["red", "blue", "green", "black"]
-        .map(|name| border_color_value(name).value().authored_values()[0].clone())
+        .map(|name| border_color_value(name).value().authored()[0].clone())
         .into();
 
-    assert!(CssBorderColors::try_new(Vec::new()).is_none());
-    assert!(CssBorderColors::try_new(vec![values[0].clone(); 5]).is_none());
+    assert!(CssFourSides::<CssColor>::try_new(CssBoxSideKind::Physical, Vec::new()).is_none());
+    assert!(CssFourSides::try_new(CssBoxSideKind::Physical, vec![values[0].clone(); 5]).is_none());
     for (count, expected) in [
         (1, ["red", "red", "red", "red"]),
         (2, ["red", "blue", "red", "blue"]),
         (3, ["red", "blue", "green", "blue"]),
         (4, ["red", "blue", "green", "black"]),
     ] {
-        let colors = CssBorderColors::try_new(values[..count].to_vec())
+        let colors = CssFourSides::try_new(CssBoxSideKind::Physical, values[..count].to_vec())
             .expect("one through four already checked colors");
-        assert_eq!(named_sides(&colors), expected, "{count} components");
+        assert_eq!(named_assignments(&colors), expected, "{count} components");
     }
 }
 
 #[test]
 fn border_color_preserves_arity_and_currentcolor_expansion() {
     let single = border_color_value("black");
-    assert_eq!(single.value().authored_values().len(), 1);
+    assert_eq!(single.value().authored().len(), 1);
     assert_eq!(
-        single.value().authored_values()[0].named().unwrap().name(),
+        single.value().authored()[0].named().unwrap().name(),
         "black"
     );
     let pair = border_color_value("black black");
-    assert_eq!(pair.value().authored_values().len(), 2);
+    assert_eq!(pair.value().authored().len(), 2);
     let value = border_color_value("currentcolor");
-    for side in value.value().assigned_values() {
+    for side in value.value().assigned() {
         assert!(side.is_current_color());
     }
 }

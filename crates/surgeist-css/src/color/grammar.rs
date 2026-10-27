@@ -4,16 +4,15 @@
 //! reached resolution must finish before any record can become a used value.
 
 use super::keywords::{ColorFunction as F, Word};
-use super::protocol::{
-    CssColorProtocolError, CssColorSlot, Data, LexicalRecord, LexicalTable, RecordRange,
-    RecordTable,
-};
 use super::tokens::{ClassifiedToken, TokenAction, TokenReader};
-use crate::tokenization::tokenizer::{NameKind, NumberKind, Span, TokenKind};
-use crate::{
-    ColorSpace as Space, CssColorInterpolationMethod, CssColorSyntax, CssSystemColor,
-    HueInterpolation, PredefinedColorSpace,
+use crate::color::controlled::CssColorSlot;
+use crate::color::controlled::protocol::{
+    ColorProtocolError, Data, LexicalRecord, LexicalTable, RecordRange, RecordTable,
 };
+use crate::color::{CssColorInterpolationMethod, CssColorSyntax, CssSystemColor};
+use crate::tokenization::tokenizer::{NameKind, NumberKind, Span, TokenKind};
+use surgeist_color::ColorSpace as Space;
+use surgeist_color::{HueInterpolation, PredefinedColorSpace};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum RawComponent {
@@ -28,10 +27,10 @@ pub(crate) enum RawComponent {
     },
 }
 impl RawComponent {
-    pub(crate) fn source_token(self) -> Result<ClassifiedToken, CssColorProtocolError> {
+    pub(crate) fn source_token(self) -> Result<ClassifiedToken, ColorProtocolError> {
         match self {
             Self::Atom(token) | Self::Math { opener: token, .. } => Ok(token),
-            Self::Authored { .. } => Err(CssColorProtocolError::WrongSlot),
+            Self::Authored { .. } => Err(ColorProtocolError::WrongSlot),
         }
     }
 }
@@ -97,14 +96,14 @@ pub(crate) enum RecipeKind {
     Function(FunctionRecipe),
 }
 impl FunctionRecipe {
-    pub(crate) fn component_index(self, ordinal: usize) -> Result<usize, CssColorProtocolError> {
+    pub(crate) fn component_index(self, ordinal: usize) -> Result<usize, ColorProtocolError> {
         if ordinal >= self.count {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         self.component_start
-            .ok_or(CssColorProtocolError::WrongSlot)?
+            .ok_or(ColorProtocolError::WrongSlot)?
             .checked_add(ordinal)
-            .ok_or(CssColorProtocolError::Overflow)
+            .ok_or(ColorProtocolError::Overflow)
     }
 }
 /// Provenance belongs to the actual input domain, independent of bank indices.
@@ -114,10 +113,10 @@ pub(crate) enum Site {
     Authored { record: usize },
 }
 impl Site {
-    pub(crate) fn source(self) -> Result<Span, CssColorProtocolError> {
+    pub(crate) fn source(self) -> Result<Span, ColorProtocolError> {
         match self {
             Self::Source(source) => Ok(source),
-            Self::Authored { .. } => Err(CssColorProtocolError::WrongSlot),
+            Self::Authored { .. } => Err(ColorProtocolError::WrongSlot),
         }
     }
 }
@@ -200,10 +199,10 @@ impl<'css> GrammarInput<'css> {
             Self::Authored(table) => table,
         }
     }
-    pub(crate) fn source(self) -> Result<LexicalTable<'css>, CssColorProtocolError> {
+    pub(crate) fn source(self) -> Result<LexicalTable<'css>, ColorProtocolError> {
         match self {
             Self::Source(table) => Ok(table),
-            Self::Authored(_) => Err(CssColorProtocolError::WrongSlot),
+            Self::Authored(_) => Err(ColorProtocolError::WrongSlot),
         }
     }
 }
@@ -212,18 +211,18 @@ impl GrammarTable<'_> {
         &self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<GrammarRecord, CssColorProtocolError> {
+    ) -> Result<GrammarRecord, ColorProtocolError> {
         slot.qualify(
             self.input.records().owner,
             self.input.records().phase,
             index,
-            super::protocol::CssColorBank::Algorithm,
+            crate::color::controlled::CssColorBank::Algorithm,
         )?;
         if index < self.start || index >= self.end {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let Data::Grammar(record) = slot.data else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         Ok(record)
     }
@@ -346,36 +345,33 @@ impl<'owner> ColorGrammar<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (GrammarAction::ReadLexical { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.reader.read(index, slot)
     }
-    pub(crate) fn record(
-        &self,
-        index: usize,
-    ) -> Result<CssColorSlot<'owner>, CssColorProtocolError> {
+    pub(crate) fn record(&self, index: usize) -> Result<CssColorSlot<'owner>, ColorProtocolError> {
         if self.action() != (GrammarAction::Append { index }) {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         self.next_record
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         let State::Pending { record, commit } = self.state else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         // Every counter required by the acknowledged transition is checked
         // before the caller can commit storage for this actual record.
         match commit {
             Commit::Suspend => {
                 let GrammarRecord::Frame(frame) = record else {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 };
                 frame
                     .depth
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
             }
             Commit::Component { frame, role }
                 if !matches!(role, ComponentRole::Alpha | ComponentRole::Weight) =>
@@ -384,15 +380,15 @@ impl<'owner> ColorGrammar<'owner> {
                     .recipe
                     .count
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 if let Some(start) = frame.recipe.component_start {
                     if start.checked_add(frame.recipe.count) != Some(index)
                         || frame.recipe.components != index.checked_sub(1)
                     {
-                        return Err(CssColorProtocolError::WrongIndex);
+                        return Err(ColorProtocolError::WrongIndex);
                     }
                 } else if frame.recipe.count != 0 || frame.recipe.components.is_some() {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 }
             }
             Commit::Mix { frame } => {
@@ -400,7 +396,7 @@ impl<'owner> ColorGrammar<'owner> {
                     .recipe
                     .mix_count
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
             }
             _ => {}
         }
@@ -415,39 +411,39 @@ impl<'owner> ColorGrammar<'owner> {
         &mut self,
         index: usize,
         record: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         self.qualify(index, record)?;
         if index != self.next_record {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let State::Pending {
             record: expected,
             commit,
         } = self.state
         else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         let Data::Grammar(actual) = record.data else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         if expected != actual {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         let next = self
             .next_record
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         self.state = match commit {
             Commit::Suspend => {
                 let GrammarRecord::Frame(frame) = expected else {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 };
                 State::Color {
                     parent: Some(index),
                     depth: frame
                         .depth
                         .checked_add(1)
-                        .ok_or(CssColorProtocolError::Overflow)?,
+                        .ok_or(ColorProtocolError::Overflow)?,
                 }
             }
             Commit::Color {
@@ -467,7 +463,7 @@ impl<'owner> ColorGrammar<'owner> {
             }
             Commit::Component { mut frame, role } => {
                 let GrammarRecord::Component(_) = expected else {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 };
                 if role == ComponentRole::Alpha {
                     frame.recipe.alpha = Some(index);
@@ -486,7 +482,7 @@ impl<'owner> ColorGrammar<'owner> {
                         .recipe
                         .count
                         .checked_add(1)
-                        .ok_or(CssColorProtocolError::Overflow)?;
+                        .ok_or(ColorProtocolError::Overflow)?;
                     frame.stage = FrameStage::AfterComponent;
                 }
                 State::Frame(frame)
@@ -497,7 +493,7 @@ impl<'owner> ColorGrammar<'owner> {
                     .recipe
                     .mix_count
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 frame.weight = None;
                 frame.mix_color = None;
                 frame.stage = FrameStage::MixAfter;
@@ -507,10 +503,10 @@ impl<'owner> ColorGrammar<'owner> {
         self.next_record = next;
         Ok(())
     }
-    fn qualify(&self, index: usize, slot: &CssColorSlot<'_>) -> Result<(), CssColorProtocolError> {
+    fn qualify(&self, index: usize, slot: &CssColorSlot<'_>) -> Result<(), ColorProtocolError> {
         slot.qualify(self.table.owner, self.table.phase, index, slot.data.bank())?;
         if index != slot.index {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         Ok(())
     }
@@ -518,7 +514,7 @@ impl<'owner> ColorGrammar<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         self.qualify(index, slot)?;
         let State::Parent {
             index: expected,
@@ -526,13 +522,13 @@ impl<'owner> ColorGrammar<'owner> {
             closed,
         } = self.state
         else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         if index != expected {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let Data::Grammar(GrammarRecord::Frame(mut frame)) = slot.data else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         frame.closed &= closed;
         frame.stage = match frame.stage {
@@ -562,35 +558,35 @@ impl<'owner> ColorGrammar<'owner> {
                 frame.mix_color = Some(child);
                 FrameStage::MixTail
             }
-            _ => return Err(CssColorProtocolError::WrongAction),
+            _ => return Err(ColorProtocolError::WrongAction),
         };
         self.state = State::Frame(frame);
         Ok(())
     }
-    fn token(&self) -> Result<Option<ClassifiedToken>, CssColorProtocolError> {
+    fn token(&self) -> Result<Option<ClassifiedToken>, ColorProtocolError> {
         match self.reader.action() {
             TokenAction::Yield => self.reader.current().map(Some),
             TokenAction::End => Ok(None),
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
-    fn consume(&mut self) -> Result<(), CssColorProtocolError> {
+    fn consume(&mut self) -> Result<(), ColorProtocolError> {
         self.last_end = self.reader.current()?.token.source.end;
         self.reader.consumed()
     }
     pub(crate) fn failure_reason(
         &self,
         source: Span,
-    ) -> Result<GrammarFailureReason, CssColorProtocolError> {
+    ) -> Result<GrammarFailureReason, ColorProtocolError> {
         let State::Failed {
             source: actual,
             reason,
         } = self.state
         else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         if source != actual {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         Ok(reason)
     }
@@ -624,7 +620,7 @@ impl<'owner> ColorGrammar<'owner> {
         frame: Frame,
         role: ComponentRole,
         component: RawComponent,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let context =
             super::component::ComponentContext::for_recipe(frame.recipe, role, frame.recipe.count)?;
         let previous = if matches!(role, ComponentRole::Alpha | ComponentRole::Weight) {
@@ -650,7 +646,7 @@ impl<'owner> ColorGrammar<'owner> {
         frame: Frame,
         role: ComponentRole,
         token: Option<ClassifiedToken>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let Some(token) = token else {
             self.failure(None);
             return Ok(());
@@ -688,7 +684,7 @@ impl<'owner> ColorGrammar<'owner> {
         &mut self,
         mut frame: Frame,
         token: Option<ClassifiedToken>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if token.is_some_and(|value| value.token.kind != TokenKind::Delimiter(')')) {
             self.failure(token);
             return Ok(());
@@ -713,9 +709,9 @@ impl<'owner> ColorGrammar<'owner> {
         };
         Ok(())
     }
-    pub(crate) fn compute(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(crate) fn compute(&mut self) -> Result<(), ColorProtocolError> {
         if self.action() != GrammarAction::Compute {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         if let State::Hex {
             parent,
@@ -727,7 +723,7 @@ impl<'owner> ColorGrammar<'owner> {
         } = self.state
         {
             if index != units.end {
-                return Err(CssColorProtocolError::WrongAction);
+                return Err(ColorProtocolError::WrongAction);
             }
             let value = super::hex::finish(bytes, length);
             self.state = State::Pending {
@@ -819,7 +815,7 @@ impl<'owner> ColorGrammar<'owner> {
                     let length = units
                         .end
                         .checked_sub(units.start)
-                        .ok_or(CssColorProtocolError::Overflow)?;
+                        .ok_or(ColorProtocolError::Overflow)?;
                     if !matches!(length, 3 | 4 | 6 | 8) {
                         self.failure(Some(token));
                         return Ok(());
@@ -889,9 +885,7 @@ impl<'owner> ColorGrammar<'owner> {
                         } | TokenKind::Delimiter('(')
                     );
                     let next_depth = if nested {
-                        depth
-                            .checked_add(1)
-                            .ok_or(CssColorProtocolError::Overflow)?
+                        depth.checked_add(1).ok_or(ColorProtocolError::Overflow)?
                     } else if token.token.kind == TokenKind::Delimiter(')') {
                         depth - 1
                     } else {
@@ -932,7 +926,7 @@ impl<'owner> ColorGrammar<'owner> {
                 }
             }
             State::Frame(frame) => self.frame(frame, token)?,
-            _ => return Err(CssColorProtocolError::WrongAction),
+            _ => return Err(ColorProtocolError::WrongAction),
         }
         Ok(())
     }
@@ -940,12 +934,12 @@ impl<'owner> ColorGrammar<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (GrammarAction::ReadHex { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let LexicalRecord::NameUnit(unit) = self.table.observe(index, slot)? else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         let State::Hex {
             parent,
@@ -956,7 +950,7 @@ impl<'owner> ColorGrammar<'owner> {
             ..
         } = self.state
         else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         let position = index - units.start;
         if !super::hex::write_digit(&mut bytes, length, position, unit) {
@@ -977,7 +971,7 @@ impl<'owner> ColorGrammar<'owner> {
         &mut self,
         mut frame: Frame,
         token: Option<ClassifiedToken>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let word = token.map(|value| value.word);
         let delimiter = token.and_then(|value| {
             if let TokenKind::Delimiter(unit) = value.token.kind {
@@ -1208,13 +1202,12 @@ impl<'owner> ColorGrammar<'owner> {
             }
             FrameStage::MixHue => {
                 if let Some(Word::Hue(hue)) = word {
-                    let permitted =
-                        match frame.mix_space.ok_or(CssColorProtocolError::WrongAction)? {
-                            MixSpace::Standard(space) => {
-                                CssColorInterpolationMethod::try_new(space, Some(hue)).is_ok()
-                            }
-                            MixSpace::Custom { .. } => false,
-                        };
+                    let permitted = match frame.mix_space.ok_or(ColorProtocolError::WrongAction)? {
+                        MixSpace::Standard(space) => {
+                            CssColorInterpolationMethod::try_new(space, Some(hue)).is_ok()
+                        }
+                        MixSpace::Custom { .. } => false,
+                    };
                     if !permitted {
                         self.failure_with_reason(token, GrammarFailureReason::HueInterpolation);
                         return Ok(());
@@ -1239,7 +1232,7 @@ impl<'owner> ColorGrammar<'owner> {
             }
             FrameStage::MixComma => {
                 if delimiter == Some(',') {
-                    let method = match frame.mix_space.ok_or(CssColorProtocolError::WrongAction)? {
+                    let method = match frame.mix_space.ok_or(ColorProtocolError::WrongAction)? {
                         MixSpace::Standard(space) => {
                             let Ok(method) =
                                 CssColorInterpolationMethod::try_new(space, frame.mix_hue)
@@ -1301,13 +1294,13 @@ impl<'owner> ColorGrammar<'owner> {
             }
             FrameStage::MixColor => self.suspend(frame),
             FrameStage::Origin | FrameStage::Wrapper | FrameStage::AfterWrapper => {
-                return Err(CssColorProtocolError::WrongAction);
+                return Err(ColorProtocolError::WrongAction);
             }
         }
         Ok(())
     }
-    fn mix_record(&mut self, frame: Frame) -> Result<(), CssColorProtocolError> {
-        let color = frame.mix_color.ok_or(CssColorProtocolError::WrongAction)?;
+    fn mix_record(&mut self, frame: Frame) -> Result<(), ColorProtocolError> {
+        let color = frame.mix_color.ok_or(ColorProtocolError::WrongAction)?;
         self.state = State::Pending {
             record: GrammarRecord::Mix(MixRecord {
                 previous: frame.recipe.mix,
@@ -1323,9 +1316,9 @@ impl<'owner> ColorGrammar<'owner> {
         self.reader.abandon();
         self.state = State::Stopped;
     }
-    pub(crate) fn finish(&self) -> Result<GrammarTable<'owner>, CssColorProtocolError> {
+    pub(crate) fn finish(&self) -> Result<GrammarTable<'owner>, ColorProtocolError> {
         let State::Done { recipe } = self.state else {
-            return Err(CssColorProtocolError::Terminal);
+            return Err(ColorProtocolError::Terminal);
         };
         Ok(GrammarTable {
             input: GrammarInput::Source(self.table),
@@ -1353,8 +1346,9 @@ fn is_weight(token: ClassifiedToken) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::super::protocol::{ActionDescription, CssColorOperationOwner, LexicalOperation};
     use super::*;
+    use crate::color::controlled::CssColorOperationOwner;
+    use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
     use crate::tokenization::bounded::InputKind;
 
     fn parse(
@@ -1431,12 +1425,12 @@ mod tests {
                     };
                     assert_eq!(
                         grammar.failure_reason(different),
-                        Err(CssColorProtocolError::WrongAction)
+                        Err(ColorProtocolError::WrongAction)
                     );
                     grammar.abandon();
                     assert_eq!(
                         grammar.failure_reason(source),
-                        Err(CssColorProtocolError::WrongAction)
+                        Err(ColorProtocolError::WrongAction)
                     );
                     return Err((source, reason));
                 }

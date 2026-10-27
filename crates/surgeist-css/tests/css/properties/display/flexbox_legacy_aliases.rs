@@ -3,7 +3,18 @@
 //! https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/#webkit-aliases
 
 use crate::css::support::important_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{
+    CssSupportStatus, conformance_exclusion, property_support_metadata,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyGrammar, CssPropertyTarget,
+};
 
 const CASES: &[(&str, &str, &str, CssKnownProperty)] = &[
     (
@@ -71,17 +82,17 @@ const CASES: &[(&str, &str, &str, CssKnownProperty)] = &[
 ];
 
 fn checked(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        CssPropertyGrammar::from_name(name).expect("alias grammar"),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(CssPropertyGrammar::from_name(name).expect("alias grammar")),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Important,
     )
     .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
 }
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("canonical terminal contributions")
     };
@@ -115,16 +126,34 @@ fn targets(property: CssKnownProperty) -> &'static [CssKnownProperty] {
 fn specified(item: &CssLonghandContribution) -> String {
     let value = item.ordinary_value().expect("ordinary terminal");
     match value.view() {
-        CssLonghandValueRef::AlignContent(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::AlignItems(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::AlignSelf(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::FlexBasis(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::FlexDirection(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::FlexGrow(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::FlexShrink(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::FlexWrap(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::JustifyContent(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::Order(value) => value.serialize_specified().unwrap(),
+        CssLonghandValueRef::AlignContent(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::AlignItems(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::AlignSelf(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::FlexBasis(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::FlexDirection(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::FlexGrow(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::FlexShrink(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::FlexWrap(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::JustifyContent(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::Order(value) => value.serialize_specified(Default::default()).unwrap(),
         _ => panic!("unexpected Appendix B terminal"),
     }
 }
@@ -201,7 +230,7 @@ fn every_alias_parses_and_checked_construction_expands_to_exact_canonical_termin
 #[test]
 fn mixed_case_aliases_keep_authored_name_origin_in_style_and_sheet_order() {
     let source = "-WeBkIt-FlEx-GrOw:2!important;flex-grow:3;-webkit-flex-flow:wrap-reverse column";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 3);
     let first = &report.syntax()[0];
@@ -226,9 +255,9 @@ fn mixed_case_aliases_keep_authored_name_origin_in_style_and_sheet_order() {
     );
     assert!(!first.same_occurrence(&report.syntax()[1]));
 
-    let sheet = parse_sheet(&format!(".x{{{source}}}"));
+    let sheet = CssParser::default().parse_sheet(format!(".x{{{source}}}"));
     assert!(sheet.is_clean(), "{:?}", sheet.diagnostics());
-    let normalized = normalize_sheet(sheet.syntax()).unwrap();
+    let normalized = sheet.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -323,25 +352,24 @@ fn pending_aliases_reenter_canonical_grammars_strictly_with_original_provenance(
         ),
     ] {
         let source = declaration(alias, "var(--pending)");
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending alias")
         };
         assert!(pending.source().same_occurrence(&source));
-        assert!(matches!(
+        assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
-            pending
-                .reenter(parse_component_values("var(--again)").unwrap())
-                .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .replacement_error()
+                .is_some()
         );
-        let replacement = parse_component_values(valid).unwrap();
+        assert!(
+            pending
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
+                .unwrap_err()
+                .is_residual_substitution()
+        );
+        let replacement = CssComponentValues::parse(&CssParser::default(), valid).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -373,7 +401,7 @@ fn invalid_alias_values_drop_atomically_and_unlisted_webkit_names_remain_unknown
         ("-webkit-order", "1.5"),
     ] {
         let source = format!("color:red;{alias}:{invalid};height:2px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2, "{source}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -389,7 +417,8 @@ fn invalid_alias_values_drop_atomically_and_unlisted_webkit_names_remain_unknown
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
     }
-    let report = parse_style_attribute("color:red;-webkit-box-flex:2;height:2px");
+    let report =
+        CssParser::default().parse_block_contents("color:red;-webkit-box-flex:2;height:2px");
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("unknown prefixed name")

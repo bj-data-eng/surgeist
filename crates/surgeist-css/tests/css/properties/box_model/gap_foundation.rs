@@ -6,7 +6,14 @@ use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::property_support_metadata;
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssPropertyKindRef,
+};
 
 #[test]
 fn gap_accepts_one_or_two_values_with_row_then_column_assignment() {
@@ -18,7 +25,7 @@ fn gap_accepts_one_or_two_values_with_row_then_column_assignment() {
     ] {
         for source in [declaration("gap", value), checked("gap", value)] {
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).expect("gap has intrinsic expansion")
+                source.expand().expect("gap has intrinsic expansion")
             else {
                 panic!("gap completes two contributions")
             };
@@ -32,7 +39,7 @@ fn gap_accepts_one_or_two_values_with_row_then_column_assignment() {
                 assert_eq!(item.property(), property);
                 let expected = declaration(property.canonical_name(), expected);
                 let CssExpansion::Contributions(CssContributions::Longhands(expected_values)) =
-                    expand_declaration(&expected).expect("longhand expands")
+                    expected.expand().expect("longhand expands")
                 else {
                     panic!("one longhand contribution")
                 };
@@ -128,7 +135,9 @@ fn gap_metadata_has_two_noninherited_normal_longhands() {
             panic!("gap longhand has fixed normal initial")
         };
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&declaration(property.canonical_name(), "normal")).unwrap()
+            declaration(property.canonical_name(), "normal")
+                .expand()
+                .unwrap()
         else {
             panic!("normal expands")
         };
@@ -140,7 +149,7 @@ fn gap_metadata_has_two_noninherited_normal_longhands() {
 fn gap_global_and_pending_values_expand_to_both_members() {
     let global = declaration("gap", "inherit");
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&global).expect("global gap expands")
+        global.expand().expect("global gap expands")
     else {
         panic!("global gap completes")
     };
@@ -159,26 +168,24 @@ fn gap_global_and_pending_values_expand_to_both_members() {
     );
 
     let source = declaration("grid-gap", "var(--space)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).expect("gap is pending")
-    else {
+    let CssExpansion::Pending(pending) = source.expand().expect("gap is pending") else {
         panic!("substitution-dependent gap remains pending")
     };
     assert!(pending.source().same_occurrence(&source));
-    assert!(matches!(
+    assert!(
         pending
-            .reenter(parse_component_values("-1px").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "-1px").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
-    assert_eq!(
-        pending
-            .reenter(parse_component_values("var(--again)").unwrap())
-            .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .replacement_error()
+            .is_some()
     );
-    let replacement = parse_component_values("1px 2px").unwrap();
+    assert!(
+        pending
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
+            .unwrap_err()
+            .is_residual_substitution()
+    );
+    let replacement = CssComponentValues::parse(&CssParser::default(), "1px 2px").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("replacement completes two gap members")
     };

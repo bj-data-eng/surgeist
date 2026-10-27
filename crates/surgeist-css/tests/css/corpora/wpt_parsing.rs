@@ -10,10 +10,11 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-use surgeist_css::{
-    CssDeclarationList, CssNamespaceContext, CssPropertyNameRef, CssRule, CssStyleSelectorContext,
-    parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssNamespaceContext, CssStyleSelectorContext};
 
 use crate::css::support::digest;
 
@@ -342,7 +343,7 @@ fn assert_src_presence(suffix: &str, expected_count: usize) {
     for case in selected {
         assert_font_case_binding(case);
         let input = format!("@font-face {{ src: {}}}", case.src);
-        let report = parse_sheet(&input);
+        let report = CssParser::default().parse_sheet(&input);
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             failures.push(format!(
                 "{} {}:{} lost its outer @font-face: {:?}",
@@ -445,7 +446,7 @@ fn wpt_nested_selector_presence() {
             "{} {{ {} {{ color: green; }} }}",
             case.parent, case.selector
         );
-        let report = parse_sheet(&input);
+        let report = CssParser::default().parse_sheet(&input);
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             failures.push(format!("{} lost outer rule: {:?}", case.id, report));
             continue;
@@ -538,7 +539,7 @@ fn wpt_nested_declaration_order() {
     assert_eq!(cases.len(), 5);
     for case in cases {
         assert_order_case_binding(&case);
-        let report = parse_sheet(&case.input);
+        let report = CssParser::default().parse_sheet(&case.input);
         let [rule] = report.syntax().rules() else {
             panic!("{} expected one outer rule, got {:?}", case.id, report);
         };
@@ -689,7 +690,7 @@ fn wpt_nested_selector_text_absolutizes_relative_selectors() {
             assert_eq!(parent, ".foo", "{} default parent", case.id);
         }
         let input = format!("{parent} {{ {selector} {{ color: green; }}}}");
-        let report = parse_sheet(&input);
+        let report = CssParser::default().parse_sheet(&input);
         let [CssRule::Style(outer)] = report.syntax().rules() else {
             failures.push(format!("{} lost its outer rule: {report:?}", case.id));
             continue;
@@ -701,6 +702,7 @@ fn wpt_nested_selector_text_absolutizes_relative_selectors() {
         match inner.selectors().serialize_cssom(
             &CssNamespaceContext::default(),
             CssStyleSelectorContext::Nested,
+            Default::default(),
         ) {
             Ok(actual) if actual == expected => {}
             actual => failures.push(format!(
@@ -780,7 +782,7 @@ fn wpt_font_face_src_tech_keyword_sets_survive_serialization() {
     for row in rows {
         assert_font_case_binding(row);
         let input = format!("@font-face {{ src: {}}}", row.src);
-        let report = parse_sheet(&input);
+        let report = CssParser::default().parse_sheet(&input);
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             failures.push(format!("{} lost its @font-face: {report:?}", row.id));
             continue;
@@ -790,7 +792,7 @@ fn wpt_font_face_src_tech_keyword_sets_survive_serialization() {
             continue;
         };
         let result = src
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .map_err(|error| format!("{error:?}"))
             .and_then(|serialized| {
                 same_tech(&serialized, &row.src).map_err(|why| format!("{serialized:?}: {why}"))

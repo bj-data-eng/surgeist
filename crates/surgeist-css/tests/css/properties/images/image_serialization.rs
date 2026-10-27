@@ -1,9 +1,21 @@
 //! Images 3 specified serialization: https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#serialization
 
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::numeric::{CssAngleOrZero, CssAngleUnit, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop,
+    CssHorizontalGradientSide, CssImage, CssImageValue, CssImageValueList, CssLinearGradient,
+    CssLinearGradientDirection, CssSideOrCorner,
+};
 
 fn images(css: &str) -> CssImageValueList {
-    let report = parse_style_attribute(&format!("background-image: {css}"));
+    let report = CssParser::default().parse_block_contents(format!("background-image: {css}"));
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BackgroundImage(value) = report.syntax()[0]
         .known()
@@ -13,7 +25,7 @@ fn images(css: &str) -> CssImageValueList {
     else {
         panic!("expected typed background-image");
     };
-    value.images().clone()
+    value.value().clone()
 }
 
 fn only(css: &str) -> CssImageValue {
@@ -21,7 +33,7 @@ fn only(css: &str) -> CssImageValue {
 }
 
 fn color(css: &str) -> CssColor {
-    let report = parse_style_attribute(&format!("color: {css}"));
+    let report = CssParser::default().parse_block_contents(format!("color: {css}"));
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Color(value) = report.syntax()[0]
         .known()
@@ -34,21 +46,15 @@ fn color(css: &str) -> CssColor {
     value.value().clone()
 }
 
-fn kind(
-    value: &CssImageValueList,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> CssSpecifiedValueSerializationErrorKind {
-    value
-        .serialize_specified_with_limits(limits)
-        .unwrap_err()
-        .kind()
+fn kind(value: &CssImageValueList, limits: CssSerializationLimits) -> SerializationFailure {
+    serialization_failure(&value.serialize_specified(limits).unwrap_err())
 }
 
 #[test]
 fn linear_default_direction_and_endpoint_positions_follow_images3_example() {
     let value = only("Linear-Gradient( to bottom, red 0%, yellow, black 100px)");
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "linear-gradient(red, yellow, black 100px)"
     );
     for css in [
@@ -57,7 +63,7 @@ fn linear_default_direction_and_endpoint_positions_follow_images3_example() {
         "linear-gradient(0.5turn, red 0%, blue 100%)",
     ] {
         assert_eq!(
-            only(css).serialize_specified().unwrap(),
+            only(css).serialize_specified(Default::default()).unwrap(),
             "linear-gradient(red, blue)"
         );
     }
@@ -75,12 +81,12 @@ fn linear_default_direction_and_endpoint_positions_follow_images3_example() {
     );
     assert_eq!(angle.literal().unwrap().unit(), CssAngleUnit::Radians);
     assert_eq!(
-        radians.serialize_specified().unwrap(),
+        radians.serialize_specified(Default::default()).unwrap(),
         "linear-gradient(3.141593rad, red, blue)"
     );
     assert_eq!(
         only("linear-gradient(to right top, red 10%, 30%, blue 100%)")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "linear-gradient(to right top, red 10%, 30%, blue)"
     );
@@ -93,31 +99,31 @@ fn radial_shape_size_and_position_omit_only_context_independent_defaults() {
         "radial-gradient(farthest-corner at 50% 50%, red, blue)",
     ] {
         assert_eq!(
-            only(css).serialize_specified().unwrap(),
+            only(css).serialize_specified(Default::default()).unwrap(),
             "radial-gradient(red, blue)"
         );
     }
     assert_eq!(
         only("radial-gradient(circle farthest-corner at center, red, blue)")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "radial-gradient(circle, red, blue)"
     );
     assert_eq!(
         only("radial-gradient(circle 20px at left 10px top 20%, red, blue)")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "radial-gradient(20px at left 10px top 20%, red, blue)"
     );
     assert_eq!(
         only("radial-gradient(ellipse 20% 25% at center, red, blue)")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "radial-gradient(20% 25%, red, blue)"
     );
     assert_eq!(
         only("radial-gradient(at left 50% top 50%, red, blue)")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "radial-gradient(at left 50% top 50%, red, blue)"
     );
@@ -127,13 +133,13 @@ fn radial_shape_size_and_position_omit_only_context_independent_defaults() {
 fn repeat_identity_hints_color_and_symbolic_math_are_preserved() {
     assert_eq!(
         only("repeating-linear-gradient(calc(90deg + 5deg), currentcolor calc(1px + 5%), 25%, transparent 100%)")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "repeating-linear-gradient(calc(95deg), currentcolor calc(5% + 1px), 25%, transparent)"
     );
     assert_eq!(
         only("repeating-radial-gradient(circle closest-side at right bottom, #000, #fff)")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "repeating-radial-gradient(circle closest-side at right bottom, rgb(0, 0, 0), rgb(255, 255, 255))"
     );
@@ -149,7 +155,7 @@ fn checked_gradient_construction_has_independent_specified_text() {
         CssColorStopListItem::Stop(Box::new(CssGradientColorStop::from_color(
             color("transparent"),
             Some(
-                CssSpecifiedLengthPercentage::try_from_component(
+                CssNumeric::<CssLengthPercentage>::try_from_component(
                     CssComponentValue::try_token("50%").unwrap(),
                 )
                 .unwrap(),
@@ -162,12 +168,12 @@ fn checked_gradient_construction_has_independent_specified_text() {
     );
     let gradient = CssGradient::Linear(CssLinearGradient::new(Some(direction), stops));
     assert_eq!(
-        gradient.serialize_specified().unwrap(),
+        gradient.serialize_specified(Default::default()).unwrap(),
         "linear-gradient(to left, currentcolor, transparent 50%)"
     );
     let image = CssImage::try_new(CssImageValue::Gradient(gradient)).unwrap();
     assert_eq!(
-        image.serialize_specified().unwrap(),
+        image.serialize_specified(Default::default()).unwrap(),
         "linear-gradient(to left, currentcolor, transparent 50%)"
     );
 }
@@ -176,13 +182,13 @@ fn checked_gradient_construction_has_independent_specified_text() {
 fn calculated_default_like_angles_and_positions_remain_explicit() {
     assert_eq!(
         only("linear-gradient(calc(180deg), red, blue)")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "linear-gradient(calc(180deg), red, blue)"
     );
     assert_eq!(
         only("radial-gradient(at calc(50%) center, red, blue)")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "radial-gradient(at calc(50%) center, red, blue)"
     );
@@ -192,19 +198,20 @@ fn calculated_default_like_angles_and_positions_remain_explicit() {
 fn image_list_url_src_none_and_transparent_image_dispatch() {
     let list = images("none, url(\"a\\\"b\"), src(\"#id\"), linear-gradient(red, blue)");
     assert_eq!(
-        list.serialize_specified().unwrap(),
+        list.serialize_specified(Default::default()).unwrap(),
         "none, url(\"a\\\"b\"), src(\"#id\"), linear-gradient(red, blue)"
     );
     for image in list.images().iter().skip(1) {
         let checked = CssImage::try_new(image.clone()).unwrap();
         assert_eq!(
-            checked.serialize_specified().unwrap(),
-            image.serialize_specified().unwrap()
+            checked.serialize_specified(Default::default()).unwrap(),
+            image.serialize_specified(Default::default()).unwrap()
         );
     }
-    assert_eq!(
-        CssImage::try_new(CssImageValue::None).unwrap_err(),
-        CssImageConstructionError::NotImage
+    assert!(
+        CssImage::try_new(CssImageValue::None)
+            .unwrap_err()
+            .is_not_image()
     );
 }
 
@@ -213,31 +220,25 @@ fn list_and_gradient_node_budgets_are_cumulative_even_for_omitted_defaults() {
     let list = images("linear-gradient(to bottom, red 0%, blue 100%), none");
     // list 1; gradient 1; direction 1 + bottom 1; stops 1;
     // each stop 1 + color 1 + omitted endpoint 1; none 1 = 12.
-    let enough = CssSpecifiedValueSerializationLimits::new(12, 12, 100);
+    let enough = CssSerializationLimits::new(12, 12, 100);
     assert_eq!(
-        list.serialize_specified_with_limits(enough).unwrap(),
+        list.serialize_specified(enough).unwrap(),
         "linear-gradient(red, blue), none"
     );
     assert_eq!(
-        kind(
-            &list,
-            CssSpecifiedValueSerializationLimits::new(11, 12, 100)
-        ),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+        kind(&list, CssSerializationLimits::new(11, 12, 100)),
+        SerializationFailure::InputNodeLimit
     );
     assert_eq!(
-        kind(
-            &list,
-            CssSpecifiedValueSerializationLimits::new(12, 11, 100)
-        ),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+        kind(&list, CssSerializationLimits::new(12, 11, 100)),
+        SerializationFailure::ProjectionNodeLimit
     );
     assert_eq!(
-        kind(&list, CssSpecifiedValueSerializationLimits::new(12, 12, 31)),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+        kind(&list, CssSerializationLimits::new(12, 12, 31)),
+        SerializationFailure::ByteLimit
     );
     assert_eq!(
-        list.serialize_specified().unwrap(),
+        list.serialize_specified(Default::default()).unwrap(),
         "linear-gradient(red, blue), none"
     );
 }
@@ -249,36 +250,29 @@ fn nested_numeric_and_color_work_share_limits_with_sibling_images() {
     );
     let expected =
         "linear-gradient(red calc(5% + 1px), blue), linear-gradient(currentcolor, transparent)";
-    assert_eq!(list.serialize_specified().unwrap(), expected);
     assert_eq!(
-        kind(
-            &list,
-            CssSpecifiedValueSerializationLimits::new(0, 100, 200)
-        ),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+        list.serialize_specified(Default::default()).unwrap(),
+        expected
     );
     assert_eq!(
-        kind(
-            &list,
-            CssSpecifiedValueSerializationLimits::new(100, 0, 200)
-        ),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+        kind(&list, CssSerializationLimits::new(0, 100, 200)),
+        SerializationFailure::InputNodeLimit
     );
     assert_eq!(
-        list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            100,
-            100,
-            expected.len()
-        ))
-        .unwrap(),
+        kind(&list, CssSerializationLimits::new(100, 0, 200)),
+        SerializationFailure::ProjectionNodeLimit
+    );
+    assert_eq!(
+        list.serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
+            .unwrap(),
         expected
     );
     assert_eq!(
         kind(
             &list,
-            CssSpecifiedValueSerializationLimits::new(100, 100, expected.len() - 1)
+            CssSerializationLimits::new(100, 100, expected.len() - 1)
         ),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+        SerializationFailure::ByteLimit
     );
 }
 
@@ -291,27 +285,21 @@ fn radial_omissions_charge_shape_size_and_each_center_axis() {
     let expected = "radial-gradient(red, blue)";
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                14,
-                14,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(14, 14, expected.len()))
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(13, 14, 100))
+            .serialize_specified(CssSerializationLimits::new(13, 14, 100))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(14, 13, 100))
+            .serialize_specified(CssSerializationLimits::new(14, 13, 100))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 
@@ -321,20 +309,14 @@ fn two_calculation_graphs_share_one_image_list_budget() {
     let pair = images(
         "linear-gradient(red calc(1px + 5%), blue), linear-gradient(red calc(1px + 5%), blue)",
     );
-    let limits = CssSpecifiedValueSerializationLimits::new(20, 20, 200);
-    assert!(single.serialize_specified_with_limits(limits).is_ok());
+    let limits = CssSerializationLimits::new(20, 20, 200);
+    assert!(single.serialize_specified(limits).is_ok());
     assert_eq!(
-        kind(
-            &pair,
-            CssSpecifiedValueSerializationLimits::new(20, 100, 200)
-        ),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+        kind(&pair, CssSerializationLimits::new(20, 100, 200)),
+        SerializationFailure::InputNodeLimit
     );
     assert_eq!(
-        kind(
-            &pair,
-            CssSpecifiedValueSerializationLimits::new(100, 20, 200)
-        ),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+        kind(&pair, CssSerializationLimits::new(100, 20, 200)),
+        SerializationFailure::ProjectionNodeLimit
     );
 }

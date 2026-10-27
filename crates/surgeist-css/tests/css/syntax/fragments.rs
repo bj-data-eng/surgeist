@@ -1,5 +1,6 @@
 //! Fragment parsing entry points.
 
+mod block_fragment_front;
 mod comma_list_final_comma;
 mod declaration_fragments;
 mod descriptor_body_fragments;

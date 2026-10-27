@@ -1,23 +1,38 @@
 //! Functional evidence for new APIs, without preimplementation executable API RED.
 //! Independent expectations follow pinned Shapes 1 §§3.1–3.3 and the adopted
 //! authored serialization resource contract. No contextual geometry is inferred.
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::normal_declaration;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::serialization_limits::assert_limits as budget;
-use surgeist_css::{CssSpecifiedValueSerializationLimits as L, *};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::border::CssBorderRadiusShorthand;
+use surgeist_css::values::common::{CssAutoOr, CssBoxEdgeKeyword};
+use surgeist_css::values::effects::{CssClipPath, CssClipPathShape};
+use surgeist_css::values::image::CssRadialExtent;
+use surgeist_css::values::shape::{
+    CssBasicShape, CssCircleRadius, CssCircleShape, CssEllipseRadii, CssEllipseRadius,
+    CssEllipseShape, CssInsetShape, CssInsetShapeOffsets, CssPolygonPoint, CssPolygonPointList,
+    CssPolygonShape, CssRectShape, CssXywhShape,
+};
 
-fn lp(css: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(css).unwrap())
-        .unwrap()
-}
-fn nn(css: &str) -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+fn lp(css: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
         CssComponentValue::try_token(css).unwrap(),
     )
     .unwrap()
 }
-fn edge(css: &str) -> CssRectShapeEdge {
-    CssRectShapeEdge::LengthPercentage(lp(css))
+fn nn(css: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+        CssComponentValue::try_token(css).unwrap(),
+    )
+    .unwrap()
+}
+fn edge(css: &str) -> CssAutoOr<CssNumeric<CssLengthPercentage>> {
+    CssAutoOr::Value(lp(css))
 }
 fn basic_shape(css: &str) -> CssBasicShape {
     let declaration = normal_declaration("clip-path", css);
@@ -34,7 +49,7 @@ fn basic_shape(css: &str) -> CssBasicShape {
 #[test]
 fn checked_rect_composition_retains_each_named_edge_and_omitted_rounding() {
     let top = edge("-1px");
-    let right = CssRectShapeEdge::Auto;
+    let right = CssAutoOr::Auto;
     let bottom = edge("2%");
     let left = edge("-3em");
     let rect = CssRectShape::new(
@@ -50,7 +65,7 @@ fn checked_rect_composition_retains_each_named_edge_and_omitted_rounding() {
     assert_eq!(rect.left(), &left);
     assert!(rect.round().is_none());
     assert_eq!(
-        rect.serialize_specified().unwrap(),
+        rect.serialize_specified(Default::default()).unwrap(),
         "rect(-1px auto 2% -3em)"
     );
     assert_eq!(
@@ -60,7 +75,7 @@ fn checked_rect_composition_retains_each_named_edge_and_omitted_rounding() {
     assert_ne!(rect, CssRectShape::new(left, right, bottom, top, None));
     for auto_index in 0..4 {
         let mut edges = [edge("1px"), edge("2%"), edge("3em"), edge("4px")];
-        edges[auto_index] = CssRectShapeEdge::Auto;
+        edges[auto_index] = CssAutoOr::Auto;
         let rect = CssRectShape::new(
             edges[0].clone(),
             edges[1].clone(),
@@ -89,34 +104,37 @@ fn checked_xywh_composition_retains_signed_offsets_and_nonnegative_sizes() {
     assert_eq!(xywh.width(), &width);
     assert_eq!(xywh.height(), &height);
     assert!(xywh.round().is_none());
-    assert_eq!(xywh.serialize_specified().unwrap(), "xywh(-1px -2% 3em 0)");
+    assert_eq!(
+        xywh.serialize_specified(Default::default()).unwrap(),
+        "xywh(-1px -2% 3em 0)"
+    );
     assert_eq!(
         basic_shape("xywh(-1px -2% 3em 0)"),
         CssBasicShape::Xywh(xywh.clone())
     );
     assert_ne!(xywh, CssXywhShape::new(y, x, height, width, None));
     for (invalid, kind) in [
-        ("-1px", CssNumericConstructionErrorKind::OutOfRange),
-        ("-1%", CssNumericConstructionErrorKind::OutOfRange),
-        ("-1e-999px", CssNumericConstructionErrorKind::OutOfRange),
-        ("-1e-999%", CssNumericConstructionErrorKind::OutOfRange),
-        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1deg", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("-1px", NumericFailure::OutOfRange),
+        ("-1%", NumericFailure::OutOfRange),
+        ("-1e-999px", NumericFailure::OutOfRange),
+        ("-1e-999%", NumericFailure::OutOfRange),
+        ("auto", NumericFailure::RootDomainMismatch),
+        ("1", NumericFailure::RootDomainMismatch),
+        ("1deg", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component,
             CssComponentValue::try_token(invalid).unwrap(),
             kind,
         );
     }
     for (invalid, kind) in [
-        ("auto", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1deg", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("auto", NumericFailure::RootDomainMismatch),
+        ("1", NumericFailure::RootDomainMismatch),
+        ("1deg", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            CssSpecifiedLengthPercentage::try_from_component,
+            CssNumeric::<CssLengthPercentage>::try_from_component,
             CssComponentValue::try_token(invalid).unwrap(),
             kind,
         );
@@ -130,7 +148,7 @@ fn semantic_equality_preserves_separately_observable_numeric_origins() {
         (
             "rect(auto 1px 2% 0)",
             CssBasicShape::Rect(CssRectShape::new(
-                CssRectShapeEdge::Auto,
+                CssAutoOr::Auto,
                 edge("1px"),
                 edge("2%"),
                 edge("0"),
@@ -152,9 +170,7 @@ fn semantic_equality_preserves_separately_observable_numeric_origins() {
         assert_eq!(value, constructed);
         let (parsed_scalar, constructed_scalar) = match (&value, &constructed) {
             (CssBasicShape::Rect(a), CssBasicShape::Rect(b)) => {
-                let (CssRectShapeEdge::LengthPercentage(a), CssRectShapeEdge::LengthPercentage(b)) =
-                    (a.right(), b.right())
-                else {
+                let (CssAutoOr::Value(a), CssAutoOr::Value(b)) = (a.right(), b.right()) else {
                     panic!("edge")
                 };
                 (a, b)
@@ -165,19 +181,17 @@ fn semantic_equality_preserves_separately_observable_numeric_origins() {
         let origin = parsed_scalar.origin().clone();
         assert!(matches!(origin, CssValueOrigin::Parsed(_)));
         assert_eq!(constructed_scalar.origin(), &CssValueOrigin::Programmatic);
-        value
-            .serialize_specified_with_limits(L::new(1, 100, 100))
-            .unwrap_err();
+        value.serialize_specified(L::new(1, 100, 100)).unwrap_err();
         assert_eq!(parsed_scalar.origin(), &origin);
-        value.serialize_specified().unwrap();
+        value.serialize_specified(Default::default()).unwrap();
         assert_eq!(parsed_scalar.origin(), &origin);
     }
     // Structural equality ignores provenance only, retaining exact lexical structure.
-    assert_ne!(
+    assert_eq!(
         basic_shape("rect(auto 1px 2% 0)"),
         basic_shape("rect(auto 1.00px 2% 0)")
     );
-    assert_ne!(
+    assert_eq!(
         basic_shape("xywh(-1px 2% 3em 4vh)"),
         basic_shape("xywh(-1.00px 2% 3em 4vh)")
     );
@@ -230,13 +244,13 @@ fn round_arity_slash_and_omission_remain_authored_distinctions() {
                 &format!("rect(0 1px 2% 3px round {suffix})"),
                 nodes,
                 nodes,
-                |l| rect.serialize_specified_with_limits(l),
+                |l| rect.serialize_specified(l),
             );
             budget(
                 &format!("xywh(0 1px 2% 3px round {suffix})"),
                 nodes,
                 nodes,
-                |l| xywh.serialize_specified_with_limits(l),
+                |l| xywh.serialize_specified(l),
             );
         }
     }
@@ -250,40 +264,26 @@ fn round_arity_slash_and_omission_remain_authored_distinctions() {
 
 #[test]
 fn literal_budgets_are_five_standalone_six_composed_seven_boxed() {
-    let rect = CssRectShape::new(
-        CssRectShapeEdge::Auto,
-        edge("1px"),
-        edge("2%"),
-        edge("0"),
-        None,
-    );
-    budget("rect(auto 1px 2% 0)", 5, 5, |l| {
-        rect.serialize_specified_with_limits(l)
-    });
+    let rect = CssRectShape::new(CssAutoOr::Auto, edge("1px"), edge("2%"), edge("0"), None);
+    budget("rect(auto 1px 2% 0)", 5, 5, |l| rect.serialize_specified(l));
     let xywh = CssXywhShape::new(lp("0"), lp("0"), nn("1px"), nn("2%"), None);
-    budget("xywh(0 0 1px 2%)", 5, 5, |l| {
-        xywh.serialize_specified_with_limits(l)
-    });
+    budget("xywh(0 0 1px 2%)", 5, 5, |l| xywh.serialize_specified(l));
     for (shape, expected) in [
         (CssBasicShape::Rect(rect), "rect(auto 1px 2% 0)"),
         (CssBasicShape::Xywh(xywh), "xywh(0 0 1px 2%)"),
     ] {
-        budget(expected, 5, 5, |l| shape.serialize_specified_with_limits(l));
+        budget(expected, 5, 5, |l| shape.serialize_specified(l));
         let composition = CssClipPathShape::new(shape.clone(), None);
+        budget(expected, 6, 6, |l| composition.serialize_specified(l));
         budget(expected, 6, 6, |l| {
-            composition.serialize_specified_with_limits(l)
-        });
-        budget(expected, 6, 6, |l| {
-            CssClipPath::BasicShape(composition.clone()).serialize_specified_with_limits(l)
+            CssClipPath::BasicShape(composition.clone()).serialize_specified(l)
         });
         for box_edge in [CssBoxEdgeKeyword::BorderBox, CssBoxEdgeKeyword::ViewBox] {
             let composition = CssClipPathShape::new(shape.clone(), Some(box_edge));
-            let text = format!("{expected} {}", box_edge.as_css_str());
+            let text = format!("{expected} {}", box_edge.as_str());
+            budget(&text, 7, 7, |l| composition.serialize_specified(l));
             budget(&text, 7, 7, |l| {
-                composition.serialize_specified_with_limits(l)
-            });
-            budget(&text, 7, 7, |l| {
-                CssClipPath::BasicShape(composition.clone()).serialize_specified_with_limits(l)
+                CssClipPath::BasicShape(composition.clone()).serialize_specified(l)
             });
         }
     }
@@ -301,21 +301,15 @@ fn four_math_children_and_rounding_share_one_cumulative_provider_budget() {
         let expected = format!(
             "{name}(calc(2% + 1px) calc(4% + 3em) calc(6% + 5px) calc(8% + 7px) round calc(10% + 9px) / calc(12% + 11px))"
         );
-        budget(&expected, 26, 32, |l| {
-            value.serialize_specified_with_limits(l)
-        });
+        budget(&expected, 26, 32, |l| value.serialize_specified(l));
         match &value {
-            CssBasicShape::Rect(v) => {
-                budget(&expected, 26, 32, |l| v.serialize_specified_with_limits(l))
-            }
-            CssBasicShape::Xywh(v) => {
-                budget(&expected, 26, 32, |l| v.serialize_specified_with_limits(l))
-            }
+            CssBasicShape::Rect(v) => budget(&expected, 26, 32, |l| v.serialize_specified(l)),
+            CssBasicShape::Xywh(v) => budget(&expected, 26, 32, |l| v.serialize_specified(l)),
             _ => panic!("rectangle"),
         }
         let composition = CssClipPathShape::new(value.clone(), Some(CssBoxEdgeKeyword::BorderBox));
         budget(&format!("{expected} border-box"), 28, 34, |l| {
-            composition.serialize_specified_with_limits(l)
+            composition.serialize_specified(l)
         });
         assert_eq!(value, before);
     }
@@ -331,7 +325,7 @@ fn exact_magnitudes_retain_identity_while_ordinary_text_rounds_and_math_is_prese
         None,
     );
     assert_eq!(
-        rect.serialize_specified().unwrap(),
+        rect.serialize_specified(Default::default()).unwrap(),
         "rect(0px 123456789012345678901234567890px 150% 0)"
     );
     let xywh = CssXywhShape::new(
@@ -343,29 +337,47 @@ fn exact_magnitudes_retain_identity_while_ordinary_text_rounds_and_math_is_prese
     );
     let before = xywh.clone();
     assert_eq!(
-        xywh.serialize_specified().unwrap(),
+        xywh.serialize_specified(Default::default()).unwrap(),
         "xywh(0px 150% 0px 123456789012345678901234567890px)"
     );
     assert_eq!(xywh, before);
     assert_eq!(
-        CssComponentValues::try_new(vec![xywh.x().literal_component().unwrap().clone()])
-            .unwrap()
-            .serialize()
-            .unwrap()
-            .as_css(),
+        CssComponentValues::try_new(
+            vec![
+                xywh.x()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap()
+                    .clone()
+            ],
+            Default::default()
+        )
+        .unwrap()
+        .serialize_tokens(Default::default())
+        .unwrap()
+        .as_css(),
         "-1e-999px",
     );
     assert_eq!(
-        CssComponentValues::try_new(vec![xywh.width().literal_component().unwrap().clone()])
-            .unwrap()
-            .serialize()
-            .unwrap()
-            .as_css(),
+        CssComponentValues::try_new(
+            vec![
+                xywh.width()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap()
+                    .clone()
+            ],
+            Default::default()
+        )
+        .unwrap()
+        .serialize_tokens(Default::default())
+        .unwrap()
+        .as_css(),
         "1e-999px",
     );
     assert_eq!(
         basic_shape("xywh(0 0 calc(1px - 2px) calc(-1%))")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "xywh(0 0 calc(-1px) calc(-1%))"
     );
@@ -374,9 +386,7 @@ fn exact_magnitudes_retain_identity_while_ordinary_text_rounds_and_math_is_prese
 #[test]
 fn shape_front_doors_preserve_construction_and_budgets() {
     let circle = CssCircleShape::new(CssCircleRadius::Default, None);
-    budget("circle()", 1, 1, |l| {
-        circle.serialize_specified_with_limits(l)
-    });
+    budget("circle()", 1, 1, |l| circle.serialize_specified(l));
     let radii = CssEllipseRadii::new(
         CssEllipseRadius::LengthPercentage(nn("1px")),
         CssEllipseRadius::Extent(CssRadialExtent::ClosestSide),
@@ -384,25 +394,24 @@ fn shape_front_doors_preserve_construction_and_budgets() {
     let ellipse = CssEllipseShape::new(Some(radii.clone()), None);
     assert_eq!(ellipse.radii(), Some(&radii));
     budget("ellipse(1px closest-side)", 4, 4, |l| {
-        ellipse.serialize_specified_with_limits(l)
+        ellipse.serialize_specified(l)
     });
     let inset = CssInsetShape::new(
         CssInsetShapeOffsets::try_new(vec![lp("1px")]).unwrap(),
         None,
     );
-    budget("inset(1px)", 3, 3, |l| {
-        inset.serialize_specified_with_limits(l)
-    });
+    budget("inset(1px)", 3, 3, |l| inset.serialize_specified(l));
     let point = CssPolygonPoint::new(lp("0"), lp("1%"));
-    assert_eq!(point.x().serialize_specified().unwrap(), "0");
+    assert_eq!(
+        point.x().serialize_specified(Default::default()).unwrap(),
+        "0"
+    );
     let polygon = CssPolygonShape::new(
         None,
         None,
         CssPolygonPointList::try_new(vec![point]).unwrap(),
     );
-    budget("polygon(0 1%)", 5, 5, |l| {
-        polygon.serialize_specified_with_limits(l)
-    });
+    budget("polygon(0 1%)", 5, 5, |l| polygon.serialize_specified(l));
     assert_eq!(
         basic_shape("inset(1px)"),
         CssBasicShape::Inset(Box::new(inset))

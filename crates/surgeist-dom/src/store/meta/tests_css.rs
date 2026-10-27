@@ -7,9 +7,8 @@ fn policy() -> DomLimits {
         .with_meta_processing_work(100_000_000)
         .with_meta_theme_color_scratch_bytes(1_000_000)
         .unwrap()
-        .with_meta_color_scheme_limits(surgeist_css::CssUtf16PropertyValueLimits {
-            input: surgeist_css::CssUtf16InputLimits::default(),
-            syntax: surgeist_css::CssComponentValueLimits::default(),
+        .with_meta_color_scheme_limits(surgeist_css::source::CssUtf16PropertyValueLimits {
+            input: surgeist_css::source::CssUtf16InputLimits::default(),
             max_work: 1_000_000,
             max_live_bytes: 1_000_000,
             max_retained_bytes: 1_000_000,

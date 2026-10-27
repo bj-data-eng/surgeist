@@ -1,13 +1,17 @@
-use surgeist_css::{
-    CssDefinedFalseMediaReason, CssErrorCode, CssGridMode, CssMediaConditionKind,
-    CssMediaFeatureKind, CssMediaFeatureQuery, CssMediaGridRef, CssMediaQuery,
-    CssMediaQueryModifier, CssMediaRangeRef, CssMediaResolutionRef, CssMediaType,
-    CssQueryComparison, CssRatio, CssRecoveryAction, CssRule, CssScanMode, parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::CssRatio;
+use surgeist_css::query::media::{
+    CssDefinedFalseMediaReason, CssGridMode, CssMediaFeatureKind, CssMediaFeatureQuery,
+    CssMediaGridRef, CssMediaLeaf, CssMediaQuery, CssMediaQueryModifier, CssMediaRangeRef,
+    CssMediaResolutionRef, CssMediaType, CssScanMode,
 };
+use surgeist_css::query::{CssConditionKind, CssQueryComparison};
+use surgeist_css::rule::CssRule;
 
 fn parsed_feature(query: &str) -> CssMediaFeatureQuery {
     let source = format!("@media {query} {{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{query}: {:?}", report.diagnostics());
     let [CssRule::Media(rule)] = report.syntax().rules() else {
         panic!("{query}: expected one retained media rule")
@@ -15,7 +19,7 @@ fn parsed_feature(query: &str) -> CssMediaFeatureQuery {
     let [CssMediaQuery::Condition(condition)] = rule.query().queries() else {
         panic!("{query}: expected one condition-only query")
     };
-    let CssMediaConditionKind::Feature(feature) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(feature)) = condition.kind() else {
         panic!("{query}: expected one media feature")
     };
     feature.clone()
@@ -23,7 +27,7 @@ fn parsed_feature(query: &str) -> CssMediaFeatureQuery {
 
 fn parsed_type(name: &str) -> CssMediaType {
     let source = format!("@media {name} {{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{name}: {:?}", report.diagnostics());
     let [CssRule::Media(rule)] = report.syntax().rules() else {
         panic!("{name}: expected one retained media rule")
@@ -36,7 +40,7 @@ fn parsed_type(name: &str) -> CssMediaType {
 
 #[test]
 fn balanced_opaque_media_syntax_is_not_malformed_recovery() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@media only future-screen and (unknown-feature: calc(1foo + 2px)), ",
         "(width: calc(1px)), screen {}",
     ));
@@ -59,7 +63,7 @@ fn balanced_opaque_media_syntax_is_not_malformed_recovery() {
 
     for malformed in ["layer", "not", "and", "only", "or", "???", ""] {
         let source = format!("@media screen,{malformed},print {{}} ");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Media(rule)] = report.syntax().rules() else {
             panic!("{malformed:?}: expected the media rule to be retained")
         };
@@ -84,7 +88,7 @@ fn balanced_opaque_media_syntax_is_not_malformed_recovery() {
         );
     }
 
-    let scripting = parse_sheet("@media screen,(scripting: enabled),print {}");
+    let scripting = CssParser::default().parse_sheet("@media screen,(scripting: enabled),print {}");
     assert!(scripting.is_clean(), "{:?}", scripting.diagnostics());
     let [CssRule::Media(rule)] = scripting.syntax().rules() else {
         panic!("expected the scripting media rule to be retained")
@@ -99,15 +103,15 @@ fn balanced_opaque_media_syntax_is_not_malformed_recovery() {
     };
     assert!(matches!(
         condition.kind(),
-        CssMediaConditionKind::Feature(CssMediaFeatureQuery::Scripting(
-            surgeist_css::CssMediaScripting::Enabled
-        ))
+        CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Scripting(
+            surgeist_css::query::media::CssMediaScripting::Enabled
+        )))
     ));
 }
 
 #[test]
 fn mq3_named_types_and_features_follow_exact_domains() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@media speech { .speech { color: red; } } ",
         "@media (device-width: 1px) { .device { color: blue; } }",
     ));
@@ -171,18 +175,18 @@ fn mq3_boolean_features_preserve_their_typed_names() {
         ("grid", CssMediaFeatureKind::Grid),
     ] {
         let feature = parsed_feature(&format!("({name})"));
-        assert_eq!(feature.name(), name);
+        assert_eq!(feature.as_str(), name);
         assert!(matches!(feature, CssMediaFeatureQuery::Boolean(value) if value == expected));
-        assert_eq!(expected.name(), name);
+        assert_eq!(expected.as_str(), name);
     }
 }
 
 fn assert_numeric_literal(
-    expression: surgeist_css::CssCalculationExpressionRef<'_>,
+    expression: surgeist_css::numeric::CssCalculationExpressionRef<'_>,
     number: &str,
     unit: Option<&str>,
 ) {
-    let surgeist_css::CssCalculationExpressionRef::Value(value) = expression else {
+    let surgeist_css::numeric::CssCalculationExpressionRef::Value(value) = expression else {
         panic!("expected an exact authored numeric literal");
     };
     assert_eq!(value.literal().representation(), number);
@@ -327,7 +331,7 @@ fn known_media_numeric_values_remain_typed_without_evaluation() {
     let CssMediaRangeRef::Plain { value } = range.view() else {
         panic!("plain form")
     };
-    let surgeist_css::CssCalculationExpressionRef::NestedCalc(root) =
+    let surgeist_css::numeric::CssCalculationExpressionRef::NestedCalc(root) =
         value.calculation().expression()
     else {
         panic!("authored calculation")
@@ -393,7 +397,7 @@ fn mq3_scan_and_grid_expose_exact_keyword_and_binary_domains() {
 #[test]
 fn mq3_named_queries_keep_exact_non_bmp_source_positions() {
     let source = "@media /*😀*/ speech, /*😀*/ (device-width: 1px) {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Media(rule)] = report.syntax().rules() else {
         panic!("expected one media rule")
@@ -451,7 +455,7 @@ fn balanced_nonmatching_feature_bodies_preserve_unknown_or_general_enclosed_synt
         ("(width 1px)", false),
     ] {
         let source = format!("@media screen,{css},print {{ .x {{ color: red; }} }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
         let [CssRule::Media(rule)] = report.syntax().rules() else {
             panic!("retained media rule")
@@ -465,14 +469,14 @@ fn balanced_nonmatching_feature_bodies_preserve_unknown_or_general_enclosed_synt
             panic!("three intact ordered members")
         };
         match condition.kind() {
-            CssMediaConditionKind::UnknownFeature(value) if unknown => {
+            CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(value)) if unknown => {
                 assert_eq!(
                     value.reason(),
-                    surgeist_css::CssUnknownMediaFeatureReason::UnknownName
+                    surgeist_css::query::media::CssUnknownMediaFeatureReason::UnknownName
                 );
                 assert_eq!(value.authored(), Some(css));
             }
-            CssMediaConditionKind::GeneralEnclosed(value) if !unknown => {
+            CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) if !unknown => {
                 assert_eq!(value.authored(), Some(css));
             }
             _ => panic!("unexpected grammar classification for {css}"),
@@ -486,7 +490,10 @@ fn balanced_nonmatching_feature_bodies_preserve_unknown_or_general_enclosed_synt
             source.find(css).unwrap()
         );
         assert_eq!(
-            surgeist_css::validate_sheet(&source).unwrap(),
+            surgeist_css::CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap(),
             *report.syntax()
         );
     }
@@ -494,7 +501,7 @@ fn balanced_nonmatching_feature_bodies_preserve_unknown_or_general_enclosed_synt
 
 #[test]
 fn unknown_features_retain_names_values_and_failure_classification() {
-    use surgeist_css::CssUnknownMediaFeatureReason::{InvalidValue, UnknownName};
+    use surgeist_css::query::media::CssUnknownMediaFeatureReason::{InvalidValue, UnknownName};
     for (css, reason) in [
         ("(future-feature)", UnknownName),
         ("(min-future-feature: 1px)", UnknownName),
@@ -505,7 +512,7 @@ fn unknown_features_retain_names_values_and_failure_classification() {
         ("(grid: 2)", InvalidValue),
     ] {
         let source = format!("@media screen,{css},print {{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
         let [CssRule::Media(rule)] = report.syntax().rules() else {
             panic!("retained media rule")
@@ -518,7 +525,7 @@ fn unknown_features_retain_names_values_and_failure_classification() {
         else {
             panic!("three ordered members")
         };
-        let CssMediaConditionKind::UnknownFeature(value) = condition.kind() else {
+        let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(value)) = condition.kind() else {
             panic!("unknown feature {css}")
         };
         assert_eq!(value.authored(), Some(css));
@@ -527,7 +534,7 @@ fn unknown_features_retain_names_values_and_failure_classification() {
         assert!(!rule.query().queries()[1].is_guaranteed_false());
     }
     let source = "@media (future-feature: calc(1foo + 2px)) {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Media(rule)] = report.syntax().rules() else {
         panic!("media rule")
@@ -535,7 +542,7 @@ fn unknown_features_retain_names_values_and_failure_classification() {
     let [CssMediaQuery::Condition(condition)] = rule.query().queries() else {
         panic!("condition query")
     };
-    let CssMediaConditionKind::GeneralEnclosed(value) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) = condition.kind() else {
         panic!("no generic math value derivation")
     };
     assert_eq!(value.authored(), Some("(future-feature: calc(1foo + 2px))"));
@@ -544,7 +551,7 @@ fn unknown_features_retain_names_values_and_failure_classification() {
 #[test]
 fn mq3_unknown_media_types_preserve_modifiers_exact_spelling_and_positions() {
     let source = "@media only F\\75ture-Screen, not Future-Print and (width: 1px) {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Media(rule)] = report.syntax().rules() else {
         panic!("expected retained media rule")
@@ -598,7 +605,7 @@ fn general_enclosed_balanced_nesting_obeys_the_255_256_257_boundary() {
 
     for depth in [255, 256] {
         let source = source_at_depth(depth);
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -610,12 +617,12 @@ fn general_enclosed_balanced_nesting_obeys_the_255_256_257_boundary() {
         assert!(matches!(
             rule.query().queries(),
             [CssMediaQuery::Condition(condition)]
-                if matches!(condition.kind(), CssMediaConditionKind::GeneralEnclosed(_))
+                if matches!(condition.kind(), CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_)))
         ));
     }
 
     let source = source_at_depth(257);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(!report.is_clean());
     assert!(report.diagnostics().iter().any(|diagnostic| {
         diagnostic.error().code() == CssErrorCode::NestingLimit
@@ -626,14 +633,14 @@ fn general_enclosed_balanced_nesting_obeys_the_255_256_257_boundary() {
 #[test]
 fn unknown_feature_condition_survives_rule_eof_implicit_closure() {
     let source = "@media (unknown: yes) {";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Media(rule)] = report.syntax().rules() else {
         panic!("expected the implicitly closed media rule to be retained")
     };
     assert!(matches!(
         rule.query().queries(),
         [CssMediaQuery::Condition(condition)]
-            if matches!(condition.kind(), CssMediaConditionKind::UnknownFeature(_))
+            if matches!(condition.kind(), CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(_)))
     ));
     let [diagnostic] = report.diagnostics() else {
         panic!("expected only the rule-block EOF closure diagnostic")
@@ -646,19 +653,21 @@ fn unknown_feature_condition_survives_rule_eof_implicit_closure() {
 
 #[test]
 fn empty_media_list_is_valid_authored_and_constructed_syntax() {
-    let report = parse_sheet("@media {} .after { color: red; }");
+    let report = CssParser::default().parse_sheet("@media {} .after { color: red; }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Media(media), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("expected empty media rule and following style sibling")
     };
     assert!(media.query().queries().is_empty());
     assert_eq!(
-        &surgeist_css::CssMediaQueryList::new(Vec::new()),
+        &surgeist_css::query::media::CssMediaQueryList::new(Vec::new()),
         media.query()
     );
 
     assert_eq!(
-        surgeist_css::validate_sheet("@media {} .after { color: red; }")
+        surgeist_css::CssParser::default()
+            .parse_sheet("@media {} .after { color: red; }")
+            .into_validation_result()
             .expect("empty media list is valid"),
         report.syntax().clone()
     );
@@ -673,14 +682,16 @@ fn mq4_comparisons_and_discrete_features_remain_typed() {
     ));
     assert!(matches!(
         parsed_feature("(hover: hover)"),
-        CssMediaFeatureQuery::Hover(surgeist_css::CssHoverCapability::Hover)
+        CssMediaFeatureQuery::Hover(surgeist_css::query::media::CssHoverCapability::Hover)
     ));
     assert!(matches!(
         parsed_feature("(prefers-color-scheme: dark)"),
-        CssMediaFeatureQuery::PrefersColorScheme(surgeist_css::CssColorSchemePreference::Dark)
+        CssMediaFeatureQuery::PrefersColorScheme(
+            surgeist_css::query::media::CssColorSchemePreference::Dark
+        )
     ));
     assert!(matches!(
         parsed_feature("(display-mode: standalone)"),
-        CssMediaFeatureQuery::DisplayMode(surgeist_css::CssDisplayMode::Standalone)
+        CssMediaFeatureQuery::DisplayMode(surgeist_css::query::media::CssDisplayMode::Standalone)
     ));
 }

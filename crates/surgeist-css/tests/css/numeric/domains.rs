@@ -3,7 +3,9 @@
 mod nonnegative_numeric_construction;
 mod nonnegative_numeric_identity;
 mod numeric_domains;
+mod numeric_rejection_location;
 mod numeric_value_diagnostics;
+mod numeric_value_equality;
 mod quirky_length_authored;
 mod quirky_length_context;
 mod quirky_length_shortening;

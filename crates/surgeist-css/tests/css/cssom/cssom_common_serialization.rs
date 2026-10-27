@@ -3,34 +3,36 @@
 //! https://www.w3.org/TR/2021/WD-cssom-1-20210826/#common-serializing-idioms
 
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
+use surgeist_css::serialization::{
+    CssSerializationError, CssSerializationLimits, serialize_css_comma_separated_list,
+    serialize_css_identifier, serialize_css_string, serialize_css_whitespace_separated_list,
+};
+use surgeist_css::values::common::CssIdent;
 
-type TextSerializer = fn(&str) -> Result<String, CssSpecifiedValueSerializationError>;
-type BoundedTextSerializer = fn(
-    &str,
-    CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError>;
-type ListSerializer = fn(&[&str]) -> Result<String, CssSpecifiedValueSerializationError>;
-type BoundedListSerializer = fn(
-    &[&str],
-    CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError>;
+type TextSerializer = fn(&str, CssSerializationLimits) -> Result<String, CssSerializationError>;
+type ListSerializer = fn(&[&str], CssSerializationLimits) -> Result<String, CssSerializationError>;
 
-fn assert_text(
-    source: &str,
-    expected: &str,
-    serialize: TextSerializer,
-    bounded: BoundedTextSerializer,
-) {
+fn assert_text(source: &str, expected: &str, serialize: TextSerializer) {
     let original = source.to_owned();
-    assert_eq!(serialize(source).unwrap(), expected);
+    assert_eq!(
+        serialize(source, CssSerializationLimits::default()).unwrap(),
+        expected
+    );
     // One node carries the complete text.
     LimitLadder::new(expected, 1, 1).assert_with(
-        |limits| bounded(source, limits),
-        |_, _, _| assert_eq!(serialize(source).unwrap(), expected),
+        |limits| serialize(source, limits),
+        |_, _, _| {
+            assert_eq!(
+                serialize(source, CssSerializationLimits::default()).unwrap(),
+                expected
+            )
+        },
     );
     assert_eq!(source, original);
-    assert_eq!(serialize(source).unwrap(), expected);
+    assert_eq!(
+        serialize(source, CssSerializationLimits::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -64,12 +66,7 @@ fn identifiers_escape_each_cssom_character_branch() {
         ("\u{1}a", "\\1 a"),
         ("\0\u{1f}9", "\u{fffd}\\1f 9"),
     ] {
-        assert_text(
-            source,
-            expected,
-            serialize_css_identifier,
-            serialize_css_identifier_with_limits,
-        );
+        assert_text(source, expected, serialize_css_identifier);
     }
 }
 
@@ -93,33 +90,34 @@ fn strings_quote_and_escape_each_cssom_character_branch() {
         ("\u{1}a", "\"\\1 a\""),
         ("\0\u{1f}9", "\"\u{fffd}\\1f 9\""),
     ] {
-        assert_text(
-            source,
-            expected,
-            serialize_css_string,
-            serialize_css_string_with_limits,
-        );
+        assert_text(source, expected, serialize_css_string);
     }
 }
 
-fn assert_list(
-    items: &[&str],
-    expected: &str,
-    serialize: ListSerializer,
-    bounded: BoundedListSerializer,
-) {
+fn assert_list(items: &[&str], expected: &str, serialize: ListSerializer) {
     let originals: Vec<_> = items.iter().map(|item| (*item).to_owned()).collect();
     // One container, then one node for every supplied item, including empty items.
     let nodes = 1 + items.len();
-    assert_eq!(serialize(items).unwrap(), expected);
+    assert_eq!(
+        serialize(items, CssSerializationLimits::default()).unwrap(),
+        expected
+    );
     LimitLadder::new(expected, nodes, nodes).assert_with(
-        |limits| bounded(items, limits),
-        |_, _, _| assert_eq!(serialize(items).unwrap(), expected),
+        |limits| serialize(items, limits),
+        |_, _, _| {
+            assert_eq!(
+                serialize(items, CssSerializationLimits::default()).unwrap(),
+                expected
+            )
+        },
     );
     for (item, original) in items.iter().zip(&originals) {
         assert_eq!(*item, original);
     }
-    assert_eq!(serialize(items).unwrap(), expected);
+    assert_eq!(
+        serialize(items, CssSerializationLimits::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -135,12 +133,7 @@ fn comma_lists_keep_order_and_join_serialized_item_bytes_exactly() {
         (&["a,b", "\"c\"", "\\31 x"][..], "a,b, \"c\", \\31 x"),
         (&["\0", "é😀"][..], "\0, é😀"),
     ] {
-        assert_list(
-            items,
-            expected,
-            serialize_css_comma_separated_list,
-            serialize_css_comma_separated_list_with_limits,
-        );
+        assert_list(items, expected, serialize_css_comma_separated_list);
     }
 }
 
@@ -157,76 +150,69 @@ fn whitespace_lists_keep_order_and_join_serialized_item_bytes_exactly() {
         (&["a,b", "\"c\"", "\\31 x"][..], "a,b \"c\" \\31 x"),
         (&["\0", "é😀"][..], "\0 é😀"),
     ] {
-        assert_list(
-            items,
-            expected,
-            serialize_css_whitespace_separated_list,
-            serialize_css_whitespace_separated_list_with_limits,
-        );
+        assert_list(items, expected, serialize_css_whitespace_separated_list);
     }
 }
 
 #[test]
 fn empty_results_admit_zero_bytes_and_visit_the_primitive_or_container() {
-    let empty_limits = CssSpecifiedValueSerializationLimits::new(1, 1, 0);
+    let empty_limits = CssSerializationLimits::new(1, 1, 0);
+    assert_eq!(serialize_css_identifier("", empty_limits).unwrap(), "");
     assert_eq!(
-        serialize_css_identifier_with_limits("", empty_limits).unwrap(),
+        serialize_css_comma_separated_list(&[], empty_limits).unwrap(),
         ""
     );
     assert_eq!(
-        serialize_css_comma_separated_list_with_limits(&[], empty_limits).unwrap(),
+        serialize_css_whitespace_separated_list(&[], empty_limits).unwrap(),
         ""
     );
-    assert_eq!(
-        serialize_css_whitespace_separated_list_with_limits(&[], empty_limits).unwrap(),
-        ""
-    );
-    assert_eq!(
-        serialize_css_string_with_limits("", empty_limits)
+    assert!(
+        serialize_css_string("", empty_limits)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
-    let zero = CssSpecifiedValueSerializationLimits::new(0, 0, 0);
-    assert_eq!(
-        serialize_css_identifier_with_limits("", zero)
+    let zero = CssSerializationLimits::new(0, 0, 0);
+    assert!(
+        serialize_css_identifier("", zero)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
-        serialize_css_comma_separated_list_with_limits(&[], zero)
+    assert!(
+        serialize_css_comma_separated_list(&[], zero)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     // An empty retained item is a child visit despite emitting no bytes.
-    assert_eq!(
-        serialize_css_comma_separated_list_with_limits(&[""], empty_limits)
+    assert!(
+        serialize_css_comma_separated_list(&[""], empty_limits)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(
-        serialize_css_whitespace_separated_list_with_limits(
-            &[""],
-            CssSpecifiedValueSerializationLimits::new(2, 2, 0)
-        )
-        .unwrap(),
+        serialize_css_whitespace_separated_list(&[""], CssSerializationLimits::new(2, 2, 0))
+            .unwrap(),
         ""
     );
 }
 
 #[test]
 fn common_idioms_do_not_weaken_strict_identifier_construction() {
-    assert_eq!(
-        CssIdent::try_new(String::new()).unwrap_err().kind(),
-        CssComponentValueErrorKind::InvalidIdentifier
+    assert!(
+        CssIdent::try_new(String::new())
+            .unwrap_err()
+            .is_invalid_identifier()
+    );
+    assert!(
+        CssIdent::try_new("\0".to_owned())
+            .unwrap_err()
+            .is_invalid_identifier()
     );
     assert_eq!(
-        CssIdent::try_new("\0".to_owned()).unwrap_err().kind(),
-        CssComponentValueErrorKind::InvalidIdentifier
+        serialize_css_identifier("", Default::default()).unwrap(),
+        ""
     );
-    assert_eq!(serialize_css_identifier("").unwrap(), "");
-    assert_eq!(serialize_css_identifier("\0").unwrap(), "\u{fffd}");
+    assert_eq!(
+        serialize_css_identifier("\0", Default::default()).unwrap(),
+        "\u{fffd}"
+    );
 }

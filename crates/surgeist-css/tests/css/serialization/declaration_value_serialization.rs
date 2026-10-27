@@ -8,10 +8,14 @@ use crate::css::support::authored_syntax::{
     assert_diagnostics, grammar_checked_declaration as checked, parsed_declaration as parsed,
 };
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssCustomPropertyName, CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::serialization::CssSerializationLimits;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
 
 #[test]
 fn every_represented_ordinary_property_dispatches_its_typed_payload() {
@@ -31,15 +35,15 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["box-sizing"], "border-box", "border-box"),
         // CssBorderCollapse
         (&["border-collapse"], "collapse", "collapse"),
-        // CssBorderSpacing
-        (&["border-spacing"], "10px", "10px 10px"),
+        // CssSidePair<CssNumeric<CssLength, CssNonNegative>>
+        (&["border-spacing"], "10px", "10px"),
         // CssCaptionSide
         (&["caption-side"], "bottom", "bottom"),
         // CssClip
         (&["clip"], "auto", "auto"),
         // CssEmptyCells
         (&["empty-cells"], "hide", "hide"),
-        // CssPageLineMinimum
+        // CssNumeric<CssInteger, CssPositive>
         (&["orphans", "widows"], "2", "2"),
         // CssBreakBetween
         (&["break-after", "break-before"], "page", "page"),
@@ -51,11 +55,11 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["table-layout"], "fixed", "fixed"),
         // CssScrollSnapType
         (&["scroll-snap-type"], "none", "none"),
-        // CssScrollSnapAlign
+        // CssSidePair<CssScrollSnapAlignment>
         (&["scroll-snap-align"], "none", "none"),
         // CssScrollSnapStop
         (&["scroll-snap-stop"], "normal", "normal"),
-        // CssScrollPaddingValue
+        // CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>
         (
             &[
                 "scroll-padding-top",
@@ -70,7 +74,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "auto",
             "auto",
         ),
-        // CssSpecifiedLength
+        // CssNumeric<CssLength>
         (
             &[
                 "scroll-margin-top",
@@ -86,21 +90,21 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "10px",
             "10px",
         ),
-        // CssScrollPaddingPair
+        // CssSidePair<CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>>
         (
             &["scroll-padding-block", "scroll-padding-inline"],
             "10px",
             "10px",
         ),
-        // CssScrollMarginPair
+        // CssSidePair<CssNumeric<CssLength>>
         (
             &["scroll-margin-block", "scroll-margin-inline"],
             "10px",
             "10px",
         ),
-        // CssScrollPaddingShorthand
+        // CssFourSides<CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>>
         (&["scroll-padding"], "10px", "10px"),
-        // CssScrollMarginShorthand
+        // CssFourSides<CssNumeric<CssLength>>
         (&["scroll-margin"], "10px", "10px"),
         // CssTextSpacingAdjustment
         (&["word-spacing", "letter-spacing"], "normal", "normal"),
@@ -155,11 +159,11 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "none",
             "none",
         ),
-        // CssSpeechBreakPair
+        // CssSidePair<CssSpeechBreak>
         (&["pause", "rest"], "none", "none"),
         // CssCue
         (&["cue-before", "cue-after"], "none", "none"),
-        // CssCuePair
+        // CssSidePair<CssCue>
         (&["cue"], "none", "none"),
         // CssFlexDirection
         (&["flex-direction"], "row", "row"),
@@ -238,9 +242,9 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "none",
             "none",
         ),
-        // CssSizePair
+        // CssSidePair<CssSizeValue>
         (&["size", "min-size"], "auto", "auto"),
-        // CssMaxSizePair
+        // CssSidePair<CssMaxSizeValue>
         (&["max-size"], "none", "none"),
         // CssFrameSizing
         (&["frame-sizing"], "auto", "auto"),
@@ -257,11 +261,11 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "none",
             "none",
         ),
-        // CssContainIntrinsicSize
+        // CssSidePair<CssContainIntrinsicSizeValue>
         (&["contain-intrinsic-size"], "none", "none"),
         // CssFlexBasisValue
         (&["flex-basis"], "auto", "auto"),
-        // CssGapShorthand
+        // CssSidePair<CssGapValue>
         (&["gap"], "10px", "10px"),
         // CssGapValue
         (&["row-gap", "column-gap"], "10px", "10px"),
@@ -296,7 +300,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["column-rule-width"], "medium", "medium"),
         // CssColumnSpan
         (&["column-span"], "all", "all"),
-        // CssColumnWidth
+        // CssSizeValue
         (&["column-width"], "auto", "auto"),
         // CssColumns
         (&["columns"], "auto", "auto auto"),
@@ -425,7 +429,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["text-decoration-thickness"], "auto", "auto"),
         // CssTextTransform
         (&["text-transform"], "none", "none"),
-        // CssInsetShorthand
+        // CssFourSides<CssInsetValue>
         (&["inset"], "10px", "10px"),
         // CssInsetValue
         (
@@ -442,13 +446,13 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "10px",
             "10px",
         ),
-        // CssInsetPair
+        // CssSidePair<CssInsetValue>
         (&["inset-block", "inset-inline"], "10px", "10px"),
         // CssZIndexValue
         (&["z-index"], "auto", "auto"),
         // CssBoxDecorationBreak
         (&["box-decoration-break"], "clone", "clone"),
-        // CssMarginShorthand
+        // CssFourSides<CssMarginValue>
         (&["margin"], "10px", "10px"),
         // CssMarginValue
         (
@@ -465,9 +469,9 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "10px",
             "10px",
         ),
-        // CssMarginPair
+        // CssSidePair<CssMarginValue>
         (&["margin-block", "margin-inline"], "10px", "10px"),
-        // CssPaddingShorthand
+        // CssFourSides<CssPaddingValue>
         (&["padding"], "10px", "10px"),
         // CssPaddingValue
         (
@@ -484,7 +488,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "10px",
             "10px",
         ),
-        // CssPaddingPair
+        // CssSidePair<CssPaddingValue>
         (&["padding-block", "padding-inline"], "10px", "10px"),
         // CssBorder
         (
@@ -504,9 +508,9 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "solid",
             "solid",
         ),
-        // CssBorderWidthShorthand
+        // CssFourSides<CssLineWidth>
         (&["border-width"], "10px", "10px"),
-        // CssBorderWidth
+        // CssLineWidth
         (
             &[
                 "border-top-width",
@@ -521,7 +525,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "medium",
             "medium",
         ),
-        // CssBorderWidthPair
+        // CssSidePair<CssLineWidth>
         (
             &["border-block-width", "border-inline-width"],
             "10px",
@@ -529,9 +533,9 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         ),
         // CssBackground
         (&["background"], "purple", "purple"),
-        // CssBorderColorShorthand
+        // CssFourSides<CssColor>
         (&["border-color"], "purple", "purple"),
-        // CssBorderColorPair
+        // CssSidePair<CssColor>
         (
             &["border-block-color", "border-inline-color"],
             "purple",
@@ -571,9 +575,9 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["image-rendering"], "auto", "auto"),
         // CssObjectFit
         (&["object-fit"], "cover", "cover"),
-        // CssBorderStyleShorthand
+        // CssFourSides<CssLineStyle>
         (&["border-style"], "solid", "solid"),
-        // CssBorderStyle
+        // CssLineStyle
         (
             &[
                 "border-top-style",
@@ -588,7 +592,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
             "solid",
             "solid",
         ),
-        // CssBorderStylePair
+        // CssSidePair<CssLineStyle>
         (
             &["border-block-style", "border-inline-style"],
             "solid",
@@ -596,7 +600,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         ),
         // CssBorderRadiusShorthand
         (&["border-radius"], "10px", "10px"),
-        // CssCornerRadiusValue
+        // CssSidePair<CssNumeric<CssLengthPercentage, CssNonNegative>>
         (
             &[
                 "border-top-left-radius",
@@ -615,9 +619,9 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["box-shadow"], "none", "none"),
         // CssOpacityValue
         (&["opacity"], "0.5", "0.5"),
-        // CssSpecifiedNonNegativeNumber
+        // CssNumeric<CssNumber, CssNonNegative>
         (&["flex-grow", "flex-shrink"], "2", "2"),
-        // CssIntegerValue
+        // CssNumeric<CssInteger>
         (&["order"], "-1", "-1"),
         // CssFlexValue
         (&["flex"], "none", "none"),
@@ -651,7 +655,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["outline-color"], "auto", "auto"),
         // CssOutlineStyle
         (&["outline-style"], "none", "none"),
-        // CssOutlineWidth
+        // CssLineWidth
         (&["outline-width"], "medium", "medium"),
         // CssTransform
         (&["transform"], "none", "none"),
@@ -677,7 +681,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         (&["mix-blend-mode"], "multiply", "multiply"),
         // CssMaskList
         (&["mask"], "none", "none"),
-        // CssPhysicalPositionList
+        // CssPositionList
         (&["mask-position"], "10px 20px", "10px 20px"),
         // CssTransitionPropertyList: Transitions1 §2.1 defines the all keyword.
         (&["transition-property"], "all", "all"),
@@ -711,7 +715,7 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
         for &name in names {
             let expected = format!("{name}: {value_css} !important;");
             let source = format!("{name}:{input}!IMPORTANT");
-            let report = parse_declaration(&source);
+            let report = CssDeclaration::parse(&CssParser::default(), &source);
             if !report.is_clean() {
                 failures.push(format!("{source}: {:?}", report.diagnostics()));
                 continue;
@@ -724,18 +728,23 @@ fn every_represented_ordinary_property_dispatches_its_typed_payload() {
                     "ordinary {name}"
                 );
                 let before = declaration.clone();
-                let output = declaration.to_specified_css();
+                let output = declaration.serialize_specified(Default::default());
                 if output.as_deref() != Ok(expected.as_str()) {
                     failures.push(format!("{source}: expected {expected:?}, got {output:?}"));
                     continue;
                 }
-                let reparse = parse_style_attribute(&expected);
+                let reparse = CssParser::default().parse_block_contents(&expected);
                 assert!(
                     reparse.is_clean(),
                     "{expected}: {:?}",
                     reparse.diagnostics()
                 );
-                assert_eq!(reparse.syntax()[0].to_specified_css().unwrap(), expected);
+                assert_eq!(
+                    reparse.syntax()[0]
+                        .serialize_specified(Default::default())
+                        .unwrap(),
+                    expected
+                );
                 assert_eq!(declaration, &before);
                 assert!(declaration.same_occurrence(&before));
             }
@@ -753,9 +762,12 @@ fn exact_limits(declaration: &CssDeclaration, expected: &str, input: usize, proj
         .zero_limits()
         .assert_unchanged_with(
             declaration,
-            CssDeclaration::to_specified_css_with_limits,
+            CssDeclaration::serialize_specified,
             |_, _, _| {
-                assert_eq!(declaration.to_specified_css().unwrap(), expected);
+                assert_eq!(
+                    declaration.serialize_specified(Default::default()).unwrap(),
+                    expected
+                );
                 assert!(declaration.same_occurrence(&before));
                 assert_eq!(declaration.value_components(), &components);
                 assert_eq!(declaration.parsed_name(), name_origin.as_ref());
@@ -806,7 +818,10 @@ fn name_equivalent_aliases_use_canonical_owners_and_preserve_original_names() {
             checked(name, input, CssImportance::Normal),
         ] {
             let original = declaration.parsed_name().cloned();
-            assert_eq!(declaration.to_specified_css().unwrap(), expected);
+            assert_eq!(
+                declaration.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(declaration.parsed_name(), original.as_ref());
             if let Some(origin) = original {
                 assert_eq!(origin.source().as_str(), format!("{name}:{input}"));
@@ -836,7 +851,7 @@ fn legacy_grammar_text_inverts_only_its_source_defined_semantic_mapping() {
         ] {
             assert_eq!(declaration.known().unwrap().grammar().name(), name);
             exact_limits(&declaration, &expected, 3, projection);
-            let reparse = parse_style_attribute(&expected);
+            let reparse = CssParser::default().parse_block_contents(&expected);
             assert!(
                 reparse.is_clean(),
                 "{expected}: {:?}",
@@ -846,7 +861,12 @@ fn legacy_grammar_text_inverts_only_its_source_defined_semantic_mapping() {
                 reparse.syntax()[0].known().unwrap().grammar(),
                 declaration.known().unwrap().grammar()
             );
-            assert_eq!(reparse.syntax()[0].to_specified_css().unwrap(), expected);
+            assert_eq!(
+                reparse.syntax()[0]
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
         }
     }
 }
@@ -916,13 +936,15 @@ fn semantic_children_canonicalize_numeric_math_and_aggregate_owners() {
         ] {
             let before = declaration.clone();
             let components = declaration.value_components().clone();
-            assert_eq!(declaration.to_specified_css().unwrap(), expected);
             assert_eq!(
+                declaration.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
+            assert!(
                 declaration
-                    .to_specified_css_with_limits(Limits::new(65_536, 262_144, expected.len() - 1))
+                    .serialize_specified(Limits::new(65_536, 262_144, expected.len() - 1))
                     .unwrap_err()
-                    .kind(),
-                Kind::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(declaration.value_components(), &components);
             assert_eq!(declaration, before);
@@ -933,9 +955,10 @@ fn semantic_children_canonicalize_numeric_math_and_aggregate_owners() {
 
 fn custom_checked(name: &str, value: &str, importance: CssImportance) -> CssDeclaration {
     let name = CssCustomPropertyName::try_new(name).unwrap();
-    parse_property_value(
-        CssPropertyNameRef::Custom(&name),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         importance,
     )
     .unwrap()
@@ -1008,7 +1031,10 @@ fn pending_known_values_and_all_keep_original_function_case_and_symbolic_text() 
         let expected = format!("{name}: {input};");
         let declaration = parsed(&format!("{name}:{input}"));
         let components = declaration.value_components().clone();
-        assert_eq!(declaration.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            declaration.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(declaration.value_components(), &components);
     }
 }
@@ -1016,13 +1042,17 @@ fn pending_known_values_and_all_keep_original_function_case_and_symbolic_text() 
 #[test]
 fn constructed_custom_adjacency_uses_the_shared_component_boundary_owner() {
     let name = CssCustomPropertyName::try_new("--Tokens").unwrap();
-    let components = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("A").unwrap(),
-        CssComponentValue::try_ident("B").unwrap(),
-    ])
+    let components = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("A").unwrap(),
+            CssComponentValue::try_ident("B").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Custom(&name),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
         components.clone(),
         CssImportance::Normal,
     )
@@ -1050,9 +1080,11 @@ fn owning_precision_failure_returns_no_declaration_text_and_preserves_occurrence
             let components = declaration.value_components().clone();
             let value_origin = declaration.parsed_value().cloned();
             for _ in 0..2 {
-                assert_eq!(
-                    declaration.to_specified_css().unwrap_err().kind(),
-                    Kind::UnrepresentableValue
+                assert!(
+                    declaration
+                        .serialize_specified(Default::default())
+                        .unwrap_err()
+                        .is_unrepresentable_value()
                 );
                 assert_eq!(declaration.value_components(), &components);
                 assert_eq!(declaration.parsed_value(), value_origin.as_ref());
@@ -1086,13 +1118,18 @@ fn symbolic_edge_whitespace_is_trimmed_without_dropping_comments_or_refunding_wo
         };
         for declaration in [parsed(&format!("{name}:{input}!important")), checked] {
             exact_limits(&declaration, &expected, nodes, nodes);
-            let reparse = parse_style_attribute(&expected);
+            let reparse = CssParser::default().parse_block_contents(&expected);
             assert!(
                 reparse.is_clean(),
                 "{expected}: {:?}",
                 reparse.diagnostics()
             );
-            assert_eq!(reparse.syntax()[0].to_specified_css().unwrap(), expected);
+            assert_eq!(
+                reparse.syntax()[0]
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
         }
     }
 }
@@ -1106,11 +1143,14 @@ fn nested_symbolic_trivia_and_recovered_closures_keep_their_original_origins() {
         custom_checked("--X", input, CssImportance::Normal),
     ] {
         let components = declaration.value_components().clone();
-        assert_eq!(declaration.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            declaration.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(declaration.value_components(), &components);
     }
     let source = "--X:var(--Case";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     // EOF closes the `var(` function implicitly.
     assert_diagnostics(
         report.diagnostics(),

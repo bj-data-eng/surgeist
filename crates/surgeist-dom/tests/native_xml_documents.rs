@@ -614,7 +614,9 @@ fn associated_explicit_input_policy_is_reestablished_in_the_new_closed_environme
 fn actual_style_publication_parks_original_constructor_then_finishes_origin_mime_and_tickets_once()
 {
     use std::sync::{Arc, atomic::Ordering};
-    use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::query::media::CssMediaQueryList;
+    use surgeist_css::source::CssUtf16InputLimits;
+    use surgeist_css::{CssParser, CssParserContext};
     use surgeist_cssom::{
         CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs, CssomStore,
     };
@@ -717,20 +719,20 @@ fn actual_style_publication_parks_original_constructor_then_finishes_origin_mime
         )
         .unwrap();
     let parser = CssParserContext::default();
-    let body = parser
-        .parse_sheet_utf16_with_limits(
+    let body = CssParser::new(parser, Default::default())
+        .parse_sheet_utf16(
             create.source().text().clone(),
             CssUtf16InputLimits::default(),
             || Ok::<_, ()>(()),
         )
         .unwrap();
-    let media = parser
-        .parse_media_query_list_utf16_with_limits(
-            Arc::new(Vec::new()),
-            CssUtf16InputLimits::default(),
-            || Ok::<_, ()>(()),
-        )
-        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(parser, Default::default()),
+        Arc::new(Vec::new()),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap();
     let mut inputs = CssomSheetInputs::external(version, true);
     inputs.owner = Some("inline-owner".into());
     let mut edit = owner

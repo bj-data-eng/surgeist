@@ -1,5 +1,5 @@
 //! A downstream consumer needs no private storage access or CSS text round trip.
-use surgeist_css::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
 use surgeist_cssom::*;
 
 fn main() -> Result<(), CssomError> {

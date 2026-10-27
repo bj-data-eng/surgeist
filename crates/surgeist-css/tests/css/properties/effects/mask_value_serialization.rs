@@ -2,10 +2,23 @@
 //! https://www.w3.org/TR/2021/CRD-css-masking-1-20210805/#the-mask
 
 use crate::css::support::normal_declaration;
+use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{CssLengthPercentage, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::background::{CssBackgroundRepeat, CssBackgroundSize};
+use surgeist_css::values::common::CssUrl;
+use surgeist_css::values::effects::{CssMaskLayer, CssMaskList};
+use surgeist_css::values::image::CssImageValue;
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
+};
+type Limits = CssSerializationLimits;
 
 fn mask_list(css: &str) -> CssMaskList {
     let declaration = normal_declaration("mask", css);
@@ -19,8 +32,11 @@ fn mask_list(css: &str) -> CssMaskList {
 
 fn bounds(value: &CssMaskList, expected: &str, input: usize, projection: usize) {
     LimitLadder::new(expected, input, projection)
-        .assert_unchanged(value, CssMaskList::serialize_specified_with_limits);
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+        .assert_unchanged(value, CssMaskList::serialize_specified);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -42,8 +58,16 @@ fn parsed_fields_emit_in_canonical_layer_order() {
     ] {
         let value = mask_list(input);
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        assert_eq!(mask_list(expected).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            mask_list(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         assert_eq!(value, before);
     }
 }
@@ -106,7 +130,7 @@ fn list_layer_and_authored_child_costs_are_exact() {
 
 #[test]
 fn programmatic_numeric_position_keeps_exact_token_and_origin_after_rounding() {
-    let offset = CssSpecifiedLengthPercentage::try_from_component(
+    let offset = CssNumeric::<CssLengthPercentage>::try_from_component(
         CssComponentValue::try_dimension(".12345641", "px").unwrap(),
     )
     .unwrap();
@@ -116,7 +140,7 @@ fn programmatic_numeric_position_keeps_exact_token_and_origin_after_rounding() {
     )
     .unwrap();
     let value = CssMaskList::try_new(vec![
-        CssMaskLayer::try_new(None, Some(position), None, None, None, None, None).unwrap(),
+        CssMaskLayer::try_new(None, Some(position.into()), None, None, None, None, None).unwrap(),
     ])
     .unwrap();
     bounds(&value, "0.123456px top", 6, 6);
@@ -125,9 +149,11 @@ fn programmatic_numeric_position_keeps_exact_token_and_origin_after_rounding() {
         panic!("offset")
     };
     assert!(matches!(offset.origin(), CssValueOrigin::Programmatic));
-    assert!(matches!(offset.literal_component().unwrap().view(),
+    assert!(
+        matches!(offset.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit })
-        if number.representation() == ".12345641" && unit == "px"));
+        if number.representation() == ".12345641" && unit == "px")
+    );
 }
 
 #[test]
@@ -148,7 +174,7 @@ fn constructors_preserve_order_and_omitted_image_position_size_repeat() {
         .unwrap(),
         CssMaskLayer::try_new(
             None,
-            Some(center),
+            Some(center.into()),
             None,
             Some(CssBackgroundRepeat::RepeatX),
             None,
@@ -170,7 +196,7 @@ fn constructors_preserve_order_and_omitted_image_position_size_repeat() {
     .unwrap();
     let before = value.clone();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "url(\"first.svg\") 0% 0% / cover, center center repeat-x, none"
     );
     assert_eq!(value, before);
@@ -182,7 +208,7 @@ fn constructors_preserve_order_and_omitted_image_position_size_repeat() {
 #[test]
 fn symbolic_math_keeps_source_graph_and_non_bmp_origin_after_failure_and_retry() {
     let source = "/*😀*/mask:calc(10px + 1em) top / contain";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Mask(wrapper) = report.syntax()[0]
         .known()
@@ -209,14 +235,16 @@ fn symbolic_math_keeps_source_graph_and_non_bmp_origin_after_failure_and_retry()
         source.find("calc(").unwrap()
     );
     let expected = "calc(1em + 10px) top / contain";
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(Limits::new(100, 100, 1))
+            .serialize_specified(Limits::new(100, 100, 1))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(*value, before);
     assert_eq!(offset.calculation().unwrap().components(), &components);
 }
@@ -226,12 +254,11 @@ fn failure_after_first_layer_or_separator_is_atomic_and_retryable() {
     let value = mask_list("none, none");
     let before = value.clone();
     for bytes in [4, 5, 6, 9] {
-        assert_eq!(
+        assert!(
             value
-                .serialize_specified_with_limits(Limits::new(5, 5, bytes))
+                .serialize_specified(Limits::new(5, 5, bytes))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, before);
     }

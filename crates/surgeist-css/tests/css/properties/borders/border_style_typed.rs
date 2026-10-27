@@ -1,46 +1,49 @@
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::border::CssLineStyle;
+use surgeist_css::values::common::{CssBoxSideKind, CssFourSides, CssSidePair};
 
 #[test]
 fn scalar_style_keywords_share_exact_bounded_serialization() {
     for (style, expected) in [
-        (CssBorderStyle::None, "none"),
-        (CssBorderStyle::Hidden, "hidden"),
-        (CssBorderStyle::Dotted, "dotted"),
-        (CssBorderStyle::Dashed, "dashed"),
-        (CssBorderStyle::Solid, "solid"),
-        (CssBorderStyle::Double, "double"),
-        (CssBorderStyle::Groove, "groove"),
-        (CssBorderStyle::Ridge, "ridge"),
-        (CssBorderStyle::Inset, "inset"),
-        (CssBorderStyle::Outset, "outset"),
+        (CssLineStyle::None, "none"),
+        (CssLineStyle::Hidden, "hidden"),
+        (CssLineStyle::Dotted, "dotted"),
+        (CssLineStyle::Dashed, "dashed"),
+        (CssLineStyle::Solid, "solid"),
+        (CssLineStyle::Double, "double"),
+        (CssLineStyle::Groove, "groove"),
+        (CssLineStyle::Ridge, "ridge"),
+        (CssLineStyle::Inset, "inset"),
+        (CssLineStyle::Outset, "outset"),
     ] {
-        assert_eq!(style.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            style.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
-    let style = CssBorderStyle::None;
-    let exact = CssSpecifiedValueSerializationLimits::new(1, 1, 4);
-    assert_eq!(
-        style.serialize_specified_with_limits(exact).unwrap(),
-        "none"
-    );
+    let style = CssLineStyle::None;
+    let exact = CssSerializationLimits::new(1, 1, 4);
+    assert_eq!(style.serialize_specified(exact).unwrap(), "none");
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, 4),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, 1, 4),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, 4),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(1, 0, 4),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 3),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(1, 1, 3),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            style
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&style.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -48,42 +51,40 @@ fn scalar_style_keywords_share_exact_bounded_serialization() {
 
 #[test]
 fn logical_pairs_keep_authored_omission_and_cumulative_budget() {
-    let one = CssBorderStylePair::new(CssBorderStyle::Dotted, None);
-    assert_eq!(one.start(), &CssBorderStyle::Dotted);
-    assert_eq!(one.authored_end(), None);
-    assert_eq!(one.end(), one.start());
-    assert_eq!(one.serialize_specified().unwrap(), "dotted");
+    let one = CssSidePair::new(CssLineStyle::Dotted, None);
+    assert_eq!(one.first(), &CssLineStyle::Dotted);
+    assert_eq!(one.authored_second(), None);
+    assert_eq!(one.second(), one.first());
+    assert_eq!(
+        one.serialize_specified(Default::default()).unwrap(),
+        "dotted"
+    );
     assert_ne!(
         one,
-        CssBorderStylePair::new(CssBorderStyle::Dotted, Some(CssBorderStyle::Dotted))
+        CssSidePair::new(CssLineStyle::Dotted, Some(CssLineStyle::Dotted))
     );
 
-    let pair = CssBorderStylePair::new(CssBorderStyle::Dotted, Some(CssBorderStyle::Dashed));
-    assert_eq!(pair.authored_end(), Some(&CssBorderStyle::Dashed));
-    assert_eq!(pair.end(), &CssBorderStyle::Dashed);
-    let exact = CssSpecifiedValueSerializationLimits::new(3, 3, 13);
-    assert_eq!(
-        pair.serialize_specified_with_limits(exact).unwrap(),
-        "dotted dashed"
-    );
+    let pair = CssSidePair::new(CssLineStyle::Dotted, Some(CssLineStyle::Dashed));
+    assert_eq!(pair.authored_second(), Some(&CssLineStyle::Dashed));
+    assert_eq!(pair.second(), &CssLineStyle::Dashed);
+    let exact = CssSerializationLimits::new(3, 3, 13);
+    assert_eq!(pair.serialize_specified(exact).unwrap(), "dotted dashed");
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 13),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(2, 3, 13),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 13),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(3, 2, 13),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 12),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(3, 3, 12),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            pair.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&pair.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -91,9 +92,9 @@ fn logical_pairs_keep_authored_omission_and_cumulative_budget() {
 
 #[test]
 fn four_side_styles_preserve_authored_arity_and_physical_or_logical_roles() {
-    use CssBorderStyle::{Dashed, Dotted, None, Solid};
-    assert!(CssBorderStyleShorthand::try_new(CssBoxSideKind::Physical, vec![]).is_none());
-    assert!(CssBorderStyleShorthand::try_new(CssBoxSideKind::Logical, vec![None; 5]).is_none());
+    use CssLineStyle::{Dashed, Dotted, None, Solid};
+    assert!(CssFourSides::<CssLineStyle>::try_new(CssBoxSideKind::Physical, vec![]).is_none());
+    assert!(CssFourSides::try_new(CssBoxSideKind::Logical, vec![None; 5]).is_none());
     for (values, assigned, serialized) in [
         (vec![None], ["none", "none", "none", "none"], "none"),
         (
@@ -113,58 +114,58 @@ fn four_side_styles_preserve_authored_arity_and_physical_or_logical_roles() {
         ),
     ] {
         for kind in [CssBoxSideKind::Physical, CssBoxSideKind::Logical] {
-            let shorthand = CssBorderStyleShorthand::try_new(kind, values.clone()).unwrap();
+            let shorthand = CssFourSides::try_new(kind, values.clone()).unwrap();
             assert_eq!(shorthand.kind(), kind);
-            assert_eq!(shorthand.authored_values(), values);
+            assert_eq!(shorthand.authored(), values);
             let expected = match kind {
                 CssBoxSideKind::Physical => serialized.to_string(),
                 CssBoxSideKind::Logical => format!("logical {serialized}"),
+                _ => unreachable!("only physical and logical sides are authored"),
             };
-            assert_eq!(shorthand.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                shorthand.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(
                 shorthand
-                    .assigned_values()
-                    .map(|value| value.serialize_specified().unwrap()),
+                    .assigned()
+                    .map(|value| value.serialize_specified(Default::default()).unwrap()),
                 assigned
             );
         }
     }
-    let one = CssBorderStyleShorthand::try_new(CssBoxSideKind::Physical, vec![None]).unwrap();
-    let repeated =
-        CssBorderStyleShorthand::try_new(CssBoxSideKind::Physical, vec![None; 4]).unwrap();
-    let logical = CssBorderStyleShorthand::try_new(CssBoxSideKind::Logical, vec![None]).unwrap();
+    let one = CssFourSides::try_new(CssBoxSideKind::Physical, vec![None]).unwrap();
+    let repeated = CssFourSides::try_new(CssBoxSideKind::Physical, vec![None; 4]).unwrap();
+    let logical = CssFourSides::try_new(CssBoxSideKind::Logical, vec![None]).unwrap();
     assert_ne!(one, repeated);
     assert_ne!(one, logical);
 
-    let logical = CssBorderStyleShorthand::try_new(
+    let logical = CssFourSides::try_new(
         CssBoxSideKind::Logical,
-        vec![None, Solid, Dashed, CssBorderStyle::Double],
+        vec![None, Solid, Dashed, CssLineStyle::Double],
     )
     .unwrap();
-    let exact = CssSpecifiedValueSerializationLimits::new(5, 5, 32);
+    let exact = CssSerializationLimits::new(5, 5, 32);
     assert_eq!(
-        logical.serialize_specified_with_limits(exact).unwrap(),
+        logical.serialize_specified(exact).unwrap(),
         "logical none solid dashed double"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(4, 5, 32),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(4, 5, 32),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 4, 32),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(5, 4, 32),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(5, 5, 31),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(5, 5, 31),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            logical
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&logical.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -176,15 +177,15 @@ fn parsed_styles_retain_authored_roles_and_arity() {
         (
             "border-style:solid dashed",
             CssBoxSideKind::Physical,
-            vec![CssBorderStyle::Solid, CssBorderStyle::Dashed],
+            vec![CssLineStyle::Solid, CssLineStyle::Dashed],
         ),
         (
             "border-style:logical solid dashed",
             CssBoxSideKind::Logical,
-            vec![CssBorderStyle::Solid, CssBorderStyle::Dashed],
+            vec![CssLineStyle::Solid, CssLineStyle::Dashed],
         ),
     ] {
-        let report = parse_style_attribute(css);
+        let report = CssParser::default().parse_block_contents(css);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let CssKnownPropertyValueRef::BorderStyle(value) = report.syntax()[0]
             .known()
@@ -195,19 +196,19 @@ fn parsed_styles_retain_authored_roles_and_arity() {
             panic!("typed border-style")
         };
         assert_eq!(value.value().kind(), kind);
-        assert_eq!(value.value().authored_values(), authored);
+        assert_eq!(value.value().authored(), authored);
         assert_eq!(
-            value.value().assigned_values(),
+            value.value().assigned(),
             [
-                &CssBorderStyle::Solid,
-                &CssBorderStyle::Dashed,
-                &CssBorderStyle::Solid,
-                &CssBorderStyle::Dashed
+                &CssLineStyle::Solid,
+                &CssLineStyle::Dashed,
+                &CssLineStyle::Solid,
+                &CssLineStyle::Dashed
             ]
         );
     }
 
-    let report = parse_style_attribute("border-block-style:dotted dashed");
+    let report = CssParser::default().parse_block_contents("border-block-style:dotted dashed");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BorderBlockStyle(value) = report.syntax()[0]
         .known()
@@ -219,6 +220,6 @@ fn parsed_styles_retain_authored_roles_and_arity() {
     };
     assert_eq!(
         value.value(),
-        &CssBorderStylePair::new(CssBorderStyle::Dotted, Some(CssBorderStyle::Dashed))
+        &CssSidePair::new(CssLineStyle::Dotted, Some(CssLineStyle::Dashed))
     );
 }

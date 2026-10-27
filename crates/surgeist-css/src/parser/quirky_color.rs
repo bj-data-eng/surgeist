@@ -1,9 +1,21 @@
 //! Selected Color4 Appendix B fallback, confined to direct property color slots.
 use super::color::parse_color;
 use super::property_input::Parser;
-use crate::error::property::{Error, ErrorKind, ParseError, unexpected_at};
-use crate::numeric::NumericInputContext;
-use crate::*;
+use super::side_shapes::parse_four_sides;
+use crate::color::{CssColor, CssHexColor};
+use crate::component::{
+    CssComponentValue, CssComponentValueRef, CssNumericTokenKind, CssNumericTokenRef,
+    CssValueTokenRef,
+};
+use crate::declaration::CssAuthoredDeclarationValue;
+use crate::declaration::syntax::CssDeclaredValue;
+use crate::diagnostic::CssFeatureId;
+use crate::diagnostic::error::ErrorKind;
+use crate::diagnostic::error::property::{Error, ParseError, unexpected_at};
+use crate::numeric::expression::NumericInputContext;
+use crate::property::properties::CssKnownDeclarationValue;
+use crate::property::{CssKnownDeclaration, CssKnownProperty, CssPropertyValue};
+use crate::{CssParserContext, CssParserMode};
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
     &[CssFeatureId::new("official.value.quirky-color")];
@@ -19,29 +31,29 @@ pub(super) fn parse_property_value<'i, 't>(
         return super::parse_known_property_value(property, authored, input, numeric);
     }
     macro_rules! single {
-        ($variant:ident, $wrapper:ident) => {{
+        ($variant:ident) => {{
             let value = direct_color(input, numeric)?;
             Ok(CssKnownDeclaration::from_value(
-                CssKnownDeclarationValue::$variant(CssDeclaredValue::Value($wrapper::new(
+                CssKnownDeclarationValue::$variant(CssDeclaredValue::Value(CssPropertyValue::new(
                     authored, value,
                 ))),
             ))
         }};
     }
     match property {
-        CssKnownProperty::Color => single!(Color, CssColorPropertyValue),
+        CssKnownProperty::Color => single!(Color),
         CssKnownProperty::BackgroundColor => {
-            single!(BackgroundColor, CssBackgroundColorPropertyValue)
+            single!(BackgroundColor)
         }
-        CssKnownProperty::BorderTopColor => single!(BorderTopColor, CssBorderTopColorPropertyValue),
+        CssKnownProperty::BorderTopColor => single!(BorderTopColor),
         CssKnownProperty::BorderRightColor => {
-            single!(BorderRightColor, CssBorderRightColorPropertyValue)
+            single!(BorderRightColor)
         }
         CssKnownProperty::BorderBottomColor => {
-            single!(BorderBottomColor, CssBorderBottomColorPropertyValue)
+            single!(BorderBottomColor)
         }
         CssKnownProperty::BorderLeftColor => {
-            single!(BorderLeftColor, CssBorderLeftColorPropertyValue)
+            single!(BorderLeftColor)
         }
         CssKnownProperty::BorderColor => {
             // Preserve ordinary logical-prefixed grammar; its targets do not grant a quirk.
@@ -53,18 +65,10 @@ pub(super) fn parse_property_value<'i, 't>(
             if logical {
                 return super::parse_known_property_value(property, authored, input, numeric);
             }
-            let mut colors = Vec::new();
-            while !input.is_exhausted() {
-                if colors.len() == 4 {
-                    return Err(unexpected_at(input.current_source_location()));
-                }
-                colors.push(direct_color(input, numeric)?);
-            }
-            let value = CssBorderColorShorthand::try_new(CssBoxSideKind::Physical, colors)
-                .ok_or_else(|| unexpected_at(input.current_source_location()))?;
+            let value = parse_four_sides(input, |input| direct_color(input, numeric))?;
             Ok(CssKnownDeclaration::from_value(
                 CssKnownDeclarationValue::BorderColor(CssDeclaredValue::Value(
-                    CssBorderColorPropertyValue::new(authored, value),
+                    CssPropertyValue::new(authored, value),
                 )),
             ))
         }
@@ -82,10 +86,10 @@ fn direct_color<'i, 't>(
         Ok(color) => return Ok(color),
         Err(error) => error,
     };
-    if let crate::error::property::ParseErrorKind::Custom(error) = &ordinary.kind {
+    if let crate::diagnostic::error::property::ParseErrorKind::Custom(error) = &ordinary.kind {
         match &error.kind {
             ErrorKind::InvalidComponentValue(component)
-                if crate::error::is_component_resource_error(component) =>
+                if crate::diagnostic::error::is_component_resource_error(component) =>
             {
                 return Err(ordinary);
             }
@@ -98,12 +102,17 @@ fn direct_color<'i, 't>(
     let offset = input.position();
     let component = input
         .collect_component()
-        .map_err(crate::CssNumericConstructionError::component)
+        .map_err(crate::numeric::CssNumericConstructionError::component)
         .map_err(|error| {
             let at = numeric.property_error_location(&error, location, offset);
             error.component_error().map_or_else(
                 || unexpected_at(input.current_source_location()),
-                |component| crate::error::property::invalid_component_value(at, component.clone()),
+                |component| {
+                    crate::diagnostic::error::property::invalid_component_value(
+                        at,
+                        component.clone(),
+                    )
+                },
             )
         })?;
     quirky_hex(component.as_ref())
@@ -138,7 +147,7 @@ fn integer_digits(number: CssNumericTokenRef<'_>, unit: &str) -> Option<String> 
     }
     // Reuse the exact lexical integer owner: no tokenizer float or new numeric engine.
     // Values outside i32 cannot produce a six-character hexadecimal serialization.
-    let value = crate::integer_value::exact_i32(number.representation())?;
+    let value = crate::numeric::integer_value::exact_i32(number.representation())?;
     let integer = value.to_string();
     let length = integer.len().checked_add(unit.len())?;
     if length > 6 {

@@ -7,7 +7,17 @@
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-syntax
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-bounds
 use crate::css::support::rules::sole_scope_selector as single;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizedItem, CssNormalizedSheet, CssRuleContext, CssRuleContextKindRef,
+    CssSelectorBinding,
+};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::{CssRule, CssScopeRule, CssStyleBlock};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssSelector, CssSelectorCombinator, CssStyleSelector,
+};
 
 fn anchor(selector: &CssSelector, nesting: usize, scope: bool) {
     let CssSelector::Compound(compound) = selector else {
@@ -24,7 +34,7 @@ fn anchor(selector: &CssSelector, nesting: usize, scope: bool) {
 fn simple_bounds(scope: &CssScopeRule, root_nesting: usize, root_scope: bool) {
     anchor(single(scope.root().unwrap()), root_nesting, root_scope);
     anchor(single(scope.limit().unwrap()), 0, true);
-    let [CssScopedRule::Style(child)] = scope.rules().rules() else {
+    let [CssRule::Style(child)] = scope.rules().rules() else {
         panic!("one scoped child style")
     };
     assert_eq!(child.declarations().len(), 1);
@@ -35,7 +45,7 @@ fn simple_bounds(scope: &CssScopeRule, root_nesting: usize, root_scope: bool) {
     assert_eq!(
         child.declarations()[0]
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css()
             .trim(),
@@ -84,7 +94,7 @@ fn normalized_bounds(context: &CssRuleContext, root_nesting: usize, root_scope: 
 #[test]
 fn style_nested_root_and_limit_keep_distinct_anchor_categories() {
     let source = ".parent{@scope(&) to (&){.child{color:red}}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("parent")
@@ -101,7 +111,7 @@ fn style_nested_root_and_limit_keep_distinct_anchor_categories() {
             .value(),
         source.find("@scope").unwrap()
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let parent = context_at(&normalized, source, ".parent");
     let scope = context_at(&normalized, source, "@scope");
     let child = context_at(&normalized, source, ".child");
@@ -118,13 +128,13 @@ fn style_nested_root_and_limit_keep_distinct_anchor_categories() {
 #[test]
 fn ordinary_root_is_parentless_while_limit_belongs_to_introduced_scope() {
     let source = "@scope(&) to (&){.child{color:red}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope")
     };
     simple_bounds(scope, 1, false);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let scope = context_at(&normalized, source, "@scope");
     normalized_bounds(scope, 1, false);
     assert!(scope.parent().is_none());
@@ -133,19 +143,19 @@ fn ordinary_root_is_parentless_while_limit_belongs_to_introduced_scope() {
 #[test]
 fn ordinary_scope_ancestor_supplies_root_scope_but_not_limit_scope_identity() {
     let source = "@scope(.outer){@media all{@scope(&) to (&){.child{color:red}}}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Scope(outer)] = report.syntax().rules() else {
         panic!("outer")
     };
-    let [CssScopedRule::Media(media)] = outer.rules().rules() else {
+    let [CssRule::Media(media)] = outer.rules().rules() else {
         panic!("media")
     };
-    let [CssScopedRule::Scope(inner)] = media.rules().rules() else {
+    let [CssRule::Scope(inner)] = media.rules() else {
         panic!("inner")
     };
     simple_bounds(inner, 0, true);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let outer = context_at(&normalized, source, "@scope(.outer)");
     let media = context_at(&normalized, source, "@media");
     let inner = context_at(&normalized, source, "@scope(&)");
@@ -158,9 +168,9 @@ fn ordinary_scope_ancestor_supplies_root_scope_but_not_limit_scope_identity() {
 #[test]
 fn root_ancestry_selects_nearer_scoped_style_instead_of_outer_style() {
     let source = ".outer{@scope(.middle){.near{@media all{@scope(&) to (&){.child{color:red}}}}}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let outer = context_at(&normalized, source, ".outer");
     let middle = context_at(&normalized, source, "@scope(.middle)");
     let near = context_at(&normalized, source, ".near");
@@ -192,9 +202,9 @@ fn root_ancestry_selects_nearer_scoped_style_instead_of_outer_style() {
 #[test]
 fn anchor_modes_propagate_through_exact_function_members_and_combinators() {
     let source = ".parent{@media all{@scope(:is(&,.fallback)) to (:not(&)){.child{color:red}}}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let scope = context_at(&normalized, source, "@scope");
     let CssRuleContextKindRef::Scope {
         root: Some(root),
@@ -207,8 +217,8 @@ fn anchor_modes_propagate_through_exact_function_members_and_combinators() {
         panic!("is function")
     };
     let [
-        surgeist_css::CssPseudoSelectorListItem::Selector(parent),
-        surgeist_css::CssPseudoSelectorListItem::Selector(fallback),
+        surgeist_css::selector::CssPseudoSelectorListItem::Selector(parent),
+        surgeist_css::selector::CssPseudoSelectorListItem::Selector(fallback),
     ] = root.items()
     else {
         panic!("both authored members, no forgiving loss")
@@ -218,12 +228,13 @@ fn anchor_modes_propagate_through_exact_function_members_and_combinators() {
     let CssSelector::PseudoClass(CssPseudoClass::Not(limit)) = single(limit) else {
         panic!("not function")
     };
-    let [surgeist_css::CssPseudoSelectorListItem::Selector(limit)] = limit.items() else {
+    let [surgeist_css::selector::CssPseudoSelectorListItem::Selector(limit)] = limit.items() else {
         panic!("one not member")
     };
     anchor(limit, 0, true);
 
-    let report = parse_sheet(".parent{@scope(& > .root) to (& .stop){.child{color:red}}}");
+    let report = CssParser::default()
+        .parse_sheet(".parent{@scope(& > .root) to (& .stop){.child{color:red}}}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("parent")
@@ -262,7 +273,7 @@ fn anchor_modes_propagate_through_exact_function_members_and_combinators() {
 
 #[test]
 fn repeated_boundary_anchors_are_admitted_without_rewriting_to_pseudo_classes() {
-    let report = parse_sheet(".parent{@scope(&&) to (&&){.child{color:red}}}");
+    let report = CssParser::default().parse_sheet(".parent{@scope(&&) to (&&){.child{color:red}}}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("parent")
@@ -278,20 +289,20 @@ fn repeated_boundary_anchors_are_admitted_without_rewriting_to_pseudo_classes() 
 #[test]
 fn repeated_scoped_body_anchors_share_the_same_authored_scope_category() {
     let source = "@scope(.root){&&{color:red}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope")
     };
-    let [CssScopedRule::Style(style)] = scope.rules().rules() else {
+    let [CssRule::Style(style)] = scope.rules().rules() else {
         panic!("style")
     };
-    let [CssScopedStyleSelector::Selector(selector)] = style.selectors().selectors() else {
+    let [CssStyleSelector::Selector(selector)] = style.selectors().selectors() else {
         panic!("selector")
     };
     anchor(selector, 0, true);
     assert_eq!(style.declarations().len(), 1);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let context = context_at(&normalized, source, "&&");
     let CssRuleContextKindRef::ScopedStyle(selectors) = context.kind() else {
         panic!("scoped style")
@@ -305,7 +316,8 @@ fn repeated_scoped_body_anchors_share_the_same_authored_scope_category() {
 
 #[test]
 fn fragment_front_doors_preserve_boundary_anchor_modes() {
-    let report = parse_rule(
+    let report = CssRule::parse(
+        &CssParser::default(),
         "@scope(&) to (&){.child{color:red}}",
         &CssNamespaceContext::default(),
     );
@@ -314,7 +326,8 @@ fn fragment_front_doors_preserve_boundary_anchor_modes() {
         panic!("scope fragment")
     };
     simple_bounds(scope, 1, false);
-    let report = parse_style_block(
+    let report = CssStyleBlock::parse(
+        &CssParser::default(),
         "{@scope(&) to (&){.child{color:red}}}",
         &CssNamespaceContext::default(),
     );
@@ -341,13 +354,13 @@ fn scope_root_modes_survive_structural_chunk_boundaries() {
                 "@scope{".repeat(depth - 2),
                 "}".repeat(depth - 2)
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(
                 report.is_clean(),
                 "depth={depth} styled={styled}: {:?}",
                 report.diagnostics()
             );
-            let normalized = normalize_sheet(report.syntax()).unwrap();
+            let normalized = report.syntax().normalize(Default::default()).unwrap();
             let inner = context_at(&normalized, &source, "@scope(&)");
             normalized_bounds(inner, usize::from(styled), !styled);
             let mut ancestor = inner.parent();
@@ -371,7 +384,7 @@ fn scope_root_modes_survive_structural_chunk_boundaries() {
 
 #[test]
 fn omitted_bounds_explicit_scope_and_escaped_identifier_remain_distinct_controls() {
-    let report = parse_sheet("@scope to (:scope){.child{color:red}}");
+    let report = CssParser::default().parse_sheet("@scope to (:scope){.child{color:red}}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope")
@@ -381,7 +394,7 @@ fn omitted_bounds_explicit_scope_and_escaped_identifier_remain_distinct_controls
         single(scope.limit().unwrap()),
         &CssSelector::PseudoClass(CssPseudoClass::Scope)
     );
-    let report = parse_sheet("@scope(:scope) to (:scope){.child{color:red}}");
+    let report = CssParser::default().parse_sheet("@scope(:scope) to (:scope){.child{color:red}}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope")
@@ -394,7 +407,7 @@ fn omitted_bounds_explicit_scope_and_escaped_identifier_remain_distinct_controls
         single(scope.limit().unwrap()),
         &CssSelector::PseudoClass(CssPseudoClass::Scope)
     );
-    let report = parse_sheet("@scope(\\26){.child{color:red}}");
+    let report = CssParser::default().parse_sheet("@scope(\\26){.child{color:red}}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("scope")
@@ -417,7 +430,7 @@ fn invalid_boundary_lists_drop_scope_and_preserve_later_neighbor() {
         "(&div)",
     ] {
         let source = format!("@scope{prelude}{{.lost{{color:blue}}}}.after{{color:red}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean(), "{source}");
         assert!(
             report
@@ -444,19 +457,19 @@ fn ordinary_limits_admit_all_relative_combinators_while_roots_reject_them() {
         ("~", CssSelectorCombinator::SubsequentSibling),
     ] {
         let source = format!("@scope(.root) to ({text} .stop){{}}.after{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [CssRule::Scope(scope), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("scope and following neighbor")
         };
-        let [CssScopeSelector::Relative(relative)] = scope.limit().unwrap().selectors() else {
+        let [CssStyleSelector::Relative(relative)] = scope.limit().unwrap().selectors() else {
             panic!("retained leading combinator")
         };
         assert_eq!(relative.combinator(), expected);
         assert_eq!(relative.selector(), &CssSelector::Class("stop".into()));
 
         let source = format!("@scope({text} .root){{}}.after{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean());
         assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
         assert_eq!(

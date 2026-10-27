@@ -1,6 +1,6 @@
 //! Conditional5 §8 permits named supports definitions before imports/namespaces,
 //! including before a later prefix member. CSSOM insert step7 remains separate.
-use surgeist_css::CssRule;
+use surgeist_css::rule::CssRule;
 use surgeist_cssom::*;
 
 const NAMED: &str = "@supports-condition --probe { display: grid; }";
@@ -42,9 +42,9 @@ fn kinds(snapshot: &CssomSnapshot, rules: &[CssomRuleId]) -> Vec<Kind> {
     rules
         .iter()
         .map(|id| match snapshot.rule(id).unwrap().authored() {
-            CssomAuthoredRule::Ordinary(CssRule::SupportsCondition(_)) => Kind::Named,
-            CssomAuthoredRule::Ordinary(CssRule::Import(_)) => Kind::Import,
-            CssomAuthoredRule::Ordinary(CssRule::Namespace(_)) => Kind::Namespace,
+            CssomAuthoredRule::Rule(CssRule::SupportsCondition(_)) => Kind::Named,
+            CssomAuthoredRule::Rule(CssRule::Import(_)) => Kind::Import,
+            CssomAuthoredRule::Rule(CssRule::Namespace(_)) => Kind::Namespace,
             other => panic!("unexpected fixture kind: {other:?}"),
         })
         .collect()

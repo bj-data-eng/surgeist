@@ -1,22 +1,50 @@
 //! Functional new-API contracts from Images 4 WD 2025-09-30 §§3.1–3.5,
 //! the specific Values 5 WD 2024-11-11 position import, and shared Color 4/5.
 //! New construction APIs have no executable preimplementation boundary.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorInterpolation, CssColorInterpolationMethod,
+    CssColorNumberLiteral, CssColorSyntax, CssLightDarkColor, CssNamedColor, CssRgbColor,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{
+    CssSpecificationTier, CssSupportStatus, feature_metadata, specification_source,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssAnglePercentage, CssCalculation, CssCalculationType,
+    CssLengthPercentage, CssNumeric, CssNumericDimension, CssZeroLiteral,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::image::{
+    CssAngularColorStop, CssAngularColorStopList, CssAngularColorStopListItem,
+    CssAngularColorStopPosition, CssColorStopList, CssColorStopListItem, CssConicGradient,
+    CssGradient, CssGradientColorStop, CssImage, CssImageValue, CssLinearGradient,
+    CssRadialGradient,
+};
+use surgeist_css::values::position::{
+    CssBlockPosition, CssInlinePosition, CssPosition, CssPositionRef, CssRelativeAxisPosition,
+};
 
 fn named(name: &str) -> CssColor {
     CssColor::from_named(CssNamedColor::try_new(name).unwrap())
 }
 fn component(css: &str) -> CssComponentValue {
-    let values = parse_component_values(css).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), css).unwrap();
     assert_eq!(values.items().len(), 1);
     values.items()[0].clone()
 }
 fn angular(css: &str) -> CssAngularColorStopPosition {
     CssAngularColorStopPosition::try_from_component(component(css)).unwrap()
 }
-fn lp(css: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(component(css)).unwrap()
+fn lp(css: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(component(css)).unwrap()
 }
 fn angular_stop(positions: Vec<CssAngularColorStopPosition>) -> CssAngularColorStopListItem {
     CssAngularColorStopListItem::Stop(Box::new(
@@ -60,13 +88,15 @@ fn checked_stops_retain_zero_one_or_two_positions_and_reject_a_third() {
         assert_eq!(conic.positions().len(), count);
         assert_eq!(conic.color(), &named("red"));
     }
-    assert_eq!(
-        CssGradientColorStop::try_from_positions(named("red"), vec![lp("25%"); 3]).unwrap_err(),
-        CssGradientStopConstructionError::TooManyPositions
+    assert!(
+        CssGradientColorStop::try_from_positions(named("red"), vec![lp("25%"); 3])
+            .unwrap_err()
+            .is_too_many_positions()
     );
-    assert_eq!(
-        CssAngularColorStop::try_new(named("red"), vec![angular("25%"); 3]).unwrap_err(),
-        CssGradientStopConstructionError::TooManyPositions
+    assert!(
+        CssAngularColorStop::try_new(named("red"), vec![angular("25%"); 3])
+            .unwrap_err()
+            .is_too_many_positions()
     );
 }
 
@@ -90,11 +120,12 @@ fn angular_literals_admit_angles_percentages_and_exact_zero_without_number_coerc
         let value = angular(css);
         assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
         assert!(
-            parse_style_attribute(&format!(
-                "background-image:conic-gradient(red {})",
-                value.serialize_specified().unwrap()
-            ))
-            .is_clean()
+            CssParser::default()
+                .parse_block_contents(format!(
+                    "background-image:conic-gradient(red {})",
+                    value.serialize_specified(Default::default()).unwrap()
+                ))
+                .is_clean()
         );
     }
     for css in ["1", "1e-99", "1px", "1s", "none", "calc(1deg)"] {
@@ -107,8 +138,9 @@ fn angular_literals_admit_angles_percentages_and_exact_zero_without_number_coerc
 
 #[test]
 fn angular_percentage_math_retains_the_contextual_angle_type_and_authored_origin() {
-    let expression = CssAnglePercentageCalculation::try_from_components(
-        parse_component_values("calc(1turn + 25%)").unwrap(),
+    let expression = CssCalculation::<CssAnglePercentage>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(1turn + 25%)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(
@@ -123,13 +155,14 @@ fn angular_percentage_math_retains_the_contextual_angle_type_and_authored_origin
     let position = CssAngularColorStopPosition::from_calculation(expression);
     assert_eq!(position.origin(), &origin);
     assert_eq!(
-        position.serialize_specified().unwrap(),
+        position.serialize_specified(Default::default()).unwrap(),
         "calc(25% + 360deg)"
     );
     for css in ["calc(1px + 25%)", "calc(1deg + 1s)", "calc(0)"] {
         assert!(
-            CssAnglePercentageCalculation::try_from_components(
-                parse_component_values(css).unwrap()
+            CssCalculation::<CssAnglePercentage>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
+                Default::default()
             )
             .is_err(),
             "{css}"
@@ -157,7 +190,7 @@ fn conic_constructor_preserves_omission_and_explicit_full_flow_prelude() {
     assert_eq!(explicit.interpolation(), Some(&interpolation()));
     let image = CssImage::try_new(CssImageValue::Gradient(CssGradient::Conic(explicit))).unwrap();
     assert_eq!(
-        image.serialize_specified().unwrap(),
+        image.serialize_specified(Default::default()).unwrap(),
         "conic-gradient(at block-start inline-end in oklch longer hue, red)"
     );
 }
@@ -185,11 +218,15 @@ fn linear_and_radial_interpolation_builders_preserve_explicit_method_and_full_po
     assert_eq!(radial.position(), Some(&position));
     assert_eq!(radial.interpolation(), Some(&interpolation()));
     assert_eq!(
-        CssGradient::Linear(linear).serialize_specified().unwrap(),
+        CssGradient::Linear(linear)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "linear-gradient(in oklch longer hue, red)"
     );
     assert_eq!(
-        CssGradient::Radial(radial).serialize_specified().unwrap(),
+        CssGradient::Radial(radial)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "radial-gradient(at start end in oklch longer hue, red)"
     );
 }
@@ -228,40 +265,30 @@ fn constructed_conic_budget_counts_both_positions_and_remains_atomic_on_failure(
     let before = value.clone();
     let expected = "conic-gradient(red 0 50%)";
     // Gradient + list + stop + named color + two numeric leaves = six nodes.
-    let limits = CssSpecifiedValueSerializationLimits::new(6, 6, expected.len());
-    assert_eq!(
-        value.serialize_specified_with_limits(limits).unwrap(),
-        expected
-    );
+    let limits = CssSerializationLimits::new(6, 6, expected.len());
+    assert_eq!(value.serialize_specified(limits).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(5, 6, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(5, 6, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 5, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(6, 5, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(6, 6, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(6, 6, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(value, before);
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    6,
-                    6,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(6, 6, expected.len()))
                 .unwrap(),
             expected
         );
@@ -273,16 +300,24 @@ fn math(functions: usize, leaf: &str) -> CssComponentValues {
     for _ in 0..functions {
         css = format!("calc({css})");
     }
-    parse_component_values(&css).unwrap()
+    CssComponentValues::parse(&CssParser::default(), &css).unwrap()
 }
 fn angular_math(functions: usize) -> CssAngularColorStopPosition {
     CssAngularColorStopPosition::from_calculation(
-        CssAnglePercentageCalculation::try_from_components(math(functions, "1deg")).unwrap(),
+        CssCalculation::<CssAnglePercentage>::try_from_components(
+            math(functions, "1deg"),
+            Default::default(),
+        )
+        .unwrap(),
     )
 }
-fn line_math(functions: usize) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(math(functions, "1px")).unwrap(),
+fn line_math(functions: usize) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_calculation(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
+            math(functions, "1px"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -291,9 +326,10 @@ fn check_depth(build: impl Fn(usize) -> CssImageValue) {
     let invalid = build(256);
     assert_eq!(CssImage::try_new(valid.clone()).unwrap().value(), &valid);
     for _ in 0..2 {
-        assert_eq!(
-            CssImage::try_new(invalid.clone()).unwrap_err(),
-            CssImageConstructionError::NestingLimit
+        assert!(
+            CssImage::try_new(invalid.clone())
+                .unwrap_err()
+                .is_nesting_limit()
         );
         assert_eq!(CssImage::try_new(valid.clone()).unwrap().value(), &valid);
     }
@@ -331,8 +367,12 @@ fn checked_image_depth_visits_conic_from_and_full_flow_position() {
     check_depth(|depth| {
         conic(
             Some(CssAngleOrZero::Angle(
-                CssAngleValue::try_from_calculation(
-                    CssAngleCalculation::try_from_components(math(depth, "1deg")).unwrap(),
+                CssNumeric::<CssAngle>::try_from_calculation(
+                    CssCalculation::<CssAngle>::try_from_components(
+                        math(depth, "1deg"),
+                        Default::default(),
+                    )
+                    .unwrap(),
                 )
                 .unwrap(),
             )),
@@ -452,14 +492,16 @@ fn selected_metadata_traces_the_exact_gradient_import_without_claiming_siblings(
         );
     }
     assert!(
-        !parse_style_attribute("background-image:repeating-conic-gradient(red,blue)").is_clean()
+        !CssParser::default()
+            .parse_block_contents("background-image:repeating-conic-gradient(red,blue)")
+            .is_clean()
     );
 }
 
 #[test]
 fn parsed_conic_second_position_and_from_keep_the_original_source_spans() {
     let source = "/*😀*/background-image:conic-gradient(from calc(15deg + 5deg) at block-start 3px inline-end 4% in lab, red 10deg calc(20deg + 25%))!important";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssKnownPropertyValueRef::BackgroundImage(images) = report.syntax()[0]
         .known()
@@ -469,7 +511,7 @@ fn parsed_conic_second_position_and_from_keep_the_original_source_spans() {
     else {
         panic!("background image")
     };
-    let [CssImageValue::Gradient(CssGradient::Conic(gradient))] = images.images().images() else {
+    let [CssImageValue::Gradient(CssGradient::Conic(gradient))] = images.value().images() else {
         panic!("conic")
     };
     let CssAngularColorStopListItem::Stop(stop) = &gradient.stops().items()[0] else {
@@ -552,35 +594,21 @@ fn intrinsic_conic_geometry_defaults_are_omitted_with_all_authored_nodes_charged
         // aggregate/two axes + interpolation = thirteen input/projection nodes.
         assert_eq!(
             image
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    13,
-                    13,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(13, 13, expected.len()))
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             image
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    12,
-                    13,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(12, 13, expected.len()))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                .is_input_node_limit()
         );
-        assert_eq!(
+        assert!(
             image
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    13,
-                    12,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(13, 12, expected.len()))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+                .is_projection_node_limit()
         );
         assert!(gradient.from().is_some());
         assert!(gradient.position().is_some());
@@ -602,24 +630,15 @@ fn singleton_first_zero_is_omitted_but_its_last_hundred_position_remains_authore
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    5,
-                    5,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(5, 5, expected.len()))
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    4,
-                    5,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(4, 5, expected.len()))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                .is_input_node_limit()
         );
     }
     for (position, expected) in [
@@ -633,11 +652,7 @@ fn singleton_first_zero_is_omitted_but_its_last_hundred_position_remains_authore
         let value = CssGradient::Linear(CssLinearGradient::new(None, stops));
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    5,
-                    5,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(5, 5, expected.len()))
                 .unwrap(),
             expected
         );
@@ -671,38 +686,30 @@ fn matching_interpolation_omission_keeps_the_authored_node_budget() {
     let expected = "conic-gradient(red, blue)";
     assert_eq!(
         image
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                7,
-                7,
-                expected.len()
-            ),)
+            .serialize_specified(CssSerializationLimits::new(7, 7, expected.len()),)
             .unwrap(),
         expected
     );
     for (input, projection, cause) in [
-        (
-            6,
-            7,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            7,
-            6,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
+        (6, 7, SerializationFailure::InputNodeLimit),
+        (7, 6, SerializationFailure::ProjectionNodeLimit),
     ] {
         assert_eq!(
-            image
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    input,
-                    projection,
-                    expected.len()
-                ),)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &image
+                    .serialize_specified(CssSerializationLimits::new(
+                        input,
+                        projection,
+                        expected.len()
+                    ),)
+                    .unwrap_err()
+            ),
             cause
         );
-        assert_eq!(image.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            image.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     assert_eq!(gradient, before);
     assert!(gradient.interpolation().is_some());
@@ -744,27 +751,21 @@ fn generated_default_preservation_does_not_invent_an_authored_input_node() {
     // Gradient/list + two stop nodes + RGB/three channels + named blue = 9.
     assert_eq!(
         image
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                9,
-                1000,
-                expected.len()
-            ),)
+            .serialize_specified(CssSerializationLimits::new(9, 1000, expected.len()),)
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         image
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                8,
-                1000,
-                expected.len()
-            ),)
+            .serialize_specified(CssSerializationLimits::new(8, 1000, expected.len()),)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert!(gradient.interpolation().is_none());
-    assert_eq!(image.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        image.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     let authored = CssImageValue::Gradient(CssGradient::Conic(CssConicGradient::new(
         None,
         None,
@@ -777,24 +778,15 @@ fn generated_default_preservation_does_not_invent_an_authored_input_node() {
         )),
         stops,
     )));
-    assert_eq!(
+    assert!(
         authored
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                9,
-                1000,
-                expected.len()
-            ),)
+            .serialize_specified(CssSerializationLimits::new(9, 1000, expected.len()),)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(
         authored
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                10,
-                1000,
-                expected.len()
-            ),)
+            .serialize_specified(CssSerializationLimits::new(10, 1000, expected.len()),)
             .unwrap(),
         expected
     );
@@ -819,9 +811,16 @@ fn missing_rgb_sibling_defaults_follow_the_retained_color_carrier() {
             "",
         ),
     ] {
-        let declaration = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
-            parse_component_values(&format!("conic-gradient(rgb(none 0 255), {sibling})")).unwrap(),
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::BackgroundImage,
+            )),
+            CssComponentValues::parse(
+                &CssParser::default(),
+                format!("conic-gradient(rgb(none 0 255), {sibling})"),
+            )
+            .unwrap(),
             CssImportance::Normal,
         )
         .unwrap();
@@ -830,7 +829,7 @@ fn missing_rgb_sibling_defaults_follow_the_retained_color_carrier() {
         else {
             panic!("image");
         };
-        let [CssImageValue::Gradient(CssGradient::Conic(gradient))] = images.images().images()
+        let [CssImageValue::Gradient(CssGradient::Conic(gradient))] = images.value().images()
         else {
             panic!("conic");
         };
@@ -838,15 +837,18 @@ fn missing_rgb_sibling_defaults_follow_the_retained_color_carrier() {
         let expected = format!("conic-gradient({method}color(srgb none 0 1), {emitted_sibling})");
         assert_eq!(
             CssGradient::Conic(gradient.clone())
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             expected
         );
-        let report = parse_style_attribute(&format!("background-image: {expected}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("background-image: {expected}"));
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         assert_eq!(
-            report.syntax()[0].to_specified_css().unwrap(),
-            declaration.to_specified_css().unwrap()
+            report.syntax()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
+            declaration.serialize_specified(Default::default()).unwrap()
         );
     }
 }
@@ -879,16 +881,12 @@ fn matching_legacy_keyword_default_is_omitted_without_resolving_current_color() 
     let expected = "conic-gradient(currentcolor, blue)";
     assert_eq!(
         image
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                7,
-                7,
-                expected.len()
-            ),)
+            .serialize_specified(CssSerializationLimits::new(7, 7, expected.len()),)
             .unwrap(),
         expected
     );
     assert!(gradient.interpolation().is_some());
-    let report = parse_style_attribute(&format!("background-image: {expected}"));
+    let report = CssParser::default().parse_block_contents(format!("background-image: {expected}"));
     assert!(report.is_clean());
 }
 
@@ -901,9 +899,16 @@ fn matching_relative_legacy_function_default_preserves_the_declared_carrier() {
         "hsl(from currentcolor h s l)",
         "hwb(from currentcolor h w b)",
     ] {
-        let declaration = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
-            parse_component_values(&format!("conic-gradient(in oklab, {color}, blue)")).unwrap(),
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::BackgroundImage,
+            )),
+            CssComponentValues::parse(
+                &CssParser::default(),
+                format!("conic-gradient(in oklab, {color}, blue)"),
+            )
+            .unwrap(),
             CssImportance::Normal,
         )
         .unwrap();
@@ -912,7 +917,7 @@ fn matching_relative_legacy_function_default_preserves_the_declared_carrier() {
         else {
             panic!("image");
         };
-        let [CssImageValue::Gradient(CssGradient::Conic(gradient))] = images.images().images()
+        let [CssImageValue::Gradient(CssGradient::Conic(gradient))] = images.value().images()
         else {
             panic!("conic");
         };
@@ -920,15 +925,18 @@ fn matching_relative_legacy_function_default_preserves_the_declared_carrier() {
         let expected = format!("conic-gradient({color}, blue)");
         assert_eq!(
             CssGradient::Conic(gradient.clone())
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             expected
         );
-        let report = parse_style_attribute(&format!("background-image: {expected}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("background-image: {expected}"));
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         assert_eq!(
-            report.syntax()[0].to_specified_css().unwrap(),
-            declaration.to_specified_css().unwrap()
+            report.syntax()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
+            declaration.serialize_specified(Default::default()).unwrap()
         );
     }
 }

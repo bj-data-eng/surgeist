@@ -36,10 +36,10 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use surgeist_css::{
-    CssParserContext, CssParserMode, CssRetainedPayloadError, CssRule, CssSourceRetention,
-    CssUtf16InputLimits,
-};
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::CssRule;
+use surgeist_css::source::{CssRetainedPayloadError, CssSourceRetention, CssUtf16InputLimits};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 use surgeist_cssom::{
     CssomBatch, CssomCommit, CssomContext, CssomEditGuard, CssomInput, CssomInputData,
     CssomInputRole, CssomInputVersion, CssomOwnerMediaInput, CssomSheetAttributeEdit,
@@ -103,7 +103,7 @@ pub enum DomStyleRuntimeError {
     /// The CSSOM owner refused its actual mutation.
     Cssom(surgeist_cssom::CssomError),
     /// Real CSS input preparation/parsing failed, including cancellation.
-    Css(surgeist_css::CssUtf16InputError<DomError>),
+    Css(surgeist_css::source::CssUtf16InputError<DomError>),
     /// Runtime's own finite bank/work/identity admission failed.
     Admission,
     /// A caller replaced an actual owner or supplied a conflicting binding.
@@ -244,7 +244,7 @@ impl DomStyleProcessedSheet {
         &self.sheet
     }
     /// Recovered diagnostics from the actual separate media input.
-    pub fn media_diagnostics(&self) -> &[surgeist_css::CssRecoveryDiagnostic] {
+    pub fn media_diagnostics(&self) -> &[surgeist_css::diagnostic::CssRecoveryDiagnostic] {
         match &self.processing {
             Processing::Created(c) => c.media_diagnostics(),
             Processing::Attributes(edit) => edit.diagnostics(),
@@ -292,7 +292,7 @@ enum ProcessingRef<'a> {
     Attributes(&'a CssomSheetAttributeEdit),
 }
 impl ProcessingRef<'_> {
-    fn diagnostics(&self) -> &[surgeist_css::CssRecoveryDiagnostic] {
+    fn diagnostics(&self) -> &[surgeist_css::diagnostic::CssRecoveryDiagnostic] {
         match self {
             Self::Created(value) => value.media_diagnostics(),
             Self::Attributes(value) => value.diagnostics(),
@@ -309,9 +309,10 @@ impl ProcessingRef<'_> {
     }
 }
 fn payload_error(error: CssRetainedPayloadError<DomStyleRuntimeError>) -> DomStyleRuntimeError {
-    match error {
-        CssRetainedPayloadError::Admission(error) => error,
-        CssRetainedPayloadError::CapacityOverflow => DomStyleRuntimeError::Admission,
+    match error.into_admission() {
+        Ok(error) => error,
+        // The measurement's only other refusal is a capacity overflow.
+        Err(_) => DomStyleRuntimeError::Admission,
     }
 }
 struct StagedPublication {
@@ -370,7 +371,7 @@ enum ImportDependencies {
 /// Classify the actual processed rules before their report moves into CSSOM.
 /// Recovery diagnostics and media values do not establish critical imports.
 fn import_dependencies_with<E>(
-    report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
+    report: &surgeist_css::CssParseReport<surgeist_css::rule::CssSheet>,
     mut step: impl FnMut() -> Result<(), E>,
 ) -> Result<ImportDependencies, E> {
     step()?;
@@ -1405,8 +1406,8 @@ impl StyleState {
                         &mut batch,
                         cancel,
                     )?;
-                    let report = context
-                        .parse_sheet_utf16_with_limits(
+                    let report = CssParser::new(context, Default::default())
+                        .parse_sheet_utf16(
                             request.source().text().clone(),
                             self.limits.css_input,
                             poll,
@@ -1416,17 +1417,17 @@ impl StyleState {
                     // no @import means no transitive import graph exists.
                     let imports = import_dependencies_with(&report, || self.step(cancel))?
                         == ImportDependencies::Imports;
-                    let media = context
-                        .parse_media_query_list_utf16_with_limits(
-                            request
-                                .source()
-                                .media()
-                                .map(|value| value.shared_code_units().clone())
-                                .unwrap_or_default(),
-                            self.limits.css_input,
-                            poll,
-                        )
-                        .map_err(DomStyleRuntimeError::Css)?;
+                    let media = CssMediaQueryList::parse_utf16(
+                        &CssParser::new(context, Default::default()),
+                        request
+                            .source()
+                            .media()
+                            .map(|value| value.shared_code_units().clone())
+                            .unwrap_or_default(),
+                        self.limits.css_input,
+                        poll,
+                    )
+                    .map_err(DomStyleRuntimeError::Css)?;
                     let mut inputs = CssomSheetInputs::external(version, true);
                     inputs.owner = Some(label);
                     if matches!(
@@ -1576,23 +1577,23 @@ impl StyleState {
                     &mut batch,
                     cancel,
                 )?;
-                let report = context
-                    .parse_media_query_list_utf16_with_limits(
-                        request
-                            .source()
-                            .media()
-                            .map(|value| value.shared_code_units().clone())
-                            .unwrap_or_default(),
-                        self.limits.css_input,
-                        || {
-                            if cancel.load(Ordering::Relaxed) {
-                                Err(DomError::Cancelled)
-                            } else {
-                                Ok(())
-                            }
-                        },
-                    )
-                    .map_err(DomStyleRuntimeError::Css)?;
+                let report = CssMediaQueryList::parse_utf16(
+                    &CssParser::new(context, Default::default()),
+                    request
+                        .source()
+                        .media()
+                        .map(|value| value.shared_code_units().clone())
+                        .unwrap_or_default(),
+                    self.limits.css_input,
+                    || {
+                        if cancel.load(Ordering::Relaxed) {
+                            Err(DomError::Cancelled)
+                        } else {
+                            Ok(())
+                        }
+                    },
+                )
+                .map_err(DomStyleRuntimeError::Css)?;
                 let title = (request.source().root_kind()
                     == surgeist_dom::DomStyleRootKind::Document)
                     .then(|| request.source().title().map_or(&[][..], |s| s.code_units()));
@@ -4400,7 +4401,7 @@ mod tests {
             .unwrap();
         let ticket = batch
             .create_parsed_sheet_report(
-                CssParserContext::default().parse_sheet(""),
+                CssParser::new(CssParserContext::default(), Default::default()).parse_sheet(""),
                 CssomSheetInputs::external(
                     CssomInputVersion {
                         role: CssomInputRole::Owner,
@@ -4483,7 +4484,7 @@ mod tests {
         );
         assert_eq!(
             body_snapshot.sheet(&sheet).unwrap().authored().rules()[0]
-                .serialize_cssom()
+                .serialize_cssom(Default::default())
                 .unwrap(),
             ".a { }"
         );
@@ -5062,7 +5063,9 @@ mod tests {
         assert_eq!(current.sheets().len(), 1);
         let sheet = current.sheet(&current.sheets()[0]).unwrap();
         assert_eq!(
-            sheet.authored().rules()[0].serialize_cssom().unwrap(),
+            sheet.authored().rules()[0]
+                .serialize_cssom(Default::default())
+                .unwrap(),
             expected_rule,
             "stylesheet value must use the actual source-time document mode"
         );

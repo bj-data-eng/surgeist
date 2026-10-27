@@ -1,15 +1,18 @@
 use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
-use surgeist_css::{
-    CssCounterStyleDescriptorKind as DescriptorKind, CssCounterStyleDescriptorRef,
-    CssCounterStyleRule, CssCounterStyleSystem, CssRule,
-    CssSpecifiedValueSerializationErrorKind as Kind,
-    CssSpecifiedValueSerializationLimits as Limits, parse_sheet,
+use crate::css::support::failure_classes::SerializationFailure as Kind;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind as DescriptorKind;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorRef, CssCounterStyleRule, CssCounterStyleSystem,
 };
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 fn rule(source: &str) -> CssCounterStyleRule {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::CounterStyle(value)] = report.syntax().rules() else {
         panic!("expected one counter-style rule")
@@ -36,22 +39,23 @@ fn descriptor_getters_emit_each_associated_value_without_wrappers() {
         (DescriptorKind::AdditiveSymbols, "10 X, 0 N"),
         (DescriptorKind::SpeakAs, "Spoken"),
     ] {
-        assert_eq!(value.descriptor_specified_css(kind).unwrap(), expected);
         assert_eq!(
             value
-                .descriptor_specified_css_with_limits(kind, Limits::new(100, 100, expected.len()))
+                .descriptor_specified_css(kind, Default::default())
                 .unwrap(),
             expected
         );
         assert_eq!(
             value
-                .descriptor_specified_css_with_limits(
-                    kind,
-                    Limits::new(100, 100, expected.len() - 1)
-                )
+                .descriptor_specified_css(kind, Limits::new(100, 100, expected.len()))
+                .unwrap(),
+            expected
+        );
+        assert!(
+            value
+                .descriptor_specified_css(kind, Limits::new(100, 100, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
     }
     // Rule/name + ten occurrences + typed values: 42 input/projection nodes.
@@ -62,23 +66,21 @@ fn descriptor_getters_emit_each_associated_value_without_wrappers() {
     );
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(42, 42, expected.len()))
+            .serialize_specified(Limits::new(42, 42, expected.len()))
             .unwrap(),
         expected,
     );
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(41, 42, expected.len()))
+            .serialize_specified(Limits::new(41, 42, expected.len()))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit,
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(42, 41, expected.len()))
+            .serialize_specified(Limits::new(42, 41, expected.len()))
             .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit,
+            .is_projection_node_limit()
     );
 }
 
@@ -96,10 +98,15 @@ fn every_omitted_descriptor_getter_returns_empty_without_implicit_initials() {
         DescriptorKind::AdditiveSymbols,
         DescriptorKind::SpeakAs,
     ] {
-        assert_eq!(extends.descriptor_specified_css(kind).unwrap(), "");
         assert_eq!(
             extends
-                .descriptor_specified_css_with_limits(kind, Limits::new(0, 0, 0))
+                .descriptor_specified_css(kind, Default::default())
+                .unwrap(),
+            ""
+        );
+        assert_eq!(
+            extends
+                .descriptor_specified_css(kind, Limits::new(0, 0, 0))
                 .unwrap(),
             ""
         );
@@ -107,13 +114,13 @@ fn every_omitted_descriptor_getter_returns_empty_without_implicit_initials() {
     let implicit = rule("@counter-style x { symbols: a; }");
     assert_eq!(
         implicit
-            .descriptor_specified_css(DescriptorKind::System)
+            .descriptor_specified_css(DescriptorKind::System, Default::default())
             .unwrap(),
         ""
     );
     assert_eq!(
         implicit
-            .descriptor_specified_css_with_limits(DescriptorKind::System, Limits::new(0, 0, 0))
+            .descriptor_specified_css(DescriptorKind::System, Limits::new(0, 0, 0))
             .unwrap(),
         ""
     );
@@ -126,27 +133,25 @@ fn field_projection_selects_last_valid_value_and_accounts_for_earlier_occurrence
     // Only this field: two occurrences, two symbol lists, two string/ident leaves.
     assert_eq!(
         value
-            .descriptor_specified_css_with_limits(DescriptorKind::Symbols, Limits::new(6, 6, 1))
+            .descriptor_specified_css(DescriptorKind::Symbols, Limits::new(6, 6, 1))
             .unwrap(),
         "b"
     );
-    assert_eq!(
+    assert!(
         value
-            .descriptor_specified_css_with_limits(DescriptorKind::Symbols, Limits::new(5, 6, 1))
+            .descriptor_specified_css(DescriptorKind::Symbols, Limits::new(5, 6, 1))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
+    );
+    assert!(
+        value
+            .descriptor_specified_css(DescriptorKind::Symbols, Limits::new(6, 5, 1))
+            .unwrap_err()
+            .is_projection_node_limit()
     );
     assert_eq!(
         value
-            .descriptor_specified_css_with_limits(DescriptorKind::Symbols, Limits::new(6, 5, 1))
-            .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit
-    );
-    assert_eq!(
-        value
-            .descriptor_specified_css(DescriptorKind::Symbols)
+            .descriptor_specified_css(DescriptorKind::Symbols, Default::default())
             .unwrap(),
         "b"
     );
@@ -158,10 +163,13 @@ fn name_getter_escapes_the_parsed_literal_name_under_exact_limits() {
     let value = rule(r#"@counter-style C\61se { symbols: a; }"#);
     let expected = "Case";
     assert_eq!(value.name().as_str(), "Case");
-    assert_eq!(value.name_specified_css().unwrap(), expected);
+    assert_eq!(
+        value.name_specified_css(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(
         value
-            .name_specified_css_with_limits(Limits::new(1, 1, expected.len()))
+            .name_specified_css(Limits::new(1, 1, expected.len()))
             .unwrap(),
         expected
     );
@@ -171,10 +179,7 @@ fn name_getter_escapes_the_parsed_literal_name_under_exact_limits() {
         (Limits::new(1, 1, expected.len() - 1), Kind::ByteLimit),
     ] {
         assert_eq!(
-            value
-                .name_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.name_specified_css(limits).unwrap_err()),
             kind
         );
     }
@@ -184,12 +189,15 @@ fn name_getter_escapes_the_parsed_literal_name_under_exact_limits() {
 fn assert_css(source: &str, expected: &str) {
     let value = rule(source);
     let retained = value.clone();
-    let css = value.to_specified_css().unwrap();
+    let css = value.serialize_specified(Default::default()).unwrap();
     assert_eq!(css, expected);
     assert_eq!(value, retained);
     // Parsing canonical text is an independent grammar check. Reprojection is
     // stable despite authored spelling and occurrence identity being different.
-    assert_eq!(rule(&css).to_specified_css().unwrap(), css);
+    assert_eq!(
+        rule(&css).serialize_specified(Default::default()).unwrap(),
+        css
+    );
 }
 
 // Counter Styles 3 §3 chooses the last valid occurrence. Complete rule order
@@ -264,7 +272,7 @@ fn absent_descriptors_do_not_materialize_implicit_defaults() {
 fn fixed_default_is_omitted_but_its_authored_spelling_remains() {
     let value = rule("@counter-style x { system: fixed +0001; symbols: a; }");
     assert_eq!(
-        value.to_specified_css().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "@counter-style x { system: fixed; symbols: a; }"
     );
     let CssCounterStyleSystem::Fixed(fixed) =
@@ -276,7 +284,7 @@ fn fixed_default_is_omitted_but_its_authored_spelling_remains() {
         fixed
             .first_symbol_value()
             .unwrap()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "+0001"
@@ -359,7 +367,7 @@ fn discarded_duplicates_keep_occurrence_positions_and_numeric_origins() {
     let value = rule(source);
     let before = value.clone();
     assert_eq!(
-        value.to_specified_css().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "@counter-style x { pad: 3 \"_\"; symbols: b; }"
     );
     assert_eq!(value, before);
@@ -376,19 +384,28 @@ fn discarded_duplicates_keep_occurrence_positions_and_numeric_origins() {
         first
             .ordinary_pad()
             .minimum_length()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "+0002"
     );
     assert_eq!(
-        first.ordinary_pad().minimum_length().literal().origin(),
+        first
+            .ordinary_pad()
+            .minimum_length()
+            .expect_literal()
+            .origin(),
         before
             .descriptors()
             .occurrences()
             .find_map(|value| match value {
-                CssCounterStyleDescriptorRef::Pad(value) =>
-                    Some(value.ordinary_pad().minimum_length().literal().origin()),
+                CssCounterStyleDescriptorRef::Pad(value) => Some(
+                    value
+                        .ordinary_pad()
+                        .minimum_length()
+                        .expect_literal()
+                        .origin()
+                ),
                 _ => None,
             })
             .unwrap()
@@ -402,7 +419,7 @@ fn exact_rule_node_and_byte_limits_include_the_complete_wrapper() {
     // Rule + name + occurrence + symbol list + identifier = five nodes.
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(5, 5, expected.len()))
+            .serialize_specified(Limits::new(5, 5, expected.len()))
             .unwrap(),
         expected
     );
@@ -415,14 +432,14 @@ fn exact_rule_node_and_byte_limits_include_the_complete_wrapper() {
         (Limits::new(5, 5, 0), Kind::ByteLimit),
     ] {
         assert_eq!(
-            value
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
-    assert_eq!(value.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -432,23 +449,21 @@ fn suppressed_duplicates_consume_nodes_without_spending_final_bytes() {
     // Rule/name + two occurrences + two lists + two leaves = eight nodes.
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(8, 8, expected.len()))
+            .serialize_specified(Limits::new(8, 8, expected.len()))
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(7, 8, expected.len()))
+            .serialize_specified(Limits::new(7, 8, expected.len()))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(8, 7, expected.len()))
+            .serialize_specified(Limits::new(8, 7, expected.len()))
             .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 
@@ -459,23 +474,21 @@ fn omitted_optional_values_retain_exact_cumulative_node_cost() {
     // Rule/name + three occurrences + fixed/1 + negative/prefix/suffix + list/symbol.
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(12, 12, expected.len()))
+            .serialize_specified(Limits::new(12, 12, expected.len()))
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(11, 12, expected.len()))
+            .serialize_specified(Limits::new(11, 12, expected.len()))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(12, 11, expected.len()))
+            .serialize_specified(Limits::new(12, 11, expected.len()))
             .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
     for (kind, expected, nodes) in [
         (DescriptorKind::System, "fixed", 3),
@@ -483,32 +496,21 @@ fn omitted_optional_values_retain_exact_cumulative_node_cost() {
     ] {
         assert_eq!(
             value
-                .descriptor_specified_css_with_limits(
-                    kind,
-                    Limits::new(nodes, nodes, expected.len())
-                )
+                .descriptor_specified_css(kind, Limits::new(nodes, nodes, expected.len()))
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             value
-                .descriptor_specified_css_with_limits(
-                    kind,
-                    Limits::new(nodes - 1, nodes, expected.len())
-                )
+                .descriptor_specified_css(kind, Limits::new(nodes - 1, nodes, expected.len()))
                 .unwrap_err()
-                .kind(),
-            Kind::InputNodeLimit
+                .is_input_node_limit()
         );
-        assert_eq!(
+        assert!(
             value
-                .descriptor_specified_css_with_limits(
-                    kind,
-                    Limits::new(nodes, nodes - 1, expected.len())
-                )
+                .descriptor_specified_css(kind, Limits::new(nodes, nodes - 1, expected.len()))
                 .unwrap_err()
-                .kind(),
-            Kind::ProjectionNodeLimit
+                .is_projection_node_limit()
         );
     }
 }
@@ -523,23 +525,21 @@ fn suppressed_url_children_keep_the_url_owners_nested_node_accounting() {
     // target, two modifiers, and retained argument component = twelve nodes.
     assert_eq!(
         value
-            .to_specified_css_with_limits(Limits::new(12, 12, expected.len()))
+            .serialize_specified(Limits::new(12, 12, expected.len()))
             .unwrap(),
         expected
     );
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(11, 12, expected.len()))
+            .serialize_specified(Limits::new(11, 12, expected.len()))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(12, 11, expected.len()))
+            .serialize_specified(Limits::new(12, 11, expected.len()))
             .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 
@@ -548,16 +548,15 @@ fn late_descriptor_failure_is_atomic_and_a_fresh_retry_succeeds() {
     let value = rule("@counter-style x { symbols: a; speak-as: Unknown; }");
     let retained = value.clone();
     // Six nodes are consumed before the final speech reference.
-    assert_eq!(
+    assert!(
         value
-            .to_specified_css_with_limits(Limits::new(6, 7, 100))
+            .serialize_specified(Limits::new(6, 7, 100))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(value, retained);
     assert_eq!(
-        value.to_specified_css().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "@counter-style x { symbols: a; speak-as: Unknown; }"
     );
 }

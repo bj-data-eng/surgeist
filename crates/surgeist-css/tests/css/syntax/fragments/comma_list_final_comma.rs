@@ -11,13 +11,16 @@
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing
 use crate::css::support::authored_syntax::parsed_origin;
-use surgeist_css::{
-    CssCustomMediaBody, CssCustomMediaConstructionError, CssCustomMediaRule,
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue, CssImportConstructionError,
-    CssImportRule, CssMediaConstructionError, CssMediaQuery, CssMediaQueryList,
-    CssNamespaceContext, CssRecoveryAction, CssRule, parse_component_values,
-    parse_media_query_list, parse_selector, parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::media::{
+    CssCustomMediaBody, CssMediaConstructionError, CssMediaQuery, CssMediaQueryList,
 };
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue;
+use surgeist_css::rule::{CssCustomMediaRule, CssImportRule, CssRule};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
 
 fn never_count(list: &CssMediaQueryList) -> usize {
     list.queries()
@@ -29,7 +32,7 @@ fn never_count(list: &CssMediaQueryList) -> usize {
 #[test]
 fn a_final_comma_without_a_following_token_adds_no_media_query() {
     for source in ["screen,", "screen,/**/", "screen,print,"] {
-        let report = parse_media_query_list(source);
+        let report = CssMediaQueryList::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source:?}: {report:?}");
         assert_eq!(never_count(report.syntax()), 0, "{source:?}");
         let expected = if source.contains("print") { 2 } else { 1 };
@@ -43,7 +46,7 @@ fn a_final_comma_without_a_following_token_adds_no_media_query() {
         (",", 1, 1),
         (",screen", 2, 1),
     ] {
-        let report = parse_media_query_list(source);
+        let report = CssMediaQueryList::parse(&CssParser::default(), source);
         assert_eq!(report.syntax().queries().len(), members, "{source:?}");
         assert_eq!(never_count(report.syntax()), never, "{source:?}");
         assert!(
@@ -59,7 +62,7 @@ fn a_final_comma_without_a_following_token_adds_no_media_query() {
 
 #[test]
 fn rule_preludes_share_the_final_comma_list_boundary() {
-    let report = parse_sheet("@media screen,{a{color:red}}");
+    let report = CssParser::default().parse_sheet("@media screen,{a{color:red}}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Media(media)] = report.syntax().rules() else {
         panic!("{report:?}")
@@ -67,14 +70,14 @@ fn rule_preludes_share_the_final_comma_list_boundary() {
     assert_eq!(media.query().queries().len(), 1);
     assert_eq!(media.rules().len(), 1);
 
-    let report = parse_sheet("@import 'x.css' screen,;");
+    let report = CssParser::default().parse_sheet("@import 'x.css' screen,;");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("{report:?}")
     };
     assert_eq!(import.media().unwrap().queries().len(), 1);
 
-    let report = parse_sheet("@custom-media --narrow screen,;");
+    let report = CssParser::default().parse_sheet("@custom-media --narrow screen,;");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::CustomMedia(custom)] = report.syntax().rules() else {
         panic!("{report:?}")
@@ -89,11 +92,11 @@ fn rule_preludes_share_the_final_comma_list_boundary() {
 fn forgiving_selector_lists_add_no_failure_for_a_final_comma() {
     let namespaces = CssNamespaceContext::default();
     for source in [":is(a,)", ":where(a,/**/)"] {
-        let report = parse_selector(source, &namespaces);
+        let report = CssSelector::parse(&CssParser::default(), source, &namespaces);
         assert!(report.is_clean(), "{source:?}: {report:?}");
         assert!(report.syntax().is_some());
     }
-    let report = parse_selector(":is(a, )", &namespaces);
+    let report = CssSelector::parse(&CssParser::default(), ":is(a, )", &namespaces);
     assert!(!report.is_clean(), "{report:?}");
     assert!(
         report
@@ -105,13 +108,13 @@ fn forgiving_selector_lists_add_no_failure_for_a_final_comma() {
 
 #[test]
 fn font_source_lists_add_no_failure_for_a_final_comma() {
-    let report = parse_sheet("@font-face{font-family:x;src:url(a),}");
+    let report = CssParser::default().parse_sheet("@font-face{font-family:x;src:url(a),}");
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("{report:?}")
     };
     let src = face.descriptors().effective(Kind::Src).unwrap();
-    let surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(
+    let surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::Ordinary(
         CssFontFaceDescriptorValue::Src(sources),
     ) = src.value()
     else {
@@ -119,7 +122,7 @@ fn font_source_lists_add_no_failure_for_a_final_comma() {
     };
     assert_eq!(sources.sources().len(), 1);
 
-    let report = parse_sheet("@font-face{font-family:x;src:url(a), }");
+    let report = CssParser::default().parse_sheet("@font-face{font-family:x;src:url(a), }");
     assert_eq!(
         report
             .diagnostics()
@@ -134,7 +137,11 @@ fn font_source_lists_add_no_failure_for_a_final_comma() {
 fn checked_media_lists_share_the_final_comma_boundary() {
     let namespaces = CssNamespaceContext::default();
     let import = |source: &str| {
-        CssImportRule::try_from_components(parse_component_values(source).unwrap(), &namespaces)
+        CssImportRule::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+            &namespaces,
+            Default::default(),
+        )
     };
     for source in ["@import 'x.css' screen,;", "@import 'x.css' screen,/**/;"] {
         let rule = import(source).unwrap();
@@ -147,14 +154,20 @@ fn checked_media_lists_share_the_final_comma_boundary() {
         ("@import 'x.css' screen, ;", Some(23)),
         ("@import 'x.css' screen,,;", Some(23)),
     ] {
-        let Err(CssImportConstructionError::Media(error)) = import(source) else {
+        let Err(outer) = import(source) else {
             panic!("{source:?}: {:?}", import(source))
         };
-        assert_invalid_member(&error, source, responsible);
+        let Some(error) = outer.media_error() else {
+            panic!("{source:?}: {:?}", import(source))
+        };
+        assert_invalid_member(error, source, responsible);
     }
 
     let custom = |source: &str| {
-        CssCustomMediaRule::try_from_components(parse_component_values(source).unwrap())
+        CssCustomMediaRule::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+            Default::default(),
+        )
     };
     let rule = custom("--narrow screen,").unwrap();
     let CssCustomMediaBody::Media(list) = rule.body() else {
@@ -162,7 +175,7 @@ fn checked_media_lists_share_the_final_comma_boundary() {
     };
     assert_eq!(list.queries().len(), 1);
     for source in ["--narrow screen, ", "--narrow screen,,"] {
-        let Err(CssCustomMediaConstructionError::Media(error)) = custom(source) else {
+        let Err(error) = custom(source) else {
             panic!("{source:?}: {:?}", custom(source))
         };
         assert_invalid_member(&error, source, Some(16));
@@ -175,10 +188,7 @@ fn assert_invalid_member(
     source: &str,
     responsible: Option<usize>,
 ) {
-    assert!(
-        matches!(error, CssMediaConstructionError::InvalidQueryGrammar { .. }),
-        "{source:?}: {error:?}"
-    );
+    assert!(error.is_invalid_query_grammar(), "{source:?}: {error:?}");
     let origin = parsed_origin(error.origin());
     assert_eq!(origin.source().as_str(), source);
     if let Some(responsible) = responsible {

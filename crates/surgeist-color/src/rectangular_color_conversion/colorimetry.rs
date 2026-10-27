@@ -313,6 +313,6 @@ mod tests {
         let matrix = [[2.0, -2.0, 1.0], [0.0, 0.0, 1.0], [1.0, -1.0, 0.0]];
         let tiny = f64::from_bits(1);
         let result = apply(&matrix, [f64::MAX, f64::MAX, tiny].map(Wide::from_f64));
-        assert_eq!(result.map(|v| v.to_f64().unwrap()), [tiny, tiny, 0.0]);
+        assert_eq!(result.map(|v| v.to_finite().get()), [tiny, tiny, 0.0]);
     }
 }

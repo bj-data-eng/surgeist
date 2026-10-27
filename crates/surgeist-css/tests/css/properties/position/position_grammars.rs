@@ -1,9 +1,25 @@
 use crate::css::support::math_depth::MathDepthBoundary;
-use surgeist_css::*;
+use crate::css::support::position_view::CartesianPosition as _;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::numeric::{CssCalculation, CssLength, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::background::{
+    CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize,
+};
+use surgeist_css::values::common::CssUrl;
+use surgeist_css::values::effects::{CssMaskLayer, CssMaskList};
+use surgeist_css::values::image::CssImageValue;
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssPosition, CssVerticalPosition,
+    CssVerticalPositionKeyword,
+};
+use surgeist_css::values::transform::CssTransformOrigin;
 
-fn object_position(value: &str) -> CssPhysicalPosition {
+fn object_position(value: &str) -> CssPosition {
     let source = format!("object-position: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ObjectPosition(value) = report.syntax()[0]
         .known()
@@ -13,12 +29,12 @@ fn object_position(value: &str) -> CssPhysicalPosition {
     else {
         panic!("expected object-position value");
     };
-    value.position().clone()
+    value.value().clone()
 }
 
 fn transform_origin(value: &str) -> CssTransformOrigin {
     let source = format!("transform-origin: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::TransformOrigin(value) = report.syntax()[0]
         .known()
@@ -28,12 +44,12 @@ fn transform_origin(value: &str) -> CssTransformOrigin {
     else {
         panic!("expected transform-origin value");
     };
-    value.origin().clone()
+    value.value().clone()
 }
 
 fn assert_generic_position_accepted(value: &str) {
     let source = format!("mask-position: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1, "{source}");
     assert_eq!(
@@ -48,7 +64,7 @@ fn assert_generic_position_accepted(value: &str) {
 
 fn assert_generic_position_rejected(value: &str) {
     let source = format!("mask-position: {value}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.syntax().len(), 1, "{source}");
     assert_eq!(report.diagnostics().len(), 1, "{source}");
     assert_eq!(
@@ -61,7 +77,9 @@ fn assert_generic_position_rejected(value: &str) {
     );
 
     {
-        let failure = surgeist_css::validate_style_attribute(&source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
             .expect_err("strict validation rejects a recovered generic position");
         assert_eq!(failure.diagnostics(), report.diagnostics(), "{source}");
     }
@@ -109,7 +127,7 @@ fn generic_position_rejects_axis_order_partial_pairs_and_duplicate_axes() {
 
 #[test]
 fn background_position_preserves_three_component_edge_origin() {
-    let report = parse_style_attribute("background-position: left 10px top");
+    let report = CssParser::default().parse_block_contents("background-position: left 10px top");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax()[0]
         .known()
@@ -120,19 +138,19 @@ fn background_position_preserves_three_component_edge_origin() {
     else {
         panic!("expected background-position value");
     };
-    let positions = value.positions().positions();
+    let positions = value.value().positions();
     assert_eq!(positions.len(), 1);
     assert!(matches!(
         positions[0].horizontal(),
         CssHorizontalPosition::LeftOffset(offset)
-            if exact_dimension(offset.literal_component(), "10", "px")
+            if exact_dimension(offset.literal().map(|literal| literal.component()), "10", "px")
     ));
     assert!(matches!(positions[0].vertical(), CssVerticalPosition::Top));
 }
 
 #[test]
 fn transform_origin_preserves_two_planar_axes_plus_z() {
-    let report = parse_style_attribute("transform-origin: left top 10px");
+    let report = CssParser::default().parse_block_contents("transform-origin: left top 10px");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax()[0]
         .known()
@@ -143,14 +161,14 @@ fn transform_origin_preserves_two_planar_axes_plus_z() {
     else {
         panic!("expected transform-origin value");
     };
-    let origin = value.origin();
+    let origin = value.value();
     assert!(matches!(origin.horizontal(), CssHorizontalPosition::Left));
     assert!(matches!(origin.vertical(), CssVerticalPosition::Top));
-    assert!(
-        origin
-            .z()
-            .is_some_and(|value| exact_dimension(value.literal_component(), "10", "px"))
-    );
+    assert!(origin.z().is_some_and(|value| exact_dimension(
+        value.literal().map(|literal| literal.component()),
+        "10",
+        "px"
+    )));
 }
 
 #[test]
@@ -160,7 +178,7 @@ fn object_position_parser_preserves_ordinary_global_and_substitution_branches() 
         "object-position: inherit; ",
         "object-position: var(--position)",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [ordinary, global, substitution] = report.syntax().as_slice() else {
         panic!("expected three retained object-position declarations");
@@ -175,7 +193,7 @@ fn object_position_parser_preserves_ordinary_global_and_substitution_branches() 
     assert!(global.property_value().is_none());
     assert_eq!(
         global.global(),
-        Some(surgeist_css::CssGlobalKeyword::Inherit)
+        Some(surgeist_css::declaration::CssGlobalKeyword::Inherit)
     );
     assert!(global.substitution_dependent().is_none());
 
@@ -199,12 +217,12 @@ fn object_position_exposes_the_exact_generic_position_model() {
     assert!(matches!(
         position.horizontal(),
         CssHorizontalPosition::RightOffset(offset)
-            if exact_percentage(offset.literal_component(), "5")
+            if exact_percentage(offset.literal().map(|literal| literal.component()), "5")
     ));
     assert!(matches!(
         position.vertical(),
         CssVerticalPosition::BottomOffset(offset)
-            if exact_dimension(offset.literal_component(), "2", "px")
+            if exact_dimension(offset.literal().map(|literal| literal.component()), "2", "px")
     ));
 
     for value in [
@@ -243,7 +261,7 @@ fn transform_origin_accepts_every_directed_two_dimension_and_z_branch() {
         "50px top calc(1px * 2)",
     ] {
         let source = format!("transform-origin: {value}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1, "{source}");
         let declaration = report.syntax()[0]
@@ -271,7 +289,7 @@ fn transform_origin_exposes_the_directed_two_dimension_and_optional_z_split() {
         assert!(matches!(
             origin.vertical(),
             CssVerticalPosition::Offset(offset)
-                if exact_dimension(offset.literal_component(), "50", "px")
+                if exact_dimension(offset.literal().map(|literal| literal.component()), "50", "px")
         ));
     }
 
@@ -290,7 +308,7 @@ fn transform_origin_exposes_the_directed_two_dimension_and_optional_z_split() {
                 )
         ));
         assert!(origin.z().is_some_and(|value| exact_dimension(
-            value.literal_component(),
+            value.literal().map(|literal| literal.component()),
             "50",
             "px"
         )));
@@ -303,9 +321,8 @@ fn transform_origin_exposes_the_directed_two_dimension_and_optional_z_split() {
         origin
             .z()
             .and_then(|value| value.calculation())
-            .is_some_and(
-                |calculation| calculation.result_type() == surgeist_css::CssCalculationType::Length
-            )
+            .is_some_and(|calculation| calculation.result_type()
+                == surgeist_css::numeric::CssCalculationType::Length)
     );
 
     for value in ["left calc(1px * 2)", "center calc(1px * 2)"] {
@@ -317,7 +334,7 @@ fn transform_origin_exposes_the_directed_two_dimension_and_optional_z_split() {
                 .z()
                 .and_then(|value| value.calculation())
                 .is_some_and(|calculation| calculation.result_type()
-                    == surgeist_css::CssCalculationType::Length)
+                    == surgeist_css::numeric::CssCalculationType::Length)
         );
     }
 }
@@ -326,17 +343,20 @@ fn transform_origin_exposes_the_directed_two_dimension_and_optional_z_split() {
 fn transform_origin_z_construction_accepts_only_authored_lengths() {
     for css in ["10px", "-2em", "0", "calc(2px)"] {
         let z = signed_length(css);
-        assert_eq!(z.serialize_specified().unwrap(), css);
+        assert_eq!(z.serialize_specified(Default::default()).unwrap(), css);
     }
     for css in ["25%", "auto", "normal"] {
         assert!(
-            CssSpecifiedLength::try_from_component(CssComponentValue::try_token(css).unwrap())
+            CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(css).unwrap())
                 .is_err()
         );
     }
     assert!(
-        CssLengthCalculation::try_from_components(parse_component_values("calc(40%)").unwrap())
-            .is_err()
+        CssCalculation::<CssLength>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(40%)").unwrap(),
+            Default::default()
+        )
+        .is_err()
     );
 }
 
@@ -411,7 +431,7 @@ fn object_and_transform_origin_invalid_z_mutations_drop_only_the_declaration() {
 
     for (property, known_property, value, responsible, token_kind) in cases {
         let source = format!("{property}: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let declaration_end = source.find(';').expect("declaration semicolon") + 1;
         let responsible_offset = source.rfind(responsible).expect("responsible token");
         let mut reasons = Vec::new();
@@ -449,12 +469,13 @@ fn object_and_transform_origin_invalid_z_mutations_drop_only_the_declaration() {
         {
             reasons.push(format!("span {:?}", diagnostic.span()));
         }
-        match diagnostic.error().kind() {
-            ErrorKind::InvalidPropertyValue(detail) => {
+        match diagnostic.error().code() {
+            CssErrorCode::InvalidPropertyValue => {
+                let detail = diagnostic.error();
                 if let Some(known_property) = known_property
-                    && detail.property() != known_property
+                    && detail.known_property().unwrap() != known_property
                 {
-                    reasons.push(format!("property {:?}", detail.property()));
+                    reasons.push(format!("property {:?}", detail.known_property().unwrap()));
                 }
                 match detail.encountered() {
                     Some(encountered)
@@ -476,7 +497,10 @@ fn object_and_transform_origin_invalid_z_mutations_drop_only_the_declaration() {
         }
 
         {
-            match surgeist_css::validate_style_attribute(&source) {
+            match surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+            {
                 Ok(_) => reasons.push("app-strict unexpectedly accepted the source".to_owned()),
                 Err(failure) if failure.diagnostics() != report.diagnostics() => {
                     reasons.push("app-strict diagnostics differed".to_owned());
@@ -497,7 +521,7 @@ fn object_and_transform_origin_invalid_z_mutations_drop_only_the_declaration() {
 fn position_offset_construction_accepts_only_authored_length_percentages() {
     for css in ["10px", "-2em", "25%", "0", "calc(40%)"] {
         let offset = signed_length_percentage(css);
-        assert_eq!(offset.serialize_specified().unwrap(), css);
+        assert_eq!(offset.serialize_specified(Default::default()).unwrap(), css);
     }
     for keyword in [
         "auto",
@@ -507,7 +531,7 @@ fn position_offset_construction_accepts_only_authored_length_percentages() {
         "normal",
     ] {
         assert!(
-            CssSpecifiedLengthPercentage::try_from_component(
+            CssNumeric::<CssLengthPercentage>::try_from_component(
                 CssComponentValue::try_ident(keyword).unwrap()
             )
             .is_err()
@@ -528,7 +552,7 @@ fn generic_position_typed_calculation_preserves_the_exact_depth_boundary() {
 
 #[test]
 fn background_and_mask_position_lists_expose_each_exact_layer() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "background-position: left 10px top, center bottom 25%; ",
         "mask-position: right 5% bottom 2px, calc((1px + 2%) * 3) top",
     ));
@@ -542,12 +566,12 @@ fn background_and_mask_position_lists_expose_each_exact_layer() {
     else {
         panic!("expected background-position value");
     };
-    let background_layers = background.positions().positions();
+    let background_layers = background.value().positions();
     assert_eq!(background_layers.len(), 2);
     assert!(matches!(
         background_layers[0].horizontal(),
         CssHorizontalPosition::LeftOffset(offset)
-            if exact_dimension(offset.literal_component(), "10", "px")
+            if exact_dimension(offset.literal().map(|literal| literal.component()), "10", "px")
     ));
     assert!(matches!(
         background_layers[0].vertical(),
@@ -560,7 +584,7 @@ fn background_and_mask_position_lists_expose_each_exact_layer() {
     assert!(matches!(
         background_layers[1].vertical(),
         CssVerticalPosition::BottomOffset(offset)
-            if exact_percentage(offset.literal_component(), "25")
+            if exact_percentage(offset.literal().map(|literal| literal.component()), "25")
     ));
 
     let CssKnownPropertyValueRef::MaskPosition(mask) = report.syntax()[1]
@@ -571,17 +595,17 @@ fn background_and_mask_position_lists_expose_each_exact_layer() {
     else {
         panic!("expected mask-position value");
     };
-    let mask_layers = mask.positions().positions();
+    let mask_layers = mask.value().positions();
     assert_eq!(mask_layers.len(), 2);
     assert!(matches!(
         mask_layers[0].horizontal(),
         CssHorizontalPosition::RightOffset(offset)
-            if exact_percentage(offset.literal_component(), "5")
+            if exact_percentage(offset.literal().map(|literal| literal.component()), "5")
     ));
     assert!(matches!(
         mask_layers[0].vertical(),
         CssVerticalPosition::BottomOffset(offset)
-            if exact_dimension(offset.literal_component(), "2", "px")
+            if exact_dimension(offset.literal().map(|literal| literal.component()), "2", "px")
     ));
     assert!(matches!(
         mask_layers[1].horizontal(),
@@ -604,7 +628,8 @@ fn background_accepts_three_components_that_mask_rejects() {
         "center bottom 20%",
         "right calc((1px + 2%) * 3) center",
     ] {
-        let background = parse_style_attribute(&format!("background-position: {value}"));
+        let background =
+            CssParser::default().parse_block_contents(format!("background-position: {value}"));
         assert!(
             background.is_clean(),
             "background-position: {value}: {:?}",
@@ -612,7 +637,7 @@ fn background_accepts_three_components_that_mask_rejects() {
         );
 
         let mask_source = format!("mask-position: {value}; color: red");
-        let mask = parse_style_attribute(&mask_source);
+        let mask = CssParser::default().parse_block_contents(&mask_source);
         assert_eq!(mask.syntax().len(), 1, "{mask_source}");
         assert_eq!(mask.diagnostics().len(), 1, "{mask_source}");
         assert_eq!(
@@ -622,7 +647,9 @@ fn background_accepts_three_components_that_mask_rejects() {
         );
 
         {
-            let failure = surgeist_css::validate_style_attribute(&mask_source)
+            let failure = surgeist_css::CssParser::default()
+                .parse_block_contents(&mask_source)
+                .into_validation_result()
                 .expect_err("strict validation rejects mask-only three-component syntax");
             assert_eq!(failure.diagnostics(), mask.diagnostics(), "{mask_source}");
         }
@@ -632,7 +659,7 @@ fn background_accepts_three_components_that_mask_rejects() {
 #[test]
 fn mask_shorthand_rejects_a_three_component_position_and_recovers_at_the_declaration() {
     let source = "mask: url(mask.png) left 10px top / contain no-repeat; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
 
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(
@@ -665,16 +692,21 @@ fn mask_shorthand_rejects_a_three_component_position_and_recovers_at_the_declara
         diagnostic.span().end().byte_offset().value(),
         source.find(';').expect("mask declaration semicolon") + 1,
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured mask property-value error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Mask);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured mask property-value error"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Mask);
     let encountered = detail.encountered().expect("invalid position start token");
     assert_eq!(encountered.kind(), CssTokenKind::Ident);
     assert_eq!(encountered.authored(), "left");
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered mask shorthand");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -683,7 +715,7 @@ fn mask_shorthand_rejects_a_three_component_position_and_recovers_at_the_declara
 #[test]
 fn mask_shorthand_preserves_valid_image_position_size_and_repeat_components() {
     let source = "mask: url(mask.png) center / contain no-repeat";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
     let [declaration] = report.syntax().as_slice() else {
@@ -707,7 +739,8 @@ fn mask_shorthand_preserves_valid_image_position_size_and_repeat_components() {
                     CssHorizontalPosition::Center,
                     CssVerticalPosition::Center,
                 )
-                .expect("valid center position"),
+                .expect("valid center position")
+                .into(),
             ),
             Some(CssBackgroundSize::Contain),
             Some(CssBackgroundRepeat::Axes {
@@ -733,7 +766,9 @@ fn mask_shorthand_preserves_valid_image_position_size_and_repeat_components() {
     assert!(matches!(position.vertical(), CssVerticalPosition::Center));
 
     {
-        let strict = surgeist_css::validate_style_attribute(source)
+        let strict = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect("strict validation accepts valid mask shorthand");
         assert_eq!(strict, report.syntax().clone());
     }
@@ -754,7 +789,7 @@ fn layered_positions_reject_empty_items_slashes_and_trailing_components() {
         ("mask-position", "left 10px top"),
     ] {
         let source = format!("{property}: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -775,7 +810,7 @@ fn layered_position_failures_drop_each_declaration_and_continue() {
         "mask-position: top 10px, center; ",
         "color: red",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(report.diagnostics().len(), 2);
     assert_eq!(
@@ -791,7 +826,9 @@ fn layered_position_failures_drop_each_declaration_and_continue() {
     }));
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation reports every layered position failure");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -799,7 +836,7 @@ fn layered_position_failures_drop_each_declaration_and_continue() {
 
 #[test]
 fn layered_positions_retain_order_and_symbolic_calculations() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "background-position: left 10px top, bottom right; ",
         "background-position: left calc((1px + 2%) * 3) top; ",
         "mask-position: left top, 10% 20%; ",
@@ -813,7 +850,7 @@ fn layered_positions_retain_order_and_symbolic_calculations() {
         .property_value()
         .unwrap()
     {
-        CssKnownPropertyValueRef::BackgroundPosition(value) => value.positions().positions(),
+        CssKnownPropertyValueRef::BackgroundPosition(value) => value.value().positions(),
         _ => panic!("expected background-position at {index}"),
     };
     let mask = |index: usize| match report.syntax()[index]
@@ -822,13 +859,13 @@ fn layered_positions_retain_order_and_symbolic_calculations() {
         .property_value()
         .unwrap()
     {
-        CssKnownPropertyValueRef::MaskPosition(value) => value.positions().positions(),
+        CssKnownPropertyValueRef::MaskPosition(value) => value.value().positions(),
         _ => panic!("expected mask-position at {index}"),
     };
     let first = background(0);
     assert_eq!(first.len(), 2);
     assert!(
-        matches!(first[0].horizontal(), CssHorizontalPosition::LeftOffset(offset) if exact_dimension(offset.literal_component(), "10", "px"))
+        matches!(first[0].horizontal(), CssHorizontalPosition::LeftOffset(offset) if exact_dimension(offset.literal().map(|literal| literal.component()), "10", "px"))
     );
     assert!(matches!(first[0].vertical(), CssVerticalPosition::Top));
     assert!(matches!(
@@ -847,10 +884,10 @@ fn layered_positions_retain_order_and_symbolic_calculations() {
     assert!(matches!(third[0].horizontal(), CssHorizontalPosition::Left));
     assert!(matches!(third[0].vertical(), CssVerticalPosition::Top));
     assert!(
-        matches!(third[1].horizontal(), CssHorizontalPosition::Offset(offset) if exact_percentage(offset.literal_component(), "10"))
+        matches!(third[1].horizontal(), CssHorizontalPosition::Offset(offset) if exact_percentage(offset.literal().map(|literal| literal.component()), "10"))
     );
     assert!(
-        matches!(third[1].vertical(), CssVerticalPosition::Offset(offset) if exact_percentage(offset.literal_component(), "20"))
+        matches!(third[1].vertical(), CssVerticalPosition::Offset(offset) if exact_percentage(offset.literal().map(|literal| literal.component()), "20"))
     );
     let fourth = mask(3);
     assert_eq!(fourth.len(), 1);
@@ -861,43 +898,61 @@ fn layered_positions_retain_order_and_symbolic_calculations() {
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }
 fn exact_percentage(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }
 
-fn signed_length(css: &str) -> surgeist_css::CssSpecifiedLength {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+fn signed_length(css: &str) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLength> {
+    let components = surgeist_css::component::CssComponentValues::parse(
+        &surgeist_css::CssParser::default(),
+        css,
+    )
+    .unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedLength::try_from_calculation(
-            surgeist_css::CssLengthCalculation::try_from_components(components).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLength>::try_from_calculation(
+            surgeist_css::numeric::CssCalculation::<surgeist_css::numeric::CssLength>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedLength::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLength>::try_from_component(
+            surgeist_css::component::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
     }
 }
-fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+fn signed_length_percentage(
+    css: &str,
+) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLengthPercentage> {
+    let components = surgeist_css::component::CssComponentValues::parse(
+        &surgeist_css::CssParser::default(),
+        css,
+    )
+    .unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage>::try_from_calculation(
+            surgeist_css::numeric::CssCalculation::<surgeist_css::numeric::CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage>::try_from_component(
+            surgeist_css::component::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
     }

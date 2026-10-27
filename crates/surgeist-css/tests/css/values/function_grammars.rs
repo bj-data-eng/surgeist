@@ -1,12 +1,36 @@
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::math_depth::MathDepthBoundary;
 use crate::css::support::value_assertions::assert_component_rejected;
 use crate::css::support::value_assertions::assert_first_property_diagnostic;
 use crate::css::support::value_assertions::exact_dimension;
 use crate::css::support::value_assertions::exact_percentage;
-use surgeist_css::*;
+use crate::css::support::value_assertions::positive_literal;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{
+    CssAngleOrZero, CssInteger, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric,
+    CssNumericLiteral, CssPositive,
+};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyValue,
+};
+use surgeist_css::values::animation::{
+    CssCubicBezier, CssEasing, CssEasingKeyword, CssEasingList, CssStepPosition, CssSteps,
+};
+use surgeist_css::values::effects::{
+    CssBoxShadow, CssClipPath, CssFilter, CssFilterAmount, CssFilterFunction, CssFilterFunctionList,
+};
+use surgeist_css::values::image::CssRadialExtent;
+use surgeist_css::values::position::{CssHorizontalPosition, CssPositionRef, CssVerticalPosition};
+use surgeist_css::values::shape::{CssBasicShape, CssCircleRadius, CssEllipseRadius, CssFillRule};
+use surgeist_css::values::transform::{
+    CssTransform, CssTransformFunction, CssTransformFunctionKind, CssTransformFunctionList,
+    CssTransformPerspective, CssTransformScaleComponent,
+};
 
-fn parsed_transform_property(value: &str) -> CssTransformPropertyValue {
-    let report = parse_style_attribute(&format!("transform: {value}"));
+fn parsed_transform_property(value: &str) -> CssPropertyValue<CssTransform> {
+    let report = CssParser::default().parse_block_contents(format!("transform: {value}"));
     assert!(
         report.is_clean(),
         "expected `{value}` to parse cleanly, got {:?}",
@@ -25,7 +49,7 @@ fn parsed_transform_property(value: &str) -> CssTransformPropertyValue {
 }
 
 fn assert_transform_rejected(value: &str) {
-    let report = parse_style_attribute(&format!("transform: {value}"));
+    let report = CssParser::default().parse_block_contents(format!("transform: {value}"));
     assert!(report.syntax().is_empty(), "retained invalid `{value}`");
     assert_eq!(
         report.diagnostics().len(),
@@ -36,7 +60,7 @@ fn assert_transform_rejected(value: &str) {
 
 fn assert_easing_rejected(value: &str) {
     let source = format!("transition-timing-function: {value}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         report.syntax().len(),
         1,
@@ -59,7 +83,7 @@ fn assert_easing_rejected(value: &str) {
 
 fn assert_filter_rejected(value: &str) {
     let source = format!("filter: {value}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         report.syntax().len(),
         1,
@@ -80,8 +104,8 @@ fn assert_filter_rejected(value: &str) {
     );
 }
 
-fn parsed_filter_property(value: &str) -> CssFilterPropertyValue {
-    let report = parse_style_attribute(&format!("filter: {value}"));
+fn parsed_filter_property(value: &str) -> CssPropertyValue<CssFilter> {
+    let report = CssParser::default().parse_block_contents(format!("filter: {value}"));
     assert!(
         report.is_clean(),
         "expected `{value}` to parse cleanly, got {:?}",
@@ -100,7 +124,7 @@ fn parsed_filter_property(value: &str) -> CssFilterPropertyValue {
 
 fn assert_clip_path_rejected(value: &str) {
     let source = format!("clip-path: {value}; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.syntax().len(), 1, "retained invalid `{value}`");
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),
@@ -113,8 +137,8 @@ fn assert_clip_path_rejected(value: &str) {
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
 }
 
-fn parsed_clip_path_property(value: &str) -> CssClipPathPropertyValue {
-    let report = parse_style_attribute(&format!("clip-path: {value}"));
+fn parsed_clip_path_property(value: &str) -> CssPropertyValue<CssClipPath> {
+    let report = CssParser::default().parse_block_contents(format!("clip-path: {value}"));
     assert!(report.is_clean(), "`{value}`: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
         .known()
@@ -129,7 +153,7 @@ fn parsed_clip_path_property(value: &str) -> CssClipPathPropertyValue {
 
 #[test]
 fn clip_path_accepts_circle_percentage_radius() {
-    let report = parse_style_attribute("clip-path: circle(25%); color: red");
+    let report = CssParser::default().parse_block_contents("clip-path: circle(25%); color: red");
     assert!(report.is_clean());
     assert_eq!(report.syntax().len(), 2);
     let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
@@ -148,7 +172,7 @@ fn clip_path_accepts_circle_percentage_radius() {
     };
     assert!(
         matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
-        if exact_percentage(radius.literal_component(), "25"))
+        if exact_percentage(radius.literal().map(|literal| literal.component()), "25"))
     );
     assert_eq!(
         report.syntax()[1].known().unwrap().property(),
@@ -189,7 +213,7 @@ fn circle_percentage_position_has_typed_radius_and_position() {
     };
     assert!(
         matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
-        if exact_percentage(radius.literal_component(), "50"))
+        if exact_percentage(radius.literal().map(|literal| literal.component()), "50"))
     );
     assert!(circle.position().is_some());
 }
@@ -227,7 +251,7 @@ fn selected_basic_shapes_expose_typed_authored_components() {
     assert!(matches!(
         circle.radius(),
         CssCircleRadius::LengthPercentage(value)
-            if exact_dimension(value.literal_component(), "10", "px")
+            if exact_dimension(value.literal().map(|literal| literal.component()), "10", "px")
     ));
     let CssPositionRef::Cartesian(position) = circle.position().unwrap().view() else {
         panic!("Cartesian circle position")
@@ -255,8 +279,15 @@ fn selected_basic_shapes_expose_typed_authored_components() {
     let CssEllipseRadius::LengthPercentage(vertical) = radii.vertical() else {
         panic!("vertical numeric radius")
     };
-    assert!(exact_dimension(horizontal.literal_component(), "10", "px"));
-    assert!(exact_percentage(vertical.literal_component(), "25"));
+    assert!(exact_dimension(
+        horizontal.literal().map(|literal| literal.component()),
+        "10",
+        "px"
+    ));
+    assert!(exact_percentage(
+        vertical.literal().map(|literal| literal.component()),
+        "25"
+    ));
 
     let inset = parsed_clip_path_property("inset(1px 2% 3px round 4px 5% / 6px 7%)");
     let CssClipPath::BasicShape(clip_shape) = inset.value() else {
@@ -268,12 +299,20 @@ fn selected_basic_shapes_expose_typed_authored_components() {
     assert_eq!(inset.offsets().values().len(), 3);
     let radii = inset.round().unwrap();
     assert!(exact_dimension(
-        radii.top_left().horizontal().literal_component(),
+        radii
+            .top_left()
+            .first()
+            .literal()
+            .map(|literal| literal.component()),
         "4",
         "px"
     ));
     assert!(exact_dimension(
-        radii.top_left().vertical().literal_component(),
+        radii
+            .top_left()
+            .second()
+            .literal()
+            .map(|literal| literal.component()),
         "6",
         "px"
     ));
@@ -288,7 +327,7 @@ fn selected_basic_shapes_expose_typed_authored_components() {
     };
     assert_eq!(polygon.fill_rule(), Some(CssFillRule::Evenodd));
     assert!(polygon.round().is_some_and(|value| exact_dimension(
-        value.literal_component(),
+        value.literal().map(|literal| literal.component()),
         "2",
         "px"
     )));
@@ -358,25 +397,25 @@ fn omitted_shape_branches_are_explicit() {
 #[test]
 fn shape_checked_scalars_reject_invalid_public_construction() {
     assert_component_rejected(
-        CssSpecifiedNonNegativeLength::try_from_component,
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component,
         CssComponentValue::try_token("10%").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     assert_component_rejected(
-        CssSpecifiedNonNegativeLength::try_from_component,
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component,
         CssComponentValue::try_dimension("-1", "px").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
     assert_component_rejected(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component,
         CssComponentValue::try_token("-1%").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
 }
 
 #[test]
 fn checked_shape_aggregates_retain_circle_percentage_and_omission() {
-    use surgeist_css::{
+    use surgeist_css::values::shape::{
         CssCircleShape, CssEllipseRadii, CssEllipseShape, CssInsetShape, CssInsetShapeOffsets,
         CssPolygonPoint, CssPolygonPointList, CssPolygonShape,
     };
@@ -385,7 +424,7 @@ fn checked_shape_aggregates_retain_circle_percentage_and_omission() {
     let circle = CssCircleShape::new(CssCircleRadius::LengthPercentage(radius), None);
     assert!(
         matches!(circle.radius(), CssCircleRadius::LengthPercentage(radius)
-        if exact_percentage(radius.literal_component(), "25"))
+        if exact_percentage(radius.literal().map(|literal| literal.component()), "25"))
     );
     assert!(circle.position().is_none());
     let omitted = CssCircleShape::new(CssCircleRadius::Default, None);
@@ -400,7 +439,7 @@ fn checked_shape_aggregates_retain_circle_percentage_and_omission() {
     );
     assert!(
         matches!(ellipse.radii().unwrap().vertical(), CssEllipseRadius::LengthPercentage(value)
-        if exact_percentage(value.literal_component(), "20"))
+        if exact_percentage(value.literal().map(|literal| literal.component()), "20"))
     );
 
     let inset = CssInsetShape::new(
@@ -408,7 +447,7 @@ fn checked_shape_aggregates_retain_circle_percentage_and_omission() {
         None,
     );
     assert!(
-        matches!(inset.offsets().values(), [value] if exact_percentage(value.literal_component(), "5"))
+        matches!(inset.offsets().values(), [value] if exact_percentage(value.literal().map(|literal| literal.component()), "5"))
     );
 
     let point = CssPolygonPoint::new(
@@ -422,7 +461,10 @@ fn checked_shape_aggregates_retain_circle_percentage_and_omission() {
     );
     assert_eq!(polygon.points().points().len(), 1);
     assert!(exact_percentage(
-        polygon.points().points()[0].y().literal_component(),
+        polygon.points().points()[0]
+            .y()
+            .literal()
+            .map(|literal| literal.component()),
         "100"
     ));
     assert!(CssPolygonPointList::try_new(Vec::new()).is_none());
@@ -521,11 +563,11 @@ fn every_filter_amount_function_has_exact_typed_domain() {
     ));
     assert!(matches!(
         &functions.functions()[1],
-        CssFilterFunction::Contrast(CssFilterAmount::Number(value)) if exact_number(value.literal_component(), "2")
+        CssFilterFunction::Contrast(CssFilterAmount::Number(value)) if exact_number(value.literal().map(|literal| literal.component()), "2")
     ));
     assert!(matches!(
         &functions.functions()[2],
-        CssFilterFunction::Grayscale(CssFilterAmount::Percentage(value)) if exact_percentage(value.literal_component(), "25")
+        CssFilterFunction::Grayscale(CssFilterAmount::Percentage(value)) if exact_percentage(value.literal().map(|literal| literal.component()), "25")
     ));
     assert!(matches!(
         &functions.functions()[3],
@@ -568,12 +610,18 @@ fn blur_hue_rotate_and_drop_shadow_expose_distinct_typed_payloads() {
         panic!("expected typed drop-shadow");
     };
     assert!(exact_dimension(
-        shadow.offset_x().literal_component(),
+        shadow
+            .offset_x()
+            .literal()
+            .map(|literal| literal.component()),
         "1",
         "px"
     ));
     assert!(exact_dimension(
-        shadow.offset_y().literal_component(),
+        shadow
+            .offset_y()
+            .literal()
+            .map(|literal| literal.component()),
         "-2",
         "px"
     ));
@@ -583,7 +631,7 @@ fn blur_hue_rotate_and_drop_shadow_expose_distinct_typed_payloads() {
 
 #[test]
 fn box_shadow_accepts_component_orders_and_rejects_invalid_components() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "box-shadow: red inset -1px 2px 3px -4px, ",
         "5px 6px blue inset, inset 7px 8px; color: red"
     ));
@@ -604,7 +652,11 @@ fn box_shadow_accepts_component_orders_and_rejects_invalid_components() {
     assert!(
         shadows.shadows()[0]
             .spread_radius()
-            .is_some_and(|value| exact_dimension(value.literal_component(), "-4", "px"))
+            .is_some_and(|value| exact_dimension(
+                value.literal().map(|literal| literal.component()),
+                "-4",
+                "px"
+            ))
     );
     assert!(shadows.shadows()[1].color().is_some());
 
@@ -614,7 +666,8 @@ fn box_shadow_accepts_component_orders_and_rejects_invalid_components() {
         "inset inset 1px 2px",
         "1px 2px,",
     ] {
-        let report = parse_style_attribute(&format!("box-shadow: {value}; color: red"));
+        let report =
+            CssParser::default().parse_block_contents(format!("box-shadow: {value}; color: red"));
         assert_eq!(report.syntax().len(), 1, "retained `{value}`");
         assert_eq!(report.diagnostics().len(), 1, "{value}");
     }
@@ -625,7 +678,7 @@ fn box_shadow_accepts_component_orders_and_rejects_invalid_components() {
 #[test]
 fn box_shadow_rejects_interleaved_color_between_offsets() {
     let source = "box-shadow: 1px red 2px; color: blue";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     // `1px` opens the contiguous length group, which `red` interrupts.
     assert_first_property_diagnostic(
         report.diagnostics(),
@@ -640,7 +693,11 @@ fn box_shadow_rejects_interleaved_color_between_offsets() {
     );
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
-        validate_style_attribute(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -648,7 +705,7 @@ fn box_shadow_rejects_interleaved_color_between_offsets() {
 #[test]
 fn drop_shadow_rejects_interleaved_color_between_offsets() {
     let source = "filter: drop-shadow(1px red 2px); color: blue";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     // `1px` opens the contiguous length group, which `red` interrupts.
     assert_first_property_diagnostic(
         report.diagnostics(),
@@ -663,7 +720,11 @@ fn drop_shadow_rejects_interleaved_color_between_offsets() {
     );
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
-        validate_style_attribute(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -725,14 +786,14 @@ fn hue_rotate_accepts_an_omitted_argument_as_an_ordered_filter_function() {
 #[test]
 fn filter_checked_scalars_and_lists_reject_unrepresentable_states() {
     assert_component_rejected(
-        CssSpecifiedNonNegativeLength::try_from_component,
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component,
         CssComponentValue::try_dimension("-1", "px").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
     assert_component_rejected(
-        CssSpecifiedLength::try_from_component,
+        CssNumeric::<CssLength>::try_from_component,
         CssComponentValue::try_token("1%").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     assert!(CssFilterFunctionList::try_new(Vec::new()).is_none());
 }
@@ -750,7 +811,7 @@ fn filter_calculations_preserve_the_exact_depth_boundary() {
 
 #[test]
 fn filter_ordinary_global_and_substitution_values_remain_distinct() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "filter: blur(1px); backdrop-filter: inherit; filter: var(--filters); ",
         "box-shadow: initial; box-shadow: var(--shadow)"
     ));
@@ -777,8 +838,9 @@ fn filter_ordinary_global_and_substitution_values_remain_distinct() {
     ));
 }
 
-fn parsed_easing_property(value: &str) -> CssTransitionTimingFunctionPropertyValue {
-    let report = parse_style_attribute(&format!("transition-timing-function: {value}"));
+fn parsed_easing_property(value: &str) -> CssPropertyValue<CssEasingList> {
+    let report =
+        CssParser::default().parse_block_contents(format!("transition-timing-function: {value}"));
     assert!(
         report.is_clean(),
         "expected `{value}` to parse cleanly, got {:?}",
@@ -812,7 +874,7 @@ fn every_easing_keyword_and_alias_is_a_distinct_branch() {
     let property = parsed_easing_property(
         "ease, linear, ease-in, ease-out, ease-in-out, step-start, step-end",
     );
-    let values = property.timing_functions().values();
+    let values = property.value().values();
     assert!(matches!(
         values,
         [
@@ -836,20 +898,30 @@ fn cubic_bezier_coordinates_are_typed_and_keep_symbolic_number_math() {
     let [
         CssEasing::CubicBezier(literal),
         CssEasing::CubicBezier(symbolic),
-    ] = property.timing_functions().values()
+    ] = property.value().values()
     else {
         panic!("expected two typed cubic-bezier values");
     };
     assert!(exact_number(
-        (literal.x1().value()).literal_component(),
+        (literal.x1().value())
+            .literal()
+            .map(|literal| literal.component()),
         "0"
     ));
-    assert!(exact_number((literal.y1()).literal_component(), "-20"));
     assert!(exact_number(
-        (literal.x2().value()).literal_component(),
+        (literal.y1()).literal().map(|literal| literal.component()),
+        "-20"
+    ));
+    assert!(exact_number(
+        (literal.x2().value())
+            .literal()
+            .map(|literal| literal.component()),
         "1"
     ));
-    assert!(exact_number((literal.y2()).literal_component(), "30"));
+    assert!(exact_number(
+        (literal.y2()).literal().map(|literal| literal.component()),
+        "30"
+    ));
     assert!((symbolic.x1().value()).calculation().is_some());
     assert!((symbolic.y1()).calculation().is_some());
     assert!((symbolic.x2().value()).calculation().is_some());
@@ -871,7 +943,7 @@ fn every_steps_position_is_typed_and_jump_none_keeps_its_count_rule() {
         "steps(2, jump-none), steps(1, jump-both), steps(1, start), steps(1, end), ",
         "steps(calc(1 + 1), jump-none)"
     ));
-    let values = property.timing_functions().values();
+    let values = property.value().values();
     let expected_positions = [
         None,
         Some(CssStepPosition::JumpStart),
@@ -890,18 +962,16 @@ fn every_steps_position_is_typed_and_jump_none_keeps_its_count_rule() {
     let CssEasing::Steps(symbolic) = &values[7] else {
         panic!("expected symbolic typed steps value");
     };
-    assert!(matches!(
-        symbolic.count(),
-        CssPositiveIntegerValue::Calculation(_)
-    ));
+    assert!(symbolic.count().calculation().is_some());
 
-    let one = CssPositiveIntegerValue::Literal(
-        CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(1))
+    let one = CssNumeric::<CssInteger, CssPositive>::try_from_literal(
+        positive_literal(CssNumericLiteral::<CssInteger>::from_i32(1))
             .expect("positive step count"),
-    );
+    )
+    .unwrap();
     assert!(CssSteps::try_new(one, Some(CssStepPosition::JumpNone)).is_none());
-    assert!(CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(0)).is_none());
-    assert!(CssPositiveIntegerLiteral::try_new(CssIntegerLiteral::from_i32(-1)).is_none());
+    assert!(positive_literal(CssNumericLiteral::<CssInteger>::from_i32(0)).is_none());
+    assert!(positive_literal(CssNumericLiteral::<CssInteger>::from_i32(-1)).is_none());
     assert!(CssEasingList::try_new(Vec::new()).is_none());
 }
 
@@ -925,10 +995,13 @@ fn easing_functions_require_exact_separators_arities_and_domains() {
         assert_easing_rejected(value);
     }
     let property = parsed_easing_property("cubic-bezier(0, 1e999, 1, 1)");
-    let [CssEasing::CubicBezier(value)] = property.timing_functions().values() else {
+    let [CssEasing::CubicBezier(value)] = property.value().values() else {
         panic!("exact unrestricted Y coordinate")
     };
-    assert!(exact_number(value.y1().literal_component(), "1e999"));
+    assert!(exact_number(
+        value.y1().literal().map(|literal| literal.component()),
+        "1e999"
+    ));
 }
 
 #[test]
@@ -938,7 +1011,7 @@ fn repeated_easing_failures_recover_to_valid_timing_and_color_siblings() {
         "animation-timing-function: steps(1, jump-none); ",
         "transition-timing-function: steps(2, jump-none); color: red"
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     assert_eq!(report.diagnostics().len(), 2);
     assert_eq!(
@@ -963,7 +1036,9 @@ fn repeated_easing_failures_recover_to_valid_timing_and_color_siblings() {
     );
 
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects both recovered easing declarations");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -1025,13 +1100,13 @@ fn every_selected_two_dimensional_transform_function_preserves_authored_order() 
     assert!(matches!(
         &functions.functions()[0],
         CssTransformFunction::Matrix(matrix)
-            if exact_number((matrix.components()[4]).literal_component(), "10")
+            if exact_number((matrix.components()[4]).literal().map(|literal| literal.component()), "10")
     ));
     assert!(matches!(
         &functions.functions()[1],
         CssTransformFunction::Translate(translation)
-            if exact_dimension(translation.x().literal_component(), "1", "px")
-                && exact_percentage(translation.y().unwrap().literal_component(), "2")
+            if exact_dimension(translation.x().literal().map(|literal| literal.component()), "1", "px")
+                && exact_percentage(translation.y().unwrap().literal().map(|literal| literal.component()), "2")
     ));
     assert!(matches!(
         &functions.functions()[2],
@@ -1060,11 +1135,15 @@ fn transform_matrix3d_exposes_sixteen_finite_components() {
         panic!("expected typed matrix3d");
     };
     assert!(exact_number(
-        (matrix.components()[12]).literal_component(),
+        (matrix.components()[12])
+            .literal()
+            .map(|literal| literal.component()),
         "10"
     ));
     assert!(exact_number(
-        (matrix.components()[15]).literal_component(),
+        (matrix.components()[15])
+            .literal()
+            .map(|literal| literal.component()),
         "1"
     ));
 }
@@ -1101,7 +1180,7 @@ fn transform_perspective_accepts_none_and_zero_and_rejects_invalid_dimensions() 
     assert!(matches!(
         &functions.functions()[1],
         CssTransformFunction::Perspective(CssTransformPerspective::Length(length))
-            if matches!(length.literal_component().map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == "0")
+            if matches!(length.literal().map(|literal| literal.component()).map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Number(number))) if number.representation() == "0")
     ));
 }
 
@@ -1124,7 +1203,10 @@ fn transform_three_dimensional_rotations_are_typed() {
     let CssTransformFunction::Rotate3d(rotation) = &functions.functions()[0] else {
         panic!("expected typed rotate3d");
     };
-    assert!(exact_number((rotation.z()).literal_component(), "-1"));
+    assert!(exact_number(
+        (rotation.z()).literal().map(|literal| literal.component()),
+        "-1"
+    ));
     assert!(
         matches!(rotation.angle(), CssAngleOrZero::Angle(value) if value.literal().is_some_and(|literal| literal.numeric().representation() == "45"))
     );
@@ -1144,7 +1226,7 @@ fn transform_angles_reject_percentage_calculations_and_recover_siblings() {
     ] {
         let source =
             format!("transform: {value}; transform: rotate(calc(1turn - 90deg)); color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         if report.syntax().len() != 2 || report.diagnostics().len() != 1 {
             wrongly_retained.push(value);
             continue;
@@ -1173,7 +1255,9 @@ fn transform_angles_reject_percentage_calculations_and_recover_siblings() {
         );
 
         {
-            let failure = surgeist_css::validate_style_attribute(&source)
+            let failure = surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects percentage-typed transform angles");
             assert_eq!(failure.diagnostics(), report.diagnostics());
         }
@@ -1214,11 +1298,11 @@ fn transform_three_dimensional_scales_preserve_number_and_percentage_operands() 
     };
     assert!(matches!(
         scale.x(),
-        CssTransformScaleComponent::Number(value) if exact_number(value.literal_component(), "1")
+        CssTransformScaleComponent::Number(value) if exact_number(value.literal().map(|literal| literal.component()), "1")
     ));
     assert!(matches!(
         scale.y(),
-        CssTransformScaleComponent::Percentage(value) if exact_percentage(value.literal_component(), "50")
+        CssTransformScaleComponent::Percentage(value) if exact_percentage(value.literal().map(|literal| literal.component()), "50")
     ));
     assert!(matches!(
         scale.z(),
@@ -1226,11 +1310,11 @@ fn transform_three_dimensional_scales_preserve_number_and_percentage_operands() 
     ));
     assert!(matches!(
         &functions.functions()[1],
-        CssTransformFunction::ScaleZ(CssTransformScaleComponent::Number(value)) if exact_number(value.literal_component(), "2")
+        CssTransformFunction::ScaleZ(CssTransformScaleComponent::Number(value)) if exact_number(value.literal().map(|literal| literal.component()), "2")
     ));
     assert!(matches!(
         &functions.functions()[2],
-        CssTransformFunction::ScaleZ(CssTransformScaleComponent::Percentage(value)) if exact_percentage(value.literal_component(), "125")
+        CssTransformFunction::ScaleZ(CssTransformScaleComponent::Percentage(value)) if exact_percentage(value.literal().map(|literal| literal.component()), "125")
     ));
 }
 
@@ -1255,10 +1339,13 @@ fn transform_three_dimensional_translations_keep_z_length_only() {
     let CssTransformFunction::Translate3d(translation) = &functions.functions()[0] else {
         panic!("expected typed translate3d");
     };
-    assert!(exact_percentage(translation.x().literal_component(), "10"));
+    assert!(exact_percentage(
+        translation.x().literal().map(|literal| literal.component()),
+        "10"
+    ));
     assert!(translation.y().calculation().is_some());
     assert!(exact_dimension(
-        translation.z().literal_component(),
+        translation.z().literal().map(|literal| literal.component()),
         "4",
         "em"
     ));
@@ -1306,11 +1393,11 @@ fn selected_level_two_extension_admits_historical_two_dimensional_percentage_bou
     assert!(
         matches!(&functions.functions()[0], CssTransformFunction::Scale(scale)
         if matches!(scale.y(), Some(CssTransformScaleComponent::Percentage(value))
-            if exact_percentage(value.literal_component(), "50")))
+            if exact_percentage(value.literal().map(|literal| literal.component()), "50")))
     );
     assert!(matches!(&functions.functions()[1],
         CssTransformFunction::ScaleY(CssTransformScaleComponent::Percentage(value))
-            if exact_percentage(value.literal_component(), "50")));
+            if exact_percentage(value.literal().map(|literal| literal.component()), "50")));
 }
 
 #[test]
@@ -1337,19 +1424,19 @@ fn transform_function_lists_reject_empty_unknown_and_trailing_mutations() {
 #[test]
 fn transform_checked_scalars_and_lists_reject_unrepresentable_states() {
     assert_component_rejected(
-        CssSpecifiedLengthPercentage::try_from_component,
+        CssNumeric::<CssLengthPercentage>::try_from_component,
         CssComponentValue::try_token("auto").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     assert_component_rejected(
-        CssSpecifiedLength::try_from_component,
+        CssNumeric::<CssLength>::try_from_component,
         CssComponentValue::try_token("10%").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch,
+        NumericFailure::RootDomainMismatch,
     );
     assert_component_rejected(
-        CssSpecifiedNonNegativeLength::try_from_component,
+        CssNumeric::<CssLength, CssNonNegative>::try_from_component,
         CssComponentValue::try_dimension("-1", "px").unwrap(),
-        surgeist_css::CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
     assert!(CssTransformFunctionList::try_new(Vec::new()).is_none());
 }
@@ -1365,43 +1452,72 @@ fn transform_calculations_preserve_the_exact_depth_boundary() {
     .assert();
 }
 
-fn signed_length_percentage(css: &str) -> surgeist_css::CssSpecifiedLengthPercentage {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+fn signed_length_percentage(
+    css: &str,
+) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLengthPercentage> {
+    let components = surgeist_css::component::CssComponentValues::parse(
+        &surgeist_css::CssParser::default(),
+        css,
+    )
+    .unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage>::try_from_calculation(
+            surgeist_css::numeric::CssCalculation::<surgeist_css::numeric::CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedLengthPercentage::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage>::try_from_component(
+            surgeist_css::component::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
     }
 }
 fn nonnegative_length_percentage(
     css: &str,
-) -> surgeist_css::CssSpecifiedNonNegativeLengthPercentage {
-    let components = surgeist_css::parse_component_values(css).unwrap();
+) -> surgeist_css::numeric::CssNumeric<
+    surgeist_css::numeric::CssLengthPercentage,
+    surgeist_css::numeric::CssNonNegative,
+> {
+    let components = surgeist_css::component::CssComponentValues::parse(
+        &surgeist_css::CssParser::default(),
+        css,
+    )
+    .unwrap();
     if css.contains('(') {
-        surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-            surgeist_css::CssLengthPercentageCalculation::try_from_components(components).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage, surgeist_css::numeric::CssNonNegative>::try_from_calculation(
+            surgeist_css::numeric::CssCalculation::<surgeist_css::numeric::CssLengthPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap()
     } else {
-        surgeist_css::CssSpecifiedNonNegativeLengthPercentage::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        surgeist_css::numeric::CssNumeric::<
+            surgeist_css::numeric::CssLengthPercentage,
+            surgeist_css::numeric::CssNonNegative,
+        >::try_from_component(
+            surgeist_css::component::CssComponentValue::try_token(css).unwrap()
         )
         .unwrap()
     }
 }
 
-fn exact_number(component: Option<&surgeist_css::CssComponentValue>, representation: &str) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == representation)
+fn exact_number(
+    component: Option<&surgeist_css::component::CssComponentValue>,
+    representation: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Number(number))) if number.representation() == representation)
 }
-fn checked_number(representation: &str) -> surgeist_css::CssSpecifiedNumber {
-    surgeist_css::CssSpecifiedNumber::try_from_component(
-        surgeist_css::CssComponentValue::try_number(representation).unwrap(),
+fn checked_number(
+    representation: &str,
+) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssNumber> {
+    surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssNumber>::try_from_component(
+        surgeist_css::component::CssComponentValue::try_number(representation).unwrap(),
     )
     .unwrap()
 }
@@ -1410,7 +1526,13 @@ fn checked_number(representation: &str) -> surgeist_css::CssSpecifiedNumber {
 fn rectangular_basic_shape_functions_parse_through_the_clip_path_front_door() {
     for value in ["rect(0 1px 1px 0)", "xywh(0 0 1px 1px)"] {
         let property = parsed_clip_path_property(value);
-        assert_eq!(property.value().serialize_specified().unwrap(), value);
+        assert_eq!(
+            property
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            value
+        );
     }
 }
 
@@ -1418,7 +1540,10 @@ fn rectangular_basic_shape_functions_parse_through_the_clip_path_front_door() {
 fn path_shape_uses_the_checked_clip_path_front_door() {
     let property = parsed_clip_path_property("path('M 0 0 L 1 1')");
     assert_eq!(
-        property.value().serialize_specified().unwrap(),
+        property
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "path(\"M 0 0 L 1 1\")"
     );
 }

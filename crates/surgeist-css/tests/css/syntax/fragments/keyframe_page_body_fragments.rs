@@ -6,7 +6,18 @@ use crate::css::support::authored_syntax::{
     assert_origin_bytes as origin, assert_position as point, fragment_body as body,
     fragment_recovery as recovered, known_properties as page_keys,
 };
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
+use surgeist_css::rule::keyframes::{
+    CssKeyframeBlock, CssKeyframeDeclaration, CssKeyframeDeclarationList, CssKeyframeSelector,
+};
+use surgeist_css::rule::page::CssPageBody;
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule};
+use surgeist_css::values::box_model::CssMarginValue;
+use surgeist_css::values::effects::{CssOpacityScalarKind, CssOpacityValue};
+use surgeist_css::{CssParseReport, CssParser, CssParserContext, CssParserMode};
 
 const STANDARDS: CssParserContext = CssParserContext::new(CssParserMode::Standards);
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
@@ -44,7 +55,11 @@ fn opacity(declaration: &CssKeyframeDeclaration, expected: &str) {
 #[test]
 fn keyframes_body_retains_ordered_duplicate_selectors_and_empty_child_blocks() {
     let source = "{from,0%,from{}50%{opacity:.5}to{opacity:1}100%{}}";
-    let report = parse_keyframes_block(source);
+    let report = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     clean(&report);
     origin(body(&report).origin(), source, 0, source.len());
     let blocks = body(&report).body();
@@ -81,7 +96,11 @@ fn keyframes_body_retains_ordered_duplicate_selectors_and_empty_child_blocks() {
 fn invalid_keyframe_selector_units_drop_whole_children_and_keep_the_later_to_block() {
     for selector in ["-1%", "101%", "0", "50%,", ".bad", "fn(a)"] {
         let source = format!("{{{selector}{{opacity:.5}}to{{opacity:1}}}}");
-        let report = parse_keyframes_block(&source);
+        let report = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+            &CssParser::default(),
+            &source,
+            &CssBlockContext::default(),
+        );
         let [last] = body(&report).body().as_slice() else {
             panic!("later child survives: {selector}")
         };
@@ -101,7 +120,11 @@ fn invalid_keyframe_selector_units_drop_whole_children_and_keep_the_later_to_blo
 
 #[test]
 fn at_rule_is_not_a_keyframe_child_and_does_not_admit_its_nested_to_rule() {
-    let report = parse_keyframes_block("{from{opacity:0}@media all{to{opacity:.5}}to{opacity:1}}");
+    let report = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+        &CssParser::default(),
+        "{from{opacity:0}@media all{to{opacity:.5}}to{opacity:1}}",
+        &CssBlockContext::default(),
+    );
     let blocks = body(&report).body();
     assert_eq!(blocks.len(), 2);
     assert!(matches!(
@@ -119,8 +142,10 @@ fn at_rule_is_not_a_keyframe_child_and_does_not_admit_its_nested_to_rule() {
 
 #[test]
 fn keyframe_declarations_retain_duplicates_timing_function_and_custom_occurrences() {
-    let report = parse_keyframe_declaration_block(
+    let report = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+        &CssParser::default(),
         "{opacity:.5;opacity:1;animation-timing-function:linear;--x:1;--x:2}",
+        &CssBlockContext::default(),
     );
     clean(&report);
     let declarations = body(&report).body();
@@ -164,7 +189,11 @@ fn keyframe_animation_properties_except_timing_function_are_dropped_locally() {
         "animation:1s x",
     ] {
         let source = format!("{{opacity:.5;{declaration};color:red}}");
-        let report = parse_keyframe_declaration_block(&source);
+        let report = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+            &CssParser::default(),
+            &source,
+            &CssBlockContext::default(),
+        );
         assert_eq!(
             keys(body(&report).body()),
             [
@@ -185,7 +214,11 @@ fn keyframe_importance_is_invalid_for_known_and_custom_declarations() {
         "animation-timing-function:linear!important",
     ] {
         let source = format!("{{opacity:.5;{declaration};color:red}}");
-        let report = parse_keyframe_declaration_block(&source);
+        let report = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+            &CssParser::default(),
+            &source,
+            &CssBlockContext::default(),
+        );
         assert_eq!(
             keys(body(&report).body()),
             [
@@ -207,14 +240,22 @@ fn structural_child_is_dropped_alone_from_keyframe_declarations() {
         ("@media all{color:red}", CssRecoveryAction::DropAtRule),
     ] {
         let source = format!("{{opacity:.5;{child}opacity:1}}");
-        let report = parse_keyframe_declaration_block(&source);
+        let report = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+            &CssParser::default(),
+            &source,
+            &CssBlockContext::default(),
+        );
         let declarations = body(&report).body();
         assert_eq!(declarations.len(), 2, "{source}");
         opacity(&declarations[0], ".5");
         opacity(&declarations[1], "1");
         recovered(&report, action);
         let source = format!("{{from{{opacity:.5;{child}opacity:1}}to{{opacity:1}}}}");
-        let report = parse_keyframes_block(&source);
+        let report = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+            &CssParser::default(),
+            &source,
+            &CssBlockContext::default(),
+        );
         let [first, last] = body(&report).body().as_slice() else {
             panic!("both keyframe blocks survive: {source}")
         };
@@ -234,8 +275,10 @@ fn structural_child_is_dropped_alone_from_keyframe_declarations() {
 
 #[test]
 fn page_body_retains_five_physical_margin_properties_priority_and_duplicates() {
-    let report = parse_page_block(
+    let report = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::default(),
         "{margin:-1px 2% auto 3cm;margin-top:-4mm!important;margin-right:5in;margin-bottom:6pc;margin-left:7pt;margin-top:0}",
+        &CssBlockContext::default(),
     );
     clean(&report);
     let declarations = body(&report).body().declarations().properties();
@@ -257,11 +300,11 @@ fn page_body_retains_five_physical_margin_properties_priority_and_duplicates() {
     else {
         panic!("physical margin shorthand")
     };
-    let [top, right, bottom, left] = value.value().assigned_values();
-    assert_eq!(top.serialize_specified().unwrap(), "-1px");
-    assert_eq!(right.serialize_specified().unwrap(), "2%");
+    let [top, right, bottom, left] = value.value().assigned();
+    assert_eq!(top.serialize_specified(Default::default()).unwrap(), "-1px");
+    assert_eq!(right.serialize_specified(Default::default()).unwrap(), "2%");
     assert!(matches!(bottom, CssMarginValue::Auto));
-    assert_eq!(left.serialize_specified().unwrap(), "3cm");
+    assert_eq!(left.serialize_specified(Default::default()).unwrap(), "3cm");
 }
 
 #[test]
@@ -276,7 +319,11 @@ fn page_restrictions_reject_inapplicable_properties_logical_sides_and_invalid_un
         "margin-top:7",
     ] {
         let source = format!("{{margin-top:1px;{invalid};margin-bottom:auto}}");
-        let report = parse_page_block(&source);
+        let report = CssBlockFragment::<CssPageBody>::parse(
+            &CssParser::default(),
+            &source,
+            &CssBlockContext::default(),
+        );
         assert_eq!(
             page_keys(body(&report).body().declarations().properties()),
             [CssKnownProperty::MarginTop, CssKnownProperty::MarginBottom]
@@ -293,7 +340,11 @@ fn page_excludes_invalid_margin_preludes_and_nested_rules_but_retains_later_marg
         ".nested{color:blue}",
     ] {
         let source = format!("{{margin-top:1px;{child}margin-bottom:2px}}");
-        let report = parse_page_block(&source);
+        let report = CssBlockFragment::<CssPageBody>::parse(
+            &CssParser::default(),
+            &source,
+            &CssBlockContext::default(),
+        );
         assert_eq!(
             page_keys(body(&report).body().declarations().properties()),
             [CssKnownProperty::MarginTop, CssKnownProperty::MarginBottom]
@@ -304,22 +355,46 @@ fn page_excludes_invalid_margin_preludes_and_nested_rules_but_retains_later_marg
 
 #[test]
 fn real_empty_bodies_and_recovered_empty_bodies_remain_distinct() {
-    let outer = parse_keyframes_block("{}");
+    let outer = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+        &CssParser::default(),
+        "{}",
+        &CssBlockContext::default(),
+    );
     clean(&outer);
     assert!(body(&outer).body().is_empty());
-    let child = parse_keyframe_declaration_block("{}");
+    let child = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+        &CssParser::default(),
+        "{}",
+        &CssBlockContext::default(),
+    );
     clean(&child);
     assert!(body(&child).body().is_empty());
-    let page = parse_page_block("{}");
+    let page = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::default(),
+        "{}",
+        &CssBlockContext::default(),
+    );
     clean(&page);
     assert!(body(&page).body().declarations().is_empty());
-    let outer = parse_keyframes_block("{.bad{opacity:.5}}");
+    let outer = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+        &CssParser::default(),
+        "{.bad{opacity:.5}}",
+        &CssBlockContext::default(),
+    );
     assert!(body(&outer).body().is_empty());
     recovered(&outer, CssRecoveryAction::DropKeyframeBlock);
-    let child = parse_keyframe_declaration_block("{bogus:1}");
+    let child = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+        &CssParser::default(),
+        "{bogus:1}",
+        &CssBlockContext::default(),
+    );
     assert!(body(&child).body().is_empty());
     recovered(&child, CssRecoveryAction::DropDeclaration);
-    let page = parse_page_block("{opacity:.5}");
+    let page = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::default(),
+        "{opacity:.5}",
+        &CssBlockContext::default(),
+    );
     assert!(body(&page).body().declarations().is_empty());
     recovered(&page, CssRecoveryAction::DropDeclaration);
 }
@@ -341,9 +416,30 @@ fn no_curly_opener_and_trailing_nontrivia_reject_the_entire_fragment() {
         "{}]",
         "{}}",
     ] {
-        rejected(&parse_keyframes_block(source), source);
-        rejected(&parse_keyframe_declaration_block(source), source);
-        rejected(&parse_page_block(source), source);
+        rejected(
+            &CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+                &CssParser::default(),
+                source,
+                &CssBlockContext::default(),
+            ),
+            source,
+        );
+        rejected(
+            &CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+                &CssParser::default(),
+                source,
+                &CssBlockContext::default(),
+            ),
+            source,
+        );
+        rejected(
+            &CssBlockFragment::<CssPageBody>::parse(
+                &CssParser::default(),
+                source,
+                &CssBlockContext::default(),
+            ),
+            source,
+        );
     }
 }
 
@@ -351,23 +447,52 @@ fn no_curly_opener_and_trailing_nontrivia_reject_the_entire_fragment() {
 fn nonempty_first_body_is_not_published_after_failed_outer_exhaustion() {
     for tail in ["x", ";", "{}", "}", ")", "]"] {
         let source = format!("{{from{{opacity:.5}}}}{tail}");
-        rejected(&parse_keyframes_block(&source), &source);
+        rejected(
+            &CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+                &CssParser::default(),
+                &source,
+                &CssBlockContext::default(),
+            ),
+            &source,
+        );
         let source = format!("{{opacity:.5}}{tail}");
-        rejected(&parse_keyframe_declaration_block(&source), &source);
+        rejected(
+            &CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+                &CssParser::default(),
+                &source,
+                &CssBlockContext::default(),
+            ),
+            &source,
+        );
         let source = format!("{{margin-top:1px}}{tail}");
-        rejected(&parse_page_block(&source), &source);
+        rejected(
+            &CssBlockFragment::<CssPageBody>::parse(
+                &CssParser::default(),
+                &source,
+                &CssBlockContext::default(),
+            ),
+            &source,
+        );
     }
 }
 
 #[test]
 fn trailing_value_token_drops_the_whole_declaration_and_keeps_its_neighbor() {
-    let child = parse_keyframe_declaration_block("{opacity:.5 extra;color:red}");
+    let child = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+        &CssParser::default(),
+        "{opacity:.5 extra;color:red}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(
         keys(body(&child).body()),
         [CssPropertyNameRef::Known(CssKnownProperty::Color)]
     );
     recovered(&child, CssRecoveryAction::DropDeclaration);
-    let outer = parse_keyframes_block("{from{opacity:.5 extra;color:red}to{opacity:1}}");
+    let outer = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+        &CssParser::default(),
+        "{from{opacity:.5 extra;color:red}to{opacity:1}}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(body(&outer).body().len(), 2);
     assert_eq!(
         keys(body(&outer).body()[0].declarations()),
@@ -375,7 +500,11 @@ fn trailing_value_token_drops_the_whole_declaration_and_keeps_its_neighbor() {
     );
     opacity(&body(&outer).body()[1].declarations()[0], "1");
     recovered(&outer, CssRecoveryAction::DropDeclaration);
-    let page = parse_page_block("{margin-top:1px extra;margin-bottom:2px}");
+    let page = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::default(),
+        "{margin-top:1px extra;margin-bottom:2px}",
+        &CssBlockContext::default(),
+    );
     assert_eq!(
         page_keys(body(&page).body().declarations().properties()),
         [CssKnownProperty::MarginBottom]
@@ -386,7 +515,11 @@ fn trailing_value_token_drops_the_whole_declaration_and_keeps_its_neighbor() {
 #[test]
 fn genuine_source_envelopes_and_child_occurrences_retain_utf8_utf16_ranges() {
     let source = " /*é*/\r\n{from{--💡:1;opacity:.5}} /*x*/";
-    let outer = parse_keyframes_block(source);
+    let outer = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     clean(&outer);
     let fragment = body(&outer);
     origin(fragment.origin(), source, 9, 36);
@@ -422,7 +555,11 @@ fn genuine_source_envelopes_and_child_occurrences_retain_utf8_utf16_ranges() {
     );
 
     let source = " /*é*/\r\n{--💡:1;opacity:.5} /*x*/";
-    let child = parse_keyframe_declaration_block(source);
+    let child = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     clean(&child);
     let fragment = body(&child);
     origin(fragment.origin(), source, 9, 30);
@@ -456,7 +593,11 @@ fn genuine_source_envelopes_and_child_occurrences_retain_utf8_utf16_ranges() {
 
     let source = " /*é*/\r\n{margin-top:1px} /*💡*/ ";
     assert_eq!(source.len(), 35);
-    let page = parse_page_block(source);
+    let page = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     clean(&page);
     let fragment = body(&page);
     origin(fragment.origin(), source, 9, 25);
@@ -484,7 +625,11 @@ fn genuine_source_envelopes_and_child_occurrences_retain_utf8_utf16_ranges() {
 #[test]
 fn recovery_coordinates_after_a_supplementary_name_use_original_utf16_columns() {
     let source = " /*é*/\r\n{--💡:1;bogus:2;opacity:.5} /*x*/";
-    let report = parse_keyframe_declaration_block(source);
+    let report = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     assert_eq!(body(&report).body().len(), 2);
     let diagnostic = recovered(&report, CssRecoveryAction::DropDeclaration);
     assert_eq!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
@@ -497,22 +642,55 @@ fn recovery_coordinates_after_a_supplementary_name_use_original_utf16_columns() 
 
 #[test]
 fn implicit_braces_retain_real_empty_or_nonempty_bodies_at_original_eof() {
-    implicit(&parse_keyframes_block("{"), "{");
-    implicit(&parse_keyframe_declaration_block("{"), "{");
-    implicit(&parse_page_block("{"), "{");
+    implicit(
+        &CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+            &CssParser::default(),
+            "{",
+            &CssBlockContext::default(),
+        ),
+        "{",
+    );
+    implicit(
+        &CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+            &CssParser::default(),
+            "{",
+            &CssBlockContext::default(),
+        ),
+        "{",
+    );
+    implicit(
+        &CssBlockFragment::<CssPageBody>::parse(
+            &CssParser::default(),
+            "{",
+            &CssBlockContext::default(),
+        ),
+        "{",
+    );
     let source = "{from{opacity:.5";
-    let outer = parse_keyframes_block(source);
+    let outer = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&outer, source);
     let [block] = body(&outer).body().as_slice() else {
         panic!("one real opened child")
     };
     opacity(&block.declarations()[0], ".5");
     let source = "{opacity:.5";
-    let child = parse_keyframe_declaration_block(source);
+    let child = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&child, source);
     opacity(&body(&child).body()[0], ".5");
     let source = "{margin-top:1px";
-    let page = parse_page_block(source);
+    let page = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&page, source);
     assert_eq!(
         page_keys(body(&page).body().declarations().properties()),
@@ -523,7 +701,11 @@ fn implicit_braces_retain_real_empty_or_nonempty_bodies_at_original_eof() {
 #[test]
 fn retained_keyframe_and_page_math_functions_keep_original_implicit_eof() {
     let source = "{opacity:calc(25%";
-    let report = parse_keyframe_declaration_block(source);
+    let report = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&report, source);
     let declaration = &body(&report).body()[0];
     let CssKnownPropertyValueRef::Opacity(value) =
@@ -548,7 +730,11 @@ fn retained_keyframe_and_page_math_functions_keep_original_implicit_eof() {
     origin(at, source, source.len(), source.len());
     assert!(at.source().same_snapshot(body(&report).origin().source()));
     let source = "{margin-top:calc(1px";
-    let page = parse_page_block(source);
+    let page = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&page, source);
     assert_eq!(
         page_keys(body(&page).body().declarations().properties()),
@@ -578,7 +764,11 @@ fn retained_keyframe_and_page_math_functions_keep_original_implicit_eof() {
 #[test]
 fn comment_eof_recovery_is_independent_of_retained_body_grammar() {
     let source = "{from{opacity:.5}/* unfinished";
-    let outer = parse_keyframes_block(source);
+    let outer = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&outer, source);
     assert_eq!(body(&outer).body().len(), 1);
     assert_eq!(
@@ -590,12 +780,20 @@ fn comment_eof_recovery_is_independent_of_retained_body_grammar() {
         source.len()
     );
     let source = "{opacity:.5;/* unfinished";
-    let child = parse_keyframe_declaration_block(source);
+    let child = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&child, source);
     assert_eq!(body(&child).body().len(), 1);
     recovered(&child, CssRecoveryAction::IgnoreUnterminatedComment);
     let source = "{margin-top:1px;/* unfinished";
-    let page = parse_page_block(source);
+    let page = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::default(),
+        source,
+        &CssBlockContext::default(),
+    );
     implicit(&page, source);
     assert_eq!(body(&page).body().declarations().properties().len(), 1);
     recovered(&page, CssRecoveryAction::IgnoreUnterminatedComment);
@@ -604,14 +802,29 @@ fn comment_eof_recovery_is_independent_of_retained_body_grammar() {
 #[test]
 fn mode_methods_admit_quirky_keyframe_lengths_and_preserve_the_original_number() {
     let source = "{margin-top:7;color:red}";
-    let standards = STANDARDS.parse_keyframe_declaration_block(source);
-    assert_eq!(standards, parse_keyframe_declaration_block(source));
+    let standards = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+        &CssParser::new(STANDARDS, Default::default()),
+        source,
+        &CssBlockContext::default(),
+    );
+    assert_eq!(
+        standards,
+        CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+            &CssParser::default(),
+            source,
+            &CssBlockContext::default()
+        )
+    );
     assert_eq!(
         keys(body(&standards).body()),
         [CssPropertyNameRef::Known(CssKnownProperty::Color)]
     );
     recovered(&standards, CssRecoveryAction::DropDeclaration);
-    let quirks = QUIRKS.parse_keyframe_declaration_block(source);
+    let quirks = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+        &CssParser::new(QUIRKS, Default::default()),
+        source,
+        &CssBlockContext::default(),
+    );
     clean(&quirks);
     assert_eq!(
         keys(body(&quirks).body()),
@@ -629,11 +842,17 @@ fn mode_methods_admit_quirky_keyframe_lengths_and_preserve_the_original_number()
     };
     let value = value.value().length_percentage().unwrap();
     assert!(value.is_quirky_length());
-    assert_eq!(value.serialize_specified().unwrap(), "7px");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "7px"
+    );
     let [component] = declaration.value_components().items() else {
         panic!("one original number")
     };
-    assert_eq!(value.literal_component(), Some(component));
+    assert_eq!(
+        value.literal().map(|literal| literal.component()),
+        Some(component)
+    );
     assert!(
         matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation() == "7")
     );
@@ -643,14 +862,29 @@ fn mode_methods_admit_quirky_keyframe_lengths_and_preserve_the_original_number()
     origin(parsed, source, 12, 13);
 
     let source = "{from{margin-top:7;color:red}}";
-    let standards = STANDARDS.parse_keyframes_block(source);
-    assert_eq!(standards, parse_keyframes_block(source));
+    let standards = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+        &CssParser::new(STANDARDS, Default::default()),
+        source,
+        &CssBlockContext::default(),
+    );
+    assert_eq!(
+        standards,
+        CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+            &CssParser::default(),
+            source,
+            &CssBlockContext::default()
+        )
+    );
     assert_eq!(
         keys(body(&standards).body()[0].declarations()),
         [CssPropertyNameRef::Known(CssKnownProperty::Color)]
     );
     recovered(&standards, CssRecoveryAction::DropDeclaration);
-    let quirks = QUIRKS.parse_keyframes_block(source);
+    let quirks = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+        &CssParser::new(QUIRKS, Default::default()),
+        source,
+        &CssBlockContext::default(),
+    );
     clean(&quirks);
     assert_eq!(body(&quirks).body()[0].declarations().len(), 2);
     assert!(
@@ -664,14 +898,29 @@ fn mode_methods_admit_quirky_keyframe_lengths_and_preserve_the_original_number()
 #[test]
 fn page_mode_method_preserves_context_without_bypassing_the_page_unitless_constraint() {
     let source = "{margin-top:7;margin-bottom:0}";
-    let standards = STANDARDS.parse_page_block(source);
-    assert_eq!(standards, parse_page_block(source));
+    let standards = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::new(STANDARDS, Default::default()),
+        source,
+        &CssBlockContext::default(),
+    );
+    assert_eq!(
+        standards,
+        CssBlockFragment::<CssPageBody>::parse(
+            &CssParser::default(),
+            source,
+            &CssBlockContext::default()
+        )
+    );
     assert_eq!(
         page_keys(body(&standards).body().declarations().properties()),
         [CssKnownProperty::MarginBottom]
     );
     recovered(&standards, CssRecoveryAction::DropDeclaration);
-    let quirks = QUIRKS.parse_page_block(source);
+    let quirks = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::new(QUIRKS, Default::default()),
+        source,
+        &CssBlockContext::default(),
+    );
     assert_eq!(
         page_keys(body(&quirks).body().declarations().properties()),
         [CssKnownProperty::MarginBottom]
@@ -682,7 +931,11 @@ fn page_mode_method_preserves_context_without_bypassing_the_page_unitless_constr
         QUIRKS
     );
     for context in [STANDARDS, QUIRKS] {
-        let report = context.parse_page_block("{margin-top:7px}");
+        let report = CssBlockFragment::<CssPageBody>::parse(
+            &CssParser::new(context, Default::default()),
+            "{margin-top:7px}",
+            &CssBlockContext::default(),
+        );
         clean(&report);
         assert_eq!(
             page_keys(body(&report).body().declarations().properties()),
@@ -705,10 +958,13 @@ fn nesting<T: Clone + std::fmt::Debug>(
 ) {
     let diagnostic = recovered(report, CssRecoveryAction::StopAtNestingLimit);
     assert_eq!(diagnostic.error().code(), CssErrorCode::NestingLimit);
-    let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-        panic!("native resource identity")
-    };
-    assert_eq!(detail.limit(), 256);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::NestingLimit,
+        "native resource identity"
+    );
+    assert_eq!(detail.nesting_limit().unwrap(), 256);
     let expected = value_start + 2 * function_index;
     point(diagnostic.error().position(), expected, 0, expected as u32);
     assert_eq!(diagnostic.span().start().byte_offset().value(), unit_start);
@@ -723,7 +979,11 @@ fn direct_keyframe_declaration_depth_counts_its_real_brace_and_retains_later_dec
         let prefix = "{opacity:.5;--v:";
         let value = format!("{}x{}", "f(".repeat(functions), ")".repeat(functions));
         let source = format!("{prefix}{value};color:red}}");
-        let report = parse_keyframe_declaration_block(&source);
+        let report = CssBlockFragment::<CssKeyframeDeclarationList>::parse(
+            &CssParser::default(),
+            &source,
+            &CssBlockContext::default(),
+        );
         let declarations = body(&report).body();
         opacity(&declarations[0], ".5");
         if functions == 255 {
@@ -762,7 +1022,11 @@ fn outer_keyframes_counts_both_real_braces_and_preserves_child_and_outer_sibling
         let prefix = "{from{opacity:.5;--v:";
         let value = format!("{}x{}", "f(".repeat(functions), ")".repeat(functions));
         let source = format!("{prefix}{value};color:red}}to{{opacity:1}}}}");
-        let report = parse_keyframes_block(&source);
+        let report = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+            &CssParser::default(),
+            &source,
+            &CssBlockContext::default(),
+        );
         let blocks = body(&report).body();
         assert_eq!(blocks.len(), 2);
         opacity(&blocks[0].declarations()[0], ".5");
@@ -796,7 +1060,11 @@ fn page_descriptor_unit_depth_preserves_native_limit_identity_and_later_margin()
         let prefix = "{margin-top:1px;bad:";
         let value = format!("{}x{}", "f(".repeat(functions), ")".repeat(functions));
         let source = format!("{prefix}{value};margin-bottom:2px}}");
-        let report = parse_page_block(&source);
+        let report = CssBlockFragment::<CssPageBody>::parse(
+            &CssParser::default(),
+            &source,
+            &CssBlockContext::default(),
+        );
         assert_eq!(
             page_keys(body(&report).body().declarations().properties()),
             [CssKnownProperty::MarginTop, CssKnownProperty::MarginBottom]
@@ -833,7 +1101,11 @@ fn failed_keyframe_selector_block_keeps_native_resource_identity_and_later_child
         let prefix = "{from{opacity:0}.bad{--v:";
         let value = format!("{}x{}", "f(".repeat(functions), ")".repeat(functions));
         let source = format!("{prefix}{value}}}to{{opacity:1}}}}");
-        let report = parse_keyframes_block(&source);
+        let report = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
+            &CssParser::default(),
+            &source,
+            &CssBlockContext::default(),
+        );
         let blocks = body(&report).body();
         assert_eq!(blocks.len(), 2);
         assert!(matches!(
@@ -868,7 +1140,7 @@ fn failed_keyframe_selector_block_keeps_native_resource_identity_and_later_child
 #[test]
 fn genuine_whole_rules_keep_native_top_level_siblings_after_resource_recovery() {
     let keyframe_value = format!("{}x{}", "f(".repeat(255), ")".repeat(255));
-    let report = parse_sheet(&format!(
+    let report = CssParser::default().parse_sheet(format!(
         "@keyframes x{{from{{opacity:.5;--v:{keyframe_value};color:red}}to{{opacity:1}}}}.after{{}}"
     ));
     let [CssRule::Keyframes(rule), CssRule::Style(_)] = report.syntax().rules() else {
@@ -886,7 +1158,7 @@ fn genuine_whole_rules_keep_native_top_level_siblings_after_resource_recovery() 
             )
     );
     let page_value = format!("{}x{}", "f(".repeat(256), ")".repeat(256));
-    let report = parse_sheet(&format!(
+    let report = CssParser::default().parse_sheet(format!(
         "@page{{margin-top:1px;bad:{page_value};margin-bottom:2px}}.after{{}}"
     ));
     let [CssRule::Page(rule), CssRule::Style(_)] = report.syntax().rules() else {

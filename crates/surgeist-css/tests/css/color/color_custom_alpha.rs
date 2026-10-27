@@ -5,7 +5,20 @@ use crate::css::support::color_and_selector_fixtures::{
 };
 use crate::css::support::color_property::color_property_value as wrapper;
 use crate::css::support::detached_checked_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColorComponent, CssProfileColorExpressionRef, CssRelativeColorChannel,
+    CssRelativeColorExpressionValue,
+};
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssCalculation, CssNumber, CssPercentage};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::common::CssBoxSideKind;
 
 fn admits_authored_color(text: &str) {
     for declaration in [
@@ -37,7 +50,7 @@ fn admits_authored_color(text: &str) {
 /// a truncated argument list or a calculation names no single token, so only
 /// the color grammar kind is checked.
 fn rejects(text: &str, responsible: Option<(&str, usize)>) {
-    let report = parse_style_attribute(&format!("color:{text};opacity:.5"));
+    let report = CssParser::default().parse_block_contents(format!("color:{text};opacity:.5"));
     let [diagnostic] = report.diagnostics() else {
         panic!("{text}: one diagnostic: {report:?}")
     };
@@ -59,9 +72,10 @@ fn rejects(text: &str, responsible: Option<(&str, usize)>) {
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Opacity
     );
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        parse_component_values(text).unwrap(),
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         CssImportance::Normal,
     );
     match responsible {
@@ -69,10 +83,7 @@ fn rejects(text: &str, responsible: Option<(&str, usize)>) {
             assert_color_value_rejected_at(checked, CssKnownProperty::Color, text, token, at)
         }
         None => assert!(
-            matches!(
-                checked.unwrap_err().kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
-            ),
+            checked.unwrap_err().code() == Some(CssErrorCode::InvalidColorSyntax),
             "{text}"
         ),
     }
@@ -283,12 +294,13 @@ fn aggregate_border_color_transports_custom_and_alpha_colors() {
         "alpha(from red / calc(alpha / 2))",
     ] {
         let source = format!("border-color:{text}!important");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 1);
-        let components = parse_component_values(text).unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::BorderColor),
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BorderColor)),
             components.clone(),
             CssImportance::Important,
         )
@@ -297,7 +309,11 @@ fn aggregate_border_color_transports_custom_and_alpha_colors() {
         for declaration in [report.syntax()[0].clone(), checked] {
             assert_eq!(declaration.importance(), CssImportance::Important);
             assert_eq!(
-                declaration.value_components().serialize().unwrap().as_css(),
+                declaration
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 text
             );
             let CssKnownPropertyValueRef::BorderColor(value) =
@@ -307,8 +323,8 @@ fn aggregate_border_color_transports_custom_and_alpha_colors() {
             };
             let colors = value.value();
             assert_eq!(colors.kind(), CssBoxSideKind::Physical);
-            assert_eq!(colors.authored_values().len(), 1);
-            let [top, right, bottom, left] = colors.assigned_values();
+            assert_eq!(colors.authored().len(), 1);
+            let [top, right, bottom, left] = colors.assigned();
             assert_eq!(top, right);
             assert_eq!(top, bottom);
             assert_eq!(top, left);
@@ -338,7 +354,7 @@ fn substitution_reentry_accepts_expanded_custom_and_alpha_colors() {
         parsed_important_declaration("color", "var(--paint)"),
         detached_checked_declaration("color", "var(--paint)", false),
     ] {
-        let CssExpansion::Pending(pending) = expand_declaration(&declaration).unwrap() else {
+        let CssExpansion::Pending(pending) = declaration.expand().unwrap() else {
             panic!("pending color")
         };
         for text in [
@@ -346,7 +362,7 @@ fn substitution_reentry_accepts_expanded_custom_and_alpha_colors() {
             "color(from red --P cyan calc(magenta * 2) / alpha)",
             "alpha(from red / calc(alpha / 2))",
         ] {
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
             else {
                 panic!("color contribution")
@@ -377,24 +393,27 @@ fn substitutions_remain_pending_and_strict_reentry_rejects_residuals() {
             let known = declaration.known().unwrap();
             assert!(known.property_value().is_none());
             assert_eq!(known.substitution_dependent().unwrap().as_css(), text);
-            let CssExpansion::Pending(pending) = expand_declaration(&declaration).unwrap() else {
+            let CssExpansion::Pending(pending) = declaration.expand().unwrap() else {
                 panic!("pending color")
             };
             for residual in [
                 "color(--P var(--channels))",
                 "alpha(from red / env(opacity))",
             ] {
-                assert_eq!(
+                assert!(
                     pending
-                        .reenter(parse_component_values(residual).unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                        )
                         .unwrap_err()
-                        .kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution
+                        .is_residual_substitution()
                 );
             }
             assert!(
                 pending
-                    .reenter(parse_component_values("color(--P 1px)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "color(--P 1px)").unwrap()
+                    )
                     .is_err()
             );
         }
@@ -451,18 +470,25 @@ fn profile_channel_names_do_not_leak_into_ordinary_or_predefined_numeric_roots()
         rejects(text, responsible);
     }
     assert!(
-        CssNumberCalculation::try_from_components(parse_component_values("calc(cyan)").unwrap())
-            .is_err()
-    );
-    assert!(
-        CssPercentageCalculation::try_from_components(
-            parse_component_values("calc(cyan)").unwrap()
+        CssCalculation::<CssNumber>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(cyan)").unwrap(),
+            Default::default()
         )
         .is_err()
     );
     assert!(
-        CssNumberCalculation::try_from_components(parse_component_values("calc(pi)").unwrap())
-            .is_ok()
+        CssCalculation::<CssPercentage>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(cyan)").unwrap(),
+            Default::default()
+        )
+        .is_err()
+    );
+    assert!(
+        CssCalculation::<CssNumber>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(pi)").unwrap(),
+            Default::default()
+        )
+        .is_ok()
     );
 }
 
@@ -528,10 +554,10 @@ fn parsed_relative_alpha_accepts_transparency_math() {
 
 fn reenters_color(text: &str) {
     let declaration = detached_checked_declaration("color", "var(--paint)", false);
-    let CssExpansion::Pending(pending) = expand_declaration(&declaration).unwrap() else {
+    let CssExpansion::Pending(pending) = declaration.expand().unwrap() else {
         panic!("pending color")
     };
-    let replacement = parse_component_values(text).unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("color contribution")
     };
@@ -556,9 +582,10 @@ fn substitution_reentry_accepts_relative_alpha_math() {
 }
 
 fn assert_checked_border_color_value(text: &str) {
-    let components = parse_component_values(text).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BorderColor),
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BorderColor)),
         components.clone(),
         CssImportance::Important,
     )
@@ -572,8 +599,8 @@ fn assert_checked_border_color_value(text: &str) {
     };
     let colors = value.value();
     assert_eq!(colors.kind(), CssBoxSideKind::Physical);
-    assert_eq!(colors.authored_values().len(), 1);
-    let [top, right, bottom, left] = colors.assigned_values();
+    assert_eq!(colors.authored().len(), 1);
+    let [top, right, bottom, left] = colors.assigned();
     assert_eq!(top, right);
     assert_eq!(top, bottom);
     assert_eq!(top, left);
@@ -597,14 +624,19 @@ fn checked_border_color_transports_relative_alpha_math() {
 #[test]
 fn parsed_border_color_transports_relative_alpha_math() {
     let text = "alpha(from red / calc(alpha / 2))";
-    let report = parse_style_attribute(&format!("border-color:{text}!important"));
+    let report =
+        CssParser::default().parse_block_contents(format!("border-color:{text}!important"));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one declaration")
     };
     assert_eq!(declaration.importance(), CssImportance::Important);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         text
     );
     let CssKnownPropertyValueRef::BorderColor(value) =
@@ -612,5 +644,5 @@ fn parsed_border_color_transports_relative_alpha_math() {
     else {
         panic!("border color")
     };
-    assert!(value.value().assigned_values()[0].alpha_value().is_some());
+    assert!(value.value().assigned()[0].alpha_value().is_some());
 }

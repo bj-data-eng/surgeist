@@ -3,13 +3,24 @@
 //! applicability remain unresolved under CSSWG issue 8032.
 
 use crate::css::support::selected_grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownDeclaredValueRef,
+    CssKnownProperty, CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandValueRef,
+    CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::text::CssTextOrientation;
 
 const ALIAS: &str = "glyph-orientation-vertical";
 const TARGET: CssKnownProperty = CssKnownProperty::TextOrientation;
 
 fn one(source: &str) -> CssDeclaration {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one declaration: {source}")
@@ -24,13 +35,13 @@ fn mapped(source: &CssDeclaration, expected: CssTextOrientation, authored: &str)
     let CssKnownPropertyValueRef::TextOrientation(value) = known.property_value().unwrap() else {
         panic!("legacy alias maps to text-orientation")
     };
-    assert_eq!(value.orientation(), &expected);
+    assert_eq!(value.value(), &expected);
     assert_eq!(value.as_css(), authored);
 }
 
 fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("one legacy target")
+        source.expand().expect("one legacy target")
     else {
         panic!("terminal legacy expansion")
     };
@@ -113,18 +124,22 @@ fn five_explicit_alias_mappings_retain_authored_tokens_and_one_target() {
     ] {
         let source = format!("{ALIAS}:{authored}!important");
         let parsed = one(&source);
-        let components = parse_component_values(authored).unwrap();
-        let checked = parse_property_value_for_grammar(
-            selected_grammar(ALIAS),
+        let components = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(selected_grammar(ALIAS)),
             components.clone(),
             CssImportance::Important,
         )
         .unwrap();
-        let programmatic_components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(authored).unwrap()])
-                .unwrap();
-        let programmatic = parse_property_value_for_grammar(
-            selected_grammar(ALIAS),
+        let programmatic_components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(authored).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
+        let programmatic = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(selected_grammar(ALIAS)),
             programmatic_components.clone(),
             CssImportance::Important,
         )
@@ -132,7 +147,11 @@ fn five_explicit_alias_mappings_retain_authored_tokens_and_one_target() {
         for declaration in [&parsed, &checked, &programmatic] {
             assert_eq!(declaration.importance(), CssImportance::Important);
             assert_eq!(
-                declaration.value_components().serialize().unwrap().as_css(),
+                declaration
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 authored
             );
             mapped(declaration, orientation, authored);
@@ -162,11 +181,12 @@ fn five_explicit_alias_mappings_retain_authored_tokens_and_one_target() {
 
 #[test]
 fn alias_normalization_keeps_authored_order_and_occurrences() {
-    let report = parse_sheet(
-        ".x{glyph-orientation-vertical:90deg!important;text-orientation:mixed;glyph-orientation-vertical:0}",
-    );
+    let report = CssParser::default().parse_sheet(".x{glyph-orientation-vertical:90deg!important;text-orientation:mixed;glyph-orientation-vertical:0}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let sheet = normalize_sheet(report.syntax()).expect("selected intrinsic expansion");
+    let sheet = report
+        .syntax()
+        .normalize(Default::default())
+        .expect("selected intrinsic expansion");
     let declarations: Vec<_> = sheet
         .items()
         .iter()
@@ -220,7 +240,7 @@ fn alias_css_wide_values_and_all_keep_symbolic_intrinsic_boundaries() {
             CssKnownDeclaredValueRef::Global(actual) if actual == keyword
         ));
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&declaration).unwrap()
+            declaration.expand().unwrap()
         else {
             panic!("global alias completes")
         };
@@ -233,7 +253,7 @@ fn alias_css_wide_values_and_all_keep_symbolic_intrinsic_boundaries() {
     }
     let all = one("all:revert-layer!important");
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all).unwrap()
+        all.expand().unwrap()
     else {
         panic!("all remains a symbolic universal reset")
     };
@@ -246,29 +266,28 @@ fn alias_css_wide_values_and_all_keep_symbolic_intrinsic_boundaries() {
 fn alias_var_and_env_reentry_are_strict_retryable_and_provenance_preserving() {
     for substitution in ["var(--glyph)", "env(--glyph)"] {
         let source = one(&format!("{ALIAS}:{substitution}!important"));
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("substitution awaits reentry")
         };
         assert!(handle.source().same_occurrence(&source));
         for invalid in ["45deg", "mixed", "inherit extra"] {
-            assert!(matches!(
+            assert!(
                 handle
-                    .reenter(parse_component_values(invalid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-        }
-        for residual in ["var(--again)", "env(--again)"] {
-            assert_eq!(
-                handle
-                    .reenter(parse_component_values(residual).unwrap())
-                    .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .replacement_error()
+                    .is_some()
             );
         }
-        let replacement = parse_component_values("90deg").unwrap();
+        for residual in ["var(--again)", "env(--again)"] {
+            assert!(
+                handle
+                    .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
+                    .unwrap_err()
+                    .is_residual_substitution()
+            );
+        }
+        let replacement = CssComponentValues::parse(&CssParser::default(), "90deg").unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -288,7 +307,7 @@ fn alias_var_and_env_reentry_are_strict_retryable_and_provenance_preserving() {
             ));
         }
         let CssContributions::Longhands(values) = handle
-            .reenter(parse_component_values("unset").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "unset").unwrap())
             .unwrap()
         else {
             panic!("CSS-wide replacement completes")
@@ -318,12 +337,12 @@ fn modern_keywords_stay_distinct_and_invalid_legacy_values_recover() {
         else {
             panic!("modern text-orientation")
         };
-        assert_eq!(value.orientation(), &orientation);
+        assert_eq!(value.value(), &orientation);
         assert_eq!(value.as_css(), spelling);
     }
     for invalid in ["45", "45deg", "180deg", "1.5708rad", "mixed"] {
         let source = format!("color:red;{ALIAS}:{invalid};color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one legacy invalid-value diagnostic: {source}")
         };
@@ -340,10 +359,11 @@ fn modern_keywords_stay_distinct_and_invalid_legacy_values_recover() {
                 .all(|item| { item.known().unwrap().property() == CssKnownProperty::Color })
         );
         assert!(
-            parse_property_value_for_grammar(
-                selected_grammar(ALIAS),
-                parse_component_values(invalid).unwrap(),
-                CssImportance::Normal,
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(selected_grammar(ALIAS)),
+                CssComponentValues::parse(&CssParser::default(), invalid).unwrap(),
+                CssImportance::Normal
             )
             .is_err()
         );

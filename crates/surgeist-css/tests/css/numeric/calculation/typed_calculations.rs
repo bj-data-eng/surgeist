@@ -1,10 +1,35 @@
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::NumericFailure as Kind;
+use crate::css::support::failure_classes::numeric_failure;
 use crate::css::support::math_depth::MathDepthBoundary;
 use crate::css::support::value_assertions::assert_numeric_kind;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColorComponent, CssColorHue, CssRelativeColorChannel, CssRelativeColorExpressionValue,
+    CssRelativeColorResultDomain,
+};
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssCalculation, CssCalculationExpressionRef,
+    CssCalculationProductOperator, CssCalculationType, CssCalculationValueRef, CssFrequency,
+    CssFrequencyUnit, CssInteger, CssLength, CssLengthPercentage, CssLengthUnit, CssNumber,
+    CssPercentage, CssTime, CssTimeUnit,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::box_model::{
+    CssAspectRatioValue, CssBoxSize, CssFlowToleranceRef, CssSizeValue, CssZIndexValue,
+};
+use surgeist_css::values::effects::{
+    CssFilter, CssFilterAmount, CssFilterFunction, CssOpacityValue,
+};
+use surgeist_css::values::font::CssFontSize;
+use surgeist_css::values::layout::{CssFlexBasisRef, CssFlexValue};
+use surgeist_css::values::text::CssLineHeight;
 
 #[test]
 fn core_font_calculations_preserve_number_and_length_percentage_domains() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "font-size: calc((1em + 10%) * 2); ",
         "line-height: calc(1 + 0.5); ",
         "line-height: calc((1em + 10%) * 2)",
@@ -20,7 +45,7 @@ fn core_font_calculations_preserve_number_and_length_percentage_domains() {
         panic!("expected font-size");
     };
     assert!(matches!(
-        size.size(),
+        size.value(),
         CssFontSize::LengthPercentage(value)
             if value.calculation().is_some_and(|calculation|
                 calculation.result_type() == CssCalculationType::LengthPercentage
@@ -36,7 +61,7 @@ fn core_font_calculations_preserve_number_and_length_percentage_domains() {
         panic!("expected line-height number");
     };
     assert!(matches!(
-        number.line_height(),
+        number.value(),
         CssLineHeight::Number(value)
             if value.calculation().is_some_and(|calculation| calculation.result_type() == CssCalculationType::Number)
     ));
@@ -50,7 +75,7 @@ fn core_font_calculations_preserve_number_and_length_percentage_domains() {
         panic!("expected line-height length-percentage");
     };
     assert!(matches!(
-        length.line_height(),
+        length.value(),
         CssLineHeight::LengthPercentage(value)
             if matches!(
                 value.calculation(),
@@ -62,7 +87,7 @@ fn core_font_calculations_preserve_number_and_length_percentage_domains() {
 
 #[test]
 fn relative_color_calculations_retain_typed_domains_and_closed_channel_references() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "color: rgb(from red calc(r + 1) calc(g * 2) calc(b / 2) / calc(alpha * 0.5)); ",
         "color: hsl(from red calc(h + 20) calc(s + 10) l); ",
         "color: oklch(from red l c calc(h + 0.25))",
@@ -115,7 +140,7 @@ fn relative_color_calculations_retain_typed_domains_and_closed_channel_reference
 
 #[test]
 fn perceptual_color_channels_preserve_typed_calculation_domains() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "color: lab(calc(40% + 10%) calc(1 + 2) calc(20% - 5%)); ",
         "color: lch(calc(50 + 10) calc(30% + 5%) calc(1turn - 90deg)); ",
         "color: color(rec2020 calc(1 + 2) calc(10% + 20%) none)",
@@ -170,7 +195,7 @@ fn perceptual_color_channels_preserve_typed_calculation_domains() {
 #[test]
 fn number_calculation_literal_preserves_finite_authored_value() {
     let calculation =
-        CssNumberCalculation::try_literal(-3.5).expect("finite authored number calculation");
+        CssCalculation::<CssNumber>::try_literal(-3.5).expect("finite authored number calculation");
 
     assert_eq!(calculation.result_type(), CssCalculationType::Number);
     match calculation_body(calculation.expression()) {
@@ -185,7 +210,7 @@ fn number_calculation_literal_preserves_finite_authored_value() {
 fn property_consumers_accept_typed_products_and_groups_with_later_siblings() {
     for value in ["calc(1px * 2)", "calc((1px + 2px))"] {
         let source = format!("width: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 2);
         let CssKnownPropertyValueRef::Width(width) = report.syntax()[0]
@@ -204,8 +229,8 @@ fn property_consumers_accept_typed_products_and_groups_with_later_siblings() {
 
 #[test]
 fn typed_calculation_roots_enforce_checked_literal_boundaries() {
-    let integer_min = CssIntegerCalculation::literal(i32::MIN);
-    let integer_max = CssIntegerCalculation::literal(i32::MAX);
+    let integer_min = CssCalculation::<CssInteger>::literal(i32::MIN);
+    let integer_max = CssCalculation::<CssInteger>::literal(i32::MAX);
     assert_eq!(integer_min.result_type(), CssCalculationType::Number);
     assert_eq!(integer_max.result_type(), CssCalculationType::Number);
     assert!(matches!(
@@ -218,7 +243,7 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
     ));
 
     for value in [f32::MIN, -0.0, f32::MAX] {
-        let number = CssNumberCalculation::try_literal(value).expect("finite number leaf");
+        let number = CssCalculation::<CssNumber>::try_literal(value).expect("finite number leaf");
         assert_eq!(number.result_type(), CssCalculationType::Number);
         assert!(matches!(
             number.expression(),
@@ -228,33 +253,30 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
     }
 
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        assert!(CssNumberCalculation::try_literal(value).is_none());
-        assert!(CssPercentageCalculation::try_literal(value).is_none());
-        assert!(CssLengthCalculation::try_dimension(value, CssLengthUnit::Rem).is_none());
-        assert!(CssLengthPercentageCalculation::try_percentage(value).is_none());
+        assert!(CssCalculation::<CssNumber>::try_literal(value).is_none());
+        assert!(CssCalculation::<CssPercentage>::try_literal(value).is_none());
+        assert!(CssCalculation::<CssLength>::try_dimension(value, CssLengthUnit::Rem).is_none());
+        assert!(CssCalculation::<CssLengthPercentage>::try_percentage(value).is_none());
         assert_numeric_kind(
-            CssAngleCalculation::try_literal(&value.to_string(), CssAngleUnit::Degrees),
-            surgeist_css::CssNumericConstructionErrorKind::Component(
-                surgeist_css::CssComponentValueErrorKind::InvalidDimension,
-            ),
+            CssCalculation::<CssAngle>::try_literal(&value.to_string(), CssAngleUnit::Degrees),
+            NumericFailure::Component(ComponentFailure::InvalidDimension),
         );
         assert_numeric_kind(
-            CssTimeCalculation::try_literal(&value.to_string(), CssTimeUnit::Seconds),
-            surgeist_css::CssNumericConstructionErrorKind::Component(
-                surgeist_css::CssComponentValueErrorKind::InvalidDimension,
-            ),
+            CssCalculation::<CssTime>::try_literal(&value.to_string(), CssTimeUnit::Seconds),
+            NumericFailure::Component(ComponentFailure::InvalidDimension),
         );
         assert_numeric_kind(
-            CssFrequencyCalculation::try_literal(&value.to_string(), CssFrequencyUnit::Hertz),
-            surgeist_css::CssNumericConstructionErrorKind::Component(
-                surgeist_css::CssComponentValueErrorKind::InvalidDimension,
+            CssCalculation::<CssFrequency>::try_literal(
+                &value.to_string(),
+                CssFrequencyUnit::Hertz,
             ),
+            NumericFailure::Component(ComponentFailure::InvalidDimension),
         );
     }
 
     for value in [f32::MIN, -0.0, f32::MAX] {
         let percentage =
-            CssPercentageCalculation::try_literal(value).expect("finite percentage leaf");
+            CssCalculation::<CssPercentage>::try_literal(value).expect("finite percentage leaf");
         assert_eq!(percentage.result_type(), CssCalculationType::Percentage);
         assert!(matches!(
             percentage.expression(),
@@ -262,7 +284,7 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
                 if inner.representation() == value.to_string()
         ));
 
-        let length = CssLengthCalculation::try_dimension(value, CssLengthUnit::Cqw)
+        let length = CssCalculation::<CssLength>::try_dimension(value, CssLengthUnit::Cqw)
             .expect("finite length leaf");
         assert_eq!(length.result_type(), CssCalculationType::Length);
         assert!(matches!(
@@ -271,8 +293,9 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
                 if inner.representation() == value.to_string() && inner.unit() == Some("cqw")
         ));
 
-        let angle = CssAngleCalculation::try_literal(&value.to_string(), CssAngleUnit::Turns)
-            .expect("finite angle leaf");
+        let angle =
+            CssCalculation::<CssAngle>::try_literal(&value.to_string(), CssAngleUnit::Turns)
+                .expect("finite angle leaf");
         assert_eq!(angle.result_type(), CssCalculationType::Angle);
         assert!(matches!(
             angle.expression(),
@@ -280,8 +303,9 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
                 if inner.representation() == value.to_string() && inner.unit() == Some("turn")
         ));
 
-        let time = CssTimeCalculation::try_literal(&value.to_string(), CssTimeUnit::Milliseconds)
-            .expect("finite signed time leaf");
+        let time =
+            CssCalculation::<CssTime>::try_literal(&value.to_string(), CssTimeUnit::Milliseconds)
+                .expect("finite signed time leaf");
         assert_eq!(time.result_type(), CssCalculationType::Time);
         assert!(matches!(
             time.expression(),
@@ -289,9 +313,11 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
                 if inner.representation() == value.to_string() && inner.unit() == Some("ms")
         ));
 
-        let frequency =
-            CssFrequencyCalculation::try_literal(&value.to_string(), CssFrequencyUnit::Kilohertz)
-                .expect("finite frequency leaf");
+        let frequency = CssCalculation::<CssFrequency>::try_literal(
+            &value.to_string(),
+            CssFrequencyUnit::Kilohertz,
+        )
+        .expect("finite frequency leaf");
         assert_eq!(frequency.result_type(), CssCalculationType::Frequency);
         assert!(matches!(
             frequency.expression(),
@@ -300,8 +326,8 @@ fn typed_calculation_roots_enforce_checked_literal_boundaries() {
         ));
     }
 
-    let percentage_length =
-        CssLengthPercentageCalculation::try_percentage(-25.0).expect("finite signed percentage");
+    let percentage_length = CssCalculation::<CssLengthPercentage>::try_percentage(-25.0)
+        .expect("finite signed percentage");
     assert_eq!(
         percentage_length.result_type(),
         CssCalculationType::LengthPercentage
@@ -353,8 +379,8 @@ fn opacity_percentage_calculation_preserves_exact_depth_boundary() {
 
 #[test]
 fn typed_length_consumer_exposes_exact_products_and_sums() {
-    let report =
-        parse_style_attribute("width: calc(1px + 2%); height: calc((1px + 2%) * 3); color: red");
+    let report = CssParser::default()
+        .parse_block_contents("width: calc(1px + 2%); height: calc((1px + 2%) * 3); color: red");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
     let width = report.syntax()[0].known().expect("known width");
@@ -380,7 +406,10 @@ fn typed_length_consumer_exposes_exact_products_and_sums() {
     assert_eq!(height.as_css(), "calc((1px + 2%) * 3)");
     // Distribution is derived from 3 × (1px + 2%), while the typed tree
     // below retains the authored product for later layout resolution.
-    assert_eq!(length.serialize_specified().unwrap(), "calc(6% + 3px)");
+    assert_eq!(
+        length.serialize_specified(Default::default()).unwrap(),
+        "calc(6% + 3px)"
+    );
     let calculation = length.calculation().expect("exact typed calculation");
     assert_eq!(
         calculation.result_type(),
@@ -413,7 +442,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
         "flex: calc(2 * 3) calc(-1 + 2) calc((10px * 2)); ",
         "flow-tolerance: calc((5% + 1px) * 2)"
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
     let CssKnownPropertyValueRef::Opacity(value) = report.syntax()[0]
@@ -437,7 +466,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     else {
         panic!("expected flex-grow wrapper");
     };
-    assert!(value.factor().calculation().is_some());
+    assert!(value.value().calculation().is_some());
 
     let CssKnownPropertyValueRef::FlexShrink(value) = report.syntax()[2]
         .known()
@@ -447,7 +476,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     else {
         panic!("expected flex-shrink wrapper");
     };
-    assert!(value.factor().calculation().is_some());
+    assert!(value.value().calculation().is_some());
 
     let CssKnownPropertyValueRef::Order(value) = report.syntax()[3]
         .known()
@@ -457,7 +486,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     else {
         panic!("expected order wrapper");
     };
-    assert!(matches!(value.value(), CssIntegerValue::Calculation(_)));
+    assert!(value.value().calculation().is_some());
 
     let CssKnownPropertyValueRef::ZIndex(value) = report.syntax()[4]
         .known()
@@ -467,10 +496,9 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     else {
         panic!("expected z-index wrapper");
     };
-    assert!(matches!(
-        value.value(),
-        CssZIndexValue::Integer(CssIntegerValue::Calculation(_))
-    ));
+    assert!(
+        matches!(value.value(), CssZIndexValue::Integer(value) if value.calculation().is_some())
+    );
 
     let CssKnownPropertyValueRef::AspectRatio(value) = report.syntax()[5]
         .known()
@@ -480,7 +508,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
     else {
         panic!("expected aspect-ratio wrapper");
     };
-    let CssAspectRatioValue::Ratio(ratio) = value.ratio() else {
+    let CssAspectRatioValue::Ratio(ratio) = value.value() else {
         panic!("expected deferred aspect-ratio ratio");
     };
     let calculation = ratio.numerator().calculation().expect("math numerator");
@@ -524,7 +552,7 @@ fn scalar_property_accessors_distinguish_literals_from_deferred_calculations() {
 
 #[test]
 fn opacity_keeps_number_and_percentage_calculation_roots_symbolic() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "opacity: calc(-1.5 * 2); opacity: calc((25% + 25%) * 2); color: red",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -575,7 +603,7 @@ fn opacity_keeps_number_and_percentage_calculation_roots_symbolic() {
 
 #[test]
 fn scalar_property_accessors_preserve_exact_literal_domains() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "opacity: 0.5; flex-grow: 2; flex-shrink: 0; order: -2; z-index: auto; \
          aspect-ratio: 1.5; flex: 2 0 10rem",
     );
@@ -592,7 +620,13 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
     assert!(
         matches!(value.value(), CssOpacityValue::Scalar(value) if value.numeric().representation() == "0.5")
     );
-    assert_eq!(value.value().serialize_specified().unwrap(), "0.5");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0.5"
+    );
 
     let CssKnownPropertyValueRef::FlexGrow(value) = report.syntax()[1]
         .known()
@@ -602,7 +636,13 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
     else {
         panic!("expected flex-grow wrapper");
     };
-    assert_eq!(value.factor().serialize_specified().unwrap(), "2");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "2"
+    );
 
     let CssKnownPropertyValueRef::FlexShrink(value) = report.syntax()[2]
         .known()
@@ -612,7 +652,13 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
     else {
         panic!("expected flex-shrink wrapper");
     };
-    assert_eq!(value.factor().serialize_specified().unwrap(), "0");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0"
+    );
 
     let CssKnownPropertyValueRef::Order(value) = report.syntax()[3]
         .known()
@@ -623,9 +669,18 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
         panic!("expected order wrapper");
     };
     assert!(
-        matches!(value.value(), CssIntegerValue::Literal(value) if value.numeric().representation() == "-2")
+        value
+            .value()
+            .literal()
+            .is_some_and(|value| value.numeric().representation() == "-2")
     );
-    assert_eq!(value.value().serialize_specified().unwrap(), "-2");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "-2"
+    );
 
     let CssKnownPropertyValueRef::ZIndex(value) = report.syntax()[4]
         .known()
@@ -646,7 +701,7 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
         panic!("expected aspect-ratio wrapper");
     };
     assert!(
-        matches!(value.ratio(), CssAspectRatioValue::Ratio(ratio) if ratio.denominator().is_none() && ratio.numerator().literal_component().is_some())
+        matches!(value.value(), CssAspectRatioValue::Ratio(ratio) if ratio.denominator().is_none() && ratio.numerator().literal().map(|literal| literal.component()).is_some())
     );
 
     let CssKnownPropertyValueRef::Flex(value) = report.syntax()[6]
@@ -661,28 +716,37 @@ fn scalar_property_accessors_preserve_exact_literal_domains() {
         panic!("expected literal flex components");
     };
     assert_eq!(
-        components.grow().unwrap().serialize_specified().unwrap(),
+        components
+            .grow()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "2"
     );
     assert_eq!(
-        components.shrink().unwrap().serialize_specified().unwrap(),
+        components
+            .shrink()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "0"
     );
 }
 
 #[test]
 fn ratio_literal_zero_and_symbolic_negative_math_keep_their_domains() {
-    let literal_report = parse_style_attribute("aspect-ratio: 0; color: red");
+    let literal_report = CssParser::default().parse_block_contents("aspect-ratio: 0; color: red");
     assert_eq!(literal_report.syntax().len(), 2);
     assert!(literal_report.is_clean());
-    let calculation_report = parse_style_attribute("aspect-ratio: calc(-1 * 2); color: red");
+    let calculation_report =
+        CssParser::default().parse_block_contents("aspect-ratio: calc(-1 * 2); color: red");
     assert!(calculation_report.is_clean());
     assert_eq!(calculation_report.syntax().len(), 2);
 }
 
 #[test]
 fn filter_amount_calculations_keep_number_and_percentage_roots_symbolic() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "filter: brightness(calc(-1 + 2)) opacity(calc(25% + 25%)); color: red",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -718,20 +782,22 @@ fn calculation_body(
 
 #[test]
 fn exact_construction_preserves_mixed_origins_and_canonical_operator_mapping() {
-    use surgeist_css::{
-        CssComponentValue, CssComponentValues, CssValueOrigin, parse_component_values,
-    };
-    let children = parse_component_values("1px + 2px").unwrap();
+    use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+    let children = CssComponentValues::parse(&CssParser::default(), "1px + 2px").unwrap();
     let original = children.items()[0].origin().clone();
     let operator = children.items()[2].origin().clone();
     let function = CssComponentValue::try_function("CALC", children).unwrap();
-    let calculation = CssLengthCalculation::try_from_components(
-        CssComponentValues::try_new(vec![function]).unwrap(),
+    let calculation = CssCalculation::<CssLength>::try_from_components(
+        CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert!(matches!(calculation.origin(), CssValueOrigin::Programmatic));
-    let rebuilt =
-        CssLengthCalculation::try_from_components(calculation.components().clone()).unwrap();
+    let rebuilt = CssCalculation::<CssLength>::try_from_components(
+        calculation.components().clone(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(calculation, rebuilt);
     let CssCalculationExpressionRef::Sum(sum) = calculation_body(calculation.expression()) else {
         panic!("expected sum")
@@ -747,21 +813,23 @@ fn exact_construction_preserves_mixed_origins_and_canonical_operator_mapping() {
         panic!("expected parsed source")
     };
     assert!(found.source().same_snapshot(original.source()));
-    let serialized = calculation.serialize().unwrap();
+    let serialized = calculation.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), "calc(1px + 2px)");
     assert!(
-        matches!(serialized.origin_at(9), Some(surgeist_css::CssSerializedOrigin::Token(origin)) if origin == &operator)
+        matches!(serialized.origin_at(9), Some(surgeist_css::component::CssSerializedOrigin::Token(origin)) if origin == &operator)
     );
 }
 
 #[test]
 fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_distinct() {
-    use surgeist_css::{
-        CssNumericConstant, CssNumericConstructionErrorKind as Kind, CssResolutionCalculation,
-        parse_component_values,
-    };
-    let integer = CssIntegerCalculation::try_from_components(
-        parse_component_values("1234567890123456789012345678901234567890").unwrap(),
+    use surgeist_css::numeric::{CssCalculation, CssNumericConstant, CssResolution};
+    let integer = CssCalculation::<CssInteger>::try_from_components(
+        CssComponentValues::parse(
+            &CssParser::default(),
+            "1234567890123456789012345678901234567890",
+        )
+        .unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert!(!integer.requires_rounding());
@@ -772,49 +840,59 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
         leaf.literal().representation(),
         "1234567890123456789012345678901234567890"
     );
-    let rounded =
-        CssIntegerCalculation::try_from_components(parse_component_values("calc(1.5)").unwrap())
-            .unwrap();
+    let rounded = CssCalculation::<CssInteger>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(1.5)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert!(rounded.requires_rounding());
-    let finite =
-        CssNumberCalculation::try_from_components(parse_component_values("calc(1e99999)").unwrap())
-            .unwrap();
+    let finite = CssCalculation::<CssNumber>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(1e99999)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert!(
         matches!(calculation_body(finite.expression()), CssCalculationExpressionRef::Value(v) if v.literal().representation() == "1e99999")
     );
-    let symbolic = CssNumberCalculation::try_from_components(
-        parse_component_values("calc(infinity)").unwrap(),
+    let symbolic = CssCalculation::<CssNumber>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(infinity)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert!(
         matches!(calculation_body(symbolic.expression()), CssCalculationExpressionRef::Constant(v) if v.value() == CssNumericConstant::Infinity)
     );
-    let zero =
-        CssNumberCalculation::try_from_components(parse_component_values("-0").unwrap()).unwrap();
+    let zero = CssCalculation::<CssNumber>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "-0").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert!(
         matches!(zero.expression(), CssCalculationExpressionRef::Value(v) if v.literal().representation() == "-0")
     );
     assert_eq!(
-        CssResolutionCalculation::try_from_components(
-            parse_component_values("calc(-1dppx / 0)").unwrap()
+        CssCalculation::<CssResolution>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(-1dppx / 0)").unwrap(),
+            Default::default()
         )
         .unwrap()
-        .serialize()
+        .serialize_tokens(Default::default())
         .unwrap()
         .as_css(),
         "calc(-1dppx / 0)"
     );
-    assert_eq!(
-        CssLengthCalculation::try_from_components(
-            parse_component_values("calc(1px + 2%)").unwrap()
+    assert!(
+        CssCalculation::<CssLength>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(1px + 2%)").unwrap(),
+            Default::default()
         )
         .unwrap_err()
-        .kind(),
-        &Kind::RootDomainMismatch
+        .is_root_domain_mismatch()
     );
     assert!(
-        CssLengthPercentageCalculation::try_from_components(
-            parse_component_values("calc(1px + 2%)").unwrap()
+        CssCalculation::<CssLengthPercentage>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(1px + 2%)").unwrap(),
+            Default::default()
         )
         .is_ok()
     );
@@ -822,23 +900,20 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
 
 #[test]
 fn checked_numeric_construction_reports_resource_substitution_and_recovery_failures() {
-    use surgeist_css::{
-        CssComponentValueLimits, CssNumericConstructionErrorKind as Kind, parse_component_values,
-    };
-    let components = parse_component_values("calc(1*2)").unwrap();
+    use surgeist_css::component::CssComponentValueLimits;
+    let components = CssComponentValues::parse(&CssParser::default(), "calc(1*2)").unwrap();
     for limits in [
         CssComponentValueLimits::try_new(0, 4, 11).unwrap(),
         CssComponentValueLimits::try_new(1, 3, 11).unwrap(),
         CssComponentValueLimits::try_new(1, 4, 9).unwrap(),
     ] {
-        let error =
-            CssNumberCalculation::try_from_components_with_limits(components.clone(), limits)
-                .unwrap_err();
-        assert_eq!(error.kind(), &Kind::ResourceLimit);
+        let error = CssCalculation::<CssNumber>::try_from_components(components.clone(), limits)
+            .unwrap_err();
+        assert!(error.is_resource_limit(), "{error:?}");
         assert!(error.origin().is_some());
     }
     assert!(
-        CssNumberCalculation::try_from_components_with_limits(
+        CssCalculation::<CssNumber>::try_from_components(
             components,
             CssComponentValueLimits::try_new(1, 4, 11).unwrap()
         )
@@ -851,10 +926,14 @@ fn checked_numeric_construction_reports_resource_substitution_and_recovery_failu
         ("min()", Kind::Arity),
     ] {
         assert_eq!(
-            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap())
+            numeric_failure(
+                &CssCalculation::<CssNumber>::try_from_components(
+                    CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                    Default::default()
+                )
                 .unwrap_err()
-                .kind(),
-            &kind,
+            ),
+            kind,
             "{source}"
         );
     }

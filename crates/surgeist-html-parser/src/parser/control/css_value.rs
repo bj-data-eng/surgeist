@@ -2,10 +2,12 @@
 use super::*;
 use crate::parser::buffer::Utf16Buffer;
 use std::cell::{Cell, RefCell};
-use surgeist_css::{
-    CssColorSchemeParseReport, CssComponentValueLimits, CssParserContext, CssParserMode,
-    CssUtf16InputError, CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssUtf16ValueAdmission,
+use surgeist_css::component::CssComponentValueLimits;
+use surgeist_css::source::{
+    CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssUtf16ValueAdmission,
 };
+use surgeist_css::values::color_adjust::{CssColorScheme, CssColorSchemeParseReport};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 /// One admitted immutable provider occurrence. This never enters the string pool.
 struct ProviderReceipt {
@@ -61,7 +63,9 @@ impl ParseControl {
             .ok_or_else(|| self.fail_invariant(Invariant::ReleaseUnderflow))?;
         Ok(usize::try_from(remaining).unwrap_or(usize::MAX))
     }
-    fn css_scheme_limits(&mut self) -> Result<CssUtf16PropertyValueLimits, ParseStop> {
+    fn css_scheme_limits(
+        &mut self,
+    ) -> Result<(CssUtf16PropertyValueLimits, CssComponentValueLimits), ParseStop> {
         let bytes = self
             .remaining_css(HtmlParseResource::ManagedCapacityBytes)?
             .min(self.remaining_css(HtmlParseResource::PeakTransientBytes)?);
@@ -77,7 +81,7 @@ impl ParseControl {
             bytes,
         )
         .expect("CSS's fixed maximum depth is preserved");
-        Ok(CssUtf16PropertyValueLimits {
+        let limits = CssUtf16PropertyValueLimits {
             input: CssUtf16InputLimits {
                 max_input_units: units,
                 max_output_bytes: bytes,
@@ -87,11 +91,11 @@ impl ParseControl {
                 max_retained_bytes: bytes,
                 max_work: work,
             },
-            syntax,
             max_work: work,
             max_live_bytes: bytes,
             max_retained_bytes: bytes,
-        })
+        };
+        Ok((limits, syntax))
     }
     /// Copy through the existing bounded buffer, then move its unique ticket
     /// into provider custody. This cannot alias a registered construction string.
@@ -150,7 +154,7 @@ impl ParseControl {
     ) -> Result<CssSchemeValue, ParseStop> {
         let (input, input_receipt) = self.css_scheme_input(raw)?;
         let result = (|| {
-            let limits = self.css_scheme_limits()?;
+            let (limits, syntax) = self.css_scheme_limits()?;
             let original = self.identity();
             let live = Cell::new((0_u64, 0_u64));
             let control = RefCell::new(&mut *self);
@@ -159,7 +163,8 @@ impl ParseControl {
             } else {
                 CssParserMode::Standards
             });
-            let result = context.parse_color_scheme_utf16_with_limits(
+            let result = CssColorScheme::parse_utf16(
+                &CssParser::new(context, syntax),
                 input.clone(),
                 limits,
                 |event| {
@@ -199,14 +204,18 @@ impl ParseControl {
             let c = control.into_inner();
             let report = match result {
                 Ok(report) => report,
-                Err(CssUtf16InputError::Interrupted(stop)) => return Err(stop),
-                Err(CssUtf16InputError::Limit(resource)) => {
-                    return c.fail(ParseStop::CssPropertyLimit { resource });
-                }
-                Err(CssUtf16InputError::Allocation) => {
-                    return c.fail(ParseStop::CssPropertyAllocationFailed);
-                }
-                Err(CssUtf16InputError::CapacityOverflow) => {
+                Err(error) => {
+                    let refusal = match error.into_interruption() {
+                        Ok(stop) => return Err(stop),
+                        Err(refusal) => refusal,
+                    };
+                    if let Some(resource) = refusal.exhausted_limit() {
+                        return c.fail(ParseStop::CssPropertyLimit { resource });
+                    }
+                    if refusal.is_allocation_failure() {
+                        return c.fail(ParseStop::CssPropertyAllocationFailed);
+                    }
+                    // A capacity overflow.
                     return c.representation(HtmlParseResource::ManagedCapacityBytes);
                 }
             };

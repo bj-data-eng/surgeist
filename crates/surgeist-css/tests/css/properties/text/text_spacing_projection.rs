@@ -4,17 +4,20 @@
 //! The authored calculation must preserve its
 //! percentage basis, even when percentage dimensions cancel algebraically.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::numeric::CssNumericDimension;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::text::CssTextSpacingAdjustment;
 
 fn authored(name: &str, value: &str) -> CssTextSpacingAdjustment {
     let source = format!("{name}: {value}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one spacing declaration")
     };
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::WordSpacing(wrapper) => wrapper.spacing().clone(),
+        CssKnownPropertyValueRef::WordSpacing(wrapper) => wrapper.value().clone(),
         CssKnownPropertyValueRef::LetterSpacing(wrapper) => wrapper.value().clone(),
         _ => panic!("word or letter spacing"),
     }
@@ -31,7 +34,7 @@ fn assert_percentage_context(value: &CssTextSpacingAdjustment) {
         Some(CssNumericDimension::Length)
     );
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "calc(10% * 1px / 10%)"
     );
 }
@@ -52,7 +55,10 @@ fn letter_spacing_percentage_cancellation_retains_its_percentage_context() {
 fn pure_length_math_and_additive_percentage_zero_keep_distinct_contexts() {
     for name in ["word-spacing", "letter-spacing"] {
         let pure = authored(name, "calc(1px - 2px)");
-        assert_eq!(pure.serialize_specified().unwrap(), "calc(-1px)");
+        assert_eq!(
+            pure.serialize_specified(Default::default()).unwrap(),
+            "calc(-1px)"
+        );
         assert_eq!(
             pure.length_percentage()
                 .unwrap()

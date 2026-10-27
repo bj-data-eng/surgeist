@@ -2,28 +2,42 @@
 //! https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-word-spacing
 //! https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-letter-spacing
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::sole_longhand_contribution;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{
+    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValue,
+    CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::CssTextSpacingAdjustment;
 
 fn component(text: &str) -> CssComponentValue {
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [value] = components.items() else {
         panic!("expected one component: {text}")
     };
     value.clone()
 }
 
-fn numeric(text: &str) -> CssSpecifiedLengthPercentage {
+fn numeric(text: &str) -> CssNumeric<CssLengthPercentage> {
     if text.starts_with("calc(") {
-        CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(
-                parse_component_values(text).unwrap(),
+        CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
         .unwrap()
     } else {
-        CssSpecifiedLengthPercentage::try_from_component(component(text)).unwrap()
+        CssNumeric::<CssLengthPercentage>::try_from_component(component(text)).unwrap()
     }
 }
 
@@ -37,7 +51,7 @@ fn adjustment(text: &str) -> CssTextSpacingAdjustment {
 
 fn declared(name: &str, value: &str) -> CssDeclaration {
     let source = format!("{name}: {value} !important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one declaration: {source}")
@@ -65,28 +79,38 @@ fn checked_numeric_domain_is_signed_length_percentage_and_origin_is_retained() {
         ("calc(1px - 2px)", "calc(-1px)"),
     ] {
         assert_eq!(
-            adjustment(authored).serialize_specified().unwrap(),
+            adjustment(authored)
+                .serialize_specified(Default::default())
+                .unwrap(),
             canonical
         );
     }
     for invalid in ["1", "1fr", "auto", "stretch"] {
         assert!(
-            CssSpecifiedLengthPercentage::try_from_component(component(invalid)).is_err(),
+            CssNumeric::<CssLengthPercentage>::try_from_component(component(invalid)).is_err(),
             "{invalid}"
         );
     }
     let programmatic = CssTextSpacingAdjustment::LengthPercentage(
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_token("-12.5%").unwrap(),
         )
         .unwrap(),
     );
-    assert_eq!(programmatic.serialize_specified().unwrap(), "-12.5%");
+    assert_eq!(
+        programmatic
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "-12.5%"
+    );
     let CssTextSpacingAdjustment::LengthPercentage(number) = &programmatic else {
         panic!("checked percentage adjustment")
     };
-    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(token)) =
-        number.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Percentage(token)) = number
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("checked percentage token")
     };
@@ -101,9 +125,14 @@ fn checked_numeric_domain_is_signed_length_percentage_and_origin_is_retained() {
     ));
     assert_eq!(programmatic, adjustment("-12.5%"));
     let zero_percent = adjustment("0%");
-    assert_eq!(zero_percent.serialize_specified().unwrap(), "0%");
+    assert_eq!(
+        zero_percent
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "0%"
+    );
     assert!(
-        matches!(zero_percent.length_percentage().unwrap().literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.representation() == "0")
+        matches!(zero_percent.length_percentage().unwrap().literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) if number.representation() == "0")
     );
 }
 
@@ -115,11 +144,15 @@ fn exact_large_exponents_avoid_float_rounding() {
         ("1e-999px", "0px".to_owned()),
     ] {
         let value = adjustment(authored);
-        assert_eq!(value.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         let component = value
             .length_percentage()
             .unwrap()
-            .literal_component()
+            .literal()
+            .map(|literal| literal.component())
             .unwrap();
         assert!(
             matches!(
@@ -162,7 +195,7 @@ fn parsed_values_preserve_exact_scalars_and_symbolic_math() {
         let current = match parsed {
             CssKnownPropertyValueRef::WordSpacing(wrapper) => {
                 assert_eq!(wrapper.as_css(), value);
-                wrapper.spacing()
+                wrapper.value()
             }
             CssKnownPropertyValueRef::LetterSpacing(wrapper) => {
                 assert_eq!(wrapper.as_css(), value);
@@ -170,14 +203,20 @@ fn parsed_values_preserve_exact_scalars_and_symbolic_math() {
             }
             _ => panic!("spacing property: {name}"),
         };
-        assert_eq!(current.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            current.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         if value != "normal" {
             assert!(matches!(current.origin(), Some(CssValueOrigin::Parsed(_))));
         }
         let value = expanded_value(&declaration);
         match value.view() {
             CssLonghandValueRef::WordSpacing(value) | CssLonghandValueRef::LetterSpacing(value) => {
-                assert_eq!(value.serialize_specified().unwrap(), canonical)
+                assert_eq!(
+                    value.serialize_specified(Default::default()).unwrap(),
+                    canonical
+                )
             }
             _ => panic!("typed spacing contribution"),
         }
@@ -201,7 +240,10 @@ fn both_initials_are_symbolic_normal_values() {
         match initial.view() {
             CssLonghandValueRef::WordSpacing(value) | CssLonghandValueRef::LetterSpacing(value) => {
                 assert_eq!(value, &CssTextSpacingAdjustment::Normal);
-                assert_eq!(value.serialize_specified().unwrap(), "normal");
+                assert_eq!(
+                    value.serialize_specified(Default::default()).unwrap(),
+                    "normal"
+                );
             }
             _ => panic!("typed spacing initial"),
         }
@@ -213,51 +255,47 @@ fn serialization_limits_fail_atomically_without_changing_value() {
     let normal = CssTextSpacingAdjustment::Normal;
     assert_eq!(
         normal
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 6))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 6))
             .unwrap(),
         "normal"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, 6),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, 1, 6),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, 6),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(1, 0, 6),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 5),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(1, 1, 5),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            normal
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&normal.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
     let math = adjustment("calc(1px + 2%)");
-    assert_eq!(math.serialize_specified().unwrap(), "calc(2% + 1px)");
-    let bytes = "calc(2% + 1px)".len();
     assert_eq!(
-        math.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            128,
-            128,
-            bytes - 1
-        ))
-        .unwrap_err()
-        .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+        math.serialize_specified(Default::default()).unwrap(),
+        "calc(2% + 1px)"
     );
-    assert_eq!(math.serialize_specified().unwrap(), "calc(2% + 1px)");
+    let bytes = "calc(2% + 1px)".len();
+    assert!(
+        math.serialize_specified(CssSerializationLimits::new(128, 128, bytes - 1))
+            .unwrap_err()
+            .is_byte_limit()
+    );
     assert_eq!(
-        math.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            128, 128, bytes
-        ))
-        .unwrap(),
+        math.serialize_specified(Default::default()).unwrap(),
+        "calc(2% + 1px)"
+    );
+    assert_eq!(
+        math.serialize_specified(CssSerializationLimits::new(128, 128, bytes))
+            .unwrap(),
         "calc(2% + 1px)"
     );
 }

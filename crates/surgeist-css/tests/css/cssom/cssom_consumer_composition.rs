@@ -1,16 +1,24 @@
 //! Public consumer composition: checked CSS payloads without semantic text round trips.
 
-use surgeist_css::{
-    CssAdmittedRule, CssDeclaration, CssDeclarationBlockErrorKind, CssEditedGroupPreludeRef,
-    CssEditedRuleView, CssImportance, CssInvalidKeyframeSourceReason, CssKeyframeRuleView,
-    CssKeyframeRuleViewError, CssKnownProperty, CssNamespaceContext, CssNamespaceName,
-    CssNamespacePrefix, CssPropertyNameRef, CssRecoveryAction, CssRule, CssRuleAdmissionContext,
-    CssRuleCssomSerializationErrorKind, CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry,
-    CssSpecifiedValueSerializationErrorKind as Resource,
-    CssSpecifiedValueSerializationLimits as Limits, classify_rule_syntax, parse_component_values,
-    parse_declaration_block_contents, parse_keyframe_rule, parse_keyframe_selector_list,
-    parse_property_value,
+use crate::css::support::{graph_cssom, graph_limits};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{
+    CssDeclaration, CssImportance, CssInvalidKeyframeSourceReason, CssSpecifiedDeclarationBlock,
+    CssSpecifiedDeclarationEntry,
 };
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::rule::keyframes::{
+    CssKeyframeRuleView, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
+};
+use surgeist_css::rule::{
+    CssNamespaceName, CssNamespacePrefix, CssRule, CssRuleAdmissionContext, CssRuleSyntax,
+    CssStyleAncestor,
+};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::serialization::{CssGroupPreludeRef, CssRuleGraphInput};
 
 fn terminal(
     block: &CssSpecifiedDeclarationBlock,
@@ -46,13 +54,16 @@ fn recovered_raw_terminals_form_an_edited_media_child_after_inputs_drop_and_budg
         "/*😀*/\r\nmargin:1px 2px 3px 4px; --Case:日本; .skip{width:9px} opacity:.5!important";
     let (edited, margin_origin, opacity_origin) = {
         let input = RAW.to_owned();
-        let report = parse_declaration_block_contents(&input);
+        let report = CssParser::default().parse_block_contents(&input);
         assert!(
             !report.is_clean(),
             "a nested rule is recovered out of the declaration block"
         );
-        let projected =
-            CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax()).unwrap();
+        let projected = CssSpecifiedDeclarationBlock::try_from_declarations(
+            report.syntax(),
+            Default::default(),
+        )
+        .unwrap();
         let right = terminal(&projected, CssKnownProperty::MarginRight);
         let opacity = terminal(&projected, CssKnownProperty::Opacity);
         let selected = [
@@ -61,34 +72,34 @@ fn recovered_raw_terminals_form_an_edited_media_child_after_inputs_drop_and_budg
             opacity.with_importance(CssImportance::Normal),
         ];
         (
-            CssSpecifiedDeclarationBlock::try_from_entries(&selected).unwrap(),
+            CssSpecifiedDeclarationBlock::try_from_entries(&selected, Default::default()).unwrap(),
             right.source().clone(),
             opacity.source().clone(),
         )
     };
     let selectors = {
         let input = ".composed {}".to_owned();
-        let classified = classify_rule_syntax(&input);
+        let classified = CssRuleSyntax::classify(&CssParser::default(), &input);
         assert!(classified.is_clean());
         let admitted = classified.syntax().as_ref().unwrap().admit(
             &CssNamespaceContext::default(),
             CssRuleAdmissionContext::Stylesheet,
         );
         assert!(admitted.is_clean());
-        let Some(CssAdmittedRule::Ordinary(CssRule::Style(style))) = admitted.syntax() else {
+        let Some(CssRule::Style(style)) = admitted.syntax() else {
             panic!("admitted style")
         };
         style.selectors().clone()
     };
     let query = {
         let input = "@media print {}".to_owned();
-        let classified = classify_rule_syntax(&input);
+        let classified = CssRuleSyntax::classify(&CssParser::default(), &input);
         let admitted = classified.syntax().as_ref().unwrap().admit(
             &CssNamespaceContext::default(),
             CssRuleAdmissionContext::Stylesheet,
         );
         assert!(admitted.is_clean());
-        let Some(CssAdmittedRule::Ordinary(CssRule::Media(media))) = admitted.syntax() else {
+        let Some(CssRule::Media(media)) = admitted.syntax() else {
             panic!("admitted media prelude")
         };
         media.query().clone()
@@ -99,37 +110,36 @@ fn recovered_raw_terminals_form_an_edited_media_child_after_inputs_drop_and_budg
     // a four-sided shorthand from this incomplete selection.
     assert_eq!(
         edited
-            .property_value(CssPropertyNameRef::Known(CssKnownProperty::Margin))
+            .property_value(
+                CssPropertyNameRef::Known(CssKnownProperty::Margin),
+                Default::default()
+            )
             .unwrap(),
         None
     );
-    let style = CssEditedRuleView::try_style(&selectors, &edited, &[]).unwrap();
+    let style = CssRuleGraphInput::style(&selectors, &edited, &[]);
     assert_eq!(
-        style.serialize_cssom().unwrap(),
+        graph_cssom(style, Default::default()).unwrap(),
         ".composed { margin-right: 2px !important; --Case: 日本; opacity: 0.5; }"
     );
     let children = [style];
-    let media =
-        CssEditedRuleView::try_group(CssEditedGroupPreludeRef::Media(&query), &children).unwrap();
+    let media = CssRuleGraphInput::group(CssGroupPreludeRef::Media(&query), &children);
     const EXPECTED: &str = "@media print {\n  .composed { margin-right: 2px !important; --Case: 日本; opacity: 0.5; }\n}";
-    let error = media
-        .serialize_cssom_with_limits(Limits::new(100_000, 100_000, EXPECTED.len() - 1))
-        .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssRuleCssomSerializationErrorKind::Resource(Resource::ByteLimit)
+    let error = graph_cssom(media, Limits::new(100_000, 100_000, EXPECTED.len() - 1)).unwrap_err();
+    assert!(
+        error.is_resource_limit()
+            && error
+                .serialization_error()
+                .is_some_and(|error| error.is_byte_limit()),
+        "{error:?}"
     );
     assert_eq!(
-        media
-            .serialize_cssom_with_limits(Limits::new(100_000, 100_000, EXPECTED.len()))
-            .unwrap(),
+        graph_cssom(media, Limits::new(100_000, 100_000, EXPECTED.len())).unwrap(),
         EXPECTED
     );
-    assert_eq!(media.serialize_cssom().unwrap(), EXPECTED);
+    assert_eq!(graph_cssom(media, Default::default()).unwrap(), EXPECTED);
 
     // The typed edited wrappers are programmatic; surviving occurrences are authored.
-    assert!(style.parsed_rule().is_none());
-    assert!(media.parsed_rule().is_none());
     let right = terminal(&edited, CssKnownProperty::MarginRight);
     let opacity = terminal(&edited, CssKnownProperty::Opacity);
     assert!(right.source().same_occurrence(&margin_origin));
@@ -159,7 +169,7 @@ fn contextual_retry_and_recovered_rule_publish_a_selected_snapshot_with_original
     const INPUT: &str = "/*😀*/\r\n& > svg|leaf { padding:1px 2px; opacity:.25; rubbish; }";
     let (style, snapshot) = {
         let input = INPUT.to_owned();
-        let preliminary = classify_rule_syntax(&input);
+        let preliminary = CssRuleSyntax::classify(&CssParser::default(), &input);
         assert!(preliminary.is_clean());
         let syntax = preliminary.syntax().as_ref().unwrap();
         let snapshot = syntax.origin().source().clone();
@@ -181,25 +191,37 @@ fn contextual_retry_and_recovered_rule_publish_a_selected_snapshot_with_original
                 .any(|diagnostic| { diagnostic.action() == CssRecoveryAction::DropDeclaration })
         );
         assert!(accepted.clone().into_validation_result().is_err());
-        let Some(CssAdmittedRule::Ordinary(CssRule::Style(style))) = accepted.into_parts().0 else {
+        let Some(CssRule::Style(style)) = accepted.into_parts().0 else {
             panic!("recovered nested style retained after contextual admission")
         };
         (style, snapshot)
     };
 
-    let projected =
-        CssSpecifiedDeclarationBlock::try_from_declarations(style.declarations()).unwrap();
+    let projected = CssSpecifiedDeclarationBlock::try_from_declarations(
+        style.declarations(),
+        Default::default(),
+    )
+    .unwrap();
     let opacity = terminal(&projected, CssKnownProperty::Opacity);
     let selected = [opacity.with_importance(CssImportance::Important)];
-    let edited = CssSpecifiedDeclarationBlock::try_from_entries(&selected).unwrap();
-    let view = CssEditedRuleView::try_style(style.selectors(), &edited, &[]).unwrap();
+    let edited =
+        CssSpecifiedDeclarationBlock::try_from_entries(&selected, Default::default()).unwrap();
+    let view = CssRuleGraphInput::style(style.selectors(), &edited, &[]);
     // The explicit nesting anchor remains in the supplied receiving context.
     // No enclosing stylesheet or reparsed formatted text is needed.
+    let bindings = CssNamespaceContext::from_bindings([(
+        Some(CssNamespacePrefix::try_new("svg").unwrap()),
+        CssNamespaceName::new("urn:svg"),
+    )]);
     assert_eq!(
-        view.serialize_cssom().unwrap(),
+        view.serialize_cssom(
+            &bindings,
+            CssStyleAncestor::Absent,
+            graph_limits(Default::default())
+        )
+        .unwrap(),
         "& > svg|leaf { opacity: 0.25 !important; }"
     );
-    assert!(view.parsed_rule().is_none());
     assert_eq!(snapshot.as_str(), INPUT);
     assert_eq!(
         style.position().byte_offset().value(),
@@ -221,17 +243,20 @@ fn detached_keyframe_accepts_checked_replacements_and_preserves_authored_and_pro
     const INPUT: &str = "/*😀*/\r\nFROM,25%,to { margin:1px 2px; opacity:.4; --Tone:日本 }";
     let (authored, original_opacity, selectors) = {
         let input = INPUT.to_owned();
-        let parsed = parse_keyframe_rule(&input);
+        let parsed = CssParsedKeyframeRule::parse(&CssParser::default(), &input);
         assert!(parsed.is_clean(), "{parsed:?}");
         let block = parsed.syntax().as_ref().unwrap().block();
-        let authored =
-            CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(block.declarations())
-                .unwrap();
+        let authored = CssSpecifiedDeclarationBlock::try_from_keyframe_declarations(
+            block.declarations(),
+            Default::default(),
+        )
+        .unwrap();
         let original_opacity = terminal(&authored, CssKnownProperty::Opacity)
             .source()
             .clone();
         let replacement_input = "to, from, 25%, 25%".to_owned();
-        let replacement = parse_keyframe_selector_list(&replacement_input);
+        let replacement =
+            CssParsedKeyframeSelectors::parse(&CssParser::default(), &replacement_input);
         assert!(replacement.is_clean());
         (
             authored,
@@ -239,47 +264,56 @@ fn detached_keyframe_accepts_checked_replacements_and_preserves_authored_and_pro
             replacement.syntax().as_ref().unwrap().selectors().clone(),
         )
     };
-    let programmatic = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Opacity),
-        parse_component_values(".75").unwrap(),
+    let programmatic = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Opacity)),
+        CssComponentValues::parse(&CssParser::default(), ".75").unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
-    let supplied = surgeist_css::CssDeclarationList::try_new(vec![programmatic.clone()]).unwrap();
-    let supplied = CssSpecifiedDeclarationBlock::try_from_declarations(&supplied).unwrap();
+    let supplied = surgeist_css::declaration::CssDeclarationList::try_new(
+        vec![programmatic.clone()],
+        Default::default(),
+    )
+    .unwrap();
+    let supplied =
+        CssSpecifiedDeclarationBlock::try_from_declarations(&supplied, Default::default()).unwrap();
     let replacement = terminal(&supplied, CssKnownProperty::Opacity).clone();
     let right = terminal(&authored, CssKnownProperty::MarginRight).clone();
     let selected = [right, replacement, custom(&authored, "--Tone").clone()];
 
     let mut invalid = selected.clone();
     invalid[1] = invalid[1].with_importance(CssImportance::Important);
-    assert!(matches!(
-        CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&invalid)
+    assert!(
+        CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&invalid, Default::default())
             .unwrap_err()
-            .kind(),
-        CssDeclarationBlockErrorKind::InvalidKeyframeSource {
-            reason: CssInvalidKeyframeSourceReason::Importance
-        }
-    ));
-    let edited = CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&selected).unwrap();
+            .invalid_keyframe_source()
+            == Some(CssInvalidKeyframeSourceReason::Importance)
+    );
+    let edited =
+        CssSpecifiedDeclarationBlock::try_from_keyframe_entries(&selected, Default::default())
+            .unwrap();
     drop(authored);
     drop(supplied);
     let view = CssKeyframeRuleView::try_new(&selectors, &edited).unwrap();
     assert_eq!(
-        selectors.serialize_key_text().unwrap(),
+        selectors.serialize_key_text(Default::default()).unwrap(),
         "100%, 0%, 25%, 25%"
     );
     const EXPECTED: &str = "100%, 0%, 25%, 25% { margin-right: 2px; opacity: 0.75; --Tone: 日本; }";
-    assert!(matches!(
-        view.serialize_cssom_with_limits(Limits::new(100_000, 100_000, EXPECTED.len() - 1)),
-        Err(CssKeyframeRuleViewError::Serialization(error)) if error.kind() == Resource::ByteLimit
-    ));
+    assert!(
+        view.serialize_cssom(Limits::new(100_000, 100_000, EXPECTED.len() - 1))
+            .as_ref()
+            .is_err_and(|error| error
+                .serialization()
+                .is_some_and(|error| error.is_byte_limit()))
+    );
     assert_eq!(
-        view.serialize_cssom_with_limits(Limits::new(100_000, 100_000, EXPECTED.len()))
+        view.serialize_cssom(Limits::new(100_000, 100_000, EXPECTED.len()))
             .unwrap(),
         EXPECTED
     );
-    assert_eq!(view.serialize_cssom().unwrap(), EXPECTED);
+    assert_eq!(view.serialize_cssom(Default::default()).unwrap(), EXPECTED);
 
     let right = terminal(&edited, CssKnownProperty::MarginRight);
     let opacity = terminal(&edited, CssKnownProperty::Opacity);

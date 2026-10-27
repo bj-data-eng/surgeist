@@ -1,8 +1,9 @@
 //! Unicode-range expectations from selected Syntax 3 (2026-10-01) §§4.3.14 and 5.5.11.
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-value
-use surgeist_css::{
-    CssFontFaceDescriptorKind, CssFontFaceDescriptorValue, CssRecoveryAction, ErrorKind,
-    parse_font_face_descriptor_value,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
 };
 
 type RangeExpectation<'a> = (&'a str, &'a [(u32, u32)], bool);
@@ -97,8 +98,11 @@ fn raw_unicode_range_corpus_preserves_values_and_original_diagnostics() {
         let matching: Vec<_> = cases.iter().filter(|case| case["id"] == *id).collect();
         assert_eq!(matching.len(), 1, "one original input for {id}");
         let input = matching[0]["input"].as_str().unwrap();
-        let report =
-            parse_font_face_descriptor_value(input, CssFontFaceDescriptorKind::UnicodeRange);
+        let report = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            input,
+            CssFontFaceDescriptorKind::UnicodeRange,
+        );
         let clean = !ranges.is_empty();
         assert_eq!(report.is_clean(), clean, "{id}: {report:?}");
         let mut expected_class = serde_json::json!({
@@ -109,7 +113,7 @@ fn raw_unicode_range_corpus_preserves_values_and_original_diagnostics() {
             }
         });
         if clean {
-            let Some(surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(
+            let Some(surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::Ordinary(
                 CssFontFaceDescriptorValue::UnicodeRange(value),
             )) = report.syntax()
             else {
@@ -133,9 +137,12 @@ fn raw_unicode_range_corpus_preserves_values_and_original_diagnostics() {
                 input.len(),
                 "{id}"
             );
-            let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-                panic!("descriptor grammar error for {id}");
-            };
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidDescriptorValue,
+                "descriptor grammar error for {id}"
+            );
             // Input ending before the range is complete names its last
             // authored token; any other failure names a token inside it.
             let encountered = detail.encountered().expect("responsible authored token");

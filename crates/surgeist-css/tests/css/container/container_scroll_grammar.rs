@@ -6,34 +6,55 @@
 //! interpretation of these sources, not a separate scroll-specific production.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#size-container
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#using-variables
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::query::container::CssContainerLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::CssRule;
 
 fn assert_query(source: &str, recognized: bool) {
-    let checked =
-        CssContainerCondition::try_from_components(parse_component_values(source).unwrap())
-            .unwrap();
+    let checked = CssCondition::<CssContainerLeaf>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(
         !matches!(
             checked.kind(),
-            CssContainerConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
         ),
         recognized,
         "checked {source}",
     );
-    assert_eq!(checked.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        checked
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     let input = format!("@container {source}{{}}");
-    let report = parse_sheet(&input);
+    let report = CssParser::default().parse_sheet(&input);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("retained container rule")
     };
     let parsed = rule.prelude().entries()[0].query().unwrap();
     assert_eq!(
-        !matches!(parsed.kind(), CssContainerConditionKind::GeneralEnclosed(_)),
+        !matches!(
+            parsed.kind(),
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
+        ),
         recognized,
         "parsed {source}",
     );
-    assert_eq!(parsed.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        parsed
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
 }
 
 #[test]
@@ -91,10 +112,13 @@ fn compound_variable_values_are_retained_as_complete_pending_operands() {
 fn fully_programmatic_scroll_features_use_the_same_checked_boundary() {
     let pending = CssComponentValue::try_function(
         "var",
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("--edge").unwrap(),
-            CssComponentValue::try_token(",").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("--edge").unwrap(),
+                CssComponentValue::try_token(",").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap(),
     )
     .unwrap();
@@ -105,23 +129,33 @@ fn fully_programmatic_scroll_features_use_the_same_checked_boundary() {
         ),
         (pending, "scroll-state(stuck:var(--edge,))"),
     ] {
-        let values = CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("stuck").unwrap(),
-            CssComponentValue::try_token(":").unwrap(),
-            value,
-        ])
+        let values = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("stuck").unwrap(),
+                CssComponentValue::try_token(":").unwrap(),
+                value,
+            ],
+            Default::default(),
+        )
         .unwrap();
         let function = CssComponentValue::try_function("scroll-state", values).unwrap();
-        let condition = CssContainerCondition::try_from_components(
-            CssComponentValues::try_new(vec![function]).unwrap(),
+        let condition = CssCondition::<CssContainerLeaf>::try_from_components(
+            CssComponentValues::try_new(vec![function], Default::default()).unwrap(),
+            Default::default(),
         )
         .unwrap();
         assert!(!matches!(
             condition.kind(),
-            CssContainerConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
         ));
         assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
-        assert_eq!(condition.serialize().unwrap().as_css(), expected);
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            expected
+        );
         assert_query(expected, true);
     }
 }

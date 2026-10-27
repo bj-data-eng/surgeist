@@ -5,7 +5,20 @@ use crate::css::support::property_admission::{
     assert_checked_value_rejected, assert_declaration_rejected, assert_invalid_value,
 };
 use crate::css::support::{important_declaration, known_property};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::property_support_metadata;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssPropertyGrammar, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::box_model::CssContentVisibility;
 
 const NAME: &str = "content-visibility";
 
@@ -15,13 +28,17 @@ fn property() -> CssKnownProperty {
 
 fn declaration(value: &str) -> CssDeclaration {
     let source = important_declaration(NAME, value);
-    assert!(validate_style_attribute(&format!("{NAME}:{value}!important")).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(format!("{NAME}:{value}!important"))
+            .into_validation_result()
+            .is_ok()
+    );
     source
 }
 
 fn contribution(source: &CssDeclaration) -> CssLonghandContribution {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("content-visibility contributes one terminal")
     };
@@ -79,9 +96,10 @@ fn only_three_keywords_construct_exact_typed_authored_values_and_one_terminal() 
         ("HIDDEN", CssContentVisibility::Hidden),
         (r"a\75 to", CssContentVisibility::Auto),
     ] {
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property()),
-            parse_component_values(text).unwrap(),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property())),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             CssImportance::Important,
         )
         .unwrap();
@@ -94,7 +112,11 @@ fn only_three_keywords_construct_exact_typed_authored_values_and_one_terminal() 
             assert_eq!(value.value(), &expected);
             assert_eq!(value.as_css(), text);
             assert_eq!(
-                source.value_components().serialize().unwrap().as_css(),
+                source
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 text
             );
             assert_eq!(source.importance(), CssImportance::Important);
@@ -138,33 +160,33 @@ fn pending_substitutions_reenter_whole_grammar_without_losing_original_occurrenc
         "attr(data-visibility)",
     ] {
         let source = declaration(pending_text);
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("{pending_text} remains pending")
         };
         assert!(pending.source().same_occurrence(&source));
         for invalid in ["", "collapse", "auto hidden"] {
-            assert!(matches!(
+            assert!(
                 pending
-                    .reenter(parse_component_values(invalid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+                    .replacement_error()
+                    .is_some()
+            );
         }
         for unresolved in ["var(--again)", "env(--again)", "attr(data-again)"] {
-            assert_eq!(
+            assert!(
                 pending
-                    .reenter(parse_component_values(unresolved).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), unresolved).unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
         }
         for (replacement_text, expected) in [
             ("hidden", CssContentVisibility::Hidden),
             ("auto", CssContentVisibility::Auto),
         ] {
-            let replacement = parse_component_values(replacement_text).unwrap();
+            let replacement =
+                CssComponentValues::parse(&CssParser::default(), replacement_text).unwrap();
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
             else {
                 panic!("valid keyword completes the pending declaration")
@@ -203,7 +225,7 @@ fn pending_substitutions_reenter_whole_grammar_without_losing_original_occurrenc
             );
         }
         let CssContributions::Longhands(values) = pending
-            .reenter(parse_component_values("revert-layer").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "revert-layer").unwrap())
             .unwrap()
         else {
             panic!("whole-value CSS-wide replacement completes")
@@ -219,30 +241,31 @@ fn pending_substitutions_reenter_whole_grammar_without_losing_original_occurrenc
 #[test]
 fn normalization_preserves_valid_order_and_fails_atomically_at_contribution_budget() {
     let text = ".a{content-visibility:visible;content-visibility:collapse;content-visibility:auto!important;content-visibility:hidden}";
-    let report = parse_sheet(text);
+    let report = CssParser::default().parse_sheet(text);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
     assert_invalid_value(
-        report.diagnostics()[0].error().kind(),
+        report.diagnostics()[0].error(),
         property(),
         Some("collapse"),
     );
     assert_eq!(
-        validate_sheet(text).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(text)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     let original = report.syntax().clone();
     let limits = CssNormalizationLimits::try_new(0, 1, 3, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(
@@ -251,11 +274,10 @@ fn normalization_preserves_valid_order_and_fails_atomically_at_contribution_budg
     );
     assert_eq!(report.syntax(), &original);
 
-    let normalized = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 3, 3).unwrap(),
-    )
-    .unwrap();
+    let normalized = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 3, 3).unwrap())
+        .unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -279,7 +301,7 @@ fn normalization_preserves_valid_order_and_fails_atomically_at_contribution_budg
         assert_eq!(
             item.source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             keyword

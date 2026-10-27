@@ -1,8 +1,14 @@
 //! Selected generic units bridged to existing contextual grammar callbacks.
-use super::*;
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::from_parse_error;
+use crate::parser::consume_failed_rule_block;
+use crate::parser::recovery::{RecoveryState, recovery_action_for_error};
 use crate::syntax_consumption::{
     self as syntax, GenericFaultKind, GenericRule, GenericRuleResult, RuleListSyntax,
     RuleTermination, SyntaxDocument,
+};
+use cssparser::{
+    AtRuleParser, Delimiter, ParseError, Parser, ParserState, QualifiedRuleParser, Token,
 };
 
 pub(super) fn rules(
@@ -12,7 +18,7 @@ pub(super) fn rules(
     list: RuleListSyntax,
 ) -> Result<
     (std::rc::Rc<SyntaxDocument<'static>>, Vec<GenericRuleResult>),
-    crate::CssComponentValueError,
+    crate::component::CssComponentValueError,
 > {
     let document = recovery.syntax_document(source)?;
     let start = document
@@ -42,13 +48,13 @@ pub(super) fn one<'i, 't, P, R>(
     input: &mut Parser<'i, 't>,
     parser: &mut P,
     recovery: &RecoveryState,
-) -> Result<R, ParseError<'i, Error>>
+) -> Result<R, ParseError<'i, CssError>>
 where
-    P: AtRuleParser<'i, AtRule = R, Error = Error>
-        + QualifiedRuleParser<'i, QualifiedRule = R, Error = Error>,
+    P: AtRuleParser<'i, AtRule = R, Error = CssError>
+        + QualifiedRuleParser<'i, QualifiedRule = R, Error = CssError>,
 {
     let document = recovery.syntax_document(source).map_err(|error| {
-        crate::error::invalid_component_value(input.current_source_location(), error)
+        crate::diagnostic::error::invalid_component_value(input.current_source_location(), error)
     })?;
     let selected = syntax::consume_one_rule(&mut document.cursor(document.root));
     let selected = match selected {
@@ -82,7 +88,7 @@ where
 
 // One selected unit's admission: its item, or its error with the original
 // source slice from the unit's start to the failure.
-type SelectedAdmission<'i, R> = Result<R, (Box<ParseError<'i, Error>>, &'i str)>;
+type SelectedAdmission<'i, R> = Result<R, (Box<ParseError<'i, CssError>>, &'i str)>;
 
 // This is the actual unit driver. Generic consumption chooses dispatch and
 // boundaries; native callbacks only admit the selected original source unit.
@@ -97,8 +103,8 @@ pub(super) fn parse_selected<'i, 't, P, R>(
     selected: &GenericRuleResult,
 ) -> (usize, SelectedAdmission<'i, R>)
 where
-    P: AtRuleParser<'i, AtRule = R, Error = Error>
-        + QualifiedRuleParser<'i, QualifiedRule = R, Error = Error>,
+    P: AtRuleParser<'i, AtRule = R, Error = CssError>
+        + QualifiedRuleParser<'i, QualifiedRule = R, Error = CssError>,
 {
     let range = match selected {
         Ok(GenericRule::At(rule)) => &rule.range,
@@ -132,10 +138,10 @@ pub(super) fn admit_envelope<'i, 't, P, R>(
     parser: &mut P,
     recovery: &RecoveryState,
     envelope: &super::rule_candidate::RuleEnvelope,
-) -> Result<R, ParseError<'i, Error>>
+) -> Result<R, ParseError<'i, CssError>>
 where
-    P: AtRuleParser<'i, AtRule = R, Error = Error>
-        + QualifiedRuleParser<'i, QualifiedRule = R, Error = Error>,
+    P: AtRuleParser<'i, AtRule = R, Error = CssError>
+        + QualifiedRuleParser<'i, QualifiedRule = R, Error = CssError>,
 {
     input.skip_whitespace();
     let start = input.state();
@@ -156,10 +162,10 @@ fn admit_selected<'i, 't, P, R>(
     recovery: &RecoveryState,
     start: &ParserState,
     selected: &GenericRuleResult,
-) -> Result<R, ParseError<'i, Error>>
+) -> Result<R, ParseError<'i, CssError>>
 where
-    P: AtRuleParser<'i, AtRule = R, Error = Error>
-        + QualifiedRuleParser<'i, QualifiedRule = R, Error = Error>,
+    P: AtRuleParser<'i, AtRule = R, Error = CssError>
+        + QualifiedRuleParser<'i, QualifiedRule = R, Error = CssError>,
 {
     match selected {
         Ok(GenericRule::At(rule)) => parse_at_selected(
@@ -205,7 +211,7 @@ fn reject_bounded_qualified<'i, R>(
     input: &mut Parser<'i, '_>,
     end: usize,
     kind: GenericFaultKind,
-) -> Result<R, ParseError<'i, Error>> {
+) -> Result<R, ParseError<'i, CssError>> {
     let location = input.current_source_location();
     while input.position().byte_index() < end {
         let Ok(token) = input.next_including_whitespace_and_comments() else {
@@ -244,9 +250,9 @@ fn parse_at_selected<'i, 't, P, R>(
     recovery: &RecoveryState,
     start: &ParserState,
     termination: RuleTermination,
-) -> Result<R, ParseError<'i, Error>>
+) -> Result<R, ParseError<'i, CssError>>
 where
-    P: AtRuleParser<'i, AtRule = R, Error = Error>,
+    P: AtRuleParser<'i, AtRule = R, Error = CssError>,
 {
     let name = match input.next_including_whitespace_and_comments()?.clone() {
         Token::AtKeyword(name) => name,
@@ -291,9 +297,9 @@ fn parse_qualified_selected<'i, 't, P, R>(
     recovery: &RecoveryState,
     start: &ParserState,
     end_of_input: bool,
-) -> Result<R, ParseError<'i, Error>>
+) -> Result<R, ParseError<'i, CssError>>
 where
-    P: QualifiedRuleParser<'i, QualifiedRule = R, Error = Error>,
+    P: QualifiedRuleParser<'i, QualifiedRule = R, Error = CssError>,
 {
     let prelude = input.parse_until_before(Delimiter::CurlyBracketBlock, |input| {
         QualifiedRuleParser::parse_prelude(parser, input)
@@ -318,31 +324,31 @@ where
 
 pub(super) fn arena_error(
     source: &str,
-    error: crate::CssComponentValueError,
-) -> crate::CssRecoveryDiagnostic {
+    error: crate::component::CssComponentValueError,
+) -> crate::diagnostic::CssRecoveryDiagnostic {
     component_error_diagnostic(
         source,
         error,
-        crate::CssSourceSpan::new(
-            crate::CssSourcePosition::from_byte_offset_in(source, 0),
-            crate::CssSourcePosition::from_byte_offset_in(source, source.len()),
+        crate::source::CssSourceSpan::new(
+            crate::source::CssSourcePosition::from_byte_offset_in(source, 0),
+            crate::source::CssSourcePosition::from_byte_offset_in(source, source.len()),
         )
         .expect("complete source span"),
-        crate::CssRecoveryAction::DropQualifiedRule,
+        crate::diagnostic::CssRecoveryAction::DropQualifiedRule,
     )
 }
 
 pub(super) fn component_error_diagnostic(
     source: &str,
-    error: crate::CssComponentValueError,
-    span: crate::CssSourceSpan,
-    ordinary_action: crate::CssRecoveryAction,
-) -> crate::CssRecoveryDiagnostic {
+    error: crate::component::CssComponentValueError,
+    span: crate::source::CssSourceSpan,
+    ordinary_action: crate::diagnostic::CssRecoveryAction,
+) -> crate::diagnostic::CssRecoveryDiagnostic {
     let position = match error.origin() {
-        crate::CssValueOrigin::Parsed(origin) => origin.span().start(),
-        _ => crate::CssSourcePosition::from_byte_offset_in(source, 0),
+        crate::component::CssValueOrigin::Parsed(origin) => origin.span().start(),
+        _ => crate::source::CssSourcePosition::from_byte_offset_in(source, 0),
     };
-    let parsed = crate::error::invalid_component_value(
+    let parsed = crate::diagnostic::error::invalid_component_value(
         cssparser::SourceLocation {
             line: position.line().value(),
             column: position.column().value() + 1,
@@ -350,7 +356,7 @@ pub(super) fn component_error_diagnostic(
         error,
     );
     let action = recovery_action_for_error(&parsed, ordinary_action);
-    crate::CssRecoveryDiagnostic::new(from_parse_error(source, parsed), span, action)
+    crate::diagnostic::CssRecoveryDiagnostic::new(from_parse_error(source, parsed), span, action)
         .expect("arena failure belongs to this source")
 }
 
@@ -361,8 +367,8 @@ pub(super) fn rejected_at_rule_error<'i>(
     source: &str,
     recovery: &RecoveryState,
     rejected_start: Option<usize>,
-    mut error: ParseError<'i, Error>,
-) -> ParseError<'i, Error> {
+    mut error: ParseError<'i, CssError>,
+) -> ParseError<'i, CssError> {
     if !matches!(
         &error.kind,
         cssparser::ParseErrorKind::Basic(cssparser::BasicParseErrorKind::UnexpectedToken(
@@ -402,7 +408,7 @@ pub(super) fn retain_statement_eof(
     source: &str,
     recovery: &RecoveryState,
     start: &ParserState,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
 ) {
     let document = recovery
         .syntax_document(source)
@@ -421,16 +427,19 @@ pub(super) fn retain_statement_eof(
             .source
             .expect("source statement EOF has a bounded source point")
             .offset;
-        let span = crate::CssSourceSpan::new(
-            crate::CssSourcePosition::from_byte_offset_in(source, start.position().byte_index()),
-            crate::CssSourcePosition::from_byte_offset_in(source, end),
+        let span = crate::source::CssSourceSpan::new(
+            crate::source::CssSourcePosition::from_byte_offset_in(
+                source,
+                start.position().byte_index(),
+            ),
+            crate::source::CssSourcePosition::from_byte_offset_in(source, end),
         )
         .expect("source statement range");
         diagnostics.push(
-            crate::CssRecoveryDiagnostic::new(
-                crate::error::unterminated_at_rule(source, error_end),
+            crate::diagnostic::CssRecoveryDiagnostic::new(
+                crate::diagnostic::error::unterminated_at_rule(source, error_end),
                 span,
-                crate::CssRecoveryAction::RetainNonconformingRule,
+                crate::diagnostic::CssRecoveryAction::RetainNonconformingRule,
             )
             .expect("statement EOF lies within its source unit"),
         );

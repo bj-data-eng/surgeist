@@ -8,10 +8,15 @@ use crate::css::support::admitted_selector as parsed;
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, nth_coefficients as coefficients,
 };
-use surgeist_css::{
-    CssComponentValueRef, CssNamespaceContext, CssNthAnPlusB, CssNthPattern, CssNumericTokenKind,
-    CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction, CssRule, CssSelector,
-    CssStyleSelector, CssValueTokenRef, parse_component_values, parse_selector, parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssNumericTokenKind, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceContext, CssNthAnPlusB, CssNthPattern, CssPseudoClass, CssPseudoSelectorListItem,
+    CssSelector, CssStyleSelector,
 };
 
 fn pattern(selector: &CssSelector) -> CssNthPattern {
@@ -29,7 +34,7 @@ fn assert_pattern(argument: &str, expected: (i32, i32), canonical: &str) {
     let selector = parsed(&source);
     assert_eq!(coefficients(pattern(&selector)), expected, "{source}");
     let before = selector.clone();
-    let output = selector.to_specified_css().unwrap();
+    let output = selector.serialize_specified(Default::default()).unwrap();
     assert_eq!(output, format!(":nth-child({canonical})"), "{source}");
     assert_eq!(
         selector, before,
@@ -45,7 +50,11 @@ fn assert_pattern(argument: &str, expected: (i32, i32), canonical: &str) {
 fn assert_rejected(source: &str) {
     assert_selector_input_rejected(
         source,
-        parse_selector(source, &CssNamespaceContext::default()),
+        CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        ),
     );
 }
 
@@ -132,7 +141,7 @@ fn lexical_integer_flag_and_source_sign_remain_distinct_from_numeric_value() {
         ("2.0", CssNumericTokenKind::Number, false, None),
         ("2e0", CssNumericTokenKind::Number, false, None),
     ] {
-        let components = parse_component_values(source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let [component] = components.items() else {
             panic!("one lexical token: {source}");
         };
@@ -230,7 +239,7 @@ fn typed_coefficients_cover_every_canonical_output_branch_and_i32_endpoint() {
             CssNthAnPlusB::new(a, b),
         )));
         let before = selector.clone();
-        let output = selector.to_specified_css().unwrap();
+        let output = selector.serialize_specified(Default::default()).unwrap();
         assert_eq!(output, format!(":nth-of-type({canonical})"));
         assert_eq!(selector, before);
         assert_eq!(coefficients(pattern(&parsed(&output))), (a, b));
@@ -334,7 +343,7 @@ fn all_nth_wrappers_keep_coefficients_and_only_child_wrappers_admit_of_lists() {
         let selector = parsed(&format!(":{name}(-2n + 3)"));
         assert_eq!(coefficients(pattern(&selector)), (-2, 3));
         assert_eq!(
-            selector.to_specified_css().unwrap(),
+            selector.serialize_specified(Default::default()).unwrap(),
             format!(":{name}(-2n+3)")
         );
     }
@@ -358,7 +367,7 @@ fn all_nth_wrappers_keep_coefficients_and_only_child_wrappers_admit_of_lists() {
         assert_eq!(first, &CssSelector::Class("a".into()));
         assert_eq!(second, &CssSelector::Key("b".into()));
         assert_eq!(
-            selector.to_specified_css().unwrap(),
+            selector.serialize_specified(Default::default()).unwrap(),
             format!(":{name}(2n+1 of .a, #b)")
         );
     }
@@ -368,7 +377,7 @@ fn all_nth_wrappers_keep_coefficients_and_only_child_wrappers_admit_of_lists() {
 fn invalid_nth_outer_rule_drops_locally_and_preserves_a_later_sibling() {
     for argument in ["+ n", "n + -2", "2.0n", "n + 2 garbage"] {
         let source = format!(":nth-child({argument}){{}} .after{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean(), "{source}: {report:?}");
         assert!(
             report
@@ -383,6 +392,9 @@ fn invalid_nth_outer_rule_drops_locally_and_preserves_a_later_sibling() {
         let [CssStyleSelector::Selector(selector)] = rule.selectors().selectors() else {
             panic!("one retained later selector");
         };
-        assert_eq!(selector.to_specified_css().unwrap(), ".after");
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            ".after"
+        );
     }
 }

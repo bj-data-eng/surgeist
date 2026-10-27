@@ -4,8 +4,29 @@
 //! https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#serialization
 
 use crate::css::support::checked_color as color;
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_calculation_rejected;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssAngleUnit, CssCalculation, CssCalculationType, CssNumber,
+    CssNumeric, CssNumericLiteral, CssZeroLiteral,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::effects::{CssFilter, CssFilterFunction, CssFilterHueRotate};
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop, CssImageOrientation,
+    CssImageValue, CssImageValueList, CssLinearGradient, CssLinearGradientDirection,
+};
+use surgeist_css::values::transform::{
+    CssTransform, CssTransformFunction, CssTransformFunctionKind, CssTransformRotate3d,
+    CssTransformSkew,
+};
 
 fn zero_angle() -> CssAngleOrZero {
     CssAngleOrZero::Zero(
@@ -14,23 +35,30 @@ fn zero_angle() -> CssAngleOrZero {
 }
 
 fn angle(value: f32, unit: CssAngleUnit) -> CssAngleOrZero {
-    CssAngleOrZero::Angle(CssAngleValue::from_literal(
-        CssAngleLiteral::try_new(&value.to_string(), unit).unwrap(),
-    ))
-}
-
-fn angle_math(text: &str) -> CssAngleOrZero {
     CssAngleOrZero::Angle(
-        CssAngleValue::try_from_calculation(
-            CssAngleCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap(),
+        CssNumeric::<CssAngle>::try_from_literal(
+            CssNumericLiteral::<CssAngle>::try_new(&value.to_string(), unit).unwrap(),
         )
         .unwrap(),
     )
 }
 
-fn number(text: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_component(CssComponentValue::try_number(text).unwrap()).unwrap()
+fn angle_math(text: &str) -> CssAngleOrZero {
+    CssAngleOrZero::Angle(
+        CssNumeric::<CssAngle>::try_from_calculation(
+            CssCalculation::<CssAngle>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
+        )
+        .unwrap(),
+    )
+}
+
+fn number(text: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_number(text).unwrap())
+        .unwrap()
 }
 
 fn gradient(angle: CssAngleOrZero) -> CssGradient {
@@ -58,7 +86,7 @@ fn parsed_context_angles(text: &str) -> Vec<CssAngleOrZero> {
     if text != "0" {
         source.push_str(&format!("; image-orientation: {text} flip"));
     }
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), if text == "0" { 4 } else { 5 });
     report
@@ -94,14 +122,14 @@ fn parsed_context_angles(text: &str) -> Vec<CssAngleOrZero> {
                     angle.angle().clone()
                 }
                 CssKnownPropertyValueRef::ImageOrientation(wrapper) => {
-                    let CssImageOrientation::Flip(Some(angle)) = wrapper.orientation() else {
+                    let CssImageOrientation::Flip(Some(angle)) = wrapper.value() else {
                         panic!("flipped orientation")
                     };
                     CssAngleOrZero::Angle(angle.clone())
                 }
                 CssKnownPropertyValueRef::BackgroundImage(wrapper) => {
                     let [CssImageValue::Gradient(CssGradient::Linear(linear))] =
-                        wrapper.images().images()
+                        wrapper.value().images()
                     else {
                         panic!("one linear gradient")
                     };
@@ -161,11 +189,10 @@ fn one_shared_angle_retains_four_literal_units_and_exact_coefficients() {
         assert_eq!(value.numeric().representation(), "-0.25");
         assert_eq!(value.unit(), unit);
         for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            assert_eq!(
-                CssAngleLiteral::try_new(&invalid.to_string(), unit)
+            assert!(
+                CssNumericLiteral::<CssAngle>::try_new(&invalid.to_string(), unit)
                     .unwrap_err()
-                    .kind(),
-                surgeist_css::CssComponentValueErrorKind::InvalidDimension
+                    .is_invalid_dimension()
             );
         }
     }
@@ -187,8 +214,12 @@ fn shared_angle_constructs_transform_axis_and_skew_roles_without_omission_loss()
     assert!(
         matches!(rotation.angle(), CssAngleOrZero::Angle(value) if value.literal().is_some_and(|literal| literal.numeric().representation() == "45" && literal.unit() == CssAngleUnit::Degrees))
     );
-    let CssComponentValueRef::Token(CssValueTokenRef::Number(axis)) =
-        rotation.x().literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Number(axis)) = rotation
+        .x()
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("number axis")
     };
@@ -264,8 +295,10 @@ fn shared_angle_constructs_filter_gradient_and_orientation_outer_contexts() {
     assert!(
         matches!(CssImageOrientation::Flip(Some(shared)), CssImageOrientation::Flip(Some(value)) if value.literal().is_some_and(|literal| literal.numeric().representation() == "-0.25"))
     );
-    let strict_zero =
-        CssAngleValue::from_literal(CssAngleLiteral::try_new("0", CssAngleUnit::Degrees).unwrap());
+    let strict_zero = CssNumeric::<CssAngle>::try_from_literal(
+        CssNumericLiteral::<CssAngle>::try_new("0", CssAngleUnit::Degrees).unwrap(),
+    )
+    .unwrap();
     assert_ne!(
         CssImageOrientation::FromImage,
         CssImageOrientation::Angle(strict_zero.clone())
@@ -277,7 +310,7 @@ fn shared_angle_constructs_filter_gradient_and_orientation_outer_contexts() {
 }
 
 #[test]
-fn shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality() {
+fn shared_angle_math_equality_ignores_raw_provenance() {
     let first = angle_math("calc(25deg + 5deg)");
     let second = angle_math("  calc(25deg + 5deg)");
     let CssAngleOrZero::Angle(angle) = &first else {
@@ -286,33 +319,33 @@ fn shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality() {
     let value = angle.calculation().expect("calculation");
     assert!(
         (value.result_type()) == (CssCalculationType::Angle),
-        "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
+        "shared_angle_math_equality_ignores_raw_provenance: direct equality contract"
     );
     let CssValueOrigin::Parsed(origin) = value.origin() else {
         panic!("parsed calculation origin")
     };
     assert!(
         (origin.source().as_str()) == ("calc(25deg + 5deg)"),
-        "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
+        "shared_angle_math_equality_ignores_raw_provenance: direct equality contract"
     );
     assert!(
-        (first) != (second),
-        "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
+        (first) == (second),
+        "shared_angle_math_equality_ignores_raw_provenance: direct equality contract"
     );
     assert!(
         (CssTransformFunction::Rotate(first.clone()))
             == (CssTransformFunction::Rotate(second.clone())),
-        "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
+        "shared_angle_math_equality_ignores_raw_provenance: direct equality contract"
     );
     assert!(
         (CssFilterFunction::HueRotate(CssFilterHueRotate::new(first.clone())))
             == (CssFilterFunction::HueRotate(CssFilterHueRotate::new(second.clone()))),
-        "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
+        "shared_angle_math_equality_ignores_raw_provenance: direct equality contract"
     );
     assert!(
         (CssLinearGradientDirection::Angle(first.clone()))
             == (CssLinearGradientDirection::Angle(second.clone())),
-        "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
+        "shared_angle_math_equality_ignores_raw_provenance: direct equality contract"
     );
     let CssAngleOrZero::Angle(first) = first else {
         panic!("angle")
@@ -322,12 +355,15 @@ fn shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality() {
     };
     assert!(
         (CssImageOrientation::Angle(first)) == (CssImageOrientation::Angle(second)),
-        "shared_angle_math_retains_raw_provenance_and_semantic_aggregate_equality: direct equality contract"
+        "shared_angle_math_equality_ignores_raw_provenance: direct equality contract"
     );
     for source in ["calc(1px)", "calc(1%)"] {
         assert_calculation_rejected(
-            CssAngleCalculation::try_from_components(parse_component_values(source).unwrap()),
-            Some(surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch),
+            CssCalculation::<CssAngle>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default(),
+            ),
+            Some(NumericFailure::RootDomainMismatch),
         );
     }
 }
@@ -340,12 +376,16 @@ fn gradient_serializer_omits_only_authored_literal_default_directions() {
         (0.5, CssAngleUnit::Turns),
     ] {
         assert_eq!(
-            gradient(angle(value, unit)).serialize_specified().unwrap(),
+            gradient(angle(value, unit))
+                .serialize_specified(Default::default())
+                .unwrap(),
             "linear-gradient(red, blue)"
         );
     }
     assert_eq!(
-        gradient(zero_angle()).serialize_specified().unwrap(),
+        gradient(zero_angle())
+            .serialize_specified(Default::default())
+            .unwrap(),
         "linear-gradient(0, red, blue)"
     );
     let radians = angle(std::f32::consts::PI, CssAngleUnit::Radians);
@@ -358,18 +398,20 @@ fn gradient_serializer_omits_only_authored_literal_default_directions() {
     );
     assert_eq!(value.literal().unwrap().unit(), CssAngleUnit::Radians);
     assert_eq!(
-        gradient(radians).serialize_specified().unwrap(),
+        gradient(radians)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "linear-gradient(3.141593rad, red, blue)"
     );
     assert_eq!(
         gradient(angle_math("calc(180deg)"))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "linear-gradient(calc(180deg), red, blue)"
     );
     assert_eq!(
         gradient(angle_math("calc(90deg + 5deg)"))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "linear-gradient(calc(95deg), red, blue)"
     );
@@ -386,42 +428,31 @@ fn omitted_shared_angle_counts_with_sibling_images_under_cumulative_limits() {
     // + two (stop 1 + named color 1) + sibling none 1 = 10.
     let expected = "linear-gradient(red, blue), none";
     assert_eq!(
-        list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            10,
-            10,
-            expected.len()
-        ))
-        .unwrap(),
+        list.serialize_specified(CssSerializationLimits::new(10, 10, expected.len()))
+            .unwrap(),
         expected
     );
     for (input, projection, bytes, kind) in [
-        (
-            9,
-            10,
-            expected.len(),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
+        (9, 10, expected.len(), SerializationFailure::InputNodeLimit),
         (
             10,
             9,
             expected.len(),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
-        (
-            10,
-            10,
-            expected.len() - 1,
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
-        ),
+        (10, 10, expected.len() - 1, SerializationFailure::ByteLimit),
     ] {
         assert_eq!(
-            list.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                input, projection, bytes
-            ))
-            .unwrap_err()
-            .kind(),
+            serialization_failure(
+                &list
+                    .serialize_specified(CssSerializationLimits::new(input, projection, bytes))
+                    .unwrap_err()
+            ),
             kind
         );
     }
-    assert_eq!(list.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        list.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }

@@ -2,8 +2,21 @@
 //! Expectations follow the pinned 2021-12-09 CR §§2–3 and the selected Color 4/5
 //! specified serialization policy; platform scrollbar rendering remains downstream.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssNamedColor, CssSystemColor};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::ui::{CssScrollbarColor, CssScrollbarWidth};
 
 fn color(text: &str) -> CssColor {
     let source = declaration(&format!("color:{text}"));
@@ -28,19 +41,28 @@ fn checked_auto_and_exact_pair_keep_distinct_ordered_roles() {
     let auto = CssScrollbarColor::auto();
     assert_eq!(auto.thumb(), None);
     assert_eq!(auto.track(), None);
-    assert_eq!(auto.serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        auto.serialize_specified(Default::default()).unwrap(),
+        "auto"
+    );
 
     let red = CssColor::from_named(CssNamedColor::try_new("RED").unwrap());
     let blue = CssColor::from_named(CssNamedColor::try_new("BLUE").unwrap());
     let pair = CssScrollbarColor::new(red.clone(), blue.clone());
     assert_eq!(pair.thumb(), Some(&red));
     assert_eq!(pair.track(), Some(&blue));
-    assert_eq!(pair.serialize_specified().unwrap(), "red blue");
+    assert_eq!(
+        pair.serialize_specified(Default::default()).unwrap(),
+        "red blue"
+    );
     assert_ne!(pair, CssScrollbarColor::new(blue, red));
     assert_ne!(auto, pair);
 
     let same = CssScrollbarColor::new(color("red"), color("red"));
-    assert_eq!(same.serialize_specified().unwrap(), "red red");
+    assert_eq!(
+        same.serialize_specified(Default::default()).unwrap(),
+        "red red"
+    );
 }
 
 #[test]
@@ -63,7 +85,11 @@ fn parsed_pair_roles_and_canonical_text_preserve_contextual_graphs_and_sources()
         let original = source.value_components().clone();
         let value = scrollbar_color(&source);
         let snapshot = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{authored}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{authored}"
+        );
         assert_eq!(value, &snapshot);
         assert_eq!(source.value_components(), &original);
         assert_eq!(source.importance(), CssImportance::Important);
@@ -73,8 +99,11 @@ fn parsed_pair_roles_and_canonical_text_preserve_contextual_graphs_and_sources()
                 .iter()
                 .all(|item| { !matches!(item.origin(), CssValueOrigin::Programmatic) })
         );
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ScrollbarColor),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::ScrollbarColor,
+            )),
             original.clone(),
             CssImportance::Important,
         )
@@ -96,7 +125,7 @@ fn parsed_pair_roles_and_canonical_text_preserve_contextual_graphs_and_sources()
 
 #[test]
 fn width_keywords_and_auto_have_exact_root_resource_boundaries() {
-    let exact = CssSpecifiedValueSerializationLimits::new(1, 1, 4);
+    let exact = CssSerializationLimits::new(1, 1, 4);
     for (authored, expected, keyword) in [
         ("AUTO", "auto", CssScrollbarWidth::Auto),
         (r"th\69 n", "thin", CssScrollbarWidth::Thin),
@@ -109,44 +138,42 @@ fn width_keywords_and_auto_have_exact_root_resource_boundaries() {
             panic!("typed scrollbar width")
         };
         assert_eq!(value.value(), &keyword);
-        assert_eq!(keyword.serialize_specified().unwrap(), expected);
         assert_eq!(
-            keyword.serialize_specified_with_limits(exact).unwrap(),
+            keyword.serialize_specified(Default::default()).unwrap(),
             expected
         );
+        assert_eq!(keyword.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, 4),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, 4),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, 4),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, 4),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, 3),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, 3),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                keyword
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&keyword.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(
-                CssScrollbarColor::auto()
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(
+                    &CssScrollbarColor::auto()
+                        .serialize_specified(limits)
+                        .unwrap_err()
+                ),
                 kind
             );
         }
     }
     assert_eq!(
         CssScrollbarColor::auto()
-            .serialize_specified_with_limits(exact)
+            .serialize_specified(exact)
             .unwrap(),
         "auto"
     );
@@ -158,37 +185,29 @@ fn pair_serialization_limits_accumulate_through_the_track_and_fail_atomically() 
     let original = source.value_components().clone();
     let pair = scrollbar_color(&source);
     let snapshot = pair.clone();
-    let exact = CssSpecifiedValueSerializationLimits::new(3, 3, 8);
-    assert_eq!(
-        pair.serialize_specified_with_limits(exact).unwrap(),
-        "red blue"
-    );
+    let exact = CssSerializationLimits::new(3, 3, 8);
+    assert_eq!(pair.serialize_specified(exact).unwrap(), "red blue");
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 8),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(2, 3, 8),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 8),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(3, 2, 8),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 7),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(3, 3, 7),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            pair.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&pair.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(pair, &snapshot);
         assert_eq!(source.value_components(), &original);
-        assert_eq!(
-            pair.serialize_specified_with_limits(exact).unwrap(),
-            "red blue"
-        );
+        assert_eq!(pair.serialize_specified(exact).unwrap(), "red blue");
     }
 }
 
@@ -199,70 +218,74 @@ fn nested_track_colors_share_the_whole_pair_node_budget() {
         color("light-dark(red, blue)"),
     );
     let expected = "light-dark(red, blue) light-dark(red, blue)";
-    let exact = CssSpecifiedValueSerializationLimits::new(7, 7, 43);
-    assert_eq!(
-        pair.serialize_specified_with_limits(exact).unwrap(),
-        expected
-    );
+    let exact = CssSerializationLimits::new(7, 7, 43);
+    assert_eq!(pair.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(6, 7, 43),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(6, 7, 43),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(7, 6, 43),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(7, 6, 43),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(7, 7, 42),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(7, 7, 42),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            pair.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&pair.serialize_specified(limits).unwrap_err()),
             kind
         );
-        assert_eq!(pair.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            pair.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
 #[test]
 fn checked_invalid_track_reports_its_original_mixed_source_token() {
-    let thumb = parse_component_values("red").unwrap();
-    let track = parse_component_values("not-a-color").unwrap();
+    let thumb = CssComponentValues::parse(&CssParser::default(), "red").unwrap();
+    let track = CssComponentValues::parse(&CssParser::default(), "not-a-color").unwrap();
     let original_track = track.items()[0].origin().clone();
-    let components =
-        CssComponentValues::try_new(vec![thumb.items()[0].clone(), track.items()[0].clone()])
-            .unwrap();
+    let components = CssComponentValues::try_new(
+        vec![thumb.items()[0].clone(), track.items()[0].clone()],
+        Default::default(),
+    )
+    .unwrap();
     let snapshot = components.clone();
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ScrollbarColor),
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ScrollbarColor)),
         components.clone(),
         CssImportance::Important,
     )
     .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
-    assert_eq!(error.origin(), &CssSerializedOrigin::Token(original_track));
+    assert!(error.code().is_some());
+    assert_eq!(error.origin(), CssSerializedOrigin::Token(original_track));
     assert_eq!(components, snapshot);
-    let valid = CssComponentValues::try_new(vec![
-        thumb.items()[0].clone(),
-        CssComponentValue::try_ident("blue").unwrap(),
-    ])
+    let valid = CssComponentValues::try_new(
+        vec![
+            thumb.items()[0].clone(),
+            CssComponentValue::try_ident("blue").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ScrollbarColor),
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ScrollbarColor)),
         valid.clone(),
         CssImportance::Important,
     )
     .unwrap();
     assert_eq!(checked.value_components(), &valid);
     assert_eq!(
-        scrollbar_color(&checked).serialize_specified().unwrap(),
+        scrollbar_color(&checked)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "red blue"
     );
 }

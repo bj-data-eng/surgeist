@@ -11,19 +11,32 @@ use crate::css::support::{
     authored_checked_declaration as checked, authored_parsed_declaration as parsed,
     known_property as property,
 };
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssCalculation, CssLength, CssNumeric};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssLonghandContributions, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 use crate::css::support::authored_property;
 use crate::css::support::check_named_components as checked_components;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::invalid_named_value as invalid;
 use crate::css::support::named_property::named_fronts as fronts;
 use crate::css::support::serialization_limits::LimitLadder;
 use authored_property::assert_source;
 
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("completed intrinsic contribution")
     };
@@ -37,7 +50,7 @@ fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
 }
 fn canonical(source: &CssDeclaration, name: &str, text: &str) {
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         format!("{name}: {text} !important;")
     );
 }
@@ -94,7 +107,7 @@ fn programmatic_components_preserve_origin_identity_and_importance_at_both_check
         } else {
             CssComponentValue::try_ident(text).unwrap()
         };
-        let components = CssComponentValues::try_new(vec![value]).unwrap();
+        let components = CssComponentValues::try_new(vec![value], Default::default()).unwrap();
         for grammar in [false, true] {
             let source = checked_components(name, components.clone(), grammar).unwrap();
             assert_eq!(source.value_components(), &components);
@@ -124,19 +137,9 @@ fn intrinsic_initials_and_inheritance_equal_authored_terminal_values_without_fab
             panic!("ordinary initial")
         };
         assert_eq!(value.property().known_property(), p);
-        // Numeric equality includes origin. Compare the zero initial against
-        // an exact programmatic zero; a parsed zero has distinct provenance.
-        let declaration = if name == "line-padding" {
-            checked_components(
-                name,
-                CssComponentValues::try_new(vec![CssComponentValue::try_number("0").unwrap()])
-                    .unwrap(),
-                true,
-            )
-            .unwrap()
-        } else {
-            checked(name, text, true)
-        };
+        // Numeric equality ignores origin, so the parsed zero equals the
+        // programmatic initial.
+        let declaration = checked(name, text, true);
         let values = contributions(&declaration);
         assert_eq!(values.items()[0].ordinary_value(), Some(value));
     }
@@ -148,12 +151,12 @@ fn normalization_counts_complete_terminals_and_pending_occurrences_cumulatively(
             "@media screen{{.a{{{name}:{}!important;{name}:var(--text);{name}:unset!important;color:red}}}}",
             ordinary_cases(name)[0]
         );
-        let report = parse_sheet(&css);
+        let report = CssParser::default().parse_sheet(&css);
         assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
         let before = report.clone();
         let count = terminals(name).len() * 2 + 2;
         let exact = CssNormalizationLimits::try_new(1, 2, 4, count).unwrap();
-        let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+        let normalized = report.syntax().normalize(exact).unwrap();
         let declarations: Vec<_> = normalized
             .items()
             .iter()
@@ -233,11 +236,8 @@ fn normalization_counts_complete_terminals_and_pending_occurrences_cumulatively(
             ),
         ] {
             for _ in 0..2 {
-                let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-                assert_eq!(
-                    error.kind(),
-                    &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-                );
+                let error = report.syntax().normalize(limits).unwrap_err();
+                assert_eq!(error.exhausted_limit(), Some((resource, limit)));
                 assert_eq!(error.declaration_order(), Some(3));
                 assert!(
                     error
@@ -248,14 +248,14 @@ fn normalization_counts_complete_terminals_and_pending_occurrences_cumulatively(
             }
         }
         assert_eq!(report, before);
-        assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+        assert!(report.syntax().normalize(exact).is_ok());
     }
 }
 fn declaration_limits(name: &str, text: &str, nodes: usize) {
     for source in [parsed(name, text), checked(name, text, true)] {
         let expected = format!("{name}: {text} !important;");
         LimitLadder::new(&expected, nodes + 2, nodes + 2)
-            .assert_unchanged(&source, CssDeclaration::to_specified_css_with_limits);
+            .assert_unchanged(&source, CssDeclaration::serialize_specified);
     }
 }
 #[test]
@@ -267,7 +267,7 @@ fn every_emitted_keyword_and_literal_charges_exact_declaration_work_and_utf8_byt
     }
 }
 fn sheet_limits(input: &str, expected: &str, nodes: usize) {
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     // Each rule fits separately; exhaustion only comes from cumulative use.
     LimitLadder::new(expected, nodes, nodes).assert_cumulative_sheet(report.syntax(), 1);
@@ -734,31 +734,39 @@ fn decoded_keywords_comments_and_case_preserve_original_authorship_and_canonical
 }
 #[test]
 fn spacing_projection_does_not_reset_white_space_letter_word_or_justify_siblings() {
-    let report = parse_style_attribute(
-        "white-space:pre;word-spacing:2px;letter-spacing:3px;text-justify:distribute;text-spacing:none!important;color:red",
-    );
+    let report = CssParser::default().parse_block_contents("white-space:pre;word-spacing:2px;letter-spacing:3px;text-justify:distribute;text-spacing:none!important;color:red");
     assert!(report.is_clean());
     assert_eq!(report.syntax().len(), 6);
     let source = &report.syntax()[4];
     projected(source, ["space-all", "no-autospace"]);
     assert_eq!(
-        report.syntax()[0].to_specified_css().unwrap(),
+        report.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "white-space: pre;"
     );
     assert_eq!(
-        report.syntax()[1].to_specified_css().unwrap(),
+        report.syntax()[1]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "word-spacing: 2px;"
     );
     assert_eq!(
-        report.syntax()[2].to_specified_css().unwrap(),
+        report.syntax()[2]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "letter-spacing: 3px;"
     );
     assert_eq!(
-        report.syntax()[3].to_specified_css().unwrap(),
+        report.syntax()[3]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "text-justify: distribute;"
     );
     assert_eq!(
-        report.syntax()[5].to_specified_css().unwrap(),
+        report.syntax()[5]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "color: red;"
     );
 }
@@ -780,8 +788,8 @@ fn sheet_siblings_share_exact_work_and_non_ascii_output_bytes_without_charging_h
 
 #[test]
 fn signed_length_provider_keeps_exact_source_and_bare_root_admission_with_atomic_limits() {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
+    use CssSerializationLimits as Limits;
     for (input, expected) in [
         ("0", "0"),
         ("-2PX", "-2px"),
@@ -789,7 +797,7 @@ fn signed_length_provider_keeps_exact_source_and_bare_root_admission_with_atomic
         ("1.25em", "1.25em"),
     ] {
         let text = format!("/*😀*/{input}");
-        let components = parse_component_values(&text).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
         let token = components
             .items()
             .iter()
@@ -802,15 +810,15 @@ fn signed_length_provider_keeps_exact_source_and_bare_root_admission_with_atomic
                 )
             })
             .unwrap();
-        let numeric = CssSpecifiedLength::try_from_component(token.clone()).unwrap();
+        let numeric = CssNumeric::<CssLength>::try_from_component(token.clone()).unwrap();
         assert_eq!(numeric.origin(), token.origin());
-        assert_eq!(numeric.literal_component(), Some(token));
+        assert_eq!(
+            numeric.literal().map(|literal| literal.component()),
+            Some(token)
+        );
         let before = numeric.clone();
         let exact = Limits::new(1, 1, expected.len());
-        assert_eq!(
-            numeric.serialize_specified_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(numeric.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (Limits::new(0, 1, expected.len()), Kind::InputNodeLimit),
             (Limits::new(1, 0, expected.len()), Kind::ProjectionNodeLimit),
@@ -818,25 +826,21 @@ fn signed_length_provider_keeps_exact_source_and_bare_root_admission_with_atomic
         ] {
             for _ in 0..2 {
                 assert_eq!(
-                    numeric
-                        .serialize_specified_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
+                    serialization_failure(&numeric.serialize_specified(limits).unwrap_err()),
                     kind
                 );
                 assert_eq!(numeric, before);
             }
         }
-        assert_eq!(
-            numeric.serialize_specified_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(numeric.serialize_specified(exact).unwrap(), expected);
     }
     for text in ["1", "-1", "1%"] {
-        let calculation =
-            CssLengthCalculation::try_from_components(parse_component_values(text).unwrap());
+        let calculation = CssCalculation::<CssLength>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+            Default::default(),
+        );
         if let Ok(calculation) = calculation {
-            assert!(CssSpecifiedLength::try_from_calculation(calculation).is_err());
+            assert!(CssNumeric::<CssLength>::try_from_calculation(calculation).is_err());
         }
     }
 }

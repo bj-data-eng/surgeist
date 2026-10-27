@@ -2,13 +2,14 @@
 
 //! Inspect ordered media operators, explicit grouping and original source positions.
 
-use surgeist_css::{
-    CssMediaCondition, CssMediaConditionKind, CssMediaFeatureKind, CssMediaFeatureQuery,
-    CssMediaQuery, parse_media_query,
+use surgeist_css::CssParser;
+use surgeist_css::query::media::{
+    CssMediaFeatureKind, CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery,
 };
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
-fn condition(source: &str) -> CssMediaCondition {
-    let report = parse_media_query(source);
+fn condition(source: &str) -> CssCondition<CssMediaLeaf> {
+    let report = CssMediaQuery::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssMediaQuery::Condition(value) = report.into_validation_result().unwrap() else {
         panic!("condition-only query expected");
@@ -16,7 +17,7 @@ fn condition(source: &str) -> CssMediaCondition {
     value
 }
 
-fn boolean(value: &CssMediaCondition, name: CssMediaFeatureKind, offset: usize) {
+fn boolean(value: &CssCondition<CssMediaLeaf>, name: CssMediaFeatureKind, offset: usize) {
     assert_eq!(
         value
             .position()
@@ -26,14 +27,14 @@ fn boolean(value: &CssMediaCondition, name: CssMediaFeatureKind, offset: usize) 
         offset
     );
     assert!(
-        matches!(value.kind(), CssMediaConditionKind::Feature(CssMediaFeatureQuery::Boolean(actual)) if *actual == name)
+        matches!(value.kind(), CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Boolean(actual))) if *actual == name)
     );
 }
 
 fn main() {
     let source = "/*😀*/ (not (color)) or ((monochrome) and (width))";
     let parsed = condition(source);
-    let CssMediaConditionKind::Or(or) = parsed.kind() else {
+    let CssConditionKind::Or(or) = parsed.kind() else {
         panic!("outer Or cannot become opaque");
     };
     let [left, right] = or.conditions() else {
@@ -46,7 +47,7 @@ fn main() {
             .value(),
         source.find("(not").unwrap()
     );
-    let CssMediaConditionKind::Parenthesized(negation) = left.kind() else {
+    let CssConditionKind::Parenthesized(negation) = left.kind() else {
         panic!("explicit left grouping");
     };
     assert_eq!(
@@ -57,7 +58,7 @@ fn main() {
             .value(),
         source.find("not ").unwrap()
     );
-    let CssMediaConditionKind::Not(color) = negation.kind() else {
+    let CssConditionKind::Not(color) = negation.kind() else {
         panic!("Not inside group");
     };
     boolean(
@@ -73,10 +74,10 @@ fn main() {
             .value(),
         source.find("((monochrome)").unwrap()
     );
-    let CssMediaConditionKind::Parenthesized(conjunction) = right.kind() else {
+    let CssConditionKind::Parenthesized(conjunction) = right.kind() else {
         panic!("right group");
     };
-    let CssMediaConditionKind::And(and) = conjunction.kind() else {
+    let CssConditionKind::And(and) = conjunction.kind() else {
         panic!("And inside group");
     };
     assert_eq!(
@@ -102,7 +103,7 @@ fn main() {
     );
 
     let source = "screen and ((color) or (monochrome))";
-    let report = parse_media_query(source);
+    let report = CssMediaQuery::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssMediaQuery::Typed(typed) = report.syntax() else {
         panic!("typed query");
@@ -116,7 +117,7 @@ fn main() {
             .value(),
         source.find("((color)").unwrap()
     );
-    let CssMediaConditionKind::Parenthesized(disjunction) = group.kind() else {
+    let CssConditionKind::Parenthesized(disjunction) = group.kind() else {
         panic!("typed grouped Or");
     };
     assert_eq!(
@@ -127,7 +128,7 @@ fn main() {
             .value(),
         source.find("(color)").unwrap()
     );
-    let CssMediaConditionKind::Or(or) = disjunction.kind() else {
+    let CssConditionKind::Or(or) = disjunction.kind() else {
         panic!("Or inside typed group");
     };
     let [color, monochrome] = or.conditions() else {

@@ -2,16 +2,20 @@ use crate::css::support::parse_report as common;
 
 use common::CssParseReportTestExt;
 
-use surgeist_css::{
-    CssDeclarationContextRef, CssErrorCode, CssKnownProperty, CssPseudoClass, CssPseudoElement,
-    CssPseudoElementSegment, CssRecoveryAction, CssRule, CssSelector, CssTokenKind, ErrorKind,
-    parse_sheet, parse_style_attribute,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{
+    CssDeclarationContextRef, CssErrorCode, CssRecoveryAction, CssTokenKind,
+};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssPseudoClass, CssPseudoElement, CssPseudoElementSegment, CssSelector,
 };
 
 #[test]
 fn invalid_core_font_value_has_exact_property_diagnostic_and_retains_its_sibling() {
     let source = "font-size: -1px; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     let [diagnostic] = report.diagnostics() else {
         panic!("negative font size must recover once");
@@ -23,10 +27,13 @@ fn invalid_core_font_value_has_exact_property_diagnostic_and_retains_its_sibling
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
     assert_eq!(diagnostic.span().end().byte_offset().value(), 16);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected property value error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::FontSize);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected property value error"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::FontSize);
     let encountered = detail.encountered().expect("responsible negative length");
     assert_eq!(encountered.kind(), CssTokenKind::Dimension);
     assert_eq!(encountered.authored(), "-1px");
@@ -35,7 +42,9 @@ fn invalid_core_font_value_has_exact_property_diagnostic_and_retains_its_sibling
         CssKnownProperty::Color,
     );
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects the recovered font size");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -47,7 +56,7 @@ fn counter_style_descriptor_value_and_combination_errors_preserve_typed_context(
         "@counter-style kept { system: additive; ",
         "additive-symbols: 10 X, 10 I; additive-symbols: 10 X, 1 I; }",
     );
-    let value_report = parse_sheet(value_source);
+    let value_report = CssParser::default().parse_sheet(value_source);
     assert!(matches!(
         value_report.syntax().rules(),
         [CssRule::CounterStyle(_)]
@@ -64,15 +73,18 @@ fn counter_style_descriptor_value_and_combination_errors_preserve_typed_context(
         value_diagnostic.error().position().byte_offset().value(),
         value_source.match_indices("10 I").next().unwrap().0
     );
-    let ErrorKind::InvalidDescriptorValue(value) = value_diagnostic.error().kind() else {
-        panic!("expected typed descriptor-value error")
-    };
-    assert_eq!(value.at_rule().as_str(), "counter-style");
-    assert_eq!(value.descriptor().as_str(), "additive-symbols");
+    let value = value_diagnostic.error();
+    assert_eq!(
+        value.code(),
+        CssErrorCode::InvalidDescriptorValue,
+        "expected typed descriptor-value error"
+    );
+    assert_eq!(value.at_rule().unwrap().as_str(), "counter-style");
+    assert_eq!(value.descriptor().unwrap().as_str(), "additive-symbols");
 
     let combination_source =
         "@counter-style inherited { system: extends decimal; symbols: x; } .after {}";
-    let combination_report = parse_sheet(combination_source);
+    let combination_report = CssParser::default().parse_sheet(combination_source);
     assert!(combination_report.is_clean());
     let [CssRule::CounterStyle(counter), CssRule::Style(_)] = combination_report.syntax().rules()
     else {
@@ -84,8 +96,8 @@ fn counter_style_descriptor_value_and_combination_errors_preserve_typed_context(
             .prospective()
             .unwrap()
             .definition_status(),
-        surgeist_css::CssCounterStyleDefinitionStatus::Undefined(
-            surgeist_css::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
+        surgeist_css::rule::counter_style::CssCounterStyleDefinitionStatus::Undefined(
+            surgeist_css::rule::counter_style::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
         )
     );
 }
@@ -104,7 +116,7 @@ fn invalid_selector_rules_preserve_valid_pseudo_element_suffixes_and_exact_diagn
         ".before {{ color: red; }} {} .after {{ color: blue; }}",
         rules.join(" ")
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
 
     let [
         CssRule::Style(before),
@@ -150,21 +162,27 @@ fn invalid_selector_rules_preserve_valid_pseudo_element_suffixes_and_exact_diagn
             diagnostic.span().end().byte_offset().value(),
             start + failure.len()
         );
-        let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-            panic!("expected selector error for {failure}")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "expected selector error for {failure}"
+        );
         assert_eq!(
             detail.production().expect("selector production").as_str(),
             "baseline.selector.complex"
         );
-        assert_eq!(detail.expectation().as_str(), "a supported selector");
+        assert_eq!(
+            detail.expectation().unwrap().as_str(),
+            "a supported selector"
+        );
     }
 }
 
 #[test]
 fn font_feature_list_separator_error_has_exact_identity_span_and_recovery() {
     let source = r#"font-feature-settings: "kern",, "liga" on; color: red"#;
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     let [diagnostic] = report.diagnostics() else {
         panic!("empty feature-list item must recover once");
@@ -185,10 +203,16 @@ fn font_feature_list_separator_error_has_exact_identity_span_and_recovery() {
         diagnostic.span().end().byte_offset().value(),
         declaration_end
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected property value error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::FontFeatureSettings);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected property value error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::FontFeatureSettings
+    );
     let encountered = detail.encountered().expect("responsible second comma");
     assert_eq!(encountered.kind(), CssTokenKind::Comma);
     assert_eq!(encountered.authored(), ",");
@@ -197,7 +221,9 @@ fn font_feature_list_separator_error_has_exact_identity_span_and_recovery() {
         CssKnownProperty::Color,
     );
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects the recovered empty list item");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -206,7 +232,7 @@ fn font_feature_list_separator_error_has_exact_identity_span_and_recovery() {
 #[test]
 fn duplicate_font_synthesis_component_has_exact_identity_span_and_recovery() {
     let source = "font-synthesis: weight weight; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     let [diagnostic] = report.diagnostics() else {
         panic!("duplicate synthesis component must recover once");
@@ -227,10 +253,16 @@ fn duplicate_font_synthesis_component_has_exact_identity_span_and_recovery() {
         diagnostic.span().end().byte_offset().value(),
         declaration_end
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected property value error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::FontSynthesis);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected property value error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::FontSynthesis
+    );
     let encountered = detail.encountered().expect("responsible duplicate keyword");
     assert_eq!(encountered.kind(), CssTokenKind::Ident);
     assert_eq!(encountered.authored(), "weight");
@@ -239,7 +271,9 @@ fn duplicate_font_synthesis_component_has_exact_identity_span_and_recovery() {
         CssKnownProperty::Color,
     );
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects duplicate synthesis components");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -248,7 +282,7 @@ fn duplicate_font_synthesis_component_has_exact_identity_span_and_recovery() {
 #[test]
 fn conflicting_font_variant_group_has_exact_identity_span_and_recovery() {
     let source = "font-variant-numeric: oldstyle-nums lining-nums; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     let [diagnostic] = report.diagnostics() else {
         panic!("conflicting numeric figure forms must recover once");
@@ -269,10 +303,16 @@ fn conflicting_font_variant_group_has_exact_identity_span_and_recovery() {
         diagnostic.span().end().byte_offset().value(),
         declaration_end
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected property value error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::FontVariantNumeric);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected property value error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::FontVariantNumeric
+    );
     let encountered = detail
         .encountered()
         .expect("responsible conflicting keyword");
@@ -283,7 +323,9 @@ fn conflicting_font_variant_group_has_exact_identity_span_and_recovery() {
         CssKnownProperty::Color,
     );
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects conflicting variant groups");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -292,17 +334,23 @@ fn conflicting_font_variant_group_has_exact_identity_span_and_recovery() {
 #[test]
 fn color_domain_failure_reports_the_responsible_component_and_retains_its_sibling() {
     let source = "color: hsl(20px 30% 40%); opacity: 0.5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     let [diagnostic] = report.diagnostics() else {
         panic!("invalid hue unit must recover once");
     };
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidColorSyntax);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-        panic!("expected structured color detail");
-    };
-    assert_eq!(detail.component().map(|value| value.as_str()), Some("hue"));
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "expected structured color detail"
+    );
+    assert_eq!(
+        detail.color_component().map(|value| value.as_str()),
+        Some("hue")
+    );
     assert_eq!(
         detail.encountered().unwrap().kind(),
         CssTokenKind::Dimension
@@ -313,7 +361,9 @@ fn color_domain_failure_reports_the_responsible_component_and_retains_its_siblin
         CssKnownProperty::Opacity
     );
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered hue unit error");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -322,18 +372,21 @@ fn color_domain_failure_reports_the_responsible_component_and_retains_its_siblin
 #[test]
 fn predefined_color_space_failure_reports_the_responsible_ident_and_retains_its_sibling() {
     let source = "color: color(unknown-space 1 2 3); opacity: 0.5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     let [diagnostic] = report.diagnostics() else {
         panic!("unknown predefined color space must recover once");
     };
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidColorSyntax);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-        panic!("expected structured color detail");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.component().map(|value| value.as_str()),
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "expected structured color detail"
+    );
+    assert_eq!(
+        detail.color_component().map(|value| value.as_str()),
         Some("color space")
     );
     let encountered = detail.encountered().expect("responsible profile name");
@@ -344,7 +397,9 @@ fn predefined_color_space_failure_reports_the_responsible_ident_and_retains_its_
         CssKnownProperty::Opacity
     );
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects unknown predefined color spaces");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -353,18 +408,21 @@ fn predefined_color_space_failure_reports_the_responsible_ident_and_retains_its_
 #[test]
 fn relative_color_environment_failure_reports_the_foreign_channel_and_recovers_once() {
     let source = "color: hwb(from red h s b); opacity: 0.5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     let [diagnostic] = report.diagnostics() else {
         panic!("foreign HWB channel must recover once");
     };
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidColorSyntax);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-        panic!("expected structured relative-color detail");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.component().map(|component| component.as_str()),
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "expected structured relative-color detail"
+    );
+    assert_eq!(
+        detail.color_component().map(|component| component.as_str()),
         Some("relative channel")
     );
     let encountered = detail.encountered().expect("responsible foreign channel");
@@ -375,7 +433,9 @@ fn relative_color_environment_failure_reports_the_foreign_channel_and_recovers_o
         CssKnownProperty::Opacity
     );
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects a foreign relative channel");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -384,18 +444,21 @@ fn relative_color_environment_failure_reports_the_foreign_channel_and_recovers_o
 #[test]
 fn color_mix_hue_method_failure_reports_the_responsible_token_and_retains_its_sibling() {
     let source = "color: color-mix(in srgb longer hue, red, blue); opacity: 0.5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     let [diagnostic] = report.diagnostics() else {
         panic!("rectangular-space hue method must recover once");
     };
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidColorSyntax);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-        panic!("expected structured color-mix detail");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.component().map(|component| component.as_str()),
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "expected structured color-mix detail"
+    );
+    assert_eq!(
+        detail.color_component().map(|component| component.as_str()),
         Some("hue interpolation"),
     );
     let encountered = detail.encountered().expect("responsible hue method");
@@ -406,7 +469,9 @@ fn color_mix_hue_method_failure_reports_the_responsible_token_and_retains_its_si
         CssKnownProperty::Opacity,
     );
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects rectangular-space hue methods");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -419,7 +484,7 @@ fn repeated_color_mix_failures_make_progress_and_preserve_later_siblings() {
         "background-color: color-mix(in lab shorter hue, red, blue); ",
         "opacity: 0.5",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(report.diagnostics().len(), 2);
     assert!(report.diagnostics().iter().all(|diagnostic| {
@@ -431,7 +496,9 @@ fn repeated_color_mix_failures_make_progress_and_preserve_later_siblings() {
         CssKnownProperty::Opacity,
     );
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects repeated invalid color-mix declarations");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -444,7 +511,7 @@ fn repeated_relative_color_failures_make_progress_and_preserve_later_siblings() 
         "background-color: color(from red xyz r y z); ",
         "opacity: 0.5",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(report.diagnostics().len(), 2);
     assert!(report.diagnostics().iter().all(|diagnostic| {
@@ -456,7 +523,9 @@ fn repeated_relative_color_failures_make_progress_and_preserve_later_siblings() 
         CssKnownProperty::Opacity
     );
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects repeated relative-color failures");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -470,7 +539,7 @@ fn transform_separator_and_domain_failures_report_exact_tokens_and_retain_siblin
         ("translate3d(1px, 2px, 3%)", "3%", CssTokenKind::Percentage),
     ] {
         let source = format!("transform: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         let [diagnostic] = report.diagnostics() else {
             panic!("{source}: expected one transform diagnostic");
@@ -511,10 +580,17 @@ fn transform_separator_and_domain_failures_report_exact_tokens_and_retain_siblin
             source.find(';').expect("declaration semicolon") + 1,
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-value root");
-        };
-        assert_eq!(detail.property(), CssKnownProperty::Transform, "{source}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-value root"
+        );
+        assert_eq!(
+            detail.known_property().unwrap(),
+            CssKnownProperty::Transform,
+            "{source}"
+        );
         let encountered = detail.encountered().expect("responsible transform token");
         assert_eq!(encountered.kind(), token_kind, "{source}");
         assert_eq!(encountered.authored(), responsible, "{source}");
@@ -527,7 +603,9 @@ fn transform_separator_and_domain_failures_report_exact_tokens_and_retain_siblin
             "{source}",
         );
         {
-            let failure = surgeist_css::validate_style_attribute(&source)
+            let failure = surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects recovered transform mutation");
             assert_eq!(failure.diagnostics(), report.diagnostics(), "{source}");
         }
@@ -541,7 +619,7 @@ fn repeated_transform_failures_make_progress_to_a_valid_sibling() {
         "transform: perspective(-1px); ",
         "transform: translateZ(10%); color: red",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.diagnostics().len(), 3);
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(
@@ -558,7 +636,9 @@ fn repeated_transform_failures_make_progress_to_a_valid_sibling() {
             .all(|diagnostic| diagnostic.action() == CssRecoveryAction::DropDeclaration)
     );
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects repeated recovered transforms");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -572,7 +652,7 @@ fn repeated_filter_failures_make_progress_to_valid_filter_and_color_siblings() {
         "filter: blur(1px, 2px); ",
         "filter: opacity(50%); color: red",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.diagnostics().len(), 3);
     assert_eq!(report.syntax().len(), 2);
     assert_eq!(
@@ -589,13 +669,18 @@ fn repeated_filter_failures_make_progress_to_valid_filter_and_color_siblings() {
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("expected filter property-value error");
-        };
-        assert_eq!(detail.property(), CssKnownProperty::Filter);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "expected filter property-value error"
+        );
+        assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Filter);
     }
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered filter mutations");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -610,7 +695,7 @@ fn repeated_opacity_domain_failures_make_progress_to_a_valid_sibling() {
         "opacity: calc(1% + 2); ",
         "color: red",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.diagnostics().len(), 3);
     assert_eq!(report.syntax().len(), 2);
     // The original large decimal is finite; only the following bare math
@@ -632,14 +717,19 @@ fn repeated_opacity_domain_failures_make_progress_to_a_valid_sibling() {
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("expected opacity property-value error");
-        };
-        assert_eq!(detail.property(), CssKnownProperty::Opacity);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "expected opacity property-value error"
+        );
+        assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Opacity);
         assert!(detail.encountered().is_some());
     }
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered opacity mutations");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -656,7 +746,7 @@ fn basic_shape_failures_report_clip_path_and_retain_valid_siblings() {
         ("polygon(0 0, 100%)", ")", CssTokenKind::CloseParenthesis),
     ] {
         let source = format!("clip-path: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -671,15 +761,24 @@ fn basic_shape_failures_report_clip_path_and_retain_valid_siblings() {
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-value detail");
-        };
-        assert_eq!(detail.property(), CssKnownProperty::ClipPath, "{source}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-value detail"
+        );
+        assert_eq!(
+            detail.known_property().unwrap(),
+            CssKnownProperty::ClipPath,
+            "{source}"
+        );
         let encountered = detail.encountered().expect("responsible shape token");
         assert_eq!(encountered.kind(), token_kind, "{source}");
         assert_eq!(encountered.authored(), responsible, "{source}");
         {
-            let failure = surgeist_css::validate_style_attribute(&source)
+            let failure = surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects invalid basic shape");
             assert_eq!(failure.diagnostics(), report.diagnostics(), "{source}");
         }
@@ -688,30 +787,35 @@ fn basic_shape_failures_report_clip_path_and_retain_valid_siblings() {
 
 #[test]
 fn unknown_at_rules_remain_distinct_from_supported_conditional_rules() {
-    let unknown = parse_sheet("@not-a-css-rule;").expect_err("unknown at-rule must fail");
+    let unknown = CssParser::default()
+        .parse_sheet("@not-a-css-rule;")
+        .expect_err("unknown at-rule must fail");
     assert_eq!(unknown.code(), CssErrorCode::UnknownAtRule);
-    match unknown.kind() {
-        ErrorKind::UnknownAtRule(detail) => {
-            assert_eq!(detail.name().as_str(), "not-a-css-rule");
+    match unknown.code() {
+        CssErrorCode::UnknownAtRule => {
+            let detail = &unknown;
+            assert_eq!(detail.at_rule().unwrap().as_str(), "not-a-css-rule");
         }
         _ => panic!("unexpected error root"),
     }
 
-    let supports = parse_sheet("@supports (display: grid) {}");
+    let supports = CssParser::default().parse_sheet("@supports (display: grid) {}");
     assert!(supports.is_clean(), "{:?}", supports.diagnostics());
     assert!(matches!(supports.syntax().rules(), [CssRule::Supports(_)]));
 }
 
 #[test]
 fn error_at_rule_placement_exposes_expected_context() {
-    let placement =
-        parse_sheet(".x { width: 1px; } @import 'x.css';").expect_err("late import must fail");
+    let placement = CssParser::default()
+        .parse_sheet(".x { width: 1px; } @import 'x.css';")
+        .expect_err("late import must fail");
     assert_eq!(placement.code(), CssErrorCode::InvalidAtRulePlacement);
-    match placement.kind() {
-        ErrorKind::InvalidAtRulePlacement(detail) => {
-            assert_eq!(detail.name().as_str(), "import");
+    match placement.code() {
+        CssErrorCode::InvalidAtRulePlacement => {
+            let detail = &placement;
+            assert_eq!(detail.at_rule().unwrap().as_str(), "import");
             assert_eq!(
-                detail.expected_context().as_str(),
+                detail.expectation().unwrap().as_str(),
                 "before every non-import top-level rule"
             );
         }
@@ -721,14 +825,22 @@ fn error_at_rule_placement_exposes_expected_context() {
 
 #[test]
 fn error_malformed_at_rule_prelude_reports_responsible_token_position() {
-    let error =
-        parse_sheet("@font-face nope {}").expect_err("non-empty font-face prelude must fail");
+    let error = CssParser::default()
+        .parse_sheet("@font-face nope {}")
+        .expect_err("non-empty font-face prelude must fail");
     assert_eq!(error.code(), CssErrorCode::InvalidAtRulePrelude);
-    match error.kind() {
-        ErrorKind::InvalidAtRulePrelude(detail) => {
-            assert_eq!(detail.name().as_str(), "font-face");
-            assert_eq!(detail.production().as_str(), "baseline.rule.font-face");
-            assert_eq!(detail.expectation().as_str(), "an empty @font-face prelude");
+    match error.code() {
+        CssErrorCode::InvalidAtRulePrelude => {
+            let detail = &error;
+            assert_eq!(detail.at_rule().unwrap().as_str(), "font-face");
+            assert_eq!(
+                detail.production().unwrap().as_str(),
+                "baseline.rule.font-face"
+            );
+            assert_eq!(
+                detail.expectation().unwrap().as_str(),
+                "an empty @font-face prelude"
+            );
             assert_eq!(detail.encountered().unwrap().authored(), "nope");
         }
         _ => panic!("unexpected error root"),
@@ -743,7 +855,7 @@ fn error_malformed_at_rule_prelude_reports_responsible_token_position() {
 fn namespace_prelude_errors_expose_exact_payload_span_action_and_sibling_recovery() {
     let failed = "@namespace svg ident;";
     let source = format!("{failed} .after {{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
     let [diagnostic] = report.diagnostics() else {
         panic!("expected one malformed namespace diagnostic")
@@ -766,18 +878,26 @@ fn namespace_prelude_errors_expose_exact_payload_span_action_and_sibling_recover
         diagnostic.span().end().byte_offset().value(),
         failed_start + failed.len()
     );
-    let ErrorKind::InvalidAtRulePrelude(detail) = diagnostic.error().kind() else {
-        panic!("expected namespace prelude payload")
-    };
-    assert_eq!(detail.name().as_str(), "namespace");
-    assert_eq!(detail.production().as_str(), "later.rule.namespace");
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::InvalidAtRulePrelude,
+        "expected namespace prelude payload"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "namespace");
+    assert_eq!(
+        detail.production().unwrap().as_str(),
+        "later.rule.namespace"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "an optional prefix followed by one string or URL namespace name"
     );
     assert_eq!(detail.encountered().unwrap().authored(), "ident");
     {
-        let failure = surgeist_css::validate_sheet(&source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
             .expect_err("strict validation rejects malformed namespace rules");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -787,7 +907,7 @@ fn namespace_prelude_errors_expose_exact_payload_span_action_and_sibling_recover
 fn undeclared_selector_namespace_exposes_exact_payload_span_action_and_siblings() {
     let failed = "SVG|a { color: red; }";
     let source = format!("@namespace svg \"urn:svg\"; .before {{}} {failed} .after {{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(matches!(
         report.syntax().rules(),
         [CssRule::Namespace(_), CssRule::Style(_), CssRule::Style(_)]
@@ -810,14 +930,20 @@ fn undeclared_selector_namespace_exposes_exact_payload_span_action_and_siblings(
         diagnostic.span().end().byte_offset().value(),
         failed_start + failed.len()
     );
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("expected selector payload")
-    };
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "expected selector payload"
+    );
     assert_eq!(
         detail.production().expect("selector production").as_str(),
         "baseline.selector.complex"
     );
-    assert_eq!(detail.expectation().as_str(), "a supported selector");
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
+        "a supported selector"
+    );
     assert_eq!(
         detail
             .encountered()
@@ -829,12 +955,15 @@ fn undeclared_selector_namespace_exposes_exact_payload_span_action_and_siblings(
 
 #[test]
 fn error_missing_at_rule_body_reports_missing_token_position() {
-    let error = parse_sheet("@media screen;").expect_err("media requires a block");
+    let error = CssParser::default()
+        .parse_sheet("@media screen;")
+        .expect_err("media requires a block");
     assert_eq!(error.code(), CssErrorCode::InvalidAtRuleBody);
-    match error.kind() {
-        ErrorKind::InvalidAtRuleBody(detail) => {
-            assert_eq!(detail.name().as_str(), "media");
-            assert_eq!(detail.production().as_str(), "baseline.rule.media");
+    match error.code() {
+        CssErrorCode::InvalidAtRuleBody => {
+            let detail = &error;
+            assert_eq!(detail.at_rule().unwrap().as_str(), "media");
+            assert_eq!(detail.production().unwrap().as_str(), "baseline.rule.media");
             assert!(detail.encountered().is_none());
         }
         _ => panic!("unexpected error root"),
@@ -849,7 +978,7 @@ fn error_missing_at_rule_body_reports_missing_token_position() {
 fn empty_font_face_body_retains_the_authored_rule_without_a_missing_descriptor_error() {
     // Fonts 4 section 4.1 restricts font matching when descriptors are absent;
     // the empty descriptor block remains grammatically valid authored syntax.
-    let report = parse_sheet("@font-face {\n}");
+    let report = CssParser::default().parse_sheet("@font-face {\n}");
     assert!(report.is_clean());
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("expected a retained empty font-face");
@@ -861,15 +990,20 @@ fn empty_font_face_body_retains_the_authored_rule_without_a_missing_descriptor_e
 
 #[test]
 fn error_multi_name_layer_block_reports_offending_block_token() {
-    let error = parse_sheet("@layer 😀, theme {}")
+    let error = CssParser::default()
+        .parse_sheet("@layer 😀, theme {}")
         .expect_err("a layer block accepts at most one layer name");
     assert_eq!(error.code(), CssErrorCode::InvalidAtRuleBody);
-    match error.kind() {
-        ErrorKind::InvalidAtRuleBody(detail) => {
-            assert_eq!(detail.name().as_str(), "layer");
-            assert_eq!(detail.production().as_str(), "baseline.rule.layer-block");
+    match error.code() {
+        CssErrorCode::InvalidAtRuleBody => {
+            let detail = &error;
+            assert_eq!(detail.at_rule().unwrap().as_str(), "layer");
             assert_eq!(
-                detail.expectation().as_str(),
+                detail.production().unwrap().as_str(),
+                "baseline.rule.layer-block"
+            );
+            assert_eq!(
+                detail.expectation().unwrap().as_str(),
                 "at most one layer name before a block"
             );
             let token = detail.encountered().expect("offending block token");
@@ -886,37 +1020,51 @@ fn error_multi_name_layer_block_reports_offending_block_token() {
 
 #[test]
 fn error_selector_media_and_qualified_rule_failures_keep_production_context() {
-    let selector = parse_sheet("??? { width: 1px; }").expect_err("selector must fail");
-    match selector.kind() {
-        ErrorKind::InvalidSelector(detail) => {
+    let selector = CssParser::default()
+        .parse_sheet("??? { width: 1px; }")
+        .expect_err("selector must fail");
+    match selector.code() {
+        CssErrorCode::InvalidSelector => {
+            let detail = &selector;
             assert_eq!(
                 detail.production().unwrap().as_str(),
                 "baseline.selector.complex"
             );
-            assert_eq!(detail.expectation().as_str(), "a supported selector");
+            assert_eq!(
+                detail.expectation().unwrap().as_str(),
+                "a supported selector"
+            );
             assert_eq!(detail.encountered().unwrap().authored(), "?");
         }
         _ => panic!("unexpected error root"),
     }
 
-    let media = parse_sheet("@media layer { .x { width: 1px; } }")
+    let media = CssParser::default()
+        .parse_sheet("@media layer { .x { width: 1px; } }")
         .expect_err("reserved media type must retain query grammar context");
     assert_eq!(media.code(), CssErrorCode::InvalidMediaQuery);
-    match media.kind() {
-        ErrorKind::InvalidMediaQuery(detail) => {
-            assert!(detail.feature().is_none());
-            assert_eq!(detail.expectation().as_str(), "a supported media query");
+    match media.code() {
+        CssErrorCode::InvalidMediaQuery => {
+            let detail = &media;
+            assert!(detail.media_feature().is_none());
+            assert_eq!(
+                detail.expectation().unwrap().as_str(),
+                "a supported media query"
+            );
             assert_eq!(detail.encountered().unwrap().authored(), "layer");
         }
         _ => panic!("unexpected error root"),
     }
 
-    let qualified = parse_sheet("x;").expect_err("qualified rule without a block must fail");
+    let qualified = CssParser::default()
+        .parse_sheet("x;")
+        .expect_err("qualified rule without a block must fail");
     assert_eq!(qualified.code(), CssErrorCode::InvalidQualifiedRule);
-    match qualified.kind() {
-        ErrorKind::InvalidQualifiedRule(detail) => {
-            assert_eq!(detail.production().as_str(), "css.qualified-rule");
-            assert_eq!(detail.expectation().as_str(), "valid CSS syntax");
+    match qualified.code() {
+        CssErrorCode::InvalidQualifiedRule => {
+            let detail = &qualified;
+            assert_eq!(detail.production().unwrap().as_str(), "css.qualified-rule");
+            assert_eq!(detail.expectation().unwrap().as_str(), "valid CSS syntax");
             assert!(detail.encountered().is_none());
         }
         _ => panic!("unexpected error root"),
@@ -925,39 +1073,47 @@ fn error_selector_media_and_qualified_rule_failures_keep_production_context() {
 
 #[test]
 fn error_property_descriptor_color_and_annotation_roots_expose_all_fields() {
-    let property = parse_sheet(".x { WIDHT: 1px; }").expect_err("unknown property must fail");
+    let property = CssParser::default()
+        .parse_sheet(".x { WIDHT: 1px; }")
+        .expect_err("unknown property must fail");
     assert_eq!(property.code(), CssErrorCode::UnknownProperty);
-    match property.kind() {
-        ErrorKind::UnknownProperty(detail) => assert_eq!(detail.name().as_str(), "WIDHT"),
-        _ => panic!("unexpected error root"),
-    }
-
-    let descriptor =
-        parse_sheet("@font-face { mystery: x; font-family: Test; src: url(test.woff2); }")
-            .expect_err("unknown descriptor must fail");
-    assert_eq!(descriptor.code(), CssErrorCode::UnknownDescriptor);
-    match descriptor.kind() {
-        ErrorKind::UnknownDescriptor(detail) => {
-            assert_eq!(detail.at_rule().as_str(), "font-face");
-            assert_eq!(detail.descriptor().as_str(), "mystery");
+    match property.code() {
+        CssErrorCode::UnknownProperty => {
+            let detail = &property;
+            assert_eq!(detail.property_name().unwrap().as_str(), "WIDHT")
         }
         _ => panic!("unexpected error root"),
     }
 
-    let descriptor_value = parse_sheet(
-        "@font-face { font-family: Test; src: url(test.woff2); font-display: mystery; }",
-    )
-    .expect_err("invalid descriptor value must fail");
+    let descriptor = CssParser::default()
+        .parse_sheet("@font-face { mystery: x; font-family: Test; src: url(test.woff2); }")
+        .expect_err("unknown descriptor must fail");
+    assert_eq!(descriptor.code(), CssErrorCode::UnknownDescriptor);
+    match descriptor.code() {
+        CssErrorCode::UnknownDescriptor => {
+            let detail = &descriptor;
+            assert_eq!(detail.at_rule().unwrap().as_str(), "font-face");
+            assert_eq!(detail.descriptor().unwrap().as_str(), "mystery");
+        }
+        _ => panic!("unexpected error root"),
+    }
+
+    let descriptor_value = CssParser::default()
+        .parse_sheet(
+            "@font-face { font-family: Test; src: url(test.woff2); font-display: mystery; }",
+        )
+        .expect_err("invalid descriptor value must fail");
     assert_eq!(
         descriptor_value.code(),
         CssErrorCode::InvalidDescriptorValue
     );
-    match descriptor_value.kind() {
-        ErrorKind::InvalidDescriptorValue(detail) => {
-            assert_eq!(detail.at_rule().as_str(), "font-face");
-            assert_eq!(detail.descriptor().as_str(), "font-display");
+    match descriptor_value.code() {
+        CssErrorCode::InvalidDescriptorValue => {
+            let detail = &descriptor_value;
+            assert_eq!(detail.at_rule().unwrap().as_str(), "font-face");
+            assert_eq!(detail.descriptor().unwrap().as_str(), "font-display");
             assert_eq!(
-                detail.expectation().as_str(),
+                detail.expectation().unwrap().as_str(),
                 "a value accepted by the descriptor grammar"
             );
             assert_eq!(detail.encountered().unwrap().authored(), "mystery");
@@ -965,31 +1121,37 @@ fn error_property_descriptor_color_and_annotation_roots_expose_all_fields() {
         _ => panic!("unexpected error root"),
     }
 
-    let color = parse_sheet(".x { color: #ggg; }").expect_err("invalid color must fail");
+    let color = CssParser::default()
+        .parse_sheet(".x { color: #ggg; }")
+        .expect_err("invalid color must fail");
     assert_eq!(color.code(), CssErrorCode::InvalidColorSyntax);
-    match color.kind() {
-        ErrorKind::InvalidColorSyntax(detail) => {
-            assert!(detail.component().is_none());
-            assert_eq!(detail.expectation().as_str(), "valid color syntax");
+    match color.code() {
+        CssErrorCode::InvalidColorSyntax => {
+            let detail = &color;
+            assert!(detail.color_component().is_none());
+            assert_eq!(detail.expectation().unwrap().as_str(), "valid color syntax");
             assert_eq!(detail.encountered().unwrap().authored(), "#ggg");
         }
         _ => panic!("unexpected error root"),
     }
 
-    let annotation = parse_sheet(".x { width: 1px !oops; }").expect_err("bad annotation must fail");
+    let annotation = CssParser::default()
+        .parse_sheet(".x { width: 1px !oops; }")
+        .expect_err("bad annotation must fail");
     assert_eq!(
         annotation.code(),
         CssErrorCode::InvalidDeclarationAnnotation
     );
-    match annotation.kind() {
-        ErrorKind::InvalidDeclarationAnnotation(detail) => {
-            match detail.context() {
+    match annotation.code() {
+        CssErrorCode::InvalidDeclarationAnnotation => {
+            let detail = &annotation;
+            match detail.declaration_context().unwrap() {
                 CssDeclarationContextRef::KnownProperty(property) => {
                     assert_eq!(property, CssKnownProperty::Width);
                 }
                 _ => panic!("unexpected declaration context"),
             }
-            assert_eq!(detail.encountered().authored(), "!");
+            assert_eq!(detail.encountered().unwrap().authored(), "!");
         }
         _ => panic!("unexpected error root"),
     }
@@ -1001,7 +1163,7 @@ fn error_invalid_font_source_format_reports_descriptor_context_and_recovers_sibl
         "@font-face{font-family:Demo;src:url(face) format(woff3)}",
         ".after{color:red}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("expected the accepted font-face and later style rule");
     };
@@ -1014,25 +1176,30 @@ fn error_invalid_font_source_format_reports_descriptor_context_and_recovers_sibl
         CssErrorCode::InvalidDescriptorValue
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDescriptor);
-    let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-        panic!("expected typed descriptor error");
-    };
-    assert_eq!(detail.at_rule().as_str(), "font-face");
-    assert_eq!(detail.descriptor().as_str(), "src");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidDescriptorValue,
+        "expected typed descriptor error"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "font-face");
+    assert_eq!(detail.descriptor().unwrap().as_str(), "src");
     assert_eq!(detail.encountered().unwrap().authored(), "woff3");
 }
 
 #[test]
 fn error_invalid_property_value_retains_canonical_property_and_authored_token() {
-    let error = parse_sheet(".panel { WIDTH: n\\6f pe; }")
+    let error = CssParser::default()
+        .parse_sheet(".panel { WIDTH: n\\6f pe; }")
         .expect_err("invalid known-property value must fail");
 
     assert_eq!(error.code(), CssErrorCode::InvalidPropertyValue);
-    match error.kind() {
-        ErrorKind::InvalidPropertyValue(detail) => {
-            assert_eq!(detail.property(), CssKnownProperty::Width);
+    match error.code() {
+        CssErrorCode::InvalidPropertyValue => {
+            let detail = &error;
+            assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Width);
             assert_eq!(
-                detail.expectation().as_str(),
+                detail.expectation().unwrap().as_str(),
                 "a value accepted by the property's grammar"
             );
             let token = detail.encountered().expect("non-EOF token");
@@ -1045,12 +1212,15 @@ fn error_invalid_property_value_retains_canonical_property_and_authored_token() 
 
 #[test]
 fn error_property_value_at_bounded_end_uses_absent_encountered_token() {
-    let error = parse_sheet(".panel { width:").expect_err("missing value must fail");
+    let error = CssParser::default()
+        .parse_sheet(".panel { width:")
+        .expect_err("missing value must fail");
 
     assert_eq!(error.code(), CssErrorCode::InvalidPropertyValue);
-    match error.kind() {
-        ErrorKind::InvalidPropertyValue(detail) => {
-            assert_eq!(detail.property(), CssKnownProperty::Width);
+    match error.code() {
+        CssErrorCode::InvalidPropertyValue => {
+            let detail = &error;
+            assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Width);
             assert!(detail.encountered().is_none());
         }
         _ => panic!("unexpected error root"),
@@ -1059,15 +1229,20 @@ fn error_property_value_at_bounded_end_uses_absent_encountered_token() {
 
 #[test]
 fn error_malformed_declaration_exposes_unexpected_authored_token() {
-    let error =
-        parse_sheet(".panel { width 1px; }").expect_err("missing declaration colon must fail");
+    let error = CssParser::default()
+        .parse_sheet(".panel { width 1px; }")
+        .expect_err("missing declaration colon must fail");
 
     assert_eq!(error.code(), CssErrorCode::UnexpectedToken);
-    match error.kind() {
-        ErrorKind::UnexpectedToken(detail) => {
-            assert_eq!(detail.expectation().as_str(), "valid CSS syntax");
-            assert_eq!(detail.encountered().kind(), CssTokenKind::Dimension);
-            assert_eq!(detail.encountered().authored(), "1px");
+    match error.code() {
+        CssErrorCode::UnexpectedToken => {
+            let detail = &error;
+            assert_eq!(detail.expectation().unwrap().as_str(), "valid CSS syntax");
+            assert_eq!(
+                detail.encountered().unwrap().kind(),
+                CssTokenKind::Dimension
+            );
+            assert_eq!(detail.encountered().unwrap().authored(), "1px");
         }
         _ => panic!("unexpected error root"),
     }
@@ -1076,7 +1251,9 @@ fn error_malformed_declaration_exposes_unexpected_authored_token() {
 #[test]
 fn error_position_uses_byte_line_and_utf16_coordinates_and_display_is_one_based() {
     let source = ".ok { width: 1px; }\n.emoji-😀 { width: nope; }";
-    let error = parse_sheet(source).expect_err("invalid value must fail");
+    let error = CssParser::default()
+        .parse_sheet(source)
+        .expect_err("invalid value must fail");
     let position = error.position();
 
     assert_eq!(position.byte_offset().value(), source.find("nope").unwrap());
@@ -1087,10 +1264,15 @@ fn error_position_uses_byte_line_and_utf16_coordinates_and_display_is_one_based(
 
 #[test]
 fn error_public_non_exhaustive_kinds_are_matched_with_wildcards() {
-    let error = parse_sheet("??? { width: 1px; }").expect_err("invalid selector must fail");
+    let error = CssParser::default()
+        .parse_sheet("??? { width: 1px; }")
+        .expect_err("invalid selector must fail");
 
-    let expectation = match error.kind() {
-        ErrorKind::InvalidSelector(detail) => detail.expectation().as_str(),
+    let expectation = match error.code() {
+        CssErrorCode::InvalidSelector => {
+            let detail = &error;
+            detail.expectation().unwrap().as_str()
+        }
         _ => "different extensible root",
     };
     assert_eq!(expectation, "a supported selector");
@@ -1099,7 +1281,7 @@ fn error_public_non_exhaustive_kinds_are_matched_with_wildcards() {
 #[test]
 fn typed_calculation_type_error_has_exact_non_bmp_coordinates_span_and_recovery() {
     let source = "--😀: 1; opacity: calc(1px + 2px); color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("the invalid typed calculation must recover exactly once");
@@ -1116,15 +1298,20 @@ fn typed_calculation_type_error_has_exact_non_bmp_coordinates_span_and_recovery(
     assert_eq!(diagnostic.span().start().column().value(), 9);
     assert_eq!(diagnostic.span().end().byte_offset().value(), 36);
     assert_eq!(diagnostic.span().end().column().value(), 34);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured property-value error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Opacity);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured property-value error"
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Opacity);
     let encountered = detail.encountered().expect("responsible calculation root");
     assert_eq!(encountered.kind(), CssTokenKind::Function);
     assert_eq!(encountered.authored(), "calc(");
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation must reject recovered typed calculation input");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -1146,7 +1333,7 @@ fn typed_calculation_root_domain_errors_retain_later_siblings() {
             CssTokenKind::Function,
         ),
     ] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         let [diagnostic] = report.diagnostics() else {
             panic!("{source}: expected one diagnostic");
@@ -1156,10 +1343,13 @@ fn typed_calculation_root_domain_errors_retain_later_siblings() {
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-value detail");
-        };
-        assert_eq!(detail.property(), property, "{source}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-value detail"
+        );
+        assert_eq!(detail.known_property().unwrap(), property, "{source}");
         let encountered = detail.encountered().expect("responsible calculation root");
         assert_eq!(encountered.authored(), authored, "{source}");
         assert_eq!(encountered.kind(), kind, "{source}");
@@ -1168,11 +1358,10 @@ fn typed_calculation_root_domain_errors_retain_later_siblings() {
 
 #[test]
 fn typed_integer_zero_divisor_remains_symbolic_and_retains_its_sibling() {
-    use surgeist_css::{
-        CssCalculationExpressionRef as Expr, CssCalculationProductOperator, CssCalculationType,
-        CssIntegerValue, CssKnownPropertyValueRef,
-    };
-    let report = parse_style_attribute("order: calc(1 / 0); color: red");
+    use surgeist_css::numeric::CssCalculationExpressionRef as Expr;
+    use surgeist_css::numeric::{CssCalculationProductOperator, CssCalculationType};
+    use surgeist_css::property::CssKnownPropertyValueRef;
+    let report = CssParser::default().parse_block_contents("order: calc(1 / 0); color: red");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     let CssKnownPropertyValueRef::Order(value) = report.syntax()[0]
@@ -1183,7 +1372,7 @@ fn typed_integer_zero_divisor_remains_symbolic_and_retains_its_sibling() {
     else {
         panic!("order")
     };
-    let CssIntegerValue::Calculation(calculation) = value.value() else {
+    let Some(calculation) = value.value().calculation() else {
         panic!("symbolic integer")
     };
     assert_eq!(calculation.result_type(), CssCalculationType::Number);
@@ -1210,7 +1399,7 @@ fn typed_integer_zero_divisor_remains_symbolic_and_retains_its_sibling() {
 #[test]
 fn easing_bound_error_has_exact_payload_span_action_and_sibling_recovery() {
     let source = "transition-timing-function: cubic-bezier(1.1, 0, 0.5, 1); color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     let [diagnostic] = report.diagnostics() else {
         panic!("out-of-range cubic-bezier x must recover once");
@@ -1231,11 +1420,14 @@ fn easing_bound_error_has_exact_payload_span_action_and_sibling_recovery() {
         diagnostic.span().end().byte_offset().value(),
         declaration_end
     );
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured property-value error");
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.property(),
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured property-value error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
         CssKnownProperty::TransitionTimingFunction
     );
     let encountered = detail
@@ -1244,7 +1436,9 @@ fn easing_bound_error_has_exact_payload_span_action_and_sibling_recovery() {
     assert_eq!(encountered.kind(), CssTokenKind::Number);
     assert_eq!(encountered.authored(), "1.1");
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered easing input");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -1253,7 +1447,7 @@ fn easing_bound_error_has_exact_payload_span_action_and_sibling_recovery() {
 #[test]
 fn timing_first_duration_failure_has_exact_payload_span_action_and_sibling_recovery() {
     let source = "transition: opacity -1s 2s; color: red";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1);
     let [diagnostic] = report.diagnostics() else {
         panic!("negative first shorthand time must recover once");
@@ -1270,15 +1464,23 @@ fn timing_first_duration_failure_has_exact_payload_span_action_and_sibling_recov
     assert_eq!(diagnostic.span().start().column().value(), 0);
     assert_eq!(diagnostic.span().end().byte_offset().value(), 27);
     assert_eq!(diagnostic.span().end().column().value(), 27);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!("expected structured property-value error");
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Transition);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "expected structured property-value error"
+    );
+    assert_eq!(
+        detail.known_property().unwrap(),
+        CssKnownProperty::Transition
+    );
     let encountered = detail.encountered().expect("responsible negative duration");
     assert_eq!(encountered.kind(), CssTokenKind::Dimension);
     assert_eq!(encountered.authored(), "-1s");
     {
-        let failure = surgeist_css::validate_style_attribute(source)
+        let failure = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
             .expect_err("strict validation rejects recovered transition input");
         assert_eq!(failure.diagnostics(), report.diagnostics());
     }
@@ -1296,7 +1498,7 @@ fn generic_position_mutations_report_the_responsible_token_and_retain_the_siblin
         ("top 10px", "10px", CssTokenKind::Dimension),
     ] {
         let source = format!("mask-position: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         let [diagnostic] = report.diagnostics() else {
             panic!("{source}: expected one generic-position diagnostic");
@@ -1332,11 +1534,14 @@ fn generic_position_mutations_report_the_responsible_token_and_retain_the_siblin
             source.find(';').expect("declaration semicolon") + 1,
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-value root");
-        };
+        let detail = diagnostic.error();
         assert_eq!(
-            detail.property(),
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-value root"
+        );
+        assert_eq!(
+            detail.known_property().unwrap(),
             CssKnownProperty::MaskPosition,
             "{source}"
         );
@@ -1352,7 +1557,9 @@ fn generic_position_mutations_report_the_responsible_token_and_retain_the_siblin
             "{source}",
         );
         {
-            let failure = surgeist_css::validate_style_attribute(&source)
+            let failure = surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects the recovered mutation");
             assert_eq!(failure.diagnostics(), report.diagnostics(), "{source}");
         }
@@ -1392,7 +1599,7 @@ fn layered_position_mutations_report_exact_property_token_span_and_recovery() {
         ),
     ] {
         let source = format!("{property}: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         let [diagnostic] = report.diagnostics() else {
             panic!("{source}: expected one diagnostic");
@@ -1428,15 +1635,20 @@ fn layered_position_mutations_report_exact_property_token_span_and_recovery() {
             source.find(';').expect("declaration semicolon") + 1,
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-value root");
-        };
-        assert_eq!(detail.property(), known_property, "{source}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-value root"
+        );
+        assert_eq!(detail.known_property().unwrap(), known_property, "{source}");
         let encountered = detail.encountered().expect("responsible position token");
         assert_eq!(encountered.kind(), token_kind, "{source}");
         assert_eq!(encountered.authored(), responsible, "{source}");
         {
-            let failure = surgeist_css::validate_style_attribute(&source)
+            let failure = surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects layered position mutation");
             assert_eq!(failure.diagnostics(), report.diagnostics(), "{source}");
         }
@@ -1511,7 +1723,7 @@ fn property_specific_origin_mutations_report_exact_payload_span_and_recovery() {
         ),
     ] {
         let source = format!("{property}: {value}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         let [diagnostic] = report.diagnostics() else {
             panic!("{source}: expected one origin diagnostic");
@@ -1552,10 +1764,13 @@ fn property_specific_origin_mutations_report_exact_payload_span_and_recovery() {
             declaration_end,
             "{source}",
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected property-value root");
-        };
-        assert_eq!(detail.property(), known_property, "{source}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "{source}: expected property-value root"
+        );
+        assert_eq!(detail.known_property().unwrap(), known_property, "{source}");
         let encountered = detail.encountered().expect("responsible origin token");
         assert_eq!(encountered.kind(), token_kind, "{source}");
         assert_eq!(encountered.authored(), responsible, "{source}");
@@ -1568,7 +1783,9 @@ fn property_specific_origin_mutations_report_exact_payload_span_and_recovery() {
             "{source}",
         );
         {
-            let failure = surgeist_css::validate_style_attribute(&source)
+            let failure = surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects the recovered origin mutation");
             assert_eq!(failure.diagnostics(), report.diagnostics(), "{source}");
         }

@@ -1,59 +1,63 @@
 //! Public-consumer expectations from the adopted Blink Page/margin witness.
-use surgeist_css::{CssRule, parse_sheet};
+use surgeist_css::CssParser;
+use surgeist_css::rule::page::{CssPageDescriptorValue, CssPageSelectorList};
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule};
 
 #[test]
 fn named_page_is_admitted() {
-    let report = parse_sheet("@page invoice {}");
+    let report = CssParser::default().parse_sheet("@page invoice {}");
     assert!(report.is_clean(), "named Page must be admitted: {report:?}");
     assert!(matches!(report.syntax().rules()[0], CssRule::Page(_)));
 }
 
 #[test]
 fn page_size_and_margin_child_are_retained() {
-    let report = parse_sheet("@page { size:A4; @top-left { content:\"X\"; } }");
+    let report =
+        CssParser::default().parse_sheet("@page { size:A4; @top-left { content:\"X\"; } }");
     assert!(
         report.is_clean(),
         "supported Page payload must be retained: {report:?}"
     );
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         "@page { size: a4; @top-left { content: \"X\"; } }"
     );
 }
 
 #[test]
 fn declaration_only_page_has_adopted_cssom_output() {
-    let report = parse_sheet("@page { margin:1px; }");
+    let report = CssParser::default().parse_sheet("@page { margin:1px; }");
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         "@page { margin: 1px; }"
     );
     assert_eq!(report, before);
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         "@page { margin: 1px; }"
     );
 }
 
-use surgeist_css::{
-    CssImportance, CssMarginBox, CssMarginDeclarationBlock, CssMarginRule, CssPageBody,
-    CssPageDeclaration, CssPageDeclarationBlock, CssPageDescriptor, CssPageDescriptorKind as K,
-    CssPageDescriptorValueRef as V, CssPagePseudo as P,
-    CssRuleCssomSerializationErrorKind as RuleError,
-    CssSpecifiedValueSerializationErrorKind as Resource,
-    CssSpecifiedValueSerializationLimits as Limits, parse_margin_block, parse_page_block,
-    parse_page_descriptor_value, parse_page_selector_list,
+use crate::css::support::failure_classes::SerializationFailure;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::rule::page::CssPageDescriptorKind as K;
+use surgeist_css::rule::page::CssPageDescriptorValueRef as V;
+use surgeist_css::rule::page::CssPagePseudo as P;
+use surgeist_css::rule::page::{
+    CssMarginBox, CssMarginDeclarationBlock, CssMarginRule, CssPageBody, CssPageDeclaration,
+    CssPageDeclarationBlock, CssPageDescriptor,
 };
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 #[test]
 fn complete_page_selector_getter_preserves_compounds_lists_and_original_coordinates() {
     let source = " /*😀*/ \\69 nvoice:FIRST:left, :blank:recto:verso ";
-    let report = parse_page_selector_list(source);
+    let report = CssPageSelectorList::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{report:?}");
     let value = report.syntax().as_ref().unwrap();
     assert_eq!(
-        value.serialize_cssom().unwrap(),
+        value.serialize_cssom(Default::default()).unwrap(),
         "invoice:first:left, :blank:recto:verso"
     );
     assert_eq!(value.selectors()[0].name().unwrap().as_str(), "invoice");
@@ -71,11 +75,16 @@ fn complete_page_selector_getter_preserves_compounds_lists_and_original_coordina
         10
     );
     assert_eq!(value.origin().unwrap().source().as_str(), source);
-    let empty = parse_page_selector_list(" /*empty*/ ");
+    let empty = CssPageSelectorList::parse(&CssParser::default(), " /*empty*/ ");
     assert!(empty.is_clean());
     assert!(empty.syntax().as_ref().unwrap().is_empty());
     assert_eq!(
-        empty.syntax().as_ref().unwrap().serialize_cssom().unwrap(),
+        empty
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .serialize_cssom(Default::default())
+            .unwrap(),
         ""
     );
 }
@@ -92,33 +101,28 @@ fn foreign_or_incomplete_page_selectors_reject_the_whole_raw_input() {
         "invoice > :first",
         "invoice {}",
     ] {
-        let report = parse_page_selector_list(source);
+        let report = CssPageSelectorList::parse(&CssParser::default(), source);
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         assert!(!report.is_clean());
     }
 }
 #[test]
 fn selector_limits_charge_lists_names_and_pseudos_and_allow_atomic_retry() {
-    let report = parse_page_selector_list("invoice:first:left, :blank:recto");
+    let report =
+        CssPageSelectorList::parse(&CssParser::default(), "invoice:first:left, :blank:recto");
     let value = report.syntax().as_ref().unwrap();
     let before = value.clone();
     let expected = "invoice:first:left, :blank:recto";
     let adequate = Limits::new(8, 8, expected.len());
-    assert_eq!(
-        value.serialize_cssom_with_limits(adequate).unwrap(),
-        expected
-    );
+    assert_eq!(value.serialize_cssom(adequate).unwrap(), expected);
     for limits in [
         Limits::new(7, 8, 100),
         Limits::new(8, 7, 100),
         Limits::new(8, 8, expected.len() - 1),
     ] {
-        assert!(value.serialize_cssom_with_limits(limits).is_err());
+        assert!(value.serialize_cssom(limits).is_err());
         assert_eq!(value, &before);
-        assert_eq!(
-            value.serialize_cssom_with_limits(adequate).unwrap(),
-            expected
-        );
+        assert_eq!(value.serialize_cssom(adequate).unwrap(), expected);
     }
 }
 #[test]
@@ -133,10 +137,13 @@ fn page_descriptor_grammars_and_getters_keep_their_distinct_domains() {
         (K::Bleed, "-2pt", "-2pt"),
         (K::Bleed, "inherit", "inherit"),
     ] {
-        let report = parse_page_descriptor_value(input, kind);
+        let report = CssPageDescriptorValue::parse(&CssParser::default(), input, kind);
         assert!(report.is_clean(), "{input}: {report:?}");
         let value = report.syntax().as_ref().unwrap();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value.origin().source().as_str(), input);
     }
     for (kind, input) in [
@@ -150,7 +157,9 @@ fn page_descriptor_grammars_and_getters_keep_their_distinct_domains() {
         (K::Size, "A4 !important"),
     ] {
         assert!(
-            parse_page_descriptor_value(input, kind).syntax().is_none(),
+            CssPageDescriptorValue::parse(&CssParser::default(), input, kind)
+                .syntax()
+                .is_none(),
             "{input}"
         );
     }
@@ -158,7 +167,7 @@ fn page_descriptor_grammars_and_getters_keep_their_distinct_domains() {
 #[test]
 fn page_domains_retain_applicable_properties_custom_values_and_margin_order() {
     let source = "@page invoice:first { color:red; size:A4; margin:1em; --x: RAW; @TOP-LEFT { content:\"X\"; color:blue; } page-orientation:rotate-right; @bottom-right { content:counter(page); } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!()
@@ -172,19 +181,17 @@ fn page_domains_retain_applicable_properties_custom_values_and_margin_order() {
         vec![CssMarginBox::TopLeft, CssMarginBox::BottomRight]
     );
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         "@page invoice:first { color: red; size: a4; margin: 1em; --x: RAW; page-orientation: rotate-right; @top-left { content: \"X\"; color: blue; } @bottom-right { content: counter(page); } }"
     );
 }
 #[test]
 fn page_and_margin_recovery_drop_invalid_owned_units_without_losing_neighbors() {
-    let report = parse_sheet(
-        "@page { size:bogus; size:A4; @top-left bad {content:'bad'} @top-right {content:'good'; size:A4; width:3px} marks:crop; }",
-    );
+    let report = CssParser::default().parse_sheet("@page { size:bogus; size:A4; @top-left bad {content:'bad'} @top-right {content:'good'; size:A4; width:3px} marks:crop; }");
     crate::css::support::value_assertions::assert_first_diagnostic(
         report.diagnostics(),
         "@page { size:bogus; size:A4; @top-left bad {content:'bad'} @top-right {content:'good'; size:A4; width:3px} marks:crop; }",
-        surgeist_css::CssErrorCode::InvalidDescriptorValue,
+        surgeist_css::diagnostic::CssErrorCode::InvalidDescriptorValue,
         "bogus",
     );
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
@@ -193,17 +200,21 @@ fn page_and_margin_recovery_drop_invalid_owned_units_without_losing_neighbors() 
     assert_eq!(page.margin_rules().len(), 1);
     assert_eq!(page.margin_rules()[0].name(), CssMarginBox::TopRight);
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         "@page { size: a4; marks: crop; @top-right { content: \"good\"; width: 3px; } }"
     );
 }
 #[test]
 fn page_typed_reconstruction_retains_occurrences_and_raw_edit_provenance() {
-    let report = parse_page_block("{ margin:1px; size:A4; @top-left {content:'X'} }");
+    let report = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::default(),
+        "{ margin:1px; size:A4; @top-left {content:'X'} }",
+        &CssBlockContext::default(),
+    );
     assert!(report.is_clean(), "{report:?}");
     let body = report.syntax().as_ref().unwrap().body();
     let original = body.declarations().properties()[0].clone();
-    let raw = parse_page_descriptor_value(" /*edit*/ A3 ", K::Size);
+    let raw = CssPageDescriptorValue::parse(&CssParser::default(), " /*edit*/ A3 ", K::Size);
     let raw = raw.syntax().as_ref().unwrap().clone();
     assert!(matches!(raw.view(), V::Size(_)));
     let mut occurrences = body.declarations().occurrences().to_vec();
@@ -211,28 +222,32 @@ fn page_typed_reconstruction_retains_occurrences_and_raw_edit_provenance() {
         raw,
         CssImportance::Important,
     )));
-    let block = CssPageDeclarationBlock::try_new(occurrences).unwrap();
+    let block = CssPageDeclarationBlock::try_new(occurrences, Default::default()).unwrap();
     assert!(block.properties()[0].same_occurrence(&original));
     let selected = block.effective_descriptor(K::Size).unwrap();
     assert!(selected.occurrence().is_none());
     assert_eq!(selected.value().origin().source().as_str(), " /*edit*/ A3 ");
     assert_eq!(
-        block.serialize_cssom().unwrap(),
+        block.serialize_cssom(Default::default()).unwrap(),
         "margin: 1px; size: a3 !important;"
     );
-    let margin = parse_margin_block("{content:'Y'}");
+    let margin = CssBlockFragment::<CssMarginDeclarationBlock>::parse(
+        &CssParser::default(),
+        "{content:'Y'}",
+        &CssBlockContext::default(),
+    );
     let margin = margin.syntax().as_ref().unwrap().body().clone();
     let new_body = CssPageBody::new(
         block,
         vec![CssMarginRule::new(CssMarginBox::TopCenter, margin)],
     );
-    let sheet = parse_sheet("@page invoice {}");
+    let sheet = CssParser::default().parse_sheet("@page invoice {}");
     let CssRule::Page(page) = &sheet.syntax().rules()[0] else {
         panic!()
     };
     assert_eq!(
         CssRule::Page(page.with_body(new_body))
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap(),
         "@page invoice { margin: 1px; size: a3 !important; @top-center { content: \"Y\"; } }"
     );
@@ -243,9 +258,9 @@ fn page_margin_projection_does_not_emit_ordinary_size_extension() {
         "@page { width:1px; height:2px; }",
         "@page { @top-left {width:1px;height:2px} }",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{report:?}");
-        let output = report.syntax().serialize_cssom().unwrap();
+        let output = report.syntax().serialize_cssom(Default::default()).unwrap();
         assert!(output.contains("width: 1px; height: 2px;"), "{output}");
         assert!(!output.contains("size:"));
     }
@@ -257,57 +272,83 @@ fn empty_page_and_margin_whitespace_is_exact() {
         ("@page invoice {}", "@page invoice { }"),
         ("@page { @top-left {} }", "@page { @top-left { } }"),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean());
-        assert_eq!(report.syntax().serialize_cssom().unwrap(), expected);
+        assert_eq!(
+            report.syntax().serialize_cssom(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 #[test]
 fn page_cumulative_budget_reports_margin_child_and_retry_preserves_source() {
-    let report = parse_sheet("@page { size:A4; @top-left {content:'X'} @top-right {content:'Y'} }");
+    let report = CssParser::default()
+        .parse_sheet("@page { size:A4; @top-left {content:'X'} @top-right {content:'Y'} }");
     assert!(report.is_clean());
     let before = report.clone();
-    let expected = report.syntax().serialize_cssom().unwrap();
+    let expected = report.syntax().serialize_cssom(Default::default()).unwrap();
     let failure = report
         .syntax()
-        .serialize_cssom_with_limits(Limits::new(1000, 1000, expected.len() - 4))
+        .serialize_cssom(Limits::new(1000, 1000, expected.len() - 4))
         .unwrap_err();
-    assert_eq!(failure.kind(), RuleError::Resource(Resource::ByteLimit));
+    assert!(
+        failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_byte_limit()),
+        "{failure:?}"
+    );
     assert_eq!(failure.rule_path(), &[0, 1]);
     assert_eq!(report, before);
-    assert_eq!(report.syntax().serialize_cssom().unwrap(), expected);
-    let raw = parse_margin_block("{content:'X'}");
+    assert_eq!(
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
+        expected
+    );
+    let raw = CssBlockFragment::<CssMarginDeclarationBlock>::parse(
+        &CssParser::default(),
+        "{content:'X'}",
+        &CssBlockContext::default(),
+    );
     let raw = raw.syntax().as_ref().unwrap().body();
     assert!(
-        CssMarginDeclarationBlock::try_new_with_limits(
+        CssMarginDeclarationBlock::try_new(
             raw.properties().iter().cloned().collect(),
             Limits::new(1, 100, 100)
         )
         .is_err()
     );
-    assert!(CssMarginDeclarationBlock::try_new(raw.properties().iter().cloned().collect()).is_ok());
+    assert!(
+        CssMarginDeclarationBlock::try_new(
+            raw.properties().iter().cloned().collect(),
+            Default::default()
+        )
+        .is_ok()
+    );
 }
 
 #[test]
 fn selected_page_terminal_edits_preserve_sources_and_do_not_expand_the_original_shorthand() {
-    use surgeist_css::{
-        CssPageRuleView, CssSpecifiedDeclarationValueRef, CssSpecifiedPageDeclarationBlock as B,
-        CssSpecifiedPageDeclarationEntry as E,
-    };
+    use surgeist_css::declaration::CssSpecifiedDeclarationValueRef;
+    use surgeist_css::rule::page::CssPageRuleView;
+    use surgeist_css::rule::page::CssSpecifiedPageDeclarationBlock as B;
+    use surgeist_css::rule::page::CssSpecifiedPageDeclarationEntry as E;
     let source = "@page invoice:first { margin:1px 2px; size:A4; margin-left:3px; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!("Page")
     };
-    let selected = page.declarations().try_specified().unwrap();
+    let selected = page
+        .declarations()
+        .try_specified(Default::default())
+        .unwrap();
     let top = selected
         .entries()
         .iter()
         .find_map(|v| match v {
             E::Property(v)
                 if v.property_name()
-                    == surgeist_css::CssPropertyNameRef::Known(
-                        surgeist_css::CssKnownProperty::MarginTop,
+                    == surgeist_css::property::CssPropertyNameRef::Known(
+                        surgeist_css::property::CssKnownProperty::MarginTop,
                     ) =>
             {
                 Some(v.clone())
@@ -332,14 +373,17 @@ fn selected_page_terminal_edits_preserve_sources_and_do_not_expand_the_original_
             .source()
             .same_snapshot(page.selectors().origin().unwrap().source())
     );
-    let edited = B::try_from_entries(&[
-        E::Descriptor(descriptor.with_importance(CssImportance::Important)),
-        E::Property(top.with_importance(CssImportance::Important)),
-    ])
+    let edited = B::try_from_entries(
+        &[
+            E::Descriptor(descriptor.with_importance(CssImportance::Important)),
+            E::Property(top.with_importance(CssImportance::Important)),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let view = CssPageRuleView::new(page.selectors(), &edited, &[]);
     assert_eq!(
-        view.serialize_cssom().unwrap(),
+        view.serialize_cssom(Default::default()).unwrap(),
         "@page invoice:first { size: a4 !important; margin-top: 1px !important; }"
     );
     let E::Descriptor(retained_descriptor) = &edited.entries()[0] else {
@@ -361,29 +405,42 @@ fn selected_page_terminal_edits_preserve_sources_and_do_not_expand_the_original_
         retained.value(),
         CssSpecifiedDeclarationValueRef::Completed(_)
     ));
-    assert!(B::try_from_entries(&[E::Property(top.clone()), E::Property(top)]).is_err());
-    assert!(matches!(
-        B::try_from_entries(&[E::Descriptor(descriptor.clone()), E::Descriptor(descriptor)]),
-        Err(surgeist_css::CssPageProjectionError::DuplicateDescriptor { .. })
-    ));
+    assert!(
+        B::try_from_entries(
+            &[E::Property(top.clone()), E::Property(top)],
+            Default::default()
+        )
+        .is_err()
+    );
+    assert!(
+        B::try_from_entries(
+            &[E::Descriptor(descriptor.clone()), E::Descriptor(descriptor)],
+            Default::default()
+        )
+        .as_ref()
+        .is_err_and(|error| error.duplicate_descriptor().is_some())
+    );
 }
 #[test]
 fn selected_page_and_margin_views_preserve_pending_occurrence_and_order_and_reject_wrong_domains() {
-    use surgeist_css::{
-        CssMarginRuleView, CssPageRuleView, CssSpecifiedDeclarationBlock,
-        CssSpecifiedPageDeclarationBlock as B, CssSpecifiedPageDeclarationEntry as E,
-    };
-    let report = parse_sheet(
+    use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
+    use surgeist_css::rule::page::CssSpecifiedPageDeclarationBlock as B;
+    use surgeist_css::rule::page::CssSpecifiedPageDeclarationEntry as E;
+    use surgeist_css::rule::page::{CssMarginRuleView, CssPageRuleView};
+    let report = CssParser::default().parse_sheet(
         "@page { margin-top:var(--m); @top-left { content:'X'; color:red } @bottom-center{} }",
     );
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!("Page")
     };
-    let projected = page.declarations().try_specified().unwrap();
+    let projected = page
+        .declarations()
+        .try_specified(Default::default())
+        .unwrap();
     let E::Property(entry) = &projected.entries()[0] else {
         panic!("pending terminal")
     };
-    let edited = B::try_from_entries(&[E::Property(entry.clone())]).unwrap();
+    let edited = B::try_from_entries(&[E::Property(entry.clone())], Default::default()).unwrap();
     let E::Property(retained) = &edited.entries()[0] else {
         panic!("pending terminal")
     };
@@ -394,83 +451,96 @@ fn selected_page_and_margin_views_preserve_pending_occurrence_and_order_and_reje
     );
     let first = page.margin_rules()[0]
         .declarations()
-        .try_specified_properties()
+        .try_specified_properties(Default::default())
         .unwrap();
-    let empty = CssSpecifiedDeclarationBlock::try_from_margin_entries(&[]).unwrap();
+    let empty =
+        CssSpecifiedDeclarationBlock::try_from_margin_entries(&[], Default::default()).unwrap();
     let margins = [
         CssMarginRuleView::try_new(CssMarginBox::BottomCenter, &empty).unwrap(),
         CssMarginRuleView::try_new(CssMarginBox::TopLeft, &first).unwrap(),
     ];
     let margin_text = "@top-left { content: \"X\"; color: red; }";
-    assert_eq!(margins[1].serialize_cssom().unwrap(), margin_text);
-    crate::css::support::value_assertions::assert_rule_resource(
-        margins[1].serialize_cssom_with_limits(Limits::new(1000, 1000, margin_text.len() - 1)),
-        surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit,
+    assert_eq!(
+        margins[1].serialize_cssom(Default::default()).unwrap(),
+        margin_text
     );
-    assert_eq!(margins[1].serialize_cssom().unwrap(), margin_text);
+    crate::css::support::value_assertions::assert_rule_resource(
+        margins[1].serialize_cssom(Limits::new(1000, 1000, margin_text.len() - 1)),
+        SerializationFailure::ByteLimit,
+    );
+    assert_eq!(
+        margins[1].serialize_cssom(Default::default()).unwrap(),
+        margin_text
+    );
     assert_eq!(
         CssPageRuleView::new(page.selectors(), &edited, &margins)
-            .serialize_cssom()
+            .serialize_cssom(Default::default())
             .unwrap(),
         "@page { margin-top: var(--m); @bottom-center { } @top-left { content: \"X\"; color: red; } }"
     );
-    let ordinary = CssSpecifiedDeclarationBlock::try_from_entries(first.entries()).unwrap();
+    let ordinary =
+        CssSpecifiedDeclarationBlock::try_from_entries(first.entries(), Default::default())
+            .unwrap();
     assert!(CssMarginRuleView::try_new(CssMarginBox::TopLeft, &ordinary).is_none());
-    let invalid = parse_sheet(".x { transform:none }");
+    let invalid = CssParser::default().parse_sheet(".x { transform:none }");
     let CssRule::Style(style) = &invalid.syntax().rules()[0] else {
         panic!("style")
     };
-    let ordinary =
-        CssSpecifiedDeclarationBlock::try_from_declarations(style.declarations()).unwrap();
+    let ordinary = CssSpecifiedDeclarationBlock::try_from_declarations(
+        style.declarations(),
+        Default::default(),
+    )
+    .unwrap();
     for result in [
-        CssSpecifiedDeclarationBlock::try_from_page_entries(ordinary.entries()),
-        CssSpecifiedDeclarationBlock::try_from_margin_entries(ordinary.entries()),
+        CssSpecifiedDeclarationBlock::try_from_page_entries(ordinary.entries(), Default::default()),
+        CssSpecifiedDeclarationBlock::try_from_margin_entries(
+            ordinary.entries(),
+            Default::default(),
+        ),
     ] {
         let error = result.unwrap_err();
-        assert!(
-            matches!(
-                error.kind(),
-                surgeist_css::CssDeclarationBlockErrorKind::InvalidPageSource
-            ),
-            "{error:?}"
-        );
+        assert!(error.is_invalid_page_source(), "{error:?}");
     }
 }
 #[test]
 fn edited_page_and_margin_projection_share_atomic_node_projection_and_byte_limits() {
-    use surgeist_css::{CssMarginRuleView, CssPageRuleView};
-    let report = parse_sheet("@page named { size:A4; @top-left {content:'X'} }");
+    use surgeist_css::rule::page::{CssMarginRuleView, CssPageRuleView};
+    let report =
+        CssParser::default().parse_sheet("@page named { size:A4; @top-left {content:'X'} }");
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!("Page")
     };
-    let selected = page.declarations().try_specified().unwrap();
+    let selected = page
+        .declarations()
+        .try_specified(Default::default())
+        .unwrap();
     let margin = page.margin_rules()[0]
         .declarations()
-        .try_specified_properties()
+        .try_specified_properties(Default::default())
         .unwrap();
     let margins = [CssMarginRuleView::try_new(CssMarginBox::TopLeft, &margin).unwrap()];
     let view = CssPageRuleView::new(page.selectors(), &selected, &margins);
     let expected = "@page named { size: a4; @top-left { content: \"X\"; } }";
-    assert_eq!(view.serialize_cssom().unwrap(), expected);
+    assert_eq!(view.serialize_cssom(Default::default()).unwrap(), expected);
     for (limits, kind) in [
         (
             Limits::new(0, 1000, 1000),
-            surgeist_css::CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            SerializationFailure::InputNodeLimit,
         ),
         (
             Limits::new(1000, 0, 1000),
-            surgeist_css::CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
             Limits::new(1000, 1000, expected.len() - 1),
-            surgeist_css::CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            SerializationFailure::ByteLimit,
         ),
     ] {
         crate::css::support::value_assertions::assert_rule_resource(
-            view.serialize_cssom_with_limits(limits),
+            view.serialize_cssom(limits),
             kind,
         );
-        assert_eq!(view.serialize_cssom().unwrap(), expected);
+        assert_eq!(view.serialize_cssom(Default::default()).unwrap(), expected);
     }
 }
 
@@ -483,13 +553,14 @@ fn page_descriptors_retain_pending_phases_and_select_effective_priority_without_
         (K::Marks, "var(--marks, crop)"),
         (K::Bleed, "calc(env(bleed) + 1px)"),
     ] {
-        let report = parse_page_descriptor_value(text, kind);
+        let report = CssPageDescriptorValue::parse(&CssParser::default(), text, kind);
         assert!(report.is_clean(), "{report:?}");
         let value = report.syntax().as_ref().unwrap();
         assert!(matches!(value.view(), V::Pending(_)));
-        assert_eq!(value.serialize_specified().unwrap(), text);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
     }
-    let report = parse_sheet("@page {size:A4;size:letter!important;size:legal;marks:cross crop;}");
+    let report = CssParser::default()
+        .parse_sheet("@page {size:A4;size:letter!important;size:legal;marks:cross crop;}");
     assert!(report.is_clean());
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!("Page")
@@ -503,7 +574,7 @@ fn page_descriptors_retain_pending_phases_and_select_effective_priority_without_
         CssImportance::Important
     );
     assert_eq!(
-        report.syntax().serialize_cssom().unwrap(),
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
         "@page { size: letter !important; marks: crop cross; }"
     );
 }
@@ -532,7 +603,7 @@ fn every_canonical_margin_name_and_shared_shorthand_grammar_survives_owning_doma
         source.push_str(&format!("@{name}{{}}"));
     }
     source.push('}');
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean());
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!("Page")
@@ -546,17 +617,28 @@ fn every_canonical_margin_name_and_shared_shorthand_grammar_survives_owning_doma
             .collect::<Vec<_>>()
             .join(" ")
     );
-    assert_eq!(report.syntax().serialize_cssom().unwrap(), expected);
-    let report = parse_sheet(
-        "@page { font:italic 12px serif; border-style:solid; @TOP-LEFT { overflow:hidden; background:red; } }",
+    assert_eq!(
+        report.syntax().serialize_cssom(Default::default()).unwrap(),
+        expected
     );
+    let report = CssParser::default().parse_sheet("@page { font:italic 12px serif; border-style:solid; @TOP-LEFT { overflow:hidden; background:red; } }");
     assert!(report.is_clean(), "{report:?}");
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
         panic!("Page")
     };
-    let selected = page.declarations().try_specified().unwrap();
-    assert!(selected.serialize_cssom().unwrap().contains("font:"));
-    let child = page.margin_rules()[0].serialize_cssom().unwrap();
+    let selected = page
+        .declarations()
+        .try_specified(Default::default())
+        .unwrap();
+    assert!(
+        selected
+            .serialize_cssom(Default::default())
+            .unwrap()
+            .contains("font:")
+    );
+    let child = page.margin_rules()[0]
+        .serialize_cssom(Default::default())
+        .unwrap();
     assert!(child.starts_with("@top-left { "));
     assert!(child.contains("overflow: hidden;"));
     assert!(child.contains("background: red;"));

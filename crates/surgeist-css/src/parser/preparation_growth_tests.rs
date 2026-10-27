@@ -6,7 +6,7 @@ use crate::tokenization::PREPARED_BYTES;
 
 fn prepared_per_byte(source: &str) -> f64 {
     PREPARED_BYTES.with(|prepared| prepared.set(0));
-    let report = super::parse_sheet(source);
+    let report = crate::CssParser::default().parse_sheet(source);
     let prepared = PREPARED_BYTES.with(std::cell::Cell::get);
     assert!(report.diagnostics().is_empty(), "{report:?}");
     prepared as f64 / source.len() as f64

@@ -630,15 +630,15 @@ fn theme_color(
         }
         input = &input[..input.len() - 1];
     }
-    let mut owner = surgeist_css::CssColorOperationOwner::new();
-    let facts = surgeist_css::CssColorFacts::new(
-        surgeist_css::CssColorFactIdentity::new(0x5041_5253_4d45_5441, 1),
-        surgeist_css::CssColorPropertyFacts::InitialProperties,
-        surgeist_css::CssColorSchemeFact::Unavailable,
+    let mut owner = surgeist_css::color::controlled::CssColorOperationOwner::new();
+    let facts = surgeist_css::color::CssColorFacts::new(
+        surgeist_css::color::CssColorFactIdentity::new(0x5041_5253_4d45_5441, 1),
+        surgeist_css::color::CssColorPropertyFacts::InitialProperties,
+        surgeist_css::color::CssColorSchemeFact::Unavailable,
         &[],
         &[],
         &[],
-        surgeist_css::CssDeviceColorFact::Unknown,
+        surgeist_css::color::CssDeviceColorFact::Unknown,
     );
     match css_color::parse(
         c,
@@ -650,8 +650,12 @@ fn theme_color(
         #[cfg(test)]
         || {},
     ) {
-        Ok(surgeist_css::CssColorParseOutcome::Used(color)) => Ok(Ok(Some(color.value()))),
-        Ok(surgeist_css::CssColorParseOutcome::StandardFailure(_)) => Ok(Ok(None)),
+        Ok(surgeist_css::color::controlled::CssColorParseOutcome::Used(color)) => {
+            Ok(Ok(Some(color.value())))
+        }
+        Ok(surgeist_css::color::controlled::CssColorParseOutcome::StandardFailure(_)) => {
+            Ok(Ok(None))
+        }
         Err(css_color::Failure::Session(error)) => Err(error),
         Err(css_color::Failure::Processing(error)) => Ok(Err(error)),
     }

@@ -1,12 +1,15 @@
-use surgeist_css::{
-    CssErrorCode, CssMediaConditionKind, CssMediaQuery, CssMediaType, CssNamespaceConstraint,
-    CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction, CssRule, CssSelector, ErrorKind,
-    parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery, CssMediaType};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceConstraint, CssPseudoClass, CssPseudoSelectorListItem, CssSelector,
 };
 
 fn style_rule(
-    report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
-) -> &surgeist_css::CssStyleRule {
+    report: &surgeist_css::CssParseReport<surgeist_css::rule::CssSheet>,
+) -> &surgeist_css::rule::CssStyleRule {
     report
         .syntax()
         .rules()
@@ -19,8 +22,8 @@ fn style_rule(
 }
 
 fn media_rule(
-    report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
-) -> &surgeist_css::CssMediaRule {
+    report: &surgeist_css::CssParseReport<surgeist_css::rule::CssSheet>,
+) -> &surgeist_css::rule::CssMediaRule {
     report
         .syntax()
         .rules()
@@ -33,7 +36,7 @@ fn media_rule(
 }
 
 fn forgiving_selectors(
-    report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
+    report: &surgeist_css::CssParseReport<surgeist_css::rule::CssSheet>,
 ) -> &[CssPseudoSelectorListItem] {
     let pseudo = match style_rule(report).selectors().selectors()[0].selector() {
         CssSelector::PseudoClass(pseudo) => pseudo,
@@ -61,7 +64,7 @@ fn selector_name(item: &CssPseudoSelectorListItem) -> &str {
 
 fn assert_specialized_diagnostic(
     source: &str,
-    diagnostic: &surgeist_css::CssRecoveryDiagnostic,
+    diagnostic: &surgeist_css::diagnostic::CssRecoveryDiagnostic,
     code: CssErrorCode,
     action: CssRecoveryAction,
     span_start: usize,
@@ -94,7 +97,7 @@ fn specialized_list_forgiving_selector_members_drop_independently_in_authored_or
     ];
 
     for (source, start, end, expected) in cases {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let retained = forgiving_selectors(&report)
             .iter()
             .map(selector_name)
@@ -111,14 +114,20 @@ fn specialized_list_forgiving_selector_members_drop_independently_in_authored_or
             end,
             start,
         );
-        let ErrorKind::InvalidSelector(detail) = report.diagnostics()[0].error().kind() else {
-            panic!("expected selector detail")
-        };
+        let detail = report.diagnostics()[0].error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "expected selector detail"
+        );
         assert_eq!(
             detail.production().expect("selector production").as_str(),
             "baseline.selector.complex"
         );
-        assert_eq!(detail.expectation().as_str(), "a supported selector");
+        assert_eq!(
+            detail.expectation().unwrap().as_str(),
+            "a supported selector"
+        );
     }
 }
 
@@ -128,7 +137,7 @@ fn forgiving_selector_lists_drop_only_undeclared_namespace_members() {
         "@namespace svg \"urn:svg\";",
         ":is(missing|a,svg|a,.kept) { color: red; }",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [CssRule::Namespace(_), CssRule::Style(_)]
@@ -171,7 +180,7 @@ fn forgiving_selector_lists_drop_only_undeclared_namespace_members() {
 #[test]
 fn specialized_list_empty_forgiving_member_uses_its_delimiting_comma_span() {
     let source = ":is(.a,,.b) { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert_eq!(
         forgiving_selectors(&report)
@@ -195,7 +204,7 @@ fn specialized_list_empty_forgiving_member_uses_its_delimiting_comma_span() {
 #[test]
 fn specialized_list_forgiving_recovery_stops_at_balanced_nested_commas() {
     let source = ":is(???(a,b),.ok) { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert_eq!(
         forgiving_selectors(&report)
@@ -226,7 +235,7 @@ fn specialized_list_not_has_nth_and_ordinary_selector_lists_remain_unforgiving()
     ];
 
     for source in sources {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.syntax().rules().is_empty(), "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -240,7 +249,7 @@ fn specialized_list_not_has_nth_and_ordinary_selector_lists_remain_unforgiving()
 #[test]
 fn selectors3_pseudos_preserve_forgiving_and_unforgiving_list_recovery() {
     let source = ":is(:target,:lang(en),:marker,:visited) { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         forgiving_selectors(&report),
         [
@@ -263,7 +272,8 @@ fn selectors3_pseudos_preserve_forgiving_and_unforgiving_list_recovery() {
         start + ":".len(),
     );
 
-    let unforgiving = parse_sheet(":not(:target,:marker,:visited) { color: red; }");
+    let unforgiving =
+        CssParser::default().parse_sheet(":not(:target,:marker,:visited) { color: red; }");
     assert!(unforgiving.syntax().rules().is_empty());
     let [diagnostic] = unforgiving.diagnostics() else {
         panic!("expected whole-rule recovery for invalid :not() member")
@@ -299,7 +309,7 @@ fn specialized_list_media_members_become_never_in_authored_order() {
     ];
 
     for (source, span_start, span_end, responsible, never_index) in cases {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let queries = media_rule(&report).query().queries();
 
         assert_eq!(queries.len(), 3, "{source}");
@@ -324,13 +334,22 @@ fn specialized_list_media_members_become_never_in_authored_order() {
             span_end,
             responsible,
         );
-        let ErrorKind::InvalidMediaQuery(detail) = report.diagnostics()[0].error().kind() else {
-            panic!("expected media-query detail")
-        };
-        assert!(detail.feature().is_none());
-        assert_eq!(detail.expectation().as_str(), "a supported media query");
+        let detail = report.diagnostics()[0].error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidMediaQuery,
+            "expected media-query detail"
+        );
+        assert!(detail.media_feature().is_none());
+        assert_eq!(
+            detail.expectation().unwrap().as_str(),
+            "a supported media query"
+        );
         let encountered = detail.encountered().expect("responsible media token");
-        assert_eq!(encountered.kind(), surgeist_css::CssTokenKind::Delim);
+        assert_eq!(
+            encountered.kind(),
+            surgeist_css::diagnostic::CssTokenKind::Delim
+        );
         assert_eq!(encountered.authored(), "?");
     }
 }
@@ -338,7 +357,7 @@ fn specialized_list_media_members_become_never_in_authored_order() {
 #[test]
 fn specialized_list_repeated_failures_emit_one_ordered_action_per_member() {
     let selector_source = ":is(???,.ok,???) { color: red; }";
-    let selector_report = parse_sheet(selector_source);
+    let selector_report = CssParser::default().parse_sheet(selector_source);
     assert_eq!(
         forgiving_selectors(&selector_report)
             .iter()
@@ -360,7 +379,7 @@ fn specialized_list_repeated_failures_emit_one_ordered_action_per_member() {
     }
 
     let media_source = "@media ???,screen,,print,??? { .x { color: red; } }";
-    let media_report = parse_sheet(media_source);
+    let media_report = CssParser::default().parse_sheet(media_source);
     let queries = media_rule(&media_report).query().queries();
     assert_eq!(queries.len(), 5);
     assert!(matches!(queries[0], CssMediaQuery::Never(_)));
@@ -400,7 +419,7 @@ fn specialized_list_repeated_failures_emit_one_ordered_action_per_member() {
 #[test]
 fn specialized_list_unknown_features_and_repeated_malformed_members_recover_locally() {
     let source = "@media (unknown: yes),???,(width: calc(1px)),,print { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let queries = media_rule(&report).query().queries();
     assert!(matches!(
         queries,
@@ -410,27 +429,28 @@ fn specialized_list_unknown_features_and_repeated_malformed_members_recover_loca
             CssMediaQuery::Condition(value),
             CssMediaQuery::Never(_),
             CssMediaQuery::Typed(_),
-        ] if matches!(unknown.kind(), CssMediaConditionKind::UnknownFeature(_))
-            && matches!(value.kind(), CssMediaConditionKind::Feature(surgeist_css::CssMediaFeatureQuery::Width(_)))
+        ] if matches!(unknown.kind(), CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(_)))
+            && matches!(value.kind(), CssConditionKind::Leaf(CssMediaLeaf::Feature(surgeist_css::query::media::CssMediaFeatureQuery::Width(_))))
     ));
     let CssMediaQuery::Condition(condition) = &queries[2] else {
         panic!("expected retained known width condition");
     };
-    let CssMediaConditionKind::Feature(surgeist_css::CssMediaFeatureQuery::Width(range)) =
-        condition.kind()
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(
+        surgeist_css::query::media::CssMediaFeatureQuery::Width(range),
+    )) = condition.kind()
     else {
         panic!("calc(1px) is a known pure length, without evaluating it");
     };
-    let surgeist_css::CssMediaRangeRef::Plain { value } = range.view() else {
+    let surgeist_css::query::media::CssMediaRangeRef::Plain { value } = range.view() else {
         panic!("expected authored plain width form");
     };
-    let surgeist_css::CssCalculationExpressionRef::NestedCalc(root) =
+    let surgeist_css::numeric::CssCalculationExpressionRef::NestedCalc(root) =
         value.calculation().expression()
     else {
         panic!("expected retained calc function");
     };
-    let surgeist_css::CssCalculationExpressionRef::Value(
-        surgeist_css::CssCalculationValueRef::Length(literal),
+    let surgeist_css::numeric::CssCalculationExpressionRef::Value(
+        surgeist_css::numeric::CssCalculationValueRef::Length(literal),
     ) = root.operand()
     else {
         panic!("expected exact length operand");
@@ -446,7 +466,7 @@ fn specialized_list_unknown_features_and_repeated_malformed_members_recover_loca
 #[test]
 fn specialized_list_empty_media_member_uses_delimiter_and_end_position() {
     let source = "@media screen,,print { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let queries = media_rule(&report).query().queries();
 
     assert_eq!(queries.len(), 3);
@@ -474,7 +494,7 @@ fn specialized_list_empty_media_member_uses_delimiter_and_end_position() {
 #[test]
 fn specialized_list_media_recovery_stops_at_balanced_nested_commas() {
     let source = "@media ???(a,b),screen { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let queries = media_rule(&report).query().queries();
 
     assert_eq!(queries.len(), 2);
@@ -495,13 +515,13 @@ fn specialized_list_media_recovery_stops_at_balanced_nested_commas() {
 #[test]
 fn specialized_list_unknown_feature_keeps_exact_text_and_position_without_recovery() {
     let source = "@media screen,(unknown: yes),print { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let queries = media_rule(&report).query().queries();
     let member_start = source.find('(').expect("member start");
     let CssMediaQuery::Condition(condition) = &queries[1] else {
         panic!("expected unknown-feature condition")
     };
-    let CssMediaConditionKind::UnknownFeature(unknown) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(unknown)) = condition.kind() else {
         panic!("expected unknown-feature condition details")
     };
     assert_eq!(
@@ -519,7 +539,7 @@ fn specialized_list_unknown_feature_keeps_exact_text_and_position_without_recove
 
 #[test]
 fn specialized_list_recovery_propagates_from_import_nested_and_scoped_contexts() {
-    let import = parse_sheet("@import \"theme.css\" ???,screen;");
+    let import = CssParser::default().parse_sheet("@import \"theme.css\" ???,screen;");
     let [CssRule::Import(import_rule)] = import.syntax().rules() else {
         panic!("expected retained import rule")
     };
@@ -534,7 +554,7 @@ fn specialized_list_recovery_propagates_from_import_nested_and_scoped_contexts()
         CssRecoveryAction::ReplaceMediaQueryWithNever
     );
 
-    let nested = parse_sheet(".parent { &:is(.ok,???) { color: red; } }");
+    let nested = CssParser::default().parse_sheet(".parent { &:is(.ok,???) { color: red; } }");
     assert_eq!(nested.syntax().rules().len(), 1);
     assert_eq!(nested.diagnostics().len(), 1);
     assert_eq!(
@@ -542,7 +562,7 @@ fn specialized_list_recovery_propagates_from_import_nested_and_scoped_contexts()
         CssRecoveryAction::DropSelectorListItem
     );
 
-    let scoped = parse_sheet(
+    let scoped = CssParser::default().parse_sheet(
         "@scope (:is(.root,???)) { :where(.kept,???) { color: red; } @media ???,screen {} }",
     );
     assert!(matches!(scoped.syntax().rules(), [CssRule::Scope(_)]));
@@ -551,7 +571,7 @@ fn specialized_list_recovery_propagates_from_import_nested_and_scoped_contexts()
         scoped
             .diagnostics()
             .iter()
-            .map(surgeist_css::CssRecoveryDiagnostic::action)
+            .map(surgeist_css::diagnostic::CssRecoveryDiagnostic::action)
             .collect::<Vec<_>>(),
         [
             CssRecoveryAction::DropSelectorListItem,
@@ -564,7 +584,7 @@ fn specialized_list_recovery_propagates_from_import_nested_and_scoped_contexts()
 #[test]
 fn specialized_list_media_positions_use_utf8_bytes_and_utf16_columns() {
     let source = "@media screen, /*😀*/ ???, print { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let queries = media_rule(&report).query().queries();
     let member_start = source.find(" /*😀*/").expect("member start");
     let responsible = source.find("???").expect("responsible token");
@@ -627,7 +647,7 @@ fn specialized_list_media_positions_use_utf8_bytes_and_utf16_columns() {
 #[test]
 fn specialized_list_clean_media_queries_are_positioned_and_never_false_sentinels() {
     let source = "@media screen,(width: 1px) { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let queries = media_rule(&report).query().queries();
 
     assert!(report.is_clean());
@@ -657,7 +677,7 @@ fn specialized_list_clean_media_queries_are_positioned_and_never_false_sentinels
 #[test]
 fn specialized_list_media_position_delegation_covers_condition_typed_and_never() {
     let source = "@media /*😀*/ not (width: 1px), only screen, ??? { .x { color: red; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let queries = media_rule(&report).query().queries();
     let condition_offset = source.find("not").expect("condition start");
     let typed_offset = source.find("only").expect("typed-query start");
@@ -671,7 +691,7 @@ fn specialized_list_media_position_delegation_covers_condition_typed_and_never()
     else {
         panic!("expected condition, typed, and Never queries in authored order");
     };
-    assert!(matches!(condition.kind(), CssMediaConditionKind::Not(_)));
+    assert!(matches!(condition.kind(), CssConditionKind::Not(_)));
     assert_eq!(condition.position(), queries[0].position());
     assert_eq!(
         condition

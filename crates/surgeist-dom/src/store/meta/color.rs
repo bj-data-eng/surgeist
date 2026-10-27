@@ -2,25 +2,26 @@
 use super::*;
 use std::mem::size_of;
 use surgeist_color::Color;
-use surgeist_css::{
-    CssColorActionDescription as Action, CssColorActionLayout, CssColorBank, CssColorFactIdentity,
-    CssColorFacts, CssColorGrammarRequest, CssColorInputKind, CssColorOperation,
-    CssColorOperationError, CssColorOperationOwner, CssColorParseOutcome, CssColorPropertyFacts,
-    CssColorResolutionSite, CssColorSchemeFact, CssColorSlot, CssDeviceColorFact,
+use surgeist_css::color::controlled::{
+    CssColorActionLayout, CssColorBank, CssColorOperationOwner, CssColorParse, CssColorParseAction,
+    CssColorParseOutcome, CssColorParseStep, CssColorSlot,
+};
+use surgeist_css::color::{
+    CssColorError, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
+    CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
 };
 
-fn error(error: CssColorOperationError) -> DomError {
-    use CssColorOperationError as E;
-    DomError::Meta(match error {
-        E::Protocol(value) => Failure::ThemeColorProtocol(value),
-        E::Unavailable(value) => Failure::ThemeColorUnavailable(value),
-        E::Unsupported(value) => Failure::ThemeColorUnsupported(value),
-        E::Facts(value) => Failure::ThemeColorFacts(value),
-        E::Numerical {
-            error,
-            site: CssColorResolutionSite::Source(input),
-        } => Failure::ThemeColorNumerical { error, input },
-        E::Numerical { .. } => Failure::CssProcessingProtocol,
+fn error(error: CssColorError) -> DomError {
+    DomError::Meta(if let Some(value) = error.unavailable() {
+        Failure::ThemeColorUnavailable(value)
+    } else if let Some(value) = error.unsupported() {
+        Failure::ThemeColorUnsupported(value)
+    } else if let Some(value) = error.fact_defect() {
+        Failure::ThemeColorFacts(value)
+    } else {
+        // The adapter's UTF-16 input admits every unit, so a malformed-input
+        // report is an adapter inconsistency.
+        Failure::CssProcessingProtocol
     })
 }
 fn index(bank: CssColorBank) -> usize {
@@ -165,9 +166,9 @@ pub(super) fn parse(
     scratch.add(
         size_of::<CssColorOperationOwner>()
             + size_of::<CssColorFacts<'_>>()
-            + size_of::<Option<CssColorOperation<'_, '_>>>()
+            + size_of::<CssColorParse<'_, '_>>()
             + size_of::<[Vec<CssColorSlot<'_>>; 3]>()
-            + size_of::<CssColorParseOutcome<'_, '_>>(),
+            + size_of::<CssColorParseOutcome<'_>>(),
     )?;
     let mut owner = CssColorOperationOwner::new();
     let facts = CssColorFacts::new(
@@ -182,106 +183,91 @@ pub(super) fn parse(
     #[cfg(test)]
     let mut written = crate::store::CopyObservation::default();
     let mut banks: [Vec<CssColorSlot<'_>>; 3] = std::array::from_fn(|_| Vec::new());
-    let mut operation = Some(
-        CssColorOperation::parse_used(
-            &mut owner,
-            CssColorInputKind::Utf16,
-            input.len(),
-            CssColorGrammarRequest::WholeColor,
-            &facts,
-            facts.identity(),
-        )
-        .map_err(error)?,
-    );
+    let mut parse = CssColorParse::start(
+        &mut owner,
+        CssColorInputKind::Utf16,
+        input.len(),
+        CssColorGrammarRequest::WholeColor,
+        &facts,
+        facts.identity(),
+    )
+    .map_err(error)?;
+    // A refusal drops the pending parse or action, which abandons the parse.
     let result = (|| {
-        loop {
+        let outcome = loop {
             draft.meta_step(cancel)?;
-            let actual = operation
-                .as_mut()
-                .ok_or(DomError::Meta(Failure::CssProcessingProtocol))?;
-            if matches!(actual.action(), Action::UsedReady | Action::StandardFailed) {
-                break;
-            }
+            let action = match parse.step() {
+                CssColorParseStep::Complete(outcome) => break outcome,
+                CssColorParseStep::Pending(action) => action,
+            };
             scratch.work(
-                CssColorOperation::register_bytes()
+                CssColorParse::register_bytes()
                     .checked_mul(2)
                     .ok_or(DomError::RepresentationExhausted)?,
             )?;
-            let fixed = CssColorOperation::action_bytes()
-                + size_of::<Action>()
-                + size_of::<CssColorActionLayout>();
+            // A typed action is its own description; it is observed with its layout.
+            let fixed = CssColorParse::action_bytes() + size_of::<CssColorActionLayout>();
             scratch.add(fixed)?;
-            {
-                let mut action = actual.next_action();
-                let layout = action.layout();
-                for bytes in [
-                    layout.input_unit_bytes,
-                    layout.slot_read_bytes,
-                    layout.slot_write_bytes,
-                    layout.numerical_read_bytes,
-                    layout.numerical_write_bytes,
-                    layout.output_unit_bytes,
-                    layout.fact_records[0],
-                    layout.fact_records[1],
-                    layout.fact_records[2],
-                ] {
-                    scratch.work(bytes)?;
-                }
-                match action.description() {
-                    Action::ReadInput { offset } => action
-                        .read_input(
-                            offset,
-                            *input
-                                .get(offset)
-                                .ok_or(DomError::Meta(Failure::CssProcessingProtocol))?,
-                        )
-                        .map_err(error)?,
-                    Action::ReadSlot { bank, index: at } => action
-                        .read_slot(
-                            bank,
-                            at,
-                            banks[index(bank)]
-                                .get(at)
-                                .ok_or(DomError::Meta(Failure::CssProcessingProtocol))?,
-                        )
-                        .map_err(error)?,
-                    Action::AppendSlot { bank, index: at } => {
-                        let storage = &mut banks[index(bank)];
-                        if storage.len() != at {
-                            return Err(DomError::Meta(Failure::CssProcessingProtocol));
-                        }
-                        scratch.reserve(storage)?;
-                        storage.push(action.record().map_err(error)?);
-                        #[cfg(test)]
-                        written.pushed::<CssColorSlot<'_>>();
-                        action.written(bank, at, &storage[at]).map_err(error)?;
-                    }
-                    Action::UpdateSlot { bank, index: at } => {
-                        let stored = banks[index(bank)]
-                            .get_mut(at)
-                            .ok_or(DomError::Meta(Failure::CssProcessingProtocol))?;
-                        *stored = action.record().map_err(error)?;
-                        action.written(bank, at, stored).map_err(error)?;
-                    }
-                    Action::Compute(_) | Action::ReadFact(_) => action.compute().map_err(error)?,
-                    _ => return Err(DomError::Meta(Failure::CssProcessingProtocol)),
-                }
+            let layout = action.layout();
+            for bytes in [
+                layout.input_unit_bytes,
+                layout.slot_read_bytes,
+                layout.slot_write_bytes,
+                layout.numerical_read_bytes,
+                layout.numerical_write_bytes,
+                layout.output_unit_bytes,
+                layout.fact_records[0],
+                layout.fact_records[1],
+                layout.fact_records[2],
+            ] {
+                scratch.work(bytes)?;
             }
+            parse = match action {
+                CssColorParseAction::ReadInput(read) => {
+                    let unit = *input
+                        .get(read.offset())
+                        .ok_or(DomError::Meta(Failure::CssProcessingProtocol))?;
+                    read.read(unit).map_err(error)?
+                }
+                CssColorParseAction::ReadSlot(read) => {
+                    let slot = banks[index(read.bank())]
+                        .get(read.index())
+                        .ok_or(DomError::Meta(Failure::CssProcessingProtocol))?;
+                    read.read(slot).map_err(error)?
+                }
+                CssColorParseAction::AppendSlot(write) => {
+                    let at = write.index();
+                    let storage = &mut banks[index(write.bank())];
+                    if storage.len() != at {
+                        return Err(DomError::Meta(Failure::CssProcessingProtocol));
+                    }
+                    scratch.reserve(storage)?;
+                    let (record, receipt) = write.record();
+                    storage.push(record);
+                    #[cfg(test)]
+                    written.pushed::<CssColorSlot<'_>>();
+                    receipt.stored(&storage[at])
+                }
+                CssColorParseAction::UpdateSlot(write) => {
+                    let at = write.index();
+                    let stored = banks[index(write.bank())]
+                        .get_mut(at)
+                        .ok_or(DomError::Meta(Failure::CssProcessingProtocol))?;
+                    let (record, receipt) = write.record();
+                    *stored = record;
+                    receipt.stored(stored)
+                }
+                CssColorParseAction::ReadFact(read) => read.read().map_err(error)?,
+                CssColorParseAction::Compute(compute) => compute.compute().map_err(error)?,
+            };
             scratch.release(fixed);
-        }
-        scratch.work(size_of::<CssColorParseOutcome<'_, '_>>())?;
-        match CssColorOperation::take(&mut operation)
-            .map_err(|e| DomError::Meta(Failure::ThemeColorProtocol(e)))?
-        {
-            CssColorParseOutcome::Used(value) => Ok(Some(value.value())),
-            CssColorParseOutcome::StandardFailure(_) => Ok(None),
-        }
+        };
+        scratch.work(size_of::<CssColorParseOutcome<'_>>())?;
+        Ok(match outcome {
+            CssColorParseOutcome::Used(value) => Some(value.value()),
+            CssColorParseOutcome::StandardFailure(_) => None,
+        })
     })();
-    if result.is_err()
-        && let Some(operation) = operation.as_mut()
-    {
-        operation.abandon();
-    }
-    // Banks/operation drop before their original formation custody.
+    // Banks/parse drop before their original formation custody.
     result
 }

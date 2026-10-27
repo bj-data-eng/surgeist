@@ -1,7 +1,10 @@
 //! Real producer terminal transitions and authentic current-state recovery.
 use super::*;
 use crate::*;
-use surgeist_css::*;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssPropertyGrammar;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::source::CssSourceSnapshot;
 use surgeist_cssom::*;
 
 fn flag() -> AtomicBool {
@@ -356,7 +359,7 @@ fn producer_refusals_leave_old_evidence_and_do_not_spend_fresh_identity() {
         };
         let mut request = limits(4_000_000, 64);
         if identity_limit == 2 {
-            request.declaration.provider = CssSpecifiedValueSerializationLimits::new(1000, 1000, 0);
+            request.declaration.provider = CssSerializationLimits::new(1000, 1000, 0);
         }
         let err = dom
             .resume_inline_style_feedback()

@@ -1,26 +1,25 @@
-use surgeist_css::{
-    CssCalcSize, CssCalcSizeBasisRef, CssCalculationExpressionRef, CssComponentValueErrorKind,
-    CssComponentValueLimits, CssIntrinsicSizeKeyword, CssLengthPercentageCalculation,
-    CssNumericConstructionErrorKind, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, parse_component_values,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues};
+use surgeist_css::numeric::{CssCalculation, CssCalculationExpressionRef, CssLengthPercentage};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssCalcSize, CssCalcSizeBasisRef, CssIntrinsicSizeKeyword};
 
 fn checked(text: &str) -> CssCalcSize {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [component] = values.items() else {
         panic!("one function: {text}")
     };
-    CssCalcSize::try_from_component(component.clone())
+    CssCalcSize::try_from_component(component.clone(), Default::default())
         .unwrap_or_else(|error| panic!("{text}: {error:?}"))
 }
 
 fn rejected(text: &str) {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [component] = values.items() else {
         panic!("one function: {text}")
     };
     assert!(
-        CssCalcSize::try_from_component(component.clone()).is_err(),
+        CssCalcSize::try_from_component(component.clone(), Default::default()).is_err(),
         "{text}"
     );
 }
@@ -40,7 +39,7 @@ fn basis_and_symbolic_size_are_borrowed_checked_views() {
         CssCalculationExpressionRef::Size(_)
     ));
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "calc-size(min-content, 1px + size)"
     );
 
@@ -53,7 +52,7 @@ fn basis_and_symbolic_size_are_borrowed_checked_views() {
         CssCalcSizeBasisRef::Keyword(CssIntrinsicSizeKeyword::Auto)
     ));
     assert_eq!(
-        nested.serialize_specified().unwrap(),
+        nested.serialize_specified(Default::default()).unwrap(),
         "calc-size(calc-size(auto, size), 1px + size)"
     );
 }
@@ -107,28 +106,23 @@ fn origins_retain_authored_nested_basis_site() {
 #[test]
 fn specified_serialization_uses_one_budget_across_nested_children() {
     let value = checked("calc-size(calc-size(min-content, size), size + 1px)");
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 100, 100))
+            .serialize_specified(CssSerializationLimits::new(3, 100, 100))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(100, 2, 100))
+            .serialize_specified(CssSerializationLimits::new(100, 2, 100))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                100, 100, 12
-            ))
+            .serialize_specified(CssSerializationLimits::new(100, 100, 12))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -139,8 +133,9 @@ fn ordinary_numeric_admission_does_not_gain_size_or_calc_size() {
         "calc(calc-size(min-content, size) + 1px)",
     ] {
         assert!(
-            CssLengthPercentageCalculation::try_from_components(
-                parse_component_values(text).unwrap()
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default()
             )
             .is_err(),
             "{text}"
@@ -151,19 +146,15 @@ fn ordinary_numeric_admission_does_not_gain_size_or_calc_size() {
 #[test]
 fn entire_component_graph_is_bounded_before_nested_admission() {
     let source = "calc-size(calc-size(min-content, size), size + 1px)";
-    let values = parse_component_values(source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let component = values.items()[0].clone();
     for limits in [
         CssComponentValueLimits::try_new(256, values.component_count() - 1, 1_000).unwrap(),
         CssComponentValueLimits::try_new(values.nesting_depth() - 1, 1_000, 1_000).unwrap(),
         CssComponentValueLimits::try_new(256, 1_000, source.len() - 1).unwrap(),
     ] {
-        let error =
-            CssCalcSize::try_from_component_with_limits(component.clone(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::ResourceLimit
-        );
+        let error = CssCalcSize::try_from_component(component.clone(), limits).unwrap_err();
+        assert!(error.is_resource_limit(), "{error:?}");
     }
 }
 
@@ -174,11 +165,14 @@ fn deep_checked_graph_clones_and_projects_within_the_hard_ceiling() {
         "calc(".repeat(255),
         ")".repeat(255)
     );
-    let values = parse_component_values(&source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     assert_eq!(values.nesting_depth(), 256);
     let original = checked(&source);
     let copied = original.clone();
-    assert_eq!(copied.serialize_specified().unwrap(), "calc-size(1px, 1px)");
+    assert_eq!(
+        copied.serialize_specified(Default::default()).unwrap(),
+        "calc-size(1px, 1px)"
+    );
     assert_eq!(original, copied);
 
     let over_limit = format!(
@@ -186,9 +180,10 @@ fn deep_checked_graph_clones_and_projects_within_the_hard_ceiling() {
         "calc(".repeat(256),
         ")".repeat(256)
     );
-    assert_eq!(
-        parse_component_values(&over_limit).unwrap_err().kind(),
-        CssComponentValueErrorKind::NestingLimit
+    assert!(
+        CssComponentValues::parse(&CssParser::default(), &over_limit)
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }
 
@@ -198,7 +193,7 @@ fn nested_calc_size_bases_reach_the_hard_ceiling_without_recursion_overflow() {
     for _ in 0..255 {
         source = format!("calc-size({source}, size)");
     }
-    let values = parse_component_values(&source).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
     assert_eq!(values.nesting_depth(), 256);
     let value = checked(&source);
     let cloned = value.clone();
@@ -213,31 +208,39 @@ fn nested_calc_size_bases_reach_the_hard_ceiling_without_recursion_overflow() {
         current.basis(),
         CssCalcSizeBasisRef::Keyword(CssIntrinsicSizeKeyword::MinContent)
     ));
-    assert_eq!(cloned.serialize_specified().unwrap(), source);
+    assert_eq!(
+        cloned.serialize_specified(Default::default()).unwrap(),
+        source
+    );
 
     let over_limit = format!("calc-size({source}, size)");
-    assert_eq!(
-        parse_component_values(&over_limit).unwrap_err().kind(),
-        CssComponentValueErrorKind::NestingLimit
+    assert!(
+        CssComponentValues::parse(&CssParser::default(), &over_limit)
+            .unwrap_err()
+            .is_nesting_limit()
     );
 }
 
 #[test]
 fn calc_size_equality_ignores_origins_but_keeps_exact_checked_structure() {
     let value = checked("calc-size(min-content, size + 1px)");
-    let shifted = parse_component_values("  calc-size(min-content, size + 1px)").unwrap();
+    let shifted = CssComponentValues::parse(
+        &CssParser::default(),
+        "  calc-size(min-content, size + 1px)",
+    )
+    .unwrap();
     let component = shifted
         .items()
         .iter()
         .find(|component| {
             matches!(
                 component.view(),
-                surgeist_css::CssComponentValueRef::Function(_)
+                surgeist_css::component::CssComponentValueRef::Function(_)
             )
         })
         .unwrap()
         .clone();
-    let shifted = CssCalcSize::try_from_component(component).unwrap();
+    let shifted = CssCalcSize::try_from_component(component, Default::default()).unwrap();
     assert_ne!(value.origin(), shifted.origin());
     assert_eq!(value, shifted);
     assert_eq!(value, checked("calc-size(MIN-CONTENT, size + 1px)"));

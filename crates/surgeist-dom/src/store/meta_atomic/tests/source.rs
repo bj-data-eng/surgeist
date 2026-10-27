@@ -667,20 +667,20 @@ fn accepted_style_receipt_holder_is_admitted_before_busy_owner_access_and_retry_
         )
         .unwrap();
     let parser = CssParserContext::default();
-    let body = parser
-        .parse_sheet_utf16_with_limits(
+    let body = CssParser::new(parser, Default::default())
+        .parse_sheet_utf16(
             create.source().text().clone(),
             CssUtf16InputLimits::default(),
             || Ok::<_, ()>(()),
         )
         .unwrap();
-    let media = parser
-        .parse_media_query_list_utf16_with_limits(
-            std::sync::Arc::new(Vec::new()),
-            CssUtf16InputLimits::default(),
-            || Ok::<_, ()>(()),
-        )
-        .unwrap();
+    let media = CssMediaQueryList::parse_utf16(
+        &CssParser::new(parser, Default::default()),
+        std::sync::Arc::new(Vec::new()),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap();
     let mut inputs = CssomSheetInputs::external(version, true);
     inputs.owner = Some("real-style".into());
     let mut batch = f.owners[0]

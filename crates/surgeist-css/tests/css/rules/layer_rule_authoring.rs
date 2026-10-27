@@ -1,7 +1,9 @@
 //! `@layer` (Cascade 5) statement and block forms through the public stylesheet
 //! parser and constructors.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::rule::{CssLayerName, CssLayerStatementRule, CssRule};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
@@ -15,14 +17,15 @@ fn layer_statement_rule(rule: &CssRule) -> &CssLayerStatementRule {
 
 #[test]
 fn layer_rule_parser_accepts_statement_and_block_forms() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             @layer reset, theme.components;
             @layer theme { .button { color: black; } }
             @layer { .utility { color: red; } }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     assert_eq!(sheet.rules().len(), 3);
     let statement = layer_statement_rule(&sheet.rules()[0]);
@@ -48,8 +51,9 @@ fn layer_rule_parser_accepts_statement_and_block_forms() {
 
 #[test]
 fn layer_rule_parser_accepts_nested_group_rule_blocks() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             @media screen {
                 @layer theme.components {
                     @container (inline-size > 30rem) {
@@ -59,8 +63,8 @@ fn layer_rule_parser_accepts_nested_group_rule_blocks() {
                 }
             }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     let media = media_rule(&sheet.rules()[0]);
     let [CssRule::LayerBlock(layer)] = media.rules() else {

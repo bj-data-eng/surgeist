@@ -20,13 +20,13 @@ pub enum DomMetaThemeColorState {
 #[derive(Clone, Copy, Debug)]
 pub enum DomMetaColorSchemeState<'a> {
     Unavailable,
-    Known(Option<&'a surgeist_css::CssColorSchemeParseReport>),
+    Known(Option<&'a surgeist_css::values::color_adjust::CssColorSchemeParseReport>),
 }
 
 /// The CSS owner seals the report; this receipt records its admitted backing.
 #[derive(Clone, Debug)]
 pub(crate) struct SelectedColorScheme {
-    pub report: std::sync::Arc<surgeist_css::CssColorSchemeParseReport>,
+    pub report: std::sync::Arc<surgeist_css::values::color_adjust::CssColorSchemeParseReport>,
     pub bytes: usize,
     pub units: usize,
 }
@@ -189,20 +189,15 @@ pub enum DomMetaError {
     ContentSecurityPolicyUnsupported,
     /// Media beyond HTML's empty/ASCII-whitespace match needs actual matching facts.
     ThemeColorMediaUnavailable,
-    ThemeColorProtocol(surgeist_css::CssColorProtocolError),
-    ThemeColorUnavailable(surgeist_css::CssColorUnavailable),
-    ThemeColorUnsupported(surgeist_css::CssColorUnsupported),
-    ThemeColorFacts(surgeist_css::CssColorFactError),
-    ThemeColorNumerical {
-        error: surgeist_color::ColorError,
-        input: surgeist_css::CssColorInputRange,
-    },
+    ThemeColorUnavailable(surgeist_css::color::CssColorUnavailable),
+    ThemeColorUnsupported(surgeist_css::color::CssColorUnsupported),
+    ThemeColorFacts(surgeist_css::color::CssColorFactDefect),
     ThemeColorScratchLimit {
         limit: usize,
     },
     /// No caller-selected finite CSS property processing allowance is present.
     ColorSchemeProcessingUnavailable,
-    ColorSchemeLimit(&'static str),
+    ColorSchemeLimit(surgeist_css::source::CssUtf16Resource),
     CssProcessingProtocol,
     /// Cumulative current-batch Meta processing exhausted its caller allowance.
     WorkLimit {

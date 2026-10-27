@@ -2,10 +2,9 @@
 //! diagnostic contracts. Expected values never come from the runtime or registry.
 
 use serde_json::{Value, json};
-use surgeist_css::{
-    CssDeclarationList, CssImportance, CssKnownPropertyValueRef, parse_style_attribute,
-    validate_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclarationList, CssImportance};
+use surgeist_css::property::CssKnownPropertyValueRef;
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
 use crate::css::support::csstree::reconciliation::{
@@ -59,10 +58,10 @@ fn declarations(list: &CssDeclarationList, expected_names: &[&str]) -> Value {
 /// strict validation for one row.
 fn typed_declarations_reconcile(row: &Value) -> Result<(), String> {
     let input = text(row, "input");
-    let report = parse_style_attribute(input);
+    let report = CssParser::default().parse_block_contents(input);
     let actual = json!({
         "declarations": declarations(report.syntax(), expected_named_colors(text(row, "id"))),
-        "validation_accepts": validate_style_attribute(input).is_ok()});
+        "validation_accepts": CssParser::default().parse_block_contents(input).into_validation_result().is_ok()});
     // The pinned oracle's RGBA fields record the retired color projection.
     // Keep its property/order/importance contract and assert the authored
     // named branch directly against independent per-case expectations above.

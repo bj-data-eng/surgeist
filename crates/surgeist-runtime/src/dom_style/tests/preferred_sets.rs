@@ -803,7 +803,10 @@ fn add_external_sheet(
         .prepare_added_sheet_sets(index, &snapshot, &mut batch, &mut inputs, &flag())
         .unwrap();
     let ticket = batch
-        .create_parsed_sheet_report(CssParserContext::default().parse_sheet(""), inputs)
+        .create_parsed_sheet_report(
+            CssParser::new(CssParserContext::default(), Default::default()).parse_sheet(""),
+            inputs,
+        )
         .unwrap();
     let commit = root.commit(&mut Some(batch)).unwrap();
     if let Some(next) = next {

@@ -1,10 +1,33 @@
 //! Selected Page3 property applicability composes with Cascade5 globals and Values3/4
 //! authored lengths. Page-local custom declarations use the approved bounded
 //! WebKit witness; variable lookup, fallback selection and cascade stay downstream.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::rules::assert_clean_and_valid as clean;
 use crate::css::support::rules::page_pseudo;
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{
+    CssDeclaration, CssDeclarationList, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem, CssRuleContextKindRef,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef,
+};
+use surgeist_css::rule::page::{CssPageBody, CssPagePseudo};
+use surgeist_css::rule::{
+    CssBlockContext, CssBlockFragment, CssRule, CssRuleList, CssStyleAncestor,
+};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::CssMarginValue;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("inherit", CssGlobalKeyword::Inherit),
@@ -17,7 +40,7 @@ const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
 fn page_list(body: &str, front: usize) -> CssDeclarationList {
     match front {
         0 => {
-            let report = parse_sheet(&format!("@page :left{{{body}}}"));
+            let report = CssParser::default().parse_sheet(format!("@page :left{{{body}}}"));
             clean(&report);
             let [CssRule::Page(page)] = report.syntax().rules() else {
                 panic!("one actual Page rule")
@@ -26,8 +49,9 @@ fn page_list(body: &str, front: usize) -> CssDeclarationList {
             page.declarations().properties().clone()
         }
         1 => {
-            let report = parse_rule(
-                &format!("@page :right{{{body}}}"),
+            let report = CssRule::parse(
+                &CssParser::default(),
+                format!("@page :right{{{body}}}"),
                 &CssNamespaceContext::default(),
             );
             clean(&report);
@@ -43,7 +67,11 @@ fn page_list(body: &str, front: usize) -> CssDeclarationList {
             } else {
                 CssParserMode::Quirks
             });
-            let report = context.parse_page_block(&format!("{{{body}}}"));
+            let report = CssBlockFragment::<CssPageBody>::parse(
+                &CssParser::new(context, Default::default()),
+                format!("{{{body}}}"),
+                &CssBlockContext::default(),
+            );
             clean(&report);
             let fragment = report.syntax().as_ref().expect("genuine Page body");
             for declaration in fragment.body().declarations().properties().as_slice() {
@@ -66,7 +94,7 @@ fn source(name: &str, value: &str, front: usize) -> CssDeclaration {
 
 fn margins(declaration: &CssDeclaration) -> Vec<&CssMarginValue> {
     match declaration.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::Margin(value) => value.value().assigned_values().to_vec(),
+        CssKnownPropertyValueRef::Margin(value) => value.value().assigned().to_vec(),
         CssKnownPropertyValueRef::MarginTop(value) => vec![value.value()],
         CssKnownPropertyValueRef::MarginRight(value) => vec![value.value()],
         CssKnownPropertyValueRef::MarginBottom(value) => vec![value.value()],
@@ -81,11 +109,11 @@ fn globals(name: &str) {
             let declaration = source(name, text, front);
             assert_eq!(declaration.known().unwrap().global(), Some(keyword));
             assert_eq!(
-                declaration.to_specified_css().unwrap(),
+                declaration.serialize_specified(Default::default()).unwrap(),
                 format!("{name}: {text} !important;")
             );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&declaration).unwrap()
+                declaration.expand().unwrap()
             else {
                 panic!("symbolic global contributions")
             };
@@ -113,14 +141,27 @@ fn calculations(name: &str) {
                     panic!("symbolic length-percentage")
                 };
                 assert!(length.calculation().is_some(), "{value}");
-                assert!(length.literal_component().is_none());
+                assert!(
+                    length
+                        .literal()
+                        .map(|literal| literal.component())
+                        .is_none()
+                );
             }
             assert_eq!(
-                declaration.value_components().serialize().unwrap().as_css(),
+                declaration
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 value
             );
-            let emitted = declaration.to_specified_css().unwrap();
-            clean(&parse_page_block(&format!("{{{emitted}}}")));
+            let emitted = declaration.serialize_specified(Default::default()).unwrap();
+            clean(&CssBlockFragment::<CssPageBody>::parse(
+                &CssParser::default(),
+                format!("{{{emitted}}}"),
+                &CssBlockContext::default(),
+            ));
         }
     }
 }
@@ -137,14 +178,23 @@ fn units(name: &str) {
         for front in 0..4 {
             let declaration = source(name, value, front);
             assert_eq!(
-                declaration.value_components().serialize().unwrap().as_css(),
+                declaration
+                    .value_components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 value
             );
             for margin in margins(&declaration) {
                 let CssMarginValue::LengthPercentage(length) = margin else {
                     panic!("symbolic literal length")
                 };
-                assert!(length.literal_component().is_some());
+                assert!(
+                    length
+                        .literal()
+                        .map(|literal| literal.component())
+                        .is_some()
+                );
             }
         }
     }
@@ -169,7 +219,7 @@ fn pending(name: &str) {
                     .as_css(),
                 authored
             );
-            let CssExpansion::Pending(handle) = expand_declaration(&declaration).unwrap() else {
+            let CssExpansion::Pending(handle) = declaration.expand().unwrap() else {
                 panic!("pending whole Page margin")
             };
             assert!(handle.source().same_occurrence(&declaration));
@@ -185,13 +235,15 @@ fn pending(name: &str) {
                     "calc(1px + 2yy)",
                     "calc(0 * 1zz)",
                 ] {
-                    let replacement = parse_component_values(invalid).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
                     let before = replacement.clone();
                     assert!(
-                        matches!(
-                            handle.reenter(replacement.clone()).unwrap_err().kind(),
-                            CssExpansionErrorKind::InvalidReplacement(_)
-                        ),
+                        handle
+                            .reenter(replacement.clone())
+                            .unwrap_err()
+                            .replacement_error()
+                            .is_some(),
                         "{name}: {invalid}"
                     );
                     assert_eq!(replacement, before);
@@ -202,12 +254,13 @@ fn pending(name: &str) {
                     "calc(1px + env(foo))",
                     "f(attr(data-m))",
                 ] {
-                    assert_eq!(
+                    assert!(
                         handle
-                            .reenter(parse_component_values(residual).unwrap())
+                            .reenter(
+                                CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                            )
                             .unwrap_err()
-                            .kind(),
-                        &CssExpansionErrorKind::ResidualSubstitution
+                            .is_residual_substitution()
                     );
                 }
                 for valid in [
@@ -222,7 +275,9 @@ fn pending(name: &str) {
                     "5cqmin",
                     "6cqmax",
                 ] {
-                    let replacement = parse_component_values(&format!("/*😀*/{valid}")).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), format!("/*😀*/{valid}"))
+                            .unwrap();
                     let before = replacement.clone();
                     let CssContributions::Longhands(values) =
                         handle.reenter(replacement.clone()).unwrap()
@@ -240,7 +295,7 @@ fn pending(name: &str) {
                 }
                 for (text, keyword) in GLOBALS {
                     let CssContributions::Longhands(values) = handle
-                        .reenter(parse_component_values(text).unwrap())
+                        .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                         .unwrap()
                     else {
                         panic!("global replacement")
@@ -304,7 +359,7 @@ fn container_length(unit: &str) {
                     panic!("container-relative length")
                 };
                 assert!(
-                    matches!(length.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit: actual, .. }) if actual == unit)
+                    matches!(length.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { unit: actual, .. }) if actual == unit)
                 );
             }
             let calculation = format!("calc(1{unit} + 2%)");
@@ -316,11 +371,11 @@ fn container_length(unit: &str) {
                 assert!(length.calculation().is_some());
             }
             let pending = source(name, "var(--container-margin)", front);
-            let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+            let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
                 panic!("pending Page margin")
             };
             for value in [&literal, &calculation] {
-                let replacement = parse_component_values(value).unwrap();
+                let replacement = CssComponentValues::parse(&CssParser::default(), value).unwrap();
                 let before = replacement.clone();
                 let CssContributions::Longhands(values) =
                     handle.reenter(replacement.clone()).unwrap()
@@ -337,7 +392,7 @@ fn container_length(unit: &str) {
             }
             assert!(
                 handle
-                    .reenter(parse_component_values("1em").unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), "1em").unwrap())
                     .is_ok()
             );
         }
@@ -387,17 +442,19 @@ fn page_context_restriction_does_not_escape_into_ordinary_declarations_or_reentr
         "margin-left",
     ] {
         for value in ["1em", "1ex", "calc(1px + 2em)"] {
-            clean(&parse_declaration(&format!("{name}:{value}")));
-            let report = parse_declaration(&format!("{name}:var(--m)"));
+            clean(&CssDeclaration::parse(
+                &CssParser::default(),
+                format!("{name}:{value}"),
+            ));
+            let report = CssDeclaration::parse(&CssParser::default(), format!("{name}:var(--m)"));
             clean(&report);
-            let CssExpansion::Pending(handle) =
-                expand_declaration(report.syntax().as_ref().unwrap()).unwrap()
+            let CssExpansion::Pending(handle) = report.syntax().as_ref().unwrap().expand().unwrap()
             else {
                 panic!("ordinary pending")
             };
             assert!(
                 handle
-                    .reenter(parse_component_values(value).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), value).unwrap())
                     .is_ok()
             );
         }
@@ -407,20 +464,17 @@ fn page_context_restriction_does_not_escape_into_ordinary_declarations_or_reentr
 #[test]
 fn strict_pending_reentry_rejects_recovered_original_closures_with_original_provenance() {
     let declaration = source("margin-left", "var(--m)", 2);
-    let CssExpansion::Pending(handle) = expand_declaration(&declaration).unwrap() else {
+    let CssExpansion::Pending(handle) = declaration.expand().unwrap() else {
         panic!("Page pending")
     };
     for invalid in ["calc(1px + 2%", "1px/*unfinished"] {
-        let replacement = parse_component_values(invalid).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
         let before = replacement.clone();
         let error = handle.reenter(replacement.clone()).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(detail) = error.kind() else {
+        let Some(detail) = error.replacement_error() else {
             panic!("strict closure failure")
         };
-        assert!(matches!(
-            detail.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-        ));
+        assert!(detail.code() == Some(CssErrorCode::UnexpectedEnd));
         assert!(matches!(
             detail.origin(),
             CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { .. }))
@@ -429,7 +483,7 @@ fn strict_pending_reentry_rejects_recovered_original_closures_with_original_prov
     }
     assert!(
         handle
-            .reenter(parse_component_values("2Q").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "2Q").unwrap())
             .is_ok()
     );
 }
@@ -447,12 +501,12 @@ fn shorthand_one_to_four_values_expand_in_physical_order() {
             assert_eq!(
                 margins(&declaration)
                     .into_iter()
-                    .map(|v| v.serialize_specified().unwrap())
+                    .map(|v| v.serialize_specified(Default::default()).unwrap())
                     .collect::<Vec<_>>(),
                 expected
             );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&declaration).unwrap()
+                declaration.expand().unwrap()
             else {
                 panic!("four physical contributions")
             };
@@ -474,7 +528,7 @@ fn shorthand_one_to_four_values_expand_in_physical_order() {
 #[test]
 fn strict_shorthand_reentry_checks_every_assigned_side_and_whole_arity() {
     let declaration = source("margin", "var(--m)", 0);
-    let CssExpansion::Pending(handle) = expand_declaration(&declaration).unwrap() else {
+    let CssExpansion::Pending(handle) = declaration.expand().unwrap() else {
         panic!("pending shorthand")
     };
     for invalid in [
@@ -486,19 +540,17 @@ fn strict_shorthand_reentry_checks_every_assigned_side_and_whole_arity() {
         "1px initial",
     ] {
         assert!(
-            matches!(
-                handle
-                    .reenter(parse_component_values(invalid).unwrap())
-                    .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ),
+            handle
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
+                .unwrap_err()
+                .replacement_error()
+                .is_some(),
             "{invalid}"
         );
     }
     for valid in ["1Q", "1Q 2ch", "1Q 2ch 3rem", "1Q 2ch 3rem calc(1px + 2%)"] {
         let CssContributions::Longhands(values) = handle
-            .reenter(parse_component_values(valid).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), valid).unwrap())
             .unwrap()
         else {
             panic!("four completed terminals")
@@ -518,7 +570,7 @@ fn page_local_custom_declarations_preserve_case_tokens_duplicates_priority_and_s
                 matches!(list[index].property_name(), CssPropertyNameRef::Custom(value) if value.as_str() == name)
             );
             assert!(matches!(
-                expand_declaration(&list[index]).unwrap(),
+                list[index].expand().unwrap(),
                 CssExpansion::Contributions(CssContributions::Custom(_))
             ));
         }
@@ -536,11 +588,11 @@ fn page_local_custom_declarations_preserve_case_tokens_duplicates_priority_and_s
             ""
         );
         assert!(matches!(
-            expand_declaration(&list[4]).unwrap(),
+            list[4].expand().unwrap(),
             CssExpansion::Pending(_)
         ));
     }
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         ":root{--m:9px}@page :left{--m:2Q;margin:var(--m)}@page :right{margin:var(--m,1px)}",
     );
     clean(&report);
@@ -556,7 +608,7 @@ fn page_local_custom_declarations_preserve_case_tokens_duplicates_priority_and_s
     assert_eq!(left.declarations().properties().len(), 2);
     assert_eq!(right.declarations().properties().len(), 1);
     assert!(matches!(
-        expand_declaration(&right.declarations().properties()[0]).unwrap(),
+        right.declarations().properties()[0].expand().unwrap(),
         CssExpansion::Pending(_)
     ));
 }
@@ -564,7 +616,7 @@ fn page_local_custom_declarations_preserve_case_tokens_duplicates_priority_and_s
 #[test]
 fn defined_font_relative_replacement_is_admitted_without_parser_time_fallback_selection() {
     let list = page_list("--m:1em;margin:var(--m,1px)", 2);
-    let CssExpansion::Pending(handle) = expand_declaration(&list[1]).unwrap() else {
+    let CssExpansion::Pending(handle) = list[1].expand().unwrap() else {
         panic!("pending margin")
     };
     // The caller supplies the defined variable's replacement. The Page3 domain
@@ -585,7 +637,10 @@ fn defined_font_relative_replacement_is_admitted_without_parser_time_fallback_se
             | CssLonghandValueRef::MarginLeft(v) => v,
             _ => panic!("physical margin terminal"),
         };
-        assert_eq!(margin.serialize_specified().unwrap(), "1em");
+        assert_eq!(
+            margin.serialize_specified(Default::default()).unwrap(),
+            "1em"
+        );
     }
     assert_eq!(
         handle
@@ -599,7 +654,7 @@ fn defined_font_relative_replacement_is_admitted_without_parser_time_fallback_se
     );
     assert!(
         handle
-            .reenter(parse_component_values("1px").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "1px").unwrap())
             .is_ok()
     );
 }
@@ -608,7 +663,7 @@ fn defined_font_relative_replacement_is_admitted_without_parser_time_fallback_se
 fn composed_values_preserve_unicode_snapshot_spans_and_occurrence_order() {
     let input =
         "/*é*/\r\n@page :first{--M:2Q;margin-left:calc(1px + 2%)!important;margin-left:var(--M)}";
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     clean(&report);
     let [CssRule::Page(page)] = report.syntax().rules() else {
         panic!("actual Page")
@@ -643,7 +698,11 @@ fn composed_values_preserve_unicode_snapshot_spans_and_occurrence_order() {
         );
         assert!(name_origin.source().same_snapshot(origin.source()));
         assert_eq!(
-            declaration.value_components().serialize().unwrap().as_css(),
+            declaration
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -660,7 +719,11 @@ fn composed_values_preserve_unicode_snapshot_spans_and_occurrence_order() {
 #[test]
 fn recovery_drops_invalid_units_unknown_properties_and_children_in_source_order() {
     let input = "{margin-top:initial;margin-right:1zz;--m:2Q;noise:red;@bad-left{content:'x'}margin-left:var(--m);margin-bottom:calc(1px + 2yy);margin:1Q 2ch 3rem auto}";
-    let report = parse_page_block(input);
+    let report = CssBlockFragment::<CssPageBody>::parse(
+        &CssParser::default(),
+        input,
+        &CssBlockContext::default(),
+    );
     assert!(!report.is_clean());
     assert!(report.clone().into_validation_result().is_err());
     let list = report
@@ -712,7 +775,11 @@ fn malformed_margin_types_and_global_mixtures_recover_only_the_bad_occurrence() 
         "1yy",
         "calc(1zz + 2px)",
     ] {
-        let report = parse_page_block(&format!("{{margin-top:0;margin:{value};margin-left:auto}}"));
+        let report = CssBlockFragment::<CssPageBody>::parse(
+            &CssParser::default(),
+            format!("{{margin-top:0;margin:{value};margin-left:auto}}"),
+            &CssBlockContext::default(),
+        );
         assert_eq!(
             report
                 .syntax()
@@ -736,15 +803,12 @@ fn malformed_margin_types_and_global_mixtures_recover_only_the_bad_occurrence() 
 
 #[test]
 fn page_payload_normalization_retains_pending_custom_and_composed_occurrences() {
-    let report = parse_sheet(
-        "@page :first{--m:2Q;margin:var(--m)!important;margin-top:calc(1px + 2%);margin-left:revert-layer}",
-    );
+    let report = CssParser::default().parse_sheet("@page :first{--m:2Q;margin:var(--m)!important;margin-top:calc(1px + 2%);margin-left:revert-layer}");
     clean(&report);
-    let normalized = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 0, 0).unwrap(),
-    )
-    .unwrap();
+    let normalized = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 0, 0).unwrap())
+        .unwrap();
     let [CssNormalizedItem::Rule(context)] = normalized.items() else {
         panic!("one Page context payload")
     };
@@ -754,32 +818,27 @@ fn page_payload_normalization_retains_pending_custom_and_composed_occurrences() 
     assert_eq!(page_pseudo(page), Some(CssPagePseudo::First));
     assert_eq!(page.declarations().properties().len(), 4);
     assert!(page.declarations().properties()[0].custom().is_some());
-    let CssExpansion::Pending(handle) =
-        expand_declaration(&page.declarations().properties()[1]).unwrap()
+    let CssExpansion::Pending(handle) = page.declarations().properties()[1].expand().unwrap()
     else {
         panic!("pending survived normalization")
     };
     assert!(
         handle
-            .reenter(parse_component_values("1em").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "1em").unwrap())
             .is_ok()
     );
     assert!(
         handle
-            .reenter(parse_component_values("2Q").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "2Q").unwrap())
             .is_ok()
     );
     assert_eq!(
-        normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(0, 0, 0, 0).unwrap()
-        )
-        .unwrap_err()
-        .kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Rules,
-            limit: 0
-        }
+        report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(0, 0, 0, 0).unwrap())
+            .unwrap_err()
+            .exhausted_limit(),
+        Some((CssNormalizationResource::Rules, 0))
     );
 }
 
@@ -791,69 +850,63 @@ fn specified_output_and_checked_list_assembly_share_atomic_cumulative_limits() {
     );
     let before = list.clone();
     let expected = "--m: 2Q; margin-left: var(--m) !important; margin-top: initial;";
-    assert_eq!(list.to_specified_css().unwrap(), expected);
-    let ample = CssSpecifiedValueSerializationLimits::new(1000, 1000, expected.len());
-    assert_eq!(list.to_specified_css_with_limits(ample).unwrap(), expected);
-    let short = CssSpecifiedValueSerializationLimits::new(1000, 1000, expected.len() - 1);
     assert_eq!(
-        list.to_specified_css_with_limits(short).unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+        list.serialize_specified(Default::default()).unwrap(),
+        expected
     );
-    assert_eq!(
-        CssDeclarationList::try_new_with_limits(list.as_slice().to_vec(), short)
+    let ample = CssSerializationLimits::new(1000, 1000, expected.len());
+    assert_eq!(list.serialize_specified(ample).unwrap(), expected);
+    let short = CssSerializationLimits::new(1000, 1000, expected.len() - 1);
+    assert!(list.serialize_specified(short).unwrap_err().is_byte_limit());
+    assert!(
+        CssDeclarationList::try_new(list.as_slice().to_vec(), short)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1000, 1000),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, 1000, 1000),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1000, 0, 1000),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(1000, 0, 1000),
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
         assert_eq!(
-            list.to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&list.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
     assert_eq!(list, before);
-    let checked = CssDeclarationList::try_new_with_limits(list.as_slice().to_vec(), ample).unwrap();
+    let checked = CssDeclarationList::try_new(list.as_slice().to_vec(), ample).unwrap();
     let repeated = vec![checked[1].clone(), checked[1].clone()];
     let one_bytes = "margin-left: var(--m) !important;".len();
-    let one_budget = CssSpecifiedValueSerializationLimits::new(1000, 1000, one_bytes);
-    assert!(checked[1].to_specified_css_with_limits(one_budget).is_ok());
-    assert_eq!(
-        CssDeclarationList::try_new_with_limits(repeated, one_budget)
+    let one_budget = CssSerializationLimits::new(1000, 1000, one_bytes);
+    assert!(checked[1].serialize_specified(one_budget).is_ok());
+    assert!(
+        CssDeclarationList::try_new(repeated, one_budget)
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
-    let CssExpansion::Pending(handle) = expand_declaration(&checked[1]).unwrap() else {
+    let CssExpansion::Pending(handle) = checked[1].expand().unwrap() else {
         panic!("checked assembly preserves pending context")
     };
     assert!(
         handle
-            .reenter(parse_component_values("1ex").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "1ex").unwrap())
             .is_ok()
     );
     assert!(
         handle
-            .reenter(parse_component_values("2Q").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "2Q").unwrap())
             .is_ok()
     );
 }
 
 #[test]
 fn actual_group_page_values_compose_without_lifting_style_ancestor_placement() {
-    let report = parse_sheet(
-        "@media print{@page :right{--m:2Q;margin:var(--m)}}@scope (.root){@media print{@page{margin-left:calc(1px + 2%)}}}",
-    );
+    let report = CssParser::default().parse_sheet("@media print{@page :right{--m:2Q;margin:var(--m)}}@scope (.root){@media print{@page{margin-left:calc(1px + 2%)}}}");
     clean(&report);
     let [CssRule::Media(media), CssRule::Scope(scope)] = report.syntax().rules() else {
         panic!("ordinary group owners")
@@ -862,28 +915,38 @@ fn actual_group_page_values_compose_without_lifting_style_ancestor_placement() {
         panic!("Page in ordinary media")
     };
     assert_eq!(page.declarations().properties().len(), 2);
-    let [CssScopedRule::Media(media)] = scope.rules().rules() else {
+    let [CssRule::Media(media)] = scope.rules().rules() else {
         panic!("scoped ordinary media")
     };
-    let [CssScopedRule::Page(page)] = media.rules().rules() else {
+    let [CssRule::Page(page)] = media.rules() else {
         panic!("scoped ordinary Page")
     };
     assert_eq!(page.declarations().properties().len(), 1);
     let ns = CssNamespaceContext::default();
     let input = "{@page{--m:2Q;margin:var(--m)}.after{color:red}}";
     for report in [
-        parse_scope_block(input, &ns, CssStyleAncestor::Absent),
-        parse_scoped_group_block(input, &ns, CssStyleAncestor::Present),
+        CssBlockFragment::<CssRuleList>::parse(
+            &CssParser::default(),
+            input,
+            &CssBlockContext::scope(&ns, CssStyleAncestor::Absent),
+        ),
+        CssBlockFragment::<CssRuleList>::parse(
+            &CssParser::default(),
+            input,
+            &CssBlockContext::scoped_group(&ns, CssStyleAncestor::Present),
+        ),
     ] {
         // Page 3 §3: @page belongs at top level or in a conditional group.
         ExpectedRejection::new(CssErrorCode::InvalidAtRulePlacement)
             .in_rule("page")
             .assert_first(&report);
-        let [CssScopedRule::Style(style)] = report.syntax().as_ref().unwrap().body().rules() else {
+        let [CssRule::Style(style)] = report.syntax().as_ref().unwrap().body().rules() else {
             panic!("following style survives excluded Page")
         };
         assert_eq!(
-            style.declarations()[0].to_specified_css().unwrap(),
+            style.declarations()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
             "color: red;"
         );
     }

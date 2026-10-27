@@ -1,5 +1,8 @@
 use std::cell::Cell;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::property::{CssKnownProperty, CssPropertyGrammar, CssPropertyNameRef};
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind;
+use surgeist_css::rule::page::CssPageDescriptorKind;
 use surgeist_cssom::*;
 
 fn version(id: &str, revision: u64) -> CssomInputVersion {
@@ -98,7 +101,10 @@ fn create(
     let mut edit = batch(store);
     let ticket = edit
         .create_declarations(
-            parse_declaration_block_contents(text).into_parts().0,
+            CssParser::default()
+                .parse_block_contents(text)
+                .into_parts()
+                .0,
             computed,
             readonly,
             owner.then(|| CssomInputVersion {
@@ -686,6 +692,6 @@ fn pending_groups_keep_selected_survivors_and_unavailable_footprint_is_an_error(
     );
     let unresolved = create(&mut store, "inset:var(--I)", false, false, false);
     assert!(
-        matches!(unresolved.length(&store, Default::default()), Err(CssomError::Declaration(ref error)) if matches!(error.kind(), CssDeclarationBlockErrorKind::PendingFootprintUndetermined {..}))
+        matches!(unresolved.length(&store, Default::default()), Err(CssomError::Declaration(ref error)) if error.pending_footprint_property().is_some())
     );
 }

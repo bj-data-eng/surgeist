@@ -1,12 +1,14 @@
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
-use super::values::{CalculationRoot, parse_numeric_function};
-use crate::{
+use super::values::parse_numeric_function;
+use crate::numeric::expression::CalculationRoot;
+use crate::numeric::{CssCalculation, CssInteger, CssNonNegative, CssNumeric};
+use crate::values::font::{
     CssAuthoredFontFeature, CssAuthoredFontFeatureList, CssAuthoredFontFeatureSettings,
-    CssAuthoredFontFeatureValue, CssFontFeatureIndex, CssFontVariation, CssFontVariationList,
-    CssFontVariationSettings, CssIntegerCalculation, CssOpenTypeTag,
+    CssAuthoredFontFeatureValue, CssFontVariation, CssFontVariationList, CssFontVariationSettings,
+    CssOpenTypeTag,
 };
 
 fn tag<'i, 't>(input: &mut Parser<'i, 't>) -> Result<CssOpenTypeTag, ParseError<'i, Error>> {
@@ -17,7 +19,7 @@ fn tag<'i, 't>(input: &mut Parser<'i, 't>) -> Result<CssOpenTypeTag, ParseError<
 
 pub(super) fn parse_font_feature_settings<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssAuthoredFontFeatureSettings, ParseError<'i, Error>> {
     let state = input.state();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
@@ -39,7 +41,7 @@ pub(super) fn parse_font_feature_settings<'i, 't>(
 
 fn parse_font_feature<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssAuthoredFontFeature, ParseError<'i, Error>> {
     let tag = tag(input)?;
     // A `#` item is bounded at its comma, so exhaustion ends the item.
@@ -59,8 +61,8 @@ fn parse_font_feature<'i, 't>(
 
 fn parse_feature_index<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<CssFontFeatureIndex, ParseError<'i, Error>> {
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+) -> Result<CssNumeric<CssInteger, CssNonNegative>, ParseError<'i, Error>> {
     input.skip_whitespace();
     let start = input.state();
     let location = input.current_source_location();
@@ -71,13 +73,15 @@ fn parse_feature_index<'i, 't>(
             let component = input
                 .collect_numeric_component(numeric)
                 .map_err(|_| unexpected_at(location))?;
-            CssFontFeatureIndex::try_from_component(component)
+            CssNumeric::<CssInteger, CssNonNegative>::try_from_component(component)
         }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
+        Token::Function(name) if crate::numeric::expression::is_math_function(name) => {
             let expression =
                 parse_numeric_function(input, &start, numeric, CalculationRoot::Integer)?;
-            CssFontFeatureIndex::try_from_calculation(CssIntegerCalculation::from_expression(
-                expression,
+            CssNumeric::<CssInteger, CssNonNegative>::from_parser_calculation(CssCalculation::<
+                CssInteger,
+            >::from_expression(
+                expression
             ))
         }
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
@@ -89,7 +93,7 @@ fn parse_feature_index<'i, 't>(
 
 pub(super) fn parse_font_variation_settings<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssFontVariationSettings, ParseError<'i, Error>> {
     let state = input.state();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {

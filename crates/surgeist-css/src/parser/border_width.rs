@@ -2,95 +2,73 @@
 
 use super::combinators::{Combinator, Tail, fill, parse_group};
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, unexpected_at};
+use super::side_shapes::{parse_four_sides, parse_side_pair};
+use crate::diagnostic::error::property::{Error, ParseError, unexpected_at};
 
 use super::border_style::parse_border_style;
-use super::parse_color;
-use crate::numeric::NumericInputContext;
-use crate::{
-    CssBorderStyle, CssBorderWidth, CssBorderWidthPair, CssBorderWidthShorthand, CssBoxSideKind,
-};
+use crate::numeric::expression::NumericInputContext;
+use crate::parser::color::parse_color;
+use crate::values::border::{CssLineStyle, CssLineWidth};
+use crate::values::common::{CssFourSides, CssSidePair};
 
 type ParsedLineTriple = (
-    Option<CssBorderWidth>,
-    Option<CssBorderStyle>,
-    Option<crate::CssColor>,
+    Option<CssLineWidth>,
+    Option<CssLineStyle>,
+    Option<crate::color::CssColor>,
 );
 
 pub(super) fn parse_exact_border_width<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssBorderWidth, ParseError<'i, Error>> {
+) -> Result<CssLineWidth, ParseError<'i, Error>> {
     parse_exact_line_width(input, numeric)
 }
 
 pub(super) fn parse_exact_line_width<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssBorderWidth, ParseError<'i, Error>> {
+) -> Result<CssLineWidth, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("thin"))
         .is_ok()
     {
-        return Ok(CssBorderWidth::Thin);
+        return Ok(CssLineWidth::Thin);
     }
     if input
         .try_parse(|input| input.expect_ident_matching("medium"))
         .is_ok()
     {
-        return Ok(CssBorderWidth::Medium);
+        return Ok(CssLineWidth::Medium);
     }
     if input
         .try_parse(|input| input.expect_ident_matching("thick"))
         .is_ok()
     {
-        return Ok(CssBorderWidth::Thick);
+        return Ok(CssLineWidth::Thick);
     }
-    super::values::parse_nonnegative_length(input, numeric).map(CssBorderWidth::Length)
+    super::values::parse_nonnegative_length(input, numeric).map(CssLineWidth::Length)
 }
 
 pub(super) fn parse_exact_border_width_pair<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssBorderWidthPair, ParseError<'i, Error>> {
-    let start = parse_exact_border_width(input, numeric)?;
-    let end = if input.is_exhausted() {
-        None
-    } else {
-        Some(parse_exact_border_width(input, numeric)?)
-    };
-    Ok(CssBorderWidthPair::new(start, end))
+) -> Result<CssSidePair<CssLineWidth>, ParseError<'i, Error>> {
+    parse_side_pair(input, |input| parse_exact_border_width(input, numeric))
 }
 
 pub(super) fn parse_exact_border_width_shorthand<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssBorderWidthShorthand, ParseError<'i, Error>> {
-    let kind = if input
-        .try_parse(|input| input.expect_ident_matching("logical"))
-        .is_ok()
-    {
-        CssBoxSideKind::Logical
-    } else {
-        CssBoxSideKind::Physical
-    };
-    let mut values = Vec::new();
-    while !input.is_exhausted() {
-        values.push(parse_exact_border_width(input, numeric)?);
-        if values.len() == 4 && !input.is_exhausted() {
-            return Err(unexpected_at(input.current_source_location()));
-        }
-    }
-    CssBorderWidthShorthand::try_new(kind, values)
-        .ok_or_else(|| unexpected_at(input.current_source_location()))
+) -> Result<CssFourSides<CssLineWidth>, ParseError<'i, Error>> {
+    parse_four_sides(input, |input| parse_exact_border_width(input, numeric))
 }
 
 pub(super) fn parse_border<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<crate::CssBorder, ParseError<'i, Error>> {
+) -> Result<crate::values::border::CssBorder, ParseError<'i, Error>> {
     let (width, style, color) = parse_exact_line_triple(input, numeric)?;
-    crate::CssBorder::try_new(width, style, color)
+    crate::values::border::CssBorder::try_new(width, style, color)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 

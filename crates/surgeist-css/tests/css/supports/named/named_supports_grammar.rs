@@ -2,13 +2,15 @@
 //! Syntax 3's declaration-first block partition governs ambiguous curly input.
 
 use crate::css::support::authored_syntax::{assert_diagnostics, offset_of};
-use surgeist_css::{
-    CssComponentValueErrorKind, CssImportance, CssRule, CssSupportsTestItem, CssValueTokenRef,
-    ErrorKind, parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueTokenRef;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::query::supports::CssSupportsTestItem;
+use surgeist_css::rule::CssRule;
 
-fn body(source: &str) -> surgeist_css::CssSupportsTestBody {
-    let report = parse_sheet(source);
+fn body(source: &str) -> surgeist_css::query::supports::CssSupportsTestBody {
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
         panic!("one named definition: {report:?}");
@@ -31,7 +33,9 @@ fn declaration_first_accepts_sole_curly_value_and_custom_mixture() {
             .iter()
             .filter(|value| !matches!(
                 value.view(),
-                surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
+                surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(
+                    _
+                ))
             ))
             .count(),
         1
@@ -42,13 +46,18 @@ fn declaration_first_accepts_sole_curly_value_and_custom_mixture() {
 fn empty_and_whitespace_only_qualified_preludes_retain_nested_tests() {
     for authored in ["{future:value}", " \t{future:value} "] {
         let source = format!("@supports-condition --x {{{authored}}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
             panic!("one definition");
         };
-        let constructed = surgeist_css::CssSupportsTestBody::try_from_components(
-            surgeist_css::parse_component_values(authored).unwrap(),
+        let constructed = surgeist_css::query::supports::CssSupportsTestBody::try_from_components(
+            surgeist_css::component::CssComponentValues::parse(
+                &surgeist_css::CssParser::default(),
+                authored,
+            )
+            .unwrap(),
+            Default::default(),
         )
         .unwrap();
         for body in [rule.body(), &constructed] {
@@ -57,8 +66,9 @@ fn empty_and_whitespace_only_qualified_preludes_retain_nested_tests() {
             };
             assert!(test.prelude().items().iter().all(|value| matches!(
                 value.view(),
-                surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
-                    | surgeist_css::CssComponentValueRef::Comment(_)
+                surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(
+                    _
+                )) | surgeist_css::component::CssComponentValueRef::Comment(_)
             )));
             let [CssSupportsTestItem::Declarations(run)] = test.body().items() else {
                 panic!("nested declaration");
@@ -68,21 +78,24 @@ fn empty_and_whitespace_only_qualified_preludes_retain_nested_tests() {
             };
             assert_eq!(declaration.property(), "future");
         }
-        let canonical = rule.to_specified_css().unwrap();
+        let canonical = rule.serialize_specified(Default::default()).unwrap();
         assert_eq!(canonical, "@supports-condition --x { { future: value; } }");
-        let reparsed = parse_sheet(&canonical);
+        let reparsed = CssParser::default().parse_sheet(&canonical);
         assert!(reparsed.is_clean(), "{:?}", reparsed.diagnostics());
         let [CssRule::SupportsCondition(again)] = reparsed.syntax().rules() else {
             panic!("one roundtrip definition");
         };
-        assert_eq!(again.to_specified_css().unwrap(), canonical);
+        assert_eq!(
+            again.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
     }
 }
 
 #[test]
 fn bare_double_hyphen_is_not_a_custom_property_for_mixed_curly_values() {
     let source = "@supports-condition --t{--:a{b:c}d;tail:yes}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     // `--` declares no custom property, so its value may not mix a
     // `{}`-block with other tokens. The nested qualified-rule fallback then
     // starts with an ident and a colon, so Syntax 3 consumes it from `--` as
@@ -90,8 +103,8 @@ fn bare_double_hyphen_is_not_a_custom_property_for_mixed_curly_values() {
     assert_diagnostics(
         report.diagnostics(),
         &[(
-            surgeist_css::CssErrorCode::InvalidQualifiedRule,
-            surgeist_css::CssRecoveryAction::DropDeclaration,
+            surgeist_css::diagnostic::CssErrorCode::InvalidQualifiedRule,
+            surgeist_css::diagnostic::CssRecoveryAction::DropDeclaration,
             offset_of(source, "--:"),
         )],
     );
@@ -115,8 +128,13 @@ fn terminal_importance_is_removed_before_noncustom_curly_restriction() {
     ] {
         let source = format!("@supports-condition --t{{{authored}}}");
         let parsed = body(&source);
-        let constructed = surgeist_css::CssSupportsTestBody::try_from_components(
-            surgeist_css::parse_component_values(authored).unwrap(),
+        let constructed = surgeist_css::query::supports::CssSupportsTestBody::try_from_components(
+            surgeist_css::component::CssComponentValues::parse(
+                &surgeist_css::CssParser::default(),
+                authored,
+            )
+            .unwrap(),
+            Default::default(),
         )
         .unwrap();
         for body in [&parsed, &constructed] {
@@ -133,8 +151,9 @@ fn terminal_importance_is_removed_before_noncustom_curly_restriction() {
                     .iter()
                     .filter(|value| !matches!(
                         value.view(),
-                        surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
-                            | surgeist_css::CssComponentValueRef::Comment(_)
+                        surgeist_css::component::CssComponentValueRef::Token(
+                            CssValueTokenRef::Whitespace(_)
+                        ) | surgeist_css::component::CssComponentValueRef::Comment(_)
                     ))
                     .count(),
                 1
@@ -145,12 +164,13 @@ fn terminal_importance_is_removed_before_noncustom_curly_restriction() {
                     .iter()
                     .find(|value| !matches!(
                         value.view(),
-                        surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
-                            | surgeist_css::CssComponentValueRef::Comment(_)
+                        surgeist_css::component::CssComponentValueRef::Token(
+                            CssValueTokenRef::Whitespace(_)
+                        ) | surgeist_css::component::CssComponentValueRef::Comment(_)
                     ))
                     .unwrap()
                     .view(),
-                surgeist_css::CssComponentValueRef::Block(_)
+                surgeist_css::component::CssComponentValueRef::Block(_)
             ));
         }
     }
@@ -173,7 +193,7 @@ fn mixed_noncustom_curly_falls_back_at_first_block_and_leaves_sibling() {
 #[test]
 fn custom_property_lookalike_without_colon_is_a_qualified_test() {
     let source = "@supports-condition --t{--x no-colon{a:b};good:1}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
         panic!("definition retained");
@@ -209,7 +229,7 @@ fn terminal_only_importance_preserves_earlier_bangs_and_unknown_values() {
             .iter()
             .any(|value| matches!(
                 value.view(),
-                surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Delim('!'))
+                surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Delim('!'))
             ))
     );
     assert!(declarations[1].importance_components().is_some());
@@ -241,15 +261,22 @@ fn ambient_group_depth_counts_toward_named_test_limit_even_after_bad_token() {
         format!("@media all{{@supports-condition --nested{{{body}}}}}")
     };
     let admitted = nested(254, "");
-    let report = parse_sheet(&admitted);
+    let report = CssParser::default().parse_sheet(&admitted);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
 
     for source in [nested(255, ""), nested(255, ")")] {
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean());
-        assert!(report.diagnostics().iter().any(|diagnostic| {
-            matches!(diagnostic.error().kind(), ErrorKind::InvalidComponentValue(detail) if detail.kind() == CssComponentValueErrorKind::NestingLimit)
-                || matches!(diagnostic.error().kind(), ErrorKind::NestingLimit(_))
-        }), "expected typed depth failure: {:?}", report.diagnostics());
+        assert!(
+            report.diagnostics().iter().any(|diagnostic| {
+                diagnostic
+                    .error()
+                    .component_error()
+                    .is_some_and(|detail| detail.is_nesting_limit())
+                    || diagnostic.error().code() == CssErrorCode::NestingLimit
+            }),
+            "expected typed depth failure: {:?}",
+            report.diagnostics()
+        );
     }
 }

@@ -4,8 +4,11 @@
 //! variadic argument is observed here; those continuations supply typed values.
 
 use super::keywords::ColorFunction as F;
-use super::{Color, ColorError};
-use crate::{ColorSpace as Space, CssColorSyntax as Syntax, PredefinedColorSpace as Predefined};
+use crate::color::CssColorSyntax as Syntax;
+use surgeist_color::Color;
+use surgeist_color::ColorSpace as Space;
+use surgeist_color::PredefinedColorSpace as Predefined;
+use surgeist_color::{Finite, UnitInterval};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Domain {
@@ -34,8 +37,23 @@ impl Component {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Error {
     Grammar,
-    Numerical(ColorError),
 }
+
+/// CSS's finite numeric rule for one resolved channel: Values 4 §10.9.1
+/// censors a top-level NaN to zero and clamps an infinity to the largest
+/// value the context allows, and the numeric-types range rule (#1297) makes
+/// a finite value beyond binary64 the closest supported value. An unbounded
+/// colour channel therefore becomes `f64::MAX` with its sign.
+pub(crate) fn supported(value: f64) -> Finite {
+    if value.is_nan() {
+        Finite::new(0.0).expect("zero is finite")
+    } else {
+        Finite::new(value).unwrap_or_else(|| {
+            Finite::new(f64::MAX.copysign(value)).expect("the largest binary64 value is finite")
+        })
+    }
+}
+
 /// One percentage: the channel value that 1% denotes, as the unreduced ratio
 /// that specified serialization multiplies exactly. 100% is the Color 4/5
 /// reference value `100 × numerator / denominator`.
@@ -120,13 +138,14 @@ pub(crate) const fn slot(function: F, index: usize) -> Slot {
 }
 
 /// Resolves one channel by its declared slot. Absolute channels apply the
-/// declared clamp; relative channels keep every finite extended value.
+/// declared clamp; relative channels keep every finite extended value. The
+/// result is the closest supported finite value ([`supported`]).
 pub(crate) fn declared(
     function: F,
     index: usize,
     component: Component,
     absolute: bool,
-) -> Result<Option<f64>, Error> {
+) -> Result<Option<Finite>, Error> {
     match slot(function, index) {
         Slot::Hue => hue(component),
         Slot::Scalar {
@@ -138,7 +157,8 @@ pub(crate) fn declared(
                 (false, _) | (true, Clamp::Unclamped) => value,
                 (true, Clamp::NonNegative) => value.map(|value| value.max(0.0)),
                 (true, Clamp::Reference) => clamp(value, percent.reference()),
-            })
+            }
+            .map(supported))
         }
     }
 }
@@ -148,12 +168,6 @@ pub(crate) fn legacy_rgb_domains(domains: [Domain; 3]) -> bool {
         && domains[1] == domains[0]
         && domains[2] == domains[0]
 }
-impl From<ColorError> for Error {
-    fn from(value: ColorError) -> Self {
-        Self::Numerical(value)
-    }
-}
-
 pub(crate) fn scalar(component: Component, percentage: f64) -> Result<Option<f64>, Error> {
     if component.domain == Domain::Missing {
         return Ok(None);
@@ -185,11 +199,11 @@ pub(crate) fn normalize_hue(degrees: f64) -> f64 {
     let hue = degrees.rem_euclid(360.0);
     if hue == 0.0 || hue >= 360.0 { 0.0 } else { hue }
 }
-pub(crate) fn hue(component: Component) -> Result<Option<f64>, Error> {
+pub(crate) fn hue(component: Component) -> Result<Option<Finite>, Error> {
     match component.domain {
         Domain::Missing => Ok(None),
         Domain::Percentage => Err(Error::Grammar),
-        Domain::Degrees | Domain::Number => Ok(Some(normalize_hue(component.value))),
+        Domain::Degrees | Domain::Number => Ok(Some(supported(normalize_hue(component.value)))),
     }
 }
 fn clamp(value: Option<f64>, maximum: f64) -> Option<f64> {
@@ -201,14 +215,13 @@ fn clamp(value: Option<f64>, maximum: f64) -> Option<f64> {
         }
     })
 }
-pub(crate) fn alpha(value: Option<Component>, legacy: bool) -> Result<Option<f64>, Error> {
+pub(crate) fn alpha(value: Option<Component>, legacy: bool) -> Result<Option<UnitInterval>, Error> {
     if legacy && value.is_some_and(|value| value.domain == Domain::Missing) {
         return Err(Error::Grammar);
     }
-    Ok(clamp(
-        value.map_or(Ok(Some(1.0)), |value| scalar(value, 1.0))?,
-        1.0,
-    ))
+    Ok(value
+        .map_or(Ok(Some(1.0)), |value| scalar(value, 1.0))?
+        .map(|alpha| UnitInterval::clamped(supported(alpha))))
 }
 
 /// The numerical space of one three-channel color function.
@@ -232,13 +245,14 @@ pub(crate) fn function_space(function: F, predefined: Option<Predefined>) -> Res
 pub(crate) fn relative_channels(
     function: F,
     components: [Component; 3],
-) -> Result<[Option<f64>; 3], Error> {
+) -> Result<[Option<Finite>; 3], Error> {
     if function == F::Rgb {
         let Slot::Scalar { percent, .. } = slot(F::Rgb, 0) else {
             unreachable!("rgb channels are scalar")
         };
-        let channel = |value: Component| -> Result<Option<f64>, Error> {
-            Ok(scalar(value, percent.reference())?.map(|value| value / percent.reference()))
+        let channel = |value: Component| -> Result<Option<Finite>, Error> {
+            Ok(scalar(value, percent.reference())?
+                .map(|value| supported(value / percent.reference())))
         };
         return Ok([
             channel(components[0])?,
@@ -285,7 +299,7 @@ pub(crate) fn absolute_coordinates(
             };
             // Absolute rgb() channels clamp to [0, 255] and are stored in
             // sRGB unit coordinates; a percentage needs no 255 round trip.
-            let channel = |value: Component| -> Result<Option<f64>, Error> {
+            let channel = |value: Component| -> Result<Option<Finite>, Error> {
                 if value.domain == Domain::Missing {
                     return Ok(None);
                 }
@@ -297,7 +311,7 @@ pub(crate) fn absolute_coordinates(
                 } else {
                     value.value
                 };
-                Ok(Some(
+                Ok(Some(supported(
                     (value_number
                         / if value.domain == Domain::Percentage {
                             100.0
@@ -305,7 +319,7 @@ pub(crate) fn absolute_coordinates(
                             percent.reference()
                         })
                     .clamp(0.0, 1.0),
-                ))
+                )))
             };
             [
                 channel(components[0])?,
@@ -327,12 +341,13 @@ pub(crate) fn absolute_coordinates(
             ]
         }
     };
-    let value = Color::try_new(space, channels, alpha)?;
+    let value = Color::new(space, channels, alpha);
     // Color4 16.2.2 retains the absolute rgb()/rgba() serialization family.
     // Missing channels still select color(srgb ...) in the canonical serializer;
-    // relative RGB is a separate Color5 color-function family.
+    // relative RGB is a separate Color5 color-function family. The value is
+    // already sRGB, so selecting the legacy family converts nothing.
     Ok(if function == F::Rgb {
-        value.with_serialization_family(surgeist_color::SerializationFamily::LegacySrgb)?
+        value.to_legacy_srgb()
     } else {
         value
     })

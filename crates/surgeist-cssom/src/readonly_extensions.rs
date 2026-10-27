@@ -1,7 +1,9 @@
 //! Readonly rule facets over checked current authored data and live media identity.
 use crate::*;
-use surgeist_css::*;
-use surgeist_css::{CssColorProfileRule, CssRule};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::color_profile::CssColorProfileRule;
+use surgeist_css::rule::color_profile::{CssColorProfileDescriptorKind, CssColorProfileRuleName};
+use surgeist_css::serialization::{CssSerializationLimits, serialize_css_identifier};
 
 /// The authored custom-media branch, without query matching or alias evaluation.
 /// A MediaList ID is stable across edits; its contents belong to each snapshot.
@@ -34,20 +36,20 @@ impl CssomSnapshot {
     pub(crate) fn color_profile_name(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         let name = match self.color_profile(id)?.name() {
             CssColorProfileRuleName::Custom(name) => name.as_str(),
             CssColorProfileRuleName::DeviceCmyk => "device-cmyk",
             _ => return Err(CssomError::InvalidInput("unsupported color-profile name")),
         };
-        serialize_css_identifier_with_limits(name, limits).map_err(CssomError::Value)
+        serialize_css_identifier(name, limits).map_err(CssomError::Value)
     }
     /// Returns serialized src or empty text when the descriptor is absent.
     pub(crate) fn color_profile_src(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         self.color_profile_descriptor(id, CssColorProfileDescriptorKind::Src, limits)
     }
@@ -55,7 +57,7 @@ impl CssomSnapshot {
     pub(crate) fn color_profile_rendering_intent(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         self.color_profile_descriptor(id, CssColorProfileDescriptorKind::RenderingIntent, limits)
     }
@@ -63,16 +65,14 @@ impl CssomSnapshot {
     pub(crate) fn color_profile_components(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         self.color_profile_descriptor(id, CssColorProfileDescriptorKind::Components, limits)
     }
     fn color_profile(&self, id: &CssomRuleId) -> Result<&CssColorProfileRule, CssomError> {
         match self.rule(id)?.data() {
             CssomRuleData::Leaf {
-                current:
-                    CssomAuthoredRule::Ordinary(CssRule::ColorProfile(rule))
-                    | CssomAuthoredRule::Scoped(CssScopedRule::ColorProfile(rule)),
+                current: CssomAuthoredRule::Rule(CssRule::ColorProfile(rule)),
             } => Ok(rule),
             _ => Err(CssomError::WrongKind),
         }
@@ -81,15 +81,11 @@ impl CssomSnapshot {
         &self,
         id: &CssomRuleId,
         kind: CssColorProfileDescriptorKind,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         self.color_profile(id)?
             .effective(kind)
-            .map(|value| {
-                value
-                    .to_specified_css_with_limits(limits)
-                    .map_err(CssomError::Value)
-            })
+            .map(|value| value.serialize_specified(limits).map_err(CssomError::Value))
             .unwrap_or_else(|| Ok(String::new()))
     }
 }

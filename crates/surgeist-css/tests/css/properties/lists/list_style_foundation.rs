@@ -8,7 +8,21 @@ use crate::css::support::named_property::longhand_contributions;
 use crate::css::support::named_property::{
     assert_checked_value_rejected_at, assert_programmatic_rejection, assert_value_diagnostic_at,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::content::{CssListStylePosition, CssListStyleTypeValue};
+use surgeist_css::values::image::CssImageValue;
 
 const TYPE: CssKnownProperty = CssKnownProperty::ListStyleType;
 const POSITION: CssKnownProperty = CssKnownProperty::ListStylePosition;
@@ -23,7 +37,7 @@ fn ordinary(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
 fn rejected<'a>(property: CssKnownProperty, value: &str, rest: impl Into<Option<&'a str>>) {
     let rest = rest.into();
     let source = format!("color:red;{}:{value};height:2px", property.canonical_name());
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         report
             .syntax()
@@ -47,7 +61,12 @@ fn rejected<'a>(property: CssKnownProperty, value: &str, rest: impl Into<Option<
         value,
         rest,
     );
-    assert!(validate_style_attribute(&source).is_err());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_err()
+    );
     assert_checked_value_rejected_at(property, value, rest);
 }
 
@@ -118,7 +137,11 @@ fn type_accepts_counter_style_strings_and_generic_custom_names() {
             "{value}"
         );
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -141,7 +164,11 @@ fn image_accepts_selected_images_and_position_keeps_its_two_keywords() {
             "{value}"
         );
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -179,7 +206,11 @@ fn shorthand_accepts_unordered_members_and_allocates_ambiguous_none() {
             "{value}"
         );
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -224,11 +255,14 @@ fn checked_construction_uses_the_same_grammar_and_retains_programmatic_origin() 
         (IMAGE, "none"),
         (SHORTHAND, "inside"),
     ] {
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(keyword).unwrap()])
-                .unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(keyword).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components,
             CssImportance::Normal,
         )
@@ -241,12 +275,15 @@ fn checked_construction_uses_the_same_grammar_and_retains_programmatic_origin() 
         ));
     }
     for (property, invalid) in [(TYPE, "default"), (POSITION, "none"), (IMAGE, "outside")] {
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(invalid).unwrap()])
-                .unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(invalid).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         assert_programmatic_rejection(
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components,
                 CssImportance::Normal,
             ),
@@ -290,7 +327,7 @@ fn shorthand_contributions_follow_position_image_type_and_reset_omissions() {
 #[test]
 fn pending_shorthand_reentry_is_strict_atomic_and_preserves_source_identity() {
     let source = declaration(SHORTHAND, "var(--marker)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("substitution-dependent list-style shorthand is pending")
     };
     assert!(pending.source().same_occurrence(&source));
@@ -299,20 +336,19 @@ fn pending_shorthand_reentry_is_strict_atomic_and_preserves_source_identity() {
         "inside outside square",
         "linear-gradient(red,)",
     ] {
-        assert!(matches!(
+        assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for replacement_css in [
         "inside outside",
@@ -320,7 +356,8 @@ fn pending_shorthand_reentry_is_strict_atomic_and_preserves_source_identity() {
         "inside src(\"#mark\") symbols(cyclic \"*\")",
         "inherit",
     ] {
-        let replacement = parse_component_values(replacement_css).unwrap();
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), replacement_css).unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("three reentered terminals")
@@ -343,7 +380,7 @@ fn pending_list_style_longhands_reenter_their_own_grammar_without_losing_source(
         (IMAGE, &["url(\"#mark\")"][..], "outside"),
     ] {
         let source = declaration(property, "var(--marker)");
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("{property:?} remains pending until substitution")
         };
         assert!(pending.source().same_occurrence(&source));
@@ -353,27 +390,27 @@ fn pending_list_style_longhands_reenter_their_own_grammar_without_losing_source(
             "env(safe-area-inset-top)",
             "attr(data-marker)",
         ] {
-            assert_eq!(
+            assert!(
                 pending
-                    .reenter(parse_component_values(residual).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution,
+                    .is_residual_substitution(),
                 "{property:?}: {residual}"
             );
         }
         for rejected in [invalid, ""] {
-            assert!(matches!(
+            assert!(
                 pending
-                    .reenter(parse_component_values(rejected).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), rejected).unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+                    .replacement_error()
+                    .is_some()
+            );
         }
 
         for replacement_css in valid_values.iter().copied().chain(["inherit"]) {
-            let replacement = parse_component_values(replacement_css).unwrap();
+            let replacement =
+                CssComponentValues::parse(&CssParser::default(), replacement_css).unwrap();
             for _ in 0..2 {
                 let CssContributions::Longhands(values) =
                     pending.reenter(replacement.clone()).unwrap()
@@ -431,9 +468,10 @@ fn pending_list_style_longhands_reenter_their_own_grammar_without_losing_source(
 
 #[test]
 fn normalization_preserves_mixed_declaration_order_and_fails_at_member_limit() {
-    let report = parse_sheet(".a{list-style-type:disc;color:red;list-style:inside}");
+    let report =
+        CssParser::default().parse_sheet(".a{list-style-type:disc;color:red;list-style:inside}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -466,13 +504,10 @@ fn normalization_preserves_mixed_declaration_order_and_fails_at_member_limit() {
         }
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 4).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 4,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 4))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(

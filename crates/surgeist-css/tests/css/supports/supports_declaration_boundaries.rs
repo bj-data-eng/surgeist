@@ -9,11 +9,15 @@
 //! https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#at-import
 //! https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/#mq-syntax
 
-use surgeist_css::{
-    CssImportLayer, CssImportRule, CssImportance, CssMediaConditionKind, CssMediaQuery,
-    CssRecoveryAction, CssRule, CssSupportsCondition, CssSupportsConditionKind, parse_sheet,
-    validate_sheet,
-};
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssImportLayer, CssImportRule, CssRule};
 
 const INVALID_DECLARATIONS: &[&str] = &[
     "color:red;",
@@ -23,11 +27,17 @@ const INVALID_DECLARATIONS: &[&str] = &[
     "color:red !",
 ];
 
-fn condition(contents: &str) -> CssSupportsCondition {
+fn condition(contents: &str) -> CssCondition<CssSupportsLeaf> {
     let source = format!("@supports ({contents}) {{}} .after{{color:red}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {report:?}");
-    assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     let [CssRule::Supports(rule), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("retained condition and following style: {source}: {report:?}");
     };
@@ -37,9 +47,15 @@ fn condition(contents: &str) -> CssSupportsCondition {
 
 fn import(tail: &str) -> CssImportRule {
     let source = format!("@import 'x.css' {tail}; .after{{color:red}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {report:?}");
-    assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     let [CssRule::Import(rule), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("retained import and following style: {source}: {report:?}");
     };
@@ -47,12 +63,15 @@ fn import(tail: &str) -> CssImportRule {
     rule.clone()
 }
 
-fn opaque_supports(condition: &CssSupportsCondition, expected: &str) {
-    let CssSupportsConditionKind::GeneralEnclosed(value) = condition.kind() else {
+fn opaque_supports(condition: &CssCondition<CssSupportsLeaf>, expected: &str) {
+    let CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(value)) = condition.kind() else {
         panic!("expected opaque supports operand {expected}: {condition:?}");
     };
     assert_eq!(value.authored(), Some(expected));
-    assert_eq!(value.serialize().unwrap().as_css(), expected);
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        expected
+    );
 }
 
 #[test]
@@ -82,7 +101,8 @@ fn supports_valid_declaration_tests_keep_empty_unknown_custom_and_terminal_impor
         ),
     ] {
         let condition = condition(contents);
-        let CssSupportsConditionKind::Declaration(declaration) = condition.kind() else {
+        let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) = condition.kind()
+        else {
             panic!("valid authored declaration: {contents}: {condition:?}");
         };
         assert_eq!(declaration.authored().unwrap(), contents);
@@ -100,7 +120,7 @@ fn supports_valid_declaration_tests_keep_empty_unknown_custom_and_terminal_impor
 
         let import = import(&format!("supports({contents})"));
         assert!(import.media().is_none(), "{contents}: {import:?}");
-        let CssSupportsConditionKind::Declaration(import_declaration) =
+        let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(import_declaration)) =
             import.supports().unwrap().condition().kind()
         else {
             panic!("valid bare import declaration: {contents}");
@@ -132,7 +152,8 @@ fn supports_invalid_bare_import_candidates_select_absent_clause_opaque_media() {
             let [CssMediaQuery::Condition(condition)] = import.media().unwrap().queries() else {
                 panic!("one opaque media query: {tail}: {import:?}");
             };
-            let CssMediaConditionKind::GeneralEnclosed(value) = condition.kind() else {
+            let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) = condition.kind()
+            else {
                 panic!("whole supports function is media: {tail}: {condition:?}");
             };
             assert_eq!(value.authored(), Some(function.as_str()));
@@ -161,16 +182,19 @@ fn supports_invalid_bare_import_candidates_compose_as_complete_media_conjunction
         let [CssMediaQuery::Condition(condition)] = import.media().unwrap().queries() else {
             panic!("one media conjunction: {import:?}");
         };
-        let CssMediaConditionKind::And(operands) = condition.kind() else {
+        let CssConditionKind::And(operands) = condition.kind() else {
             panic!("media conjunction: {condition:?}");
         };
         let [opaque, feature] = operands.conditions() else {
             panic!("two media operands");
         };
         assert!(
-            matches!(opaque.kind(), CssMediaConditionKind::GeneralEnclosed(value) if value.authored() == Some(function.as_str()))
+            matches!(opaque.kind(), CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) if value.authored() == Some(function.as_str()))
         );
-        assert!(matches!(feature.kind(), CssMediaConditionKind::Feature(_)));
+        assert!(matches!(
+            feature.kind(),
+            CssConditionKind::Leaf(CssMediaLeaf::Feature(_))
+        ));
     }
 }
 
@@ -180,7 +204,7 @@ fn supports_bad_url_and_bad_string_tokens_cannot_be_declarations_or_opaque_fallb
     // admitted through <any-value>. The actual closing parenthesis is present.
     for contents in ["color:url(a b)", "color:\"broken\n"] {
         let source = format!("@supports ({contents}) {{}} .after{{color:red}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             matches!(report.syntax().rules(), [CssRule::Style(_)]),
             "{source}: {report:?}"
@@ -190,7 +214,11 @@ fn supports_bad_url_and_bad_string_tokens_cannot_be_declarations_or_opaque_fallb
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -198,15 +226,11 @@ fn supports_bad_url_and_bad_string_tokens_cannot_be_declarations_or_opaque_fallb
 
 #[test]
 fn supports_lexical_failures_preserve_typed_errors_and_original_token_positions() {
-    use surgeist_css::{CssComponentValueErrorKind, CssValueOrigin, ErrorKind};
+    use surgeist_css::component::CssValueOrigin;
 
     for (payload, token, kind) in [
-        ("url(a b)", "url(", CssComponentValueErrorKind::BadUrl),
-        (
-            "\"broken\n",
-            "\"broken",
-            CssComponentValueErrorKind::BadString,
-        ),
+        ("url(a b)", "url(", ComponentFailure::BadUrl),
+        ("\"broken\n", "\"broken", ComponentFailure::BadString),
     ] {
         for prelude in [
             format!("@supports ((mystery:future([{payload}])))"),
@@ -220,7 +244,7 @@ fn supports_lexical_failures_preserve_typed_errors_and_original_token_positions(
                 "{}"
             };
             let source = format!("/*😀*/\r\n{prelude}{ending} .after{{color:red}}");
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(
                 matches!(report.syntax().rules(), [CssRule::Style(_)]),
                 "{source}: {report:?}"
@@ -228,10 +252,10 @@ fn supports_lexical_failures_preserve_typed_errors_and_original_token_positions(
             let [diagnostic] = report.diagnostics() else {
                 panic!("one terminal lexical failure: {source}: {report:?}");
             };
-            let ErrorKind::InvalidComponentValue(detail) = diagnostic.error().kind() else {
+            let Some(detail) = diagnostic.error().component_error() else {
                 panic!("typed lexical failure survives grammar probes: {source}: {diagnostic:?}");
             };
-            assert_eq!(detail.kind(), kind);
+            assert_eq!(component_failure(detail), kind);
             let CssValueOrigin::Parsed(origin) = detail.origin() else {
                 panic!("original bad-token origin");
             };
@@ -248,7 +272,11 @@ fn supports_lexical_failures_preserve_typed_errors_and_original_token_positions(
             assert_eq!(diagnostic.error().position(), position);
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
             assert_eq!(
-                validate_sheet(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_sheet(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
         }

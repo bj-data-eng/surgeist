@@ -7,7 +7,16 @@ use crate::css::support::authored_property;
 use crate::css::support::property_admission::{
     assert_checked_rejected, assert_invalid_value, assert_style_attribute_rejected,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::layout::{
+    CssGrid, CssGridAutoFlowAxis, CssGridGeneralTrackComponent, CssGridTemplate,
+};
 
 fn name(property: CssKnownProperty) -> &'static str {
     match property {
@@ -64,7 +73,10 @@ fn assert_flow(
     match (value.auto_tracks(), auto_size) {
         (None, None) => {}
         (Some(tracks), Some(expected)) => {
-            assert_eq!(tracks.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                tracks.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
         _ => panic!("retain optional auto sizing"),
     }
@@ -72,7 +84,7 @@ fn assert_flow(
         value
             .explicit_tracks()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         explicit_size
     );
@@ -92,7 +104,7 @@ fn checked(property: CssKnownProperty, value: &str, by_grammar: bool) -> CssDecl
 
 fn reject_rows_style(property: CssKnownProperty) {
     let source = format!("{}:10px;color:red", name(property));
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [retained] = report.syntax().as_slice() else {
         panic!("only the valid color sibling survives");
     };
@@ -110,7 +122,7 @@ fn reject_rows_style(property: CssKnownProperty) {
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     // The rows-only prefix is viable until the value ends without the
     // required column slash, so its last token is responsible.
-    assert_invalid_value(diagnostic.error().kind(), property, Some("10px"));
+    assert_invalid_value(diagnostic.error(), property, Some("10px"));
 }
 
 fn reject_rows_validator(property: CssKnownProperty) {
@@ -120,12 +132,18 @@ fn reject_rows_validator(property: CssKnownProperty) {
 }
 
 fn reject_rows_checked(property: CssKnownProperty, by_grammar: bool) {
-    let components = parse_component_values("10px").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "10px").unwrap();
     let result = if by_grammar {
-        parse_property_value_for_grammar(property.grammar(), components, CssImportance::Important)
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(property.grammar()),
+            components,
+            CssImportance::Important,
+        )
     } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components,
             CssImportance::Important,
         )
@@ -243,9 +261,20 @@ flow_contract!(
 fn keyword_tracks(declaration: &CssDeclaration) {
     let value = template(declaration);
     assert!(!value.is_none());
-    assert_eq!(value.rows().unwrap().serialize_specified().unwrap(), "auto");
     assert_eq!(
-        value.columns().unwrap().serialize_specified().unwrap(),
+        value
+            .rows()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "auto"
+    );
+    assert_eq!(
+        value
+            .columns()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "min-content"
     );
 }
@@ -304,11 +333,19 @@ fn none_and_explicit_rows_columns_controls_pass_all_front_doors() {
                 } else {
                     assert!(!aggregate.is_none());
                     assert_eq!(
-                        aggregate.rows().unwrap().serialize_specified().unwrap(),
+                        aggregate
+                            .rows()
+                            .unwrap()
+                            .serialize_specified(Default::default())
+                            .unwrap(),
                         "10px"
                     );
                     assert_eq!(
-                        aggregate.columns().unwrap().serialize_specified().unwrap(),
+                        aggregate
+                            .columns()
+                            .unwrap()
+                            .serialize_specified(Default::default())
+                            .unwrap(),
                         "20px"
                     );
                 }
@@ -357,16 +394,18 @@ fn malformed_duplicate_prefixes_and_slashes_are_rejected_wholly() {
             CssKnownProperty::Color
         );
         for by_grammar in [false, true] {
-            let components = parse_component_values(input).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), input).unwrap();
             let result = if by_grammar {
-                parse_property_value_for_grammar(
-                    CssKnownProperty::Grid.grammar(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(CssKnownProperty::Grid.grammar()),
                     components,
                     CssImportance::Important,
                 )
             } else {
-                parse_property_value(
-                    CssPropertyNameRef::Known(CssKnownProperty::Grid),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Grid)),
                     components,
                     CssImportance::Important,
                 )
@@ -379,7 +418,7 @@ fn malformed_duplicate_prefixes_and_slashes_are_rejected_wholly() {
 #[test]
 fn valid_row_flow_preserves_authored_case_importance_order_and_utf8_operand_origins() {
     let source = "/*😀*/color:red;GRID:AUTO-FLOW dense 20px / 10px!important;width:1px";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [before, declaration, after] = report.syntax().as_slice() else {
         panic!("three original occurrences");

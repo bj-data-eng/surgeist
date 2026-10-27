@@ -1036,7 +1036,9 @@ impl<'a> MetadataDocumentMeta<'a> {
         }
     }
     /// The original immutable CSS report and context, without reparsing authored attributes.
-    pub fn color_scheme(&self) -> Option<&'a Arc<surgeist_css::CssColorSchemeParseReport>> {
+    pub fn color_scheme(
+        &self,
+    ) -> Option<&'a Arc<surgeist_css::values::color_adjust::CssColorSchemeParseReport>> {
         self.meta
             .scheme
             .as_ref()

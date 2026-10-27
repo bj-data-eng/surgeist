@@ -1,9 +1,9 @@
 //! Canonical imports preserve the authored clause/media interpretation.
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::{
-    CssErrorCode, CssImportSerializationError, CssMediaSerializationError, CssRule,
-    CssSerializedOrigin, CssValueOrigin, parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::rule::CssRule;
 
 #[test]
 fn canonical_imports_preserve_targets_clauses_and_symbolic_media() {
@@ -22,12 +22,18 @@ fn canonical_imports_preserve_targets_clauses_and_symbolic_media() {
             "@import \"x\" future(1/**/e2);",
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [CssRule::Import(import)] = report.syntax().rules() else {
             panic!("one import");
         };
-        assert_eq!(import.serialize().unwrap().as_css(), expected);
+        assert_eq!(
+            import
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            expected
+        );
     }
 }
 
@@ -41,16 +47,16 @@ fn clause_shaped_media_keeps_its_interpretation_after_serialization() {
         "supports(display:grid) and (color)",
     ] {
         let source = format!("@import \"x\" {tail};");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean());
         let [CssRule::Import(import)] = report.syntax().rules() else {
             panic!("one import");
         };
         assert!(import.layer().is_none());
         assert!(import.supports().is_none());
-        let output = import.serialize().unwrap();
+        let output = import.serialize_tokens(Default::default()).unwrap();
         assert_eq!(output.as_css(), source);
-        let reparsed = parse_sheet(output.as_css());
+        let reparsed = CssParser::default().parse_sheet(output.as_css());
         assert!(reparsed.is_clean());
         let [CssRule::Import(import)] = reparsed.syntax().rules() else {
             panic!("one reparsed import");
@@ -63,29 +69,26 @@ fn clause_shaped_media_keeps_its_interpretation_after_serialization() {
 
 #[test]
 fn recovered_media_prevents_partial_import_output() {
-    let report = parse_sheet("@import \"x\" layer(theme) screen and, print;");
+    let report = CssParser::default().parse_sheet("@import \"x\" layer(theme) screen and, print;");
     assert!(!report.is_clean());
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("retained import");
     };
     assert!(matches!(
-        import.serialize(),
-        Err(CssImportSerializationError::Media(
-            CssMediaSerializationError::RecoveredNever {
-                origin: CssValueOrigin::Parsed(_)
-            }
-        ))
+        import.serialize_tokens(Default::default()),
+        Err(ref error) if crate::css::support::is_recovered_media_failure(error)
+            && matches!(error.origin(), Some(CssValueOrigin::Parsed(_)))
     ));
 }
 
 #[test]
 fn emitted_target_and_terminator_keep_original_source_coordinates() {
     let source = "/* prefix */ @IMPORT 'x';";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("one import");
     };
-    let output = import.serialize().unwrap();
+    let output = import.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "@import 'x';");
     for (offset, original) in [(0, 13), (8, 21), (11, 24)] {
         let Some(CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin))) =
@@ -99,19 +102,19 @@ fn emitted_target_and_terminator_keep_original_source_coordinates() {
 
 #[test]
 fn eof_recovery_closes_output_without_inventing_source_coordinates() {
-    let report = parse_sheet("@import \"x\" layer(");
+    let report = CssParser::default().parse_sheet("@import \"x\" layer(");
     // Syntax 3 §5.4.2: EOF before the statement's semicolon is a parse error.
     ExpectedRejection::new(CssErrorCode::UnexpectedEnd).assert_first(&report);
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("retained import");
     };
-    let output = import.serialize().unwrap();
+    let output = import.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "@import \"x\" layer();");
     assert!(matches!(
         output.origin_at(output.as_css().len() - 1),
         Some(CssSerializedOrigin::Token(CssValueOrigin::Programmatic))
     ));
-    assert!(parse_sheet(output.as_css()).is_clean());
+    assert!(CssParser::default().parse_sheet(output.as_css()).is_clean());
 }
 
 #[test]
@@ -121,10 +124,16 @@ fn deeply_nested_import_media_serializes_without_losing_components() {
         "future(".repeat(256),
         ")".repeat(256)
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("one import");
     };
-    assert_eq!(import.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        import
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
 }

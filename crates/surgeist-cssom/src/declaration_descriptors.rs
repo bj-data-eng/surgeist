@@ -1,6 +1,8 @@
 //! Common declaration orchestration over the CSS-owned Page and Fonts descriptor domains.
 use super::*;
-use surgeist_css::CssFontFaceDescriptors;
+use surgeist_css::CssParser;
+use surgeist_css::rule::font_face::{CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptors};
+use surgeist_css::rule::page::CssPageDescriptorValue;
 
 #[derive(Clone, Copy)]
 pub(super) enum DescriptorName {
@@ -70,7 +72,7 @@ pub(super) fn descriptor_value(
             match entry {
                 Some(value) => value
                     .value()
-                    .serialize_specified_with_limits(budget.provider()?)
+                    .serialize_specified(budget.provider()?)
                     .map_err(CssomError::Value),
                 None => Ok(String::new()),
             }
@@ -83,7 +85,7 @@ pub(super) fn descriptor_value(
             {
                 Some(value) => value
                     .value()
-                    .serialize_specified_with_limits(budget.provider()?)
+                    .serialize_specified(budget.provider()?)
                     .map_err(CssomError::Value),
                 None => Ok(String::new()),
             }
@@ -160,7 +162,8 @@ impl CssomBatch {
         }
         let (value, diagnostics) = match kind {
             DescriptorName::Page(kind) => {
-                let (value, diagnostics) = parse_page_descriptor_value(value, kind).into_parts();
+                let (value, diagnostics) =
+                    CssPageDescriptorValue::parse(&CssParser::default(), value, kind).into_parts();
                 (
                     value.map(|value| {
                         CssomDeclarationValue::PageDescriptor(CssPageDescriptor::new(
@@ -172,7 +175,8 @@ impl CssomBatch {
             }
             DescriptorName::FontFace(kind) => {
                 let (value, diagnostics) =
-                    parse_font_face_descriptor_value(value, kind).into_parts();
+                    CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), value, kind)
+                        .into_parts();
                 (
                     value.map(|value| {
                         CssomDeclarationValue::FontFaceDescriptor(CssFontFaceDescriptor::new(value))
@@ -203,11 +207,8 @@ impl CssomBatch {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let winners = font_winners(entries.clone());
-        let selected = CssSpecifiedFontFaceDeclarationBlock::try_from_entries_with_limits(
-            &winners,
-            budget.provider()?,
-        )
-        .map_err(CssomError::FontFace)?;
+        let selected =
+            CssSpecifiedFontFaceDeclarationBlock::try_from_entries(&winners, budget.provider()?)?;
         let block = self.staged.blocks.get_mut(id).expect("owned block");
         block.data = std::sync::Arc::new(CssomBlockData::FontFace(CssFontFaceDescriptors::new(
             entries,
@@ -221,11 +222,8 @@ impl CssomBatch {
         entries: &[CssFontFaceDescriptor],
         budget: &mut DeclarationBudget,
     ) -> Result<(), CssomError> {
-        let selected = CssSpecifiedFontFaceDeclarationBlock::try_from_entries_with_limits(
-            entries,
-            budget.provider()?,
-        )
-        .map_err(CssomError::FontFace)?;
+        let selected =
+            CssSpecifiedFontFaceDeclarationBlock::try_from_entries(entries, budget.provider()?)?;
         self.staged
             .blocks
             .get_mut(id)

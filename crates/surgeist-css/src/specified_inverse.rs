@@ -1,86 +1,161 @@
 //! Exact typed inverses for schema-owned shorthand families.
 
-use crate::*;
-use crate::{
-    declaration_serialization::{append_break_between, append_ordinary, append_text_orientation},
-    expansion::SpecifiedInverseValue as Inverse,
-    specified_declaration_block::{
-        CssDeclarationBlockError, CssSpecifiedDeclarationEntry, CssSpecifiedDeclarationValueRef,
-    },
-    specified_rule_serialization::SpecifiedRuleWriter,
+use crate::component::{CssComponentValueRef, CssValueTokenRef};
+use crate::declaration::declaration_serialization::{
+    append_break_between, append_ordinary, append_text_orientation,
 };
+use crate::declaration::{
+    CssDeclarationBlockError, CssSpecifiedDeclarationEntry, CssSpecifiedDeclarationValueRef,
+};
+use crate::numeric::CssNumeric;
+use crate::numeric::{CssNumericRoot, CssRange};
+use crate::property::expansion::SpecifiedInverseValue as Inverse;
+use crate::property::{
+    CssContributionValueRef, CssInitialValueRef, CssKnownProperty, CssLonghandValueRef,
+    CssPropertyKindRef, CssPropertyNameRef,
+};
+#[cfg(test)]
+use crate::property::{CssContributions, CssExpansion, CssLonghandContributions};
+use crate::query::container::CssContainer;
+use crate::serialization::CssSerializationError;
+#[cfg(test)]
+use crate::serialization::CssSerializationLimits;
+use crate::serialization::specified_rule_serialization::SpecifiedRuleWriter;
+use crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind;
+use crate::values::animation::{CssAnimation, CssAnimationComponents, CssTransition};
+use crate::values::animation::{
+    CssAnimationDirection, CssAnimationFillMode, CssAnimationIterationCount, CssAnimationList,
+    CssAnimationName, CssAnimationPlayState, CssEasing, CssEasingKeyword, CssTransitionList,
+};
+use crate::values::background::CssBackgroundLayerBoxes;
+use crate::values::background::{
+    CssBackground, CssBackgroundLayer, CssBackgroundSize, CssBackgroundSizeList,
+};
+use crate::values::border::{
+    CssBorder, CssBorderImage, CssBorderImageOutset, CssBorderImageOutsetComponent,
+    CssBorderImageSlice, CssBorderImageSliceComponent, CssBorderImageWidth,
+    CssBorderImageWidthComponent, CssBorderRadiusShorthand, CssLineStyle, CssLineWidth, CssOutline,
+    CssOutlineColor,
+};
+use crate::values::box_model::CssBoxSize;
+use crate::values::box_model::{
+    CssContainIntrinsicSizeFallback, CssContainIntrinsicSizeValue, CssInsetValue, CssMarginValue,
+    CssMaxSizeValue, CssOverflow, CssOverflowValue, CssPaddingValue, CssSizeValue,
+};
+use crate::values::common::CssBoxSideKind;
+use crate::values::common::{CssAutoOr, CssFourSides, CssSidePair};
+use crate::values::content::CssListStyleValue;
+#[cfg(test)]
+use crate::values::effects::{CssDropShadow, CssFilterFunction};
+use crate::values::effects::{CssMaskBorder, CssMaskClip, CssMaskList};
+use crate::values::effects::{CssMaskLayer, CssMaskLayerBoxes};
+use crate::values::font::{CssExplicitFont, CssFontSynthesisValues, CssFontVariantValues};
+use crate::values::font::{
+    CssFontSynthesis, CssFontSynthesisPosition, CssFontSynthesisSmallCaps, CssFontSynthesisStyle,
+    CssFontSynthesisWeight, CssFontValue, CssFontVariant, CssFontVariantAlternates,
+    CssFontVariantCaps, CssFontVariantEastAsian, CssFontVariantEmoji, CssFontVariantLigatures,
+    CssFontVariantNumeric, CssFontVariantPosition, CssFontVariantValue, CssFontWidth,
+};
+use crate::values::image::CssImageValue;
+#[cfg(test)]
+use crate::values::image::{CssColorStopListItem, CssGradient, CssGradientColorStop};
+use crate::values::layout::{
+    CssColumnRule, CssColumns, CssFlexFlow, CssFlexValue, CssGapValue, CssGrid, CssGridArea,
+    CssGridAutoFlow, CssGridLineRange, CssGridTemplate, CssItemFlow, CssPlaceContentValue,
+    CssPlaceItemsValue, CssPlaceSelfValue, CssScrollSnapAlignment,
+};
+use crate::values::layout::{CssFlexBasisRef, CssFlexComponents, CssGridAutoFlowAxis};
+#[cfg(test)]
+use crate::values::position::CssPositionList;
+use crate::values::speech::{CssCue, CssSpeechBreak};
+use crate::values::text::{
+    CssAutospace, CssTextAlign, CssTextBoxValues, CssTextSpacingValues, CssWhiteSpaceKeyword,
+};
+use crate::values::text::{
+    CssSpacingTrim, CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue,
+    CssTextAutospace, CssTextBox, CssTextBoxEdge, CssTextBoxTrim, CssTextDecoration,
+    CssTextDecorationSkip, CssTextDecorationSkipSelf, CssTextEmphasis, CssTextSpacing,
+    CssTextSpacingTrim, CssTextWrap, CssTextWrapMode, CssWhiteSpace, CssWhiteSpaceCollapse,
+};
+use crate::values::transform::CssOffset;
+use crate::values::ui::{CssCaret, CssCaretColor, CssInterestDelayValue};
 
 type Result<T> = std::result::Result<T, CssDeclarationBlockError>;
 
-type EqualityResult = std::result::Result<bool, CssSpecifiedValueSerializationError>;
-use crate::specified_serialization::SpecifiedSerializationContext;
+type EqualityResult = std::result::Result<bool, CssSerializationError>;
+use crate::serialization::specified_serialization::SpecifiedSerializationContext;
 
-mod equality;
+pub(crate) mod equality;
 pub(crate) use equality::BoundedStructuralEquality;
 
-trait InverseValueEquality {
+pub(crate) trait InverseValueEquality {
     fn inverse_equal(
         &self,
         other: &Self,
         context: &mut SpecifiedSerializationContext,
     ) -> EqualityResult;
 }
-macro_rules! literal_equality {
-    ($($ty:ty),+ $(,)?) => { $(impl InverseValueEquality for $ty {
-        fn inverse_equal(&self, other: &Self, context: &mut SpecifiedSerializationContext) -> EqualityResult {
-            match self.inverse_literal_eq(other) {
-                Some(equal) => Ok(equal),
-                None => match (self.calculation(), other.calculation()) {
-                    (Some(a), Some(b)) => a.expression.specified_inverse_eq(&b.expression, context),
-                    _ => Ok(false),
-                },
-            }
-        }
-    })+ };
-}
-literal_equality!(
-    CssSpecifiedLength,
-    CssSpecifiedNonNegativeLength,
-    CssSpecifiedLengthPercentage,
-    CssSpecifiedNonNegativeLengthPercentage
-);
-macro_rules! ordinary_number_equality {
-    ($($ty:ty),+ $(,)?) => { $(impl InverseValueEquality for $ty {
-        fn inverse_equal(&self, other: &Self, context: &mut SpecifiedSerializationContext) -> EqualityResult {
-            match (self.literal_component(), other.literal_component()) {
-                (Some(a), Some(b)) => Ok(crate::specified_numeric::ordinary_literal_equal(a, b)),
-                _ => match (self.calculation(), other.calculation()) {
-                    (Some(a), Some(b)) => a.expression.specified_inverse_eq(&b.expression, context),
-                    _ => Ok(false),
-                },
-            }
-        }
-    })+ };
-}
-ordinary_number_equality!(
-    CssSpecifiedNonNegativeNumber,
-    CssSpecifiedNonNegativePercentage
-);
-impl InverseValueEquality for CssCornerRadiusValue {
+// Lengths treat a quirky Number as its px length; numbers and percentages
+// compare exact ordinary coefficients; other roots compare by value. Math
+// compares its expressions under the bounded context.
+impl<T: CssNumericRoot, R: CssRange<T>> InverseValueEquality for CssNumeric<T, R> {
     fn inverse_equal(
         &self,
         other: &Self,
         context: &mut SpecifiedSerializationContext,
     ) -> EqualityResult {
-        Ok(self
-            .horizontal()
-            .inverse_equal(other.horizontal(), context)?
-            && self.vertical().inverse_equal(other.vertical(), context)?)
+        let literal = match crate::numeric::value::root_kind::<T>() {
+            crate::numeric::value::RootKind::Length
+            | crate::numeric::value::RootKind::LengthPercentage => self.inverse_literal_eq(other),
+            crate::numeric::value::RootKind::Number
+            | crate::numeric::value::RootKind::Percentage => {
+                match (self.literal_component(), other.literal_component()) {
+                    (Some(a), Some(b)) => Some(
+                        crate::numeric::specified_numeric::ordinary_literal_equal(a, b),
+                    ),
+                    _ => None,
+                }
+            }
+            _ => return Ok(self == other),
+        };
+        match literal {
+            Some(equal) => Ok(equal),
+            None => match (self.calculation(), other.calculation()) {
+                (Some(a), Some(b)) => a.expression.specified_inverse_eq(&b.expression, context),
+                _ => Ok(false),
+            },
+        }
     }
 }
-impl InverseValueEquality for CssBackgroundSizeComponent {
+/// A `<T>{1,2}` value is the same when both effective components are: a pair that omits its
+/// second component equals one that repeats the first.
+impl<T: InverseValueEquality> InverseValueEquality for CssSidePair<T> {
+    fn inverse_equal(
+        &self,
+        other: &Self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> EqualityResult {
+        Ok(self.first().inverse_equal(other.first(), context)?
+            && self.second().inverse_equal(other.second(), context)?)
+    }
+}
+impl InverseValueEquality for CssScrollSnapAlignment {
+    fn inverse_equal(
+        &self,
+        other: &Self,
+        _context: &mut SpecifiedSerializationContext,
+    ) -> EqualityResult {
+        Ok(self == other)
+    }
+}
+impl<T: InverseValueEquality + PartialEq> InverseValueEquality for CssAutoOr<T> {
     fn inverse_equal(
         &self,
         other: &Self,
         context: &mut SpecifiedSerializationContext,
     ) -> EqualityResult {
         match (self, other) {
-            (Self::Length(a), Self::Length(b)) => a.inverse_equal(b, context),
+            (Self::Value(a), Self::Value(b)) => a.inverse_equal(b, context),
             _ => Ok(self == other),
         }
     }
@@ -104,11 +179,8 @@ impl InverseValueEquality for CssBackgroundSize {
             ) => Ok(a.inverse_equal(b, context)?
                 && ah
                     .as_ref()
-                    .unwrap_or(&CssBackgroundSizeComponent::Auto)
-                    .inverse_equal(
-                        bh.as_ref().unwrap_or(&CssBackgroundSizeComponent::Auto),
-                        context,
-                    )?),
+                    .unwrap_or(&CssAutoOr::Auto)
+                    .inverse_equal(bh.as_ref().unwrap_or(&CssAutoOr::Auto), context)?),
             _ => Ok(self == other),
         }
     }
@@ -228,9 +300,8 @@ macro_rules! numeric_variant_equality {
 }
 numeric_variant_equality!(CssMarginValue, LengthPercentage);
 numeric_variant_equality!(CssInsetValue, LengthPercentage);
-numeric_variant_equality!(CssScrollPaddingValue, LengthPercentage);
 numeric_variant_equality!(CssGapValue, LengthPercentage);
-numeric_variant_equality!(CssBorderWidth, Length);
+numeric_variant_equality!(CssLineWidth, Length);
 impl InverseValueEquality for CssPaddingValue {
     fn inverse_equal(
         &self,
@@ -320,7 +391,7 @@ macro_rules! structural_equality {
         fn inverse_equal(&self, other: &Self, _context: &mut SpecifiedSerializationContext) -> EqualityResult { Ok(self == other) }
     })+ };
 }
-structural_equality!(CssBorderStyle, CssOverflow);
+structural_equality!(CssLineStyle, CssOverflow);
 impl InverseValueEquality for CssCue {
     fn inverse_equal(
         &self,
@@ -349,7 +420,7 @@ macro_rules! inverse_value_equal {
     (CssLineWidth, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
-    (CssColumnWidth, $a:ident, $b:ident, $context:ident) => {
+    (CssSizeValue, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
     (CssGridLine, $a:ident, $b:ident, $context:ident) => {
@@ -373,16 +444,13 @@ macro_rules! inverse_value_equal {
     (CssTextDecorationThickness, $a:ident, $b:ident, $context:ident) => {
         $a.bounded_eq($b, $context)
     };
-    (CssOutlineWidth, $a:ident, $b:ident, $context:ident) => {
-        $a.bounded_eq($b, $context)
-    };
     (CssEasingList, $a:ident, $b:ident, $context:ident) => {
         $a.bounded_eq($b, $context)
     };
     (CssBackgroundPositionList, $a:ident, $b:ident, $context:ident) => {
         $a.bounded_eq($b, $context)
     };
-    (CssPhysicalPositionList, $a:ident, $b:ident, $context:ident) => {
+    (CssPositionList, $a:ident, $b:ident, $context:ident) => {
         $a.bounded_eq($b, $context)
     };
     (CssImageValue, $a:ident, $b:ident, $context:ident) => {
@@ -406,22 +474,10 @@ macro_rules! inverse_value_equal {
     (CssOffsetPath, $a:ident, $b:ident, $context:ident) => {
         $a.bounded_eq($b, $context)
     };
-    (CssSpecifiedLength, $a:ident, $b:ident, $context:ident) => {
+    (CssNumeric, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
-    (CssSpecifiedNonNegativeLength, $a:ident, $b:ident, $context:ident) => {
-        $a.inverse_equal($b, $context)
-    };
-    (CssSpecifiedLengthPercentage, $a:ident, $b:ident, $context:ident) => {
-        $a.inverse_equal($b, $context)
-    };
-    (CssSpecifiedNonNegativeLengthPercentage, $a:ident, $b:ident, $context:ident) => {
-        $a.inverse_equal($b, $context)
-    };
-    (CssSpecifiedNonNegativeNumber, $a:ident, $b:ident, $context:ident) => {
-        $a.inverse_equal($b, $context)
-    };
-    (CssCornerRadiusValue, $a:ident, $b:ident, $context:ident) => {
+    (CssSidePair, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
     (CssBackgroundSizeList, $a:ident, $b:ident, $context:ident) => {
@@ -442,16 +498,13 @@ macro_rules! inverse_value_equal {
     (CssInsetValue, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
-    (CssScrollPaddingValue, $a:ident, $b:ident, $context:ident) => {
+    (ScrollPaddingSide, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
     (CssGapValue, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
     (CssPaddingValue, $a:ident, $b:ident, $context:ident) => {
-        $a.inverse_equal($b, $context)
-    };
-    (CssBorderWidth, $a:ident, $b:ident, $context:ident) => {
         $a.inverse_equal($b, $context)
     };
     (CssBoxSize, $a:ident, $b:ident, $context:ident) => {
@@ -507,7 +560,7 @@ macro_rules! longhand_dispatch {
         All, $all_name:literal, [$($all_alias:literal),*], $all_id:literal,
         $all_value:ty, $all_parser:ident, $all_dispatch:block, expansion = $all_kind:ident { $($all_metadata:tt)* };
         $( $variant:ident, $name:literal, [$($alias:literal),*], $id:literal,
-           crate::$value:ident, $wrapper:ident, $accessor:ident, $parser:ident, $dispatch:block,
+           $value:ident $(<$($argument:ident),+>)?, $parser:ident, $dispatch:block,
            expansion = $kind:ident { $($metadata:tt)* }; )*
     ) => { longhand_dispatch!(@collect []; $( $variant, $value, $kind; )*); };
     (@collect [$($rows:tt)*]; $variant:ident, $value:ident, longhand; $($rest:tt)*) => {
@@ -517,14 +570,18 @@ macro_rules! longhand_dispatch {
         longhand_dispatch!(@collect [$($rows)*]; $($rest)*);
     };
     (@collect [$(($variant:ident, $value:ident))*];) => {
-        fn ordinary_values_equal(left: CssLonghandValueRef<'_>, right: CssLonghandValueRef<'_>, context: &mut crate::specified_serialization::SpecifiedSerializationContext) -> std::result::Result<bool, CssSpecifiedValueSerializationError> {
+        fn ordinary_values_equal(
+            left: CssLonghandValueRef<'_>,
+            right: CssLonghandValueRef<'_>,
+            context: &mut crate::serialization::specified_serialization::SpecifiedSerializationContext,
+        ) -> std::result::Result<bool, CssSerializationError> {
             match (left, right) {
                 $((CssLonghandValueRef::$variant(a), CssLonghandValueRef::$variant(b)) => fallible_inverse_value_equal!($value, a, b, context),)*
                 _ => Ok(false),
             }
         }
         pub(crate) fn append_longhand(value: CssLonghandValueRef<'_>, writer: &mut SpecifiedRuleWriter)
-            -> std::result::Result<(), CssSpecifiedValueSerializationError> {
+            -> std::result::Result<(), CssSerializationError> {
             match value {
                 $(CssLonghandValueRef::$variant(value) => {
                     let _grammar = CssKnownProperty::$variant.grammar();
@@ -534,12 +591,12 @@ macro_rules! longhand_dispatch {
         }
     };
 }
-crate::properties::property_schema!(longhand_dispatch, inverse_input, inverse_numeric);
+crate::property::properties::property_schema!(longhand_dispatch, inverse_input, inverse_numeric);
 
 pub(crate) fn visit_value(
     value: CssContributionValueRef<'_>,
     writer: &mut SpecifiedRuleWriter,
-) -> std::result::Result<(), CssSpecifiedValueSerializationError> {
+) -> std::result::Result<(), CssSerializationError> {
     match value {
         CssContributionValueRef::Ordinary(value) => {
             writer.visit_semantic(|writer| append_longhand(value, writer))
@@ -553,8 +610,8 @@ pub(crate) fn visit_value(
 pub(crate) fn values_equal(
     left: CssContributionValueRef<'_>,
     right: CssContributionValueRef<'_>,
-    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
-) -> std::result::Result<bool, CssSpecifiedValueSerializationError> {
+    context: &mut crate::serialization::specified_serialization::SpecifiedSerializationContext,
+) -> std::result::Result<bool, CssSerializationError> {
     match (left, right) {
         (
             CssContributionValueRef::Ordinary(CssLonghandValueRef::TransitionDuration(a)),
@@ -696,29 +753,24 @@ macro_rules! initial_value {
         value.clone()
     }};
 }
-fn scroll_mode(mode: CssBoxSideKind) -> CssScrollSideKind {
-    match mode {
-        CssBoxSideKind::Physical => CssScrollSideKind::Physical,
-        CssBoxSideKind::Logical => CssScrollSideKind::Logical,
-    }
-}
 fn shorter_second<T: InverseValueEquality>(
     first: &T,
     second: T,
     context: &mut SpecifiedSerializationContext,
-) -> std::result::Result<Option<T>, CssSpecifiedValueSerializationError> {
+) -> std::result::Result<Option<T>, CssSerializationError> {
     Ok((!first.inverse_equal(&second, context)?).then_some(second))
 }
 fn shortest_quad<T: InverseValueEquality>(
     mut values: Vec<T>,
     context: &mut SpecifiedSerializationContext,
     current: &mut usize,
-) -> std::result::Result<Vec<T>, CssSpecifiedValueSerializationError> {
+) -> std::result::Result<Vec<T>, CssSerializationError> {
     // A comparison failure belongs to the member that would be omitted.
-    let count = crate::common_serialization::shortest_four_side_count(|left, right| {
-        *current = right;
-        values[left].inverse_equal(&values[right], context)
-    })?;
+    let count =
+        crate::serialization::common_serialization::shortest_four_side_count(|left, right| {
+            *current = right;
+            values[left].inverse_equal(&values[right], context)
+        })?;
     values.truncate(count);
     Ok(values)
 }
@@ -774,7 +826,7 @@ pub(crate) fn reconstruct(
                     return Ok(None);
                 };
                 $items.try_reserve(value.$getter().len()).map_err(|_| {
-                    CssSpecifiedValueSerializationError::new(
+                    CssSerializationError::new(
                         CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                     )
                 })?;
@@ -853,7 +905,7 @@ pub(crate) fn reconstruct(
                     val!(values, ScrollPaddingBlockEnd),
                     ScrollPaddingBlockEnd
                 );
-                Inverse::ScrollPaddingBlock(CssScrollPaddingPair::new(first, second))
+                Inverse::ScrollPaddingBlock(CssSidePair::new(first, second))
             }
             CssKnownProperty::ScrollPaddingInline => {
                 let first = val!(values, ScrollPaddingInlineStart);
@@ -862,7 +914,7 @@ pub(crate) fn reconstruct(
                     val!(values, ScrollPaddingInlineEnd),
                     ScrollPaddingInlineEnd
                 );
-                Inverse::ScrollPaddingInline(CssScrollPaddingPair::new(first, second))
+                Inverse::ScrollPaddingInline(CssSidePair::new(first, second))
             }
             CssKnownProperty::ScrollMarginBlock => {
                 let first = val!(values, ScrollMarginBlockStart);
@@ -871,7 +923,7 @@ pub(crate) fn reconstruct(
                     val!(values, ScrollMarginBlockEnd),
                     ScrollMarginBlockEnd
                 );
-                Inverse::ScrollMarginBlock(CssScrollMarginPair::new(first, second))
+                Inverse::ScrollMarginBlock(CssSidePair::new(first, second))
             }
             CssKnownProperty::ScrollMarginInline => {
                 let first = val!(values, ScrollMarginInlineStart);
@@ -880,7 +932,7 @@ pub(crate) fn reconstruct(
                     val!(values, ScrollMarginInlineEnd),
                     ScrollMarginInlineEnd
                 );
-                Inverse::ScrollMarginInline(CssScrollMarginPair::new(first, second))
+                Inverse::ScrollMarginInline(CssSidePair::new(first, second))
             }
             CssKnownProperty::Overflow => {
                 let first = val!(values, OverflowX);
@@ -890,12 +942,12 @@ pub(crate) fn reconstruct(
             CssKnownProperty::Size => {
                 let first = val!(values, Width);
                 let second = shorter_second!(&first, val!(values, Height), Height);
-                Inverse::Size(CssSizePair::new(first, second))
+                Inverse::Size(CssSidePair::new(first, second))
             }
             CssKnownProperty::MinSize => {
                 let first = val!(values, MinWidth);
                 let second = shorter_second!(&first, val!(values, MinHeight), MinHeight);
-                Inverse::MinSize(CssSizePair::new(first, second))
+                Inverse::MinSize(CssSidePair::new(first, second))
             }
             CssKnownProperty::ContainIntrinsicSize => {
                 let first = val!(values, ContainIntrinsicWidth);
@@ -904,45 +956,45 @@ pub(crate) fn reconstruct(
                     val!(values, ContainIntrinsicHeight),
                     ContainIntrinsicHeight
                 );
-                Inverse::ContainIntrinsicSize(CssContainIntrinsicSize::new(first, second))
+                Inverse::ContainIntrinsicSize(CssSidePair::new(first, second))
             }
             CssKnownProperty::Gap => {
                 let first = val!(values, RowGap);
                 let second = shorter_second!(&first, val!(values, ColumnGap), ColumnGap);
-                Inverse::Gap(CssGapShorthand::new(first, second))
+                Inverse::Gap(CssSidePair::new(first, second))
             }
             CssKnownProperty::InsetBlock => {
                 let first = val!(values, InsetBlockStart);
                 let second = shorter_second!(&first, val!(values, InsetBlockEnd), InsetBlockEnd);
-                Inverse::InsetBlock(CssInsetPair::new(first, second))
+                Inverse::InsetBlock(CssSidePair::new(first, second))
             }
             CssKnownProperty::InsetInline => {
                 let first = val!(values, InsetInlineStart);
                 let second = shorter_second!(&first, val!(values, InsetInlineEnd), InsetInlineEnd);
-                Inverse::InsetInline(CssInsetPair::new(first, second))
+                Inverse::InsetInline(CssSidePair::new(first, second))
             }
             CssKnownProperty::MarginBlock => {
                 let first = val!(values, MarginBlockStart);
                 let second = shorter_second!(&first, val!(values, MarginBlockEnd), MarginBlockEnd);
-                Inverse::MarginBlock(CssMarginPair::new(first, second))
+                Inverse::MarginBlock(CssSidePair::new(first, second))
             }
             CssKnownProperty::MarginInline => {
                 let first = val!(values, MarginInlineStart);
                 let second =
                     shorter_second!(&first, val!(values, MarginInlineEnd), MarginInlineEnd);
-                Inverse::MarginInline(CssMarginPair::new(first, second))
+                Inverse::MarginInline(CssSidePair::new(first, second))
             }
             CssKnownProperty::PaddingBlock => {
                 let first = val!(values, PaddingBlockStart);
                 let second =
                     shorter_second!(&first, val!(values, PaddingBlockEnd), PaddingBlockEnd);
-                Inverse::PaddingBlock(CssPaddingPair::new(first, second))
+                Inverse::PaddingBlock(CssSidePair::new(first, second))
             }
             CssKnownProperty::PaddingInline => {
                 let first = val!(values, PaddingInlineStart);
                 let second =
                     shorter_second!(&first, val!(values, PaddingInlineEnd), PaddingInlineEnd);
-                Inverse::PaddingInline(CssPaddingPair::new(first, second))
+                Inverse::PaddingInline(CssSidePair::new(first, second))
             }
             CssKnownProperty::BorderBlockWidth => {
                 let first = val!(values, BorderBlockStartWidth);
@@ -951,7 +1003,7 @@ pub(crate) fn reconstruct(
                     val!(values, BorderBlockEndWidth),
                     BorderBlockEndWidth
                 );
-                Inverse::BorderBlockWidth(CssBorderWidthPair::new(first, second))
+                Inverse::BorderBlockWidth(CssSidePair::new(first, second))
             }
             CssKnownProperty::BorderInlineWidth => {
                 let first = val!(values, BorderInlineStartWidth);
@@ -960,7 +1012,7 @@ pub(crate) fn reconstruct(
                     val!(values, BorderInlineEndWidth),
                     BorderInlineEndWidth
                 );
-                Inverse::BorderInlineWidth(CssBorderWidthPair::new(first, second))
+                Inverse::BorderInlineWidth(CssSidePair::new(first, second))
             }
             CssKnownProperty::BorderBlockStyle => {
                 let first = val!(values, BorderBlockStartStyle);
@@ -969,7 +1021,7 @@ pub(crate) fn reconstruct(
                     val!(values, BorderBlockEndStyle),
                     BorderBlockEndStyle
                 );
-                Inverse::BorderBlockStyle(CssBorderStylePair::new(first, second))
+                Inverse::BorderBlockStyle(CssSidePair::new(first, second))
             }
             CssKnownProperty::BorderInlineStyle => {
                 let first = val!(values, BorderInlineStartStyle);
@@ -978,7 +1030,7 @@ pub(crate) fn reconstruct(
                     val!(values, BorderInlineEndStyle),
                     BorderInlineEndStyle
                 );
-                Inverse::BorderInlineStyle(CssBorderStylePair::new(first, second))
+                Inverse::BorderInlineStyle(CssSidePair::new(first, second))
             }
             CssKnownProperty::GridRow => {
                 let first = val!(values, GridRowStart);
@@ -993,23 +1045,23 @@ pub(crate) fn reconstruct(
             CssKnownProperty::Pause => {
                 let first = val!(values, PauseBefore);
                 let second = shorter_second!(&first, val!(values, PauseAfter), PauseAfter);
-                Inverse::Pause(CssSpeechBreakPair::from_parser(first, second))
+                Inverse::Pause(CssSidePair::from_parts(first, second))
             }
             CssKnownProperty::Rest => {
                 let first = val!(values, RestBefore);
                 let second = shorter_second!(&first, val!(values, RestAfter), RestAfter);
-                Inverse::Rest(CssSpeechBreakPair::from_parser(first, second))
+                Inverse::Rest(CssSidePair::from_parts(first, second))
             }
             CssKnownProperty::Cue => {
                 let first = val!(values, CueBefore);
                 let second = shorter_second!(&first, val!(values, CueAfter), CueAfter);
-                Inverse::Cue(CssCuePair::from_parser(first, second))
+                Inverse::Cue(CssSidePair::from_parts(first, second))
             }
             CssKnownProperty::InterestDelay => {
                 let first = val!(values, InterestDelayStart);
                 let second =
                     shorter_second!(&first, val!(values, InterestDelayEnd), InterestDelayEnd);
-                Inverse::InterestDelay(CssInterestDelay::from_parser(first, second))
+                Inverse::InterestDelay(CssSidePair::from_parts(first, second))
             }
             CssKnownProperty::Container => Inverse::Container(CssContainer::new(
                 val!(values, ContainerName),
@@ -1150,13 +1202,13 @@ pub(crate) fn reconstruct(
                 let basis = val!(values, FlexBasis);
                 let auto = matches!(basis.view(), CssFlexBasisRef::Size(CssSizeValue::Auto));
                 let value = if auto
-                    && crate::flex::ordinary_factor(&grow, "0")
-                    && crate::flex::ordinary_factor(&shrink, "0")
+                    && crate::values::layout::flex::ordinary_factor(&grow, "0")
+                    && crate::values::layout::flex::ordinary_factor(&shrink, "0")
                 {
                     CssFlexValue::None
                 } else if auto
-                    && crate::flex::ordinary_factor(&grow, "1")
-                    && crate::flex::ordinary_factor(&shrink, "1")
+                    && crate::values::layout::flex::ordinary_factor(&grow, "1")
+                    && crate::values::layout::flex::ordinary_factor(&shrink, "1")
                 {
                     CssFlexValue::Auto
                 } else {
@@ -1340,10 +1392,7 @@ pub(crate) fn reconstruct(
                         val!(values, ScrollPaddingInlineEnd)
                     ],
                 };
-                Inverse::ScrollPadding(CssScrollPaddingShorthand::try_new(
-                    scroll_mode(mode),
-                    shortest_quad!(sides),
-                )?)
+                Inverse::ScrollPadding(CssFourSides::try_new(mode, shortest_quad!(sides))?)
             }
             CssKnownProperty::ScrollMargin => {
                 let mode = mode?;
@@ -1361,10 +1410,7 @@ pub(crate) fn reconstruct(
                         val!(values, ScrollMarginInlineEnd)
                     ],
                 };
-                Inverse::ScrollMargin(CssScrollMarginShorthand::try_new(
-                    scroll_mode(mode),
-                    shortest_quad!(sides),
-                )?)
+                Inverse::ScrollMargin(CssFourSides::try_new(mode, shortest_quad!(sides))?)
             }
             CssKnownProperty::Inset => {
                 let mode = mode?;
@@ -1382,7 +1428,7 @@ pub(crate) fn reconstruct(
                         val!(values, InsetInlineEnd)
                     ],
                 };
-                Inverse::Inset(CssInsetShorthand::try_new(mode, shortest_quad!(sides))?)
+                Inverse::Inset(CssFourSides::try_new(mode, shortest_quad!(sides))?)
             }
             CssKnownProperty::Margin => {
                 let mode = mode?;
@@ -1400,7 +1446,7 @@ pub(crate) fn reconstruct(
                         val!(values, MarginInlineEnd)
                     ],
                 };
-                Inverse::Margin(CssMarginShorthand::try_new(mode, shortest_quad!(sides))?)
+                Inverse::Margin(CssFourSides::try_new(mode, shortest_quad!(sides))?)
             }
             CssKnownProperty::Padding => {
                 let mode = mode?;
@@ -1418,7 +1464,7 @@ pub(crate) fn reconstruct(
                         val!(values, PaddingInlineEnd)
                     ],
                 };
-                Inverse::Padding(CssPaddingShorthand::try_new(mode, shortest_quad!(sides))?)
+                Inverse::Padding(CssFourSides::try_new(mode, shortest_quad!(sides))?)
             }
             CssKnownProperty::BorderWidth => {
                 let mode = mode?;
@@ -1436,10 +1482,7 @@ pub(crate) fn reconstruct(
                         val!(values, BorderInlineEndWidth)
                     ],
                 };
-                Inverse::BorderWidth(CssBorderWidthShorthand::try_new(
-                    mode,
-                    shortest_quad!(sides),
-                )?)
+                Inverse::BorderWidth(CssFourSides::try_new(mode, shortest_quad!(sides))?)
             }
             CssKnownProperty::BorderStyle => {
                 let mode = mode?;
@@ -1457,15 +1500,12 @@ pub(crate) fn reconstruct(
                         val!(values, BorderInlineEndStyle)
                     ],
                 };
-                Inverse::BorderStyle(CssBorderStyleShorthand::try_new(
-                    mode,
-                    shortest_quad!(sides),
-                )?)
+                Inverse::BorderStyle(CssFourSides::try_new(mode, shortest_quad!(sides))?)
             }
             CssKnownProperty::MaxSize => {
                 let first = val!(values, MaxWidth);
                 let second = shorter_second!(&first, val!(values, MaxHeight), MaxHeight);
-                Inverse::MaxSize(CssMaxSizePair::new(first, second))
+                Inverse::MaxSize(CssSidePair::new(first, second))
             }
             CssKnownProperty::BorderRadius => {
                 let corners = [
@@ -1475,16 +1515,16 @@ pub(crate) fn reconstruct(
                     val!(values, BorderBottomLeftRadius),
                 ];
                 let horizontal = shortest_quad!(admitted_quad![
-                    corners[0].horizontal().clone(),
-                    corners[1].horizontal().clone(),
-                    corners[2].horizontal().clone(),
-                    corners[3].horizontal().clone()
+                    corners[0].first().clone(),
+                    corners[1].first().clone(),
+                    corners[2].first().clone(),
+                    corners[3].first().clone()
                 ]);
                 let vertical = shortest_quad!(admitted_quad![
-                    corners[0].vertical().clone(),
-                    corners[1].vertical().clone(),
-                    corners[2].vertical().clone(),
-                    corners[3].vertical().clone()
+                    corners[0].second().clone(),
+                    corners[1].second().clone(),
+                    corners[2].second().clone(),
+                    corners[3].second().clone()
                 ]);
                 let mut equal_axes = horizontal.len() == vertical.len();
                 if equal_axes {
@@ -1605,7 +1645,7 @@ pub(crate) fn reconstruct(
         return Err(error);
     }
     if allocation_failure {
-        return Err(CssSpecifiedValueSerializationError::new(
+        return Err(CssSerializationError::new(
             CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
         )
         .into());
@@ -1656,7 +1696,7 @@ fn reconstruct_colors(
                 .specified_inverse_eq(second, &mut writer.context)
                 .map_err(|error| first_entry.at(error.into()))?;
             let second = (!equal).then(|| second.clone());
-            let pair = CssBorderColorPair::new(first.clone(), second);
+            let pair = CssSidePair::new(first.clone(), second);
             if property == CssKnownProperty::BorderBlockColor {
                 Inverse::BorderBlockColor(pair)
             } else {
@@ -1693,21 +1733,21 @@ fn reconstruct_colors(
             let members = [top, right, bottom, left];
             let entries = [top_entry, right_entry];
             // A comparison failure attaches to its left-hand source member.
-            let count = crate::common_serialization::shortest_four_side_count(|a, b| {
-                members[a]
-                    .specified_inverse_eq(members[b], &mut writer.context)
-                    .map_err(|error| entries[a].at(error.into()))
-            })?;
+            let count =
+                crate::serialization::common_serialization::shortest_four_side_count(|a, b| {
+                    members[a]
+                        .specified_inverse_eq(members[b], &mut writer.context)
+                        .map_err(|error| entries[a].at(error.into()))
+                })?;
             let mut sides = Vec::new();
             sides.try_reserve(count).map_err(|_| {
-                CssSpecifiedValueSerializationError::new(
+                CssSerializationError::new(
                     CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
                 )
             })?;
             sides.extend(members.into_iter().take(count).cloned());
             Inverse::BorderColor(
-                CssBorderColorShorthand::try_new(mode, sides)
-                    .expect("nonempty bounded color sides"),
+                CssFourSides::try_new(mode, sides).expect("nonempty bounded color sides"),
             )
         }
         _ => unreachable!("selected color inverse family"),
@@ -1725,7 +1765,7 @@ pub(crate) fn append_reconstructed<'a>(
     values: &[&'a CssSpecifiedDeclarationEntry],
     writer: &mut SpecifiedRuleWriter,
     current: &mut Option<&'a CssSpecifiedDeclarationEntry>,
-) -> std::result::Result<(), CssSpecifiedValueSerializationError> {
+) -> std::result::Result<(), CssSerializationError> {
     if !matches!(
         value,
         Inverse::BorderBlockColor(_)
@@ -1761,19 +1801,20 @@ pub(crate) fn append_reconstructed<'a>(
             .find(|entry| entry.property_name() == CssPropertyNameRef::Known(property));
     };
     match value {
+        // The colour reconstruction above has already compared the two colours under the
+        // writer's limits and dropped an equal second one, so a second colour that is still
+        // present is not equal; the pair must neither compare nor charge it again.
         Inverse::BorderBlockColor(value) | Inverse::BorderInlineColor(value) => {
-            value.append_to_rule_writer_with_color_visit(writer, &mut before)
+            value.append_with(writer, &mut |_, _, _| Ok(false), &mut before)
         }
-        Inverse::BorderColor(value) => {
-            value.append_to_rule_writer_with_color_visit(writer, &mut before)
-        }
-        Inverse::Pause(value) | Inverse::Rest(value) => value
-            .append_to_rule_writer_with_comparison(
-                writer,
-                &mut |a, b, context| a.inverse_equal(b, context),
-                &mut before,
-            ),
-        Inverse::InterestDelay(value) => value.append_to_rule_writer_with_comparison(
+        Inverse::BorderColor(value) => value.append_with(writer, &mut before),
+        // Retained time pairs pay the emission comparison again, under the writer's limits.
+        Inverse::Pause(value) | Inverse::Rest(value) => value.append_with(
+            writer,
+            &mut |a, b, context| a.inverse_equal(b, context),
+            &mut before,
+        ),
+        Inverse::InterestDelay(value) => value.append_with(
             writer,
             &mut |a, b, context| a.inverse_equal(b, context),
             &mut before,
@@ -2144,7 +2185,7 @@ fn ordinary_one_count(value: &CssAnimationIterationCount) -> bool {
     match value {
         CssAnimationIterationCount::Number(value) => value.literal_component().is_some_and(|value| {
             matches!(value.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number))
-                if crate::exact_decimal::LexicalDecimal::new(number.representation()).value_eq(&crate::exact_decimal::LexicalDecimal::new("1")))
+                if crate::serialization::exact_decimal::LexicalDecimal::new(number.representation()).value_eq(&crate::serialization::exact_decimal::LexicalDecimal::new("1")))
         }),
         _ => false,
     }
@@ -2153,14 +2194,14 @@ fn ordinary_one_count(value: &CssAnimationIterationCount) -> bool {
 #[cfg(test)]
 mod generic_math_comparison_tests {
     use super::*;
-    use crate::specified_serialization::SpecifiedSerializationContext;
+    use crate::serialization::specified_serialization::SpecifiedSerializationContext;
 
     fn margin(source: &str) -> CssLonghandContributions {
-        let report = crate::parse_style_attribute(source);
+        let report = crate::CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::property::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("ordinary checked margin contribution")
         };
@@ -2191,8 +2232,7 @@ mod generic_math_comparison_tests {
         // Calc, Sum, the 1px leaf and the 2px leaf require four pending slots.
         // Primitive token comparisons can borrow the exact owning relation;
         // the selected bounded consumer needs no component traversal vector.
-        let mut context =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 4, 0));
+        let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 4, 0));
         assert!(
             values_equal(
                 left.items()[0].value(),
@@ -2201,8 +2241,7 @@ mod generic_math_comparison_tests {
             )
             .unwrap()
         );
-        let mut context =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 3, 0));
+        let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 3, 0));
         assert_eq!(
             values_equal(
                 left.items()[0].value(),
@@ -2213,8 +2252,7 @@ mod generic_math_comparison_tests {
             .kind(),
             CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
         );
-        let mut retry =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 4, 0));
+        let mut retry = SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 4, 0));
         assert!(
             values_equal(
                 left.items()[0].value(),
@@ -2263,8 +2301,7 @@ mod generic_math_comparison_tests {
         ] {
             let left = margin(left);
             let right = margin(right);
-            let mut context =
-                SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::default());
+            let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::default());
             assert_eq!(
                 values_equal(
                     left.items()[0].value(),
@@ -2283,11 +2320,11 @@ mod composite_math_comparison_tests {
     use super::*;
 
     fn terminal(source: &str, property: CssKnownProperty) -> CssLonghandContributions {
-        let report = crate::parse_style_attribute(source);
+        let report = crate::CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::property::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed intrinsic terminal: {source}")
         };
@@ -2382,9 +2419,8 @@ mod composite_math_comparison_tests {
                     .source()
                     .same_occurrence(right.items()[0].source())
             );
-            let mut exact = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-            );
+            let mut exact =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
             if !matches!(
                 values_equal(
                     left.items()[0].value(),
@@ -2397,9 +2433,11 @@ mod composite_math_comparison_tests {
                     "{source}: exact P{projections} does not compare equal"
                 ));
             }
-            let mut short = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections - 1, 0),
-            );
+            let mut short = SpecifiedSerializationContext::new(CssSerializationLimits::new(
+                0,
+                projections - 1,
+                0,
+            ));
             match values_equal(
                 left.items()[0].value(),
                 right.items()[0].value(),
@@ -2413,9 +2451,8 @@ mod composite_math_comparison_tests {
                     projections - 1
                 )),
             }
-            let mut retry = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-            );
+            let mut retry =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
             if !matches!(
                 values_equal(
                     left.items()[0].value(),
@@ -2442,8 +2479,7 @@ mod composite_math_comparison_tests {
         );
         // Root calc-size slot1, then its three-node Sum/Size/Length comparison.
         // The differing Nested/Keyword basis stops before the nested slot.
-        let mut exact =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 4, 0));
+        let mut exact = SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 4, 0));
         assert!(
             !values_equal(
                 left.items()[0].value(),
@@ -2452,8 +2488,7 @@ mod composite_math_comparison_tests {
             )
             .unwrap()
         );
-        let mut short =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 3, 0));
+        let mut short = SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 3, 0));
         assert_eq!(
             values_equal(
                 left.items()[0].value(),
@@ -2499,9 +2534,8 @@ mod composite_math_comparison_tests {
                 };
                 assert_eq!(count, 4);
             }
-            let mut context = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
-            );
+            let mut context =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 0, 0));
             assert!(
                 values_equal(
                     left.items()[0].value(),
@@ -2569,8 +2603,7 @@ mod composite_math_comparison_tests {
         ] {
             let left = terminal(left, property);
             let right = terminal(right, property);
-            let mut context =
-                SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::default());
+            let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::default());
             assert!(
                 !values_equal(
                     left.items()[0].value(),
@@ -2589,11 +2622,11 @@ mod flex_basis_math_comparison_tests {
     use super::*;
 
     fn basis(source: &str) -> CssLonghandContributions {
-        let report = crate::parse_style_attribute(source);
+        let report = crate::CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::property::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed flex basis")
         };
@@ -2649,9 +2682,8 @@ mod flex_basis_math_comparison_tests {
                 ordinary_equal(&left, &right),
                 "{source}: original structural relation"
             );
-            let mut exact = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-            );
+            let mut exact =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
             assert!(
                 values_equal(
                     left.items()[0].value(),
@@ -2661,9 +2693,11 @@ mod flex_basis_math_comparison_tests {
                 .unwrap(),
                 "{source}"
             );
-            let mut under = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections - 1, 0),
-            );
+            let mut under = SpecifiedSerializationContext::new(CssSerializationLimits::new(
+                0,
+                projections - 1,
+                0,
+            ));
             match values_equal(
                 left.items()[0].value(),
                 right.items()[0].value(),
@@ -2677,9 +2711,8 @@ mod flex_basis_math_comparison_tests {
                     projections - 1
                 )),
             }
-            let mut retry = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-            );
+            let mut retry =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
             assert!(
                 values_equal(
                     left.items()[0].value(),
@@ -2699,41 +2732,46 @@ mod flex_basis_math_comparison_tests {
 
     #[test]
     fn flex_basis_outer_phase_and_literal_tokens_require_zero_graph_work() {
-        for (left, right, expected) in [
-            ("flex-basis:content", "flex-basis:content", true),
-            ("flex-basis:auto", "flex-basis:auto", true),
-            ("flex-basis:1px", "flex-basis:1px", true),
-            ("flex-basis:1px", "flex-basis:1.0px", false),
-            ("flex-basis:1px", "flex-basis:01px", false),
-            ("flex-basis:0", "flex-basis:0px", false),
-            ("flex-basis:content", "flex-basis:auto", false),
+        // Ordinary equality compares numeric values; the inverse relation
+        // keeps exact literal tokens.
+        for (left, right, ordinary, expected) in [
+            ("flex-basis:content", "flex-basis:content", true, true),
+            ("flex-basis:auto", "flex-basis:auto", true, true),
+            ("flex-basis:1px", "flex-basis:1px", true, true),
+            ("flex-basis:1px", "flex-basis:1.0px", true, false),
+            ("flex-basis:1px", "flex-basis:01px", true, false),
+            ("flex-basis:0", "flex-basis:0px", true, false),
+            ("flex-basis:content", "flex-basis:auto", false, false),
             (
                 "flex-basis:content",
                 "flex-basis:calc-size(any, 1px + 2px)",
                 false,
+                false,
             ),
-            ("flex-basis:calc(1px + 2px)", "flex-basis:3px", false),
+            ("flex-basis:calc(1px + 2px)", "flex-basis:3px", false, false),
             (
                 "flex-basis:calc(1px + 2px)",
                 "flex-basis:fit-content(calc(1px + 2px))",
+                false,
                 false,
             ),
             (
                 "flex-basis:calc(1px + 2px)",
                 "flex-basis:calc-size(any, 1px + 2px)",
                 false,
+                false,
             ),
         ] {
+            let source = format!("{left} versus {right}");
             let left = basis(left);
             let right = basis(right);
             assert_eq!(
                 ordinary_equal(&left, &right),
-                expected,
-                "original owning relation"
+                ordinary,
+                "{source}: numeric value equality"
             );
-            let mut context = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
-            );
+            let mut context =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 0, 0));
             assert_eq!(
                 values_equal(
                     left.items()[0].value(),
@@ -2753,40 +2791,51 @@ mod flex_basis_math_comparison_tests {
         // A leaf spelling mismatch reaches all four already scheduled pairs.
         // CalcSize compares its three-node calculation after its own root,
         // then rejects Any versus Keyword without scheduling a nested basis.
+        // Ordinary equality compares leaf values and sees through redundant
+        // grouping, so the spelling and grouping mismatches are ordinarily equal.
         let mut failures = Vec::new();
-        for (left, right, projections) in [
+        for (left, right, projections, ordinary) in [
             (
                 "flex-basis:calc(1px + 2px)",
                 "flex-basis:calc(01px + 2px)",
                 4,
+                true,
             ),
             (
                 "flex-basis:calc(2px + 1px)",
                 "flex-basis:calc(2px - 1px)",
                 1,
+                false,
             ),
             (
                 "flex-basis:calc(1px + 2px)",
                 "flex-basis:calc((1px + 2px))",
                 1,
+                true,
             ),
-            ("flex-basis:calc(1px + 2px)", "flex-basis:calc(1px + 2%)", 1),
+            (
+                "flex-basis:calc(1px + 2px)",
+                "flex-basis:calc(1px + 2%)",
+                1,
+                false,
+            ),
             (
                 "flex-basis:calc-size(any, 1px + 2px)",
                 "flex-basis:calc-size(auto, 1px + 2px)",
                 4,
+                false,
             ),
         ] {
             let source = format!("{left} versus {right}");
             let left = basis(left);
             let right = basis(right);
-            assert!(
-                !ordinary_equal(&left, &right),
-                "{source}: original structural relation"
+            assert_eq!(
+                ordinary_equal(&left, &right),
+                ordinary,
+                "{source}: numeric value equality"
             );
-            let mut exact = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-            );
+            let mut exact =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
             assert!(
                 !values_equal(
                     left.items()[0].value(),
@@ -2796,9 +2845,11 @@ mod flex_basis_math_comparison_tests {
                 .unwrap(),
                 "{source}"
             );
-            let mut under = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections - 1, 0),
-            );
+            let mut under = SpecifiedSerializationContext::new(CssSerializationLimits::new(
+                0,
+                projections - 1,
+                0,
+            ));
             match values_equal(
                 left.items()[0].value(),
                 right.items()[0].value(),
@@ -2812,9 +2863,8 @@ mod flex_basis_math_comparison_tests {
                     projections - 1
                 )),
             }
-            let mut retry = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-            );
+            let mut retry =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
             assert!(
                 !values_equal(
                     left.items()[0].value(),
@@ -2834,11 +2884,11 @@ mod mask_position_borrowed_comparison_tests {
     use super::*;
 
     fn positions(source: &str) -> CssLonghandContributions {
-        let report = crate::parse_style_attribute(source);
+        let report = crate::CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::property::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed mask position")
         };
@@ -2847,7 +2897,7 @@ mod mask_position_borrowed_comparison_tests {
         values
     }
 
-    fn list(values: &CssLonghandContributions) -> &CssPhysicalPositionList {
+    fn list(values: &CssLonghandContributions) -> &CssPositionList {
         let CssContributionValueRef::Ordinary(CssLonghandValueRef::MaskPosition(value)) =
             values.items()[0].value()
         else {
@@ -2883,26 +2933,27 @@ mod mask_position_borrowed_comparison_tests {
             );
             value.clone()
         };
-        for (source, expected) in [
-            ("mask-position:0% 0%", true),
-            ("mask-position:0.0% 0%", false),
-            ("mask-position:0% 0.0%", false),
-            ("mask-position:10% 20%", false),
-            ("mask-position:left top", false),
-            ("mask-position:calc(1px + 2px) 0%", false),
-            ("mask-position:0% calc(1px + 2px)", false),
-            ("mask-position:10% calc(1px + 2px)", false),
+        // Ordinary equality compares numeric values; the bounded relation
+        // keeps exact literal tokens.
+        for (source, ordinary, expected) in [
+            ("mask-position:0% 0%", true, true),
+            ("mask-position:0.0% 0%", true, false),
+            ("mask-position:0% 0.0%", true, false),
+            ("mask-position:10% 20%", false, false),
+            ("mask-position:left top", false, false),
+            ("mask-position:calc(1px + 2px) 0%", false, false),
+            ("mask-position:0% calc(1px + 2px)", false, false),
+            ("mask-position:10% calc(1px + 2px)", false, false),
         ] {
             let values = positions(source);
             let value = &list(&values).positions()[0];
             assert_eq!(
                 value == &initial.positions()[0],
-                expected,
-                "{source}: unchanged ordinary relation"
+                ordinary,
+                "{source}: numeric value equality"
             );
-            let mut context = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
-            );
+            let mut context =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 0, 0));
             assert_eq!(
                 value
                     .bounded_eq(&initial.positions()[0], &mut context)
@@ -2926,9 +2977,8 @@ mod mask_position_borrowed_comparison_tests {
                 list(&right),
                 "{source}: ordinary structural relation"
             );
-            let mut exact = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, 4, 0),
-            );
+            let mut exact =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 4, 0));
             assert!(
                 values_equal(
                     left.items()[0].value(),
@@ -2937,9 +2987,8 @@ mod mask_position_borrowed_comparison_tests {
                 )
                 .unwrap()
             );
-            let mut under = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, 3, 0),
-            );
+            let mut under =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 3, 0));
             assert_eq!(
                 values_equal(
                     left.items()[0].value(),
@@ -2950,9 +2999,8 @@ mod mask_position_borrowed_comparison_tests {
                 .kind(),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
             );
-            let mut retry = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, 4, 0),
-            );
+            let mut retry =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 4, 0));
             assert!(
                 values_equal(
                     left.items()[0].value(),
@@ -2971,11 +3019,11 @@ mod column_alias_and_grid_count_comparison_tests {
 
     fn terminal(property: CssKnownProperty, value: &str) -> CssLonghandContributions {
         let source = format!("{}:{value}", property.canonical_name());
-        let report = crate::parse_style_attribute(&source);
+        let report = crate::CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::property::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed schema terminal: {source}")
         };
@@ -2994,9 +3042,8 @@ mod column_alias_and_grid_count_comparison_tests {
         right: &CssLonghandContributions,
         projections: usize,
     ) -> EqualityResult {
-        let mut context = SpecifiedSerializationContext::new(
-            CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-        );
+        let mut context =
+            SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
         values_equal(
             left.items()[0].value(),
             right.items()[0].value(),
@@ -3050,7 +3097,7 @@ mod column_alias_and_grid_count_comparison_tests {
     }
 
     #[test]
-    fn column_schema_aliases_use_canonical_literal_relation_without_changing_ordinary_eq() {
+    fn column_schema_aliases_share_canonical_literal_relation_with_value_equality() {
         for (property, left, right) in [
             (CssKnownProperty::ColumnRuleWidth, "1px", "01px"),
             (CssKnownProperty::ColumnRuleWidth, "1px", "1.0px"),
@@ -3077,7 +3124,7 @@ mod column_alias_and_grid_count_comparison_tests {
                 ) => a == b,
                 _ => panic!("column schema alias"),
             };
-            assert!(!ordinary_equal, "{property:?}: retained ordinary spelling");
+            assert!(ordinary_equal, "{property:?}: equal numeric value");
             assert!(
                 comparison(&left, &right, 0).unwrap(),
                 "{property:?}: canonical coefficient relation"
@@ -3334,11 +3381,11 @@ mod coordinate_free_inverse_comparison_tests {
             if shifted { "  " } else { "" },
             property.canonical_name()
         );
-        let report = crate::parse_style_attribute(&source);
+        let report = crate::CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::property::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed intrinsic terminal: {source}")
         };
@@ -3353,11 +3400,7 @@ mod coordinate_free_inverse_comparison_tests {
     }
 
     fn context(projections: usize) -> SpecifiedSerializationContext {
-        SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(
-            0,
-            projections,
-            0,
-        ))
+        SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0))
     }
 
     fn compare(
@@ -3494,7 +3537,7 @@ mod coordinate_free_inverse_comparison_tests {
     }
 
     #[test]
-    fn shifted_grid_literals_ignore_coordinates_and_preserve_raw_owner_equality() {
+    fn shifted_grid_literals_ignore_coordinates_in_owner_and_inverse_equality() {
         for property in [
             CssKnownProperty::GridTemplateRows,
             CssKnownProperty::GridTemplateColumns,
@@ -3505,8 +3548,8 @@ mod coordinate_free_inverse_comparison_tests {
                 let left = terminal(property, value, false);
                 let right = terminal(property, value, true);
                 assert!(
-                    !raw_equal(&left, &right),
-                    "{property:?}: {value}: ordinary coordinates retained"
+                    raw_equal(&left, &right),
+                    "{property:?}: {value}: value equality ignores coordinates"
                 );
                 assert!(compare(&left, &right, 0).unwrap(), "{property:?}: {value}");
             }
@@ -3547,7 +3590,7 @@ mod coordinate_free_inverse_comparison_tests {
             ] {
                 let left = terminal(property, value, false);
                 let right = terminal(property, value, true);
-                assert!(!raw_equal(&left, &right), "{property:?}: {value}");
+                assert!(raw_equal(&left, &right), "{property:?}: {value}");
                 reached(property, value, value, true, projections);
             }
         }
@@ -3868,27 +3911,21 @@ mod coordinate_free_inverse_comparison_tests {
             false,
         );
         assert_eq!(
-            stop(&values).color().to_specified_css().unwrap(),
+            stop(&values)
+                .color()
+                .serialize_specified(Default::default())
+                .unwrap(),
             "rgb(1, 2, 3)"
         );
         for (value, expected, inputs) in
             [("url(a)", "url(\"a\")", 3), ("url(a) 0dB", "url(\"a\")", 4)]
         {
             let values = terminal(CssKnownProperty::CueBefore, value, false);
-            let limits = CssSpecifiedValueSerializationLimits::new(inputs, inputs, 8);
+            let limits = CssSerializationLimits::new(inputs, inputs, 8);
+            assert_eq!(cue(&values).serialize_specified(limits).unwrap(), expected);
             assert_eq!(
                 cue(&values)
-                    .serialize_specified_with_limits(limits)
-                    .unwrap(),
-                expected
-            );
-            assert_eq!(
-                cue(&values)
-                    .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                        inputs - 1,
-                        inputs,
-                        8
-                    ))
+                    .serialize_specified(CssSerializationLimits::new(inputs - 1, inputs, 8))
                     .unwrap_err()
                     .kind(),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit
@@ -3901,31 +3938,31 @@ mod coordinate_free_inverse_comparison_tests {
             let values = terminal(property, "calc(1px + 2px)", false);
             let serialize = |limits| match values.items()[0].value() {
                 CssContributionValueRef::Ordinary(CssLonghandValueRef::GridTemplateRows(value)) => {
-                    value.serialize_specified_with_limits(limits)
+                    value.serialize_specified(limits)
                 }
                 CssContributionValueRef::Ordinary(CssLonghandValueRef::GridAutoRows(value)) => {
-                    value.serialize_specified_with_limits(limits)
+                    value.serialize_specified(limits)
                 }
                 _ => panic!("grid provider"),
             };
             assert_eq!(
-                serialize(CssSpecifiedValueSerializationLimits::new(5, 4, 9)).unwrap(),
+                serialize(CssSerializationLimits::new(5, 4, 9)).unwrap(),
                 "calc(3px)"
             );
             assert_eq!(
-                serialize(CssSpecifiedValueSerializationLimits::new(4, 4, 9))
+                serialize(CssSerializationLimits::new(4, 4, 9))
                     .unwrap_err()
                     .kind(),
                 CssSpecifiedValueSerializationErrorKind::InputNodeLimit
             );
             assert_eq!(
-                serialize(CssSpecifiedValueSerializationLimits::new(5, 3, 9))
+                serialize(CssSerializationLimits::new(5, 3, 9))
                     .unwrap_err()
                     .kind(),
                 CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
             );
             assert_eq!(
-                serialize(CssSpecifiedValueSerializationLimits::new(5, 4, 8))
+                serialize(CssSerializationLimits::new(5, 4, 8))
                     .unwrap_err()
                     .kind(),
                 CssSpecifiedValueSerializationErrorKind::ByteLimit

@@ -1,12 +1,11 @@
 //! Literal expectations from CSSOM's selected 2026 CSSKeyframesRule branch.
 
-use surgeist_css::{
-    CssRule, CssRuleCssomSerializationErrorKind, CssSpecifiedValueSerializationErrorKind,
-    CssSpecifiedValueSerializationLimits, parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn rule(source: &str) -> CssRule {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {report:?}");
     let [rule] = report.syntax().rules() else {
         panic!("one keyframes rule");
@@ -18,11 +17,11 @@ fn rule(source: &str) -> CssRule {
 fn decoded_nonreserved_quoted_name_uses_identifier_output() {
     let value = rule("@keyframes \"fade in\" {}");
     assert_eq!(
-        value.serialize_cssom().unwrap(),
+        value.serialize_cssom(Default::default()).unwrap(),
         "@keyframes fade\\ in { \n}"
     );
     assert_eq!(
-        value.to_specified_css().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "@keyframes \"fade in\" { }"
     );
 }
@@ -38,7 +37,11 @@ fn selected_wrapper_keeps_space_before_first_indented_child_and_terminal_lf() {
         ),
     ] {
         let value = rule(source);
-        assert_eq!(value.serialize_cssom().unwrap(), expected, "{source}");
+        assert_eq!(
+            value.serialize_cssom(Default::default()).unwrap(),
+            expected,
+            "{source}"
+        );
     }
 }
 
@@ -56,7 +59,7 @@ fn reserved_decoded_names_keep_string_output() {
     ] {
         let value = rule(&format!("@keyframes \"{name}\" {{}}"));
         assert_eq!(
-            value.serialize_cssom().unwrap(),
+            value.serialize_cssom(Default::default()).unwrap(),
             format!("@keyframes \"{name}\" {{ \n}}")
         );
     }
@@ -64,7 +67,8 @@ fn reserved_decoded_names_keep_string_output() {
 
 #[test]
 fn selected_output_byte_failure_is_atomic_and_retry_keeps_original_occurrences() {
-    let report = parse_sheet("/*😀*/ @keyframes \"fade in\" { from { opacity:0 } }");
+    let report =
+        CssParser::default().parse_sheet("/*😀*/ @keyframes \"fade in\" { from { opacity:0 } }");
     assert!(report.is_clean(), "{report:?}");
     let before = report.clone();
     let CssRule::Keyframes(frames) = &report.syntax().rules()[0] else {
@@ -74,29 +78,24 @@ fn selected_output_byte_failure_is_atomic_and_retry_keeps_original_occurrences()
     let saved = declaration.clone();
     let value = &report.syntax().rules()[0];
     let expected = "@keyframes fade\\ in {   0% { opacity: 0; }\n}";
-    assert_eq!(value.serialize_cssom().unwrap(), expected);
-    let adequate = CssSpecifiedValueSerializationLimits::new(100_000, 100_000, expected.len());
-    assert_eq!(
-        value.serialize_cssom_with_limits(adequate).unwrap(),
-        expected
-    );
+    assert_eq!(value.serialize_cssom(Default::default()).unwrap(), expected);
+    let adequate = CssSerializationLimits::new(100_000, 100_000, expected.len());
+    assert_eq!(value.serialize_cssom(adequate).unwrap(), expected);
     let failure = value
-        .serialize_cssom_with_limits(CssSpecifiedValueSerializationLimits::new(
+        .serialize_cssom(CssSerializationLimits::new(
             100_000,
             100_000,
             expected.len() - 1,
         ))
         .unwrap_err();
-    assert_eq!(
-        failure.kind(),
-        CssRuleCssomSerializationErrorKind::Resource(
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        )
+    assert!(
+        failure.is_resource_limit()
+            && failure
+                .serialization_error()
+                .is_some_and(|error| error.is_byte_limit()),
+        "{failure:?}"
     );
     assert_eq!(report, before);
     assert!(declaration.source().same_occurrence(saved.source()));
-    assert_eq!(
-        value.serialize_cssom_with_limits(adequate).unwrap(),
-        expected
-    );
+    assert_eq!(value.serialize_cssom(adequate).unwrap(), expected);
 }

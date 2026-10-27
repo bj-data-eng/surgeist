@@ -1,12 +1,14 @@
 //! Namespaces 3 §4: authored prefixes, context-dependent constraints and bounded
 //! name serialization preserve decoded identifier identity.
 
-use surgeist_css::{
-    CssAttributeName, CssComponentValueErrorKind, CssIdent, CssNamespaceConstraint,
-    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssQualifiedAttributeName,
-    CssQualifiedNameError, CssQualifiedNamePrefix, CssQualifiedSelectorName, CssSelector,
-    CssSerializedOrigin, CssValueOrigin, parse_selector,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+use surgeist_css::selector::{
+    CssAttributeName, CssNamespaceConstraint, CssNamespaceContext, CssQualifiedAttributeName,
+    CssQualifiedNamePrefix, CssQualifiedSelectorName, CssSelector,
 };
+use surgeist_css::values::common::CssIdent;
 
 fn context(default: Option<&str>) -> CssNamespaceContext {
     CssNamespaceContext::from_bindings(
@@ -89,27 +91,36 @@ fn named_construction_rejects_missing_and_case_mismatched_bindings_with_typed_er
     let context = context(None);
     for prefix in ["missing", "SVG"] {
         let prefix = CssNamespacePrefix::try_new(prefix).unwrap();
-        let expected = CssQualifiedNameError::UndeclaredNamespacePrefix(prefix.clone());
+        let expected = prefix.clone();
         let authored = CssQualifiedNamePrefix::Named(prefix);
         assert_eq!(
             CssQualifiedSelectorName::try_new(
                 authored.clone(),
                 CssIdent::try_new("leaf").unwrap(),
                 &context
-            ),
-            Err(expected.clone())
+            )
+            .unwrap_err()
+            .undeclared_namespace_prefix()
+            .cloned(),
+            Some(expected.clone())
         );
         assert_eq!(
-            CssQualifiedSelectorName::try_universal(authored.clone(), &context),
-            Err(expected.clone())
+            CssQualifiedSelectorName::try_universal(authored.clone(), &context)
+                .unwrap_err()
+                .undeclared_namespace_prefix()
+                .cloned(),
+            Some(expected.clone())
         );
         assert_eq!(
             CssQualifiedAttributeName::try_new(
                 authored,
                 CssAttributeName::try_new("href").unwrap(),
                 &context
-            ),
-            Err(expected)
+            )
+            .unwrap_err()
+            .undeclared_namespace_prefix()
+            .cloned(),
+            Some(expected)
         );
     }
     // A declared empty namespace name still establishes a named binding.
@@ -137,9 +148,11 @@ fn serialized_names_roundtrip_decoded_names_and_all_authored_prefixes() {
                     &context,
                 )
                 .unwrap();
-                let serialized = name.serialize_with_limit(usize::MAX).unwrap();
+                let serialized = name
+                    .serialize_tokens(crate::css::support::byte_limits(usize::MAX))
+                    .unwrap();
                 let source = format!("{}.mark", serialized.as_css());
-                let report = parse_selector(&source, &context);
+                let report = CssSelector::parse(&CssParser::default(), &source, &context);
                 assert!(report.is_clean(), "{source}: {report:?}");
                 let Some(CssSelector::Compound(compound)) = report.syntax() else {
                     panic!("typed name plus class: {report:?}")
@@ -151,9 +164,11 @@ fn serialized_names_roundtrip_decoded_names_and_all_authored_prefixes() {
                     &context,
                 )
                 .unwrap();
-                let serialized = attribute.serialize_with_limit(usize::MAX).unwrap();
+                let serialized = attribute
+                    .serialize_tokens(crate::css::support::byte_limits(usize::MAX))
+                    .unwrap();
                 let source = format!("[{}]", serialized.as_css());
-                let report = parse_selector(&source, &context);
+                let report = CssSelector::parse(&CssParser::default(), &source, &context);
                 assert!(report.is_clean(), "{source}: {report:?}");
                 let Some(CssSelector::Compound(compound)) = report.syntax() else {
                     panic!("attribute: {report:?}")
@@ -164,8 +179,10 @@ fn serialized_names_roundtrip_decoded_names_and_all_authored_prefixes() {
                 assert_eq!(parsed.qualified_name(), &attribute);
             }
             let universal = CssQualifiedSelectorName::try_universal(prefix, &context).unwrap();
-            let serialized = universal.serialize_with_limit(usize::MAX).unwrap();
-            let report = parse_selector(serialized.as_css(), &context);
+            let serialized = universal
+                .serialize_tokens(crate::css::support::byte_limits(usize::MAX))
+                .unwrap();
+            let report = CssSelector::parse(&CssParser::default(), serialized.as_css(), &context);
             assert!(report.is_clean(), "{report:?}");
             let Some(CssSelector::Compound(compound)) = report.syntax() else {
                 panic!("universal: {report:?}")
@@ -192,25 +209,37 @@ fn name_serialization_bounds_complete_escaped_output_without_fabricating_source_
         )
         .unwrap();
         for serialized in [
-            name.serialize_with_limit(usize::MAX).unwrap(),
-            attribute.serialize_with_limit(usize::MAX).unwrap(),
+            name.serialize_tokens(crate::css::support::byte_limits(usize::MAX))
+                .unwrap(),
+            attribute
+                .serialize_tokens(crate::css::support::byte_limits(usize::MAX))
+                .unwrap(),
         ] {
             let bytes = serialized.as_css().len();
             assert_eq!(
-                name.serialize_with_limit(bytes).unwrap().as_css(),
+                name.serialize_tokens(crate::css::support::byte_limits(bytes))
+                    .unwrap()
+                    .as_css(),
                 serialized.as_css()
             );
             assert_eq!(
-                attribute.serialize_with_limit(bytes).unwrap().as_css(),
+                attribute
+                    .serialize_tokens(crate::css::support::byte_limits(bytes))
+                    .unwrap()
+                    .as_css(),
                 serialized.as_css()
             );
             for limit in [0, bytes - 1] {
-                let error = name.serialize_with_limit(limit).unwrap_err();
-                assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+                let error = name
+                    .serialize_tokens(crate::css::support::byte_limits(limit))
+                    .unwrap_err();
+                assert!(error.is_byte_limit(), "{error:?}");
                 assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
-                assert_eq!(
-                    attribute.serialize_with_limit(limit).unwrap_err().kind(),
-                    CssComponentValueErrorKind::ByteLimit
+                assert!(
+                    attribute
+                        .serialize_tokens(crate::css::support::byte_limits(limit))
+                        .unwrap_err()
+                        .is_byte_limit()
                 );
             }
             for byte in 0..bytes {
@@ -244,14 +273,24 @@ fn literal_identifier_star_and_universal_remain_distinct() {
     let universal = CssQualifiedSelectorName::try_universal(prefix, &context).unwrap();
     assert_ne!(identifier, universal);
     assert_eq!(
-        identifier.serialize_with_limit(10).unwrap().as_css(),
+        identifier
+            .serialize_tokens(crate::css::support::byte_limits(10))
+            .unwrap()
+            .as_css(),
         r"*|\*"
     );
-    assert_eq!(universal.serialize_with_limit(10).unwrap().as_css(), "*|*");
+    assert_eq!(
+        universal
+            .serialize_tokens(crate::css::support::byte_limits(10))
+            .unwrap()
+            .as_css(),
+        "*|*"
+    );
     for invalid in ["", "\0", "a\0b"] {
-        assert_eq!(
-            CssIdent::try_new(invalid).unwrap_err().kind(),
-            CssComponentValueErrorKind::InvalidIdentifier,
+        assert!(
+            CssIdent::try_new(invalid)
+                .unwrap_err()
+                .is_invalid_identifier(),
             "{invalid:?}"
         );
         assert!(CssAttributeName::try_new(invalid).is_none());

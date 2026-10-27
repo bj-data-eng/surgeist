@@ -1,11 +1,12 @@
 //! Cascade 5 optional clauses compose with MQ4/MQ5 general-enclosed grammar.
 //! The adopted profile prefers present clauses only among complete derivations.
 //! Sources: pinned Cascade 5 #at-import/#layer-names and MQ5 #mq-syntax.
-use surgeist_css::{
-    CssErrorCode, CssImportLayer, CssImportRule, CssImportTarget, CssMediaConditionKind,
-    CssMediaQuery, CssMediaType, CssRecoveryAction, CssRule, CssSupportsConditionKind, parse_sheet,
-    validate_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery, CssMediaType};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::{CssImportLayer, CssImportRule, CssImportTarget, CssRule};
 
 fn source(tail: &str) -> String {
     format!("@import url(test) {tail}; .after {{ color: red; }}")
@@ -13,9 +14,15 @@ fn source(tail: &str) -> String {
 
 fn clean_import(tail: &str) -> CssImportRule {
     let source = source(tail);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{tail}: {:?}", report.diagnostics());
-    assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     let [CssRule::Import(import), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("import and following style rule: {tail}");
     };
@@ -27,7 +34,7 @@ fn opaque_media(import: &CssImportRule, authored: &str) {
     let [CssMediaQuery::Condition(condition)] = import.media().unwrap().queries() else {
         panic!("one condition-only media query");
     };
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind() else {
         panic!("one general-enclosed media operand");
     };
     assert_eq!(enclosed.authored(), Some(authored));
@@ -40,7 +47,7 @@ fn named_layer(import: &CssImportRule, expected: &str) {
 }
 
 fn declaration_supports(import: &CssImportRule) {
-    let CssSupportsConditionKind::Declaration(declaration) =
+    let CssConditionKind::Leaf(CssSupportsLeaf::Declaration(declaration)) =
         import.supports().unwrap().condition().kind()
     else {
         panic!("authored declaration test");
@@ -78,7 +85,7 @@ fn invalid_specific_clause_bodies_do_not_forbid_other_complete_derivations() {
         opaque_media(&import, tail);
     }
     // The same keyword is still prohibited when used as an actual layer name.
-    let report = parse_sheet("@layer initial {} .after {color:red}");
+    let report = CssParser::default().parse_sheet("@layer initial {} .after {color:red}");
     assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
@@ -116,16 +123,19 @@ fn a_valid_prefix_clause_is_omitted_when_only_full_media_grammar_matches() {
         let [CssMediaQuery::Condition(condition)] = import.media().unwrap().queries() else {
             panic!("condition-only query");
         };
-        let CssMediaConditionKind::And(children) = condition.kind() else {
+        let CssConditionKind::And(children) = condition.kind() else {
             panic!("complete media conjunction");
         };
         let [opaque, color] = children.conditions() else {
             panic!("two operands");
         };
         assert!(
-            matches!(opaque.kind(), CssMediaConditionKind::GeneralEnclosed(value) if value.authored() == Some(prefix))
+            matches!(opaque.kind(), CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) if value.authored() == Some(prefix))
         );
-        assert!(matches!(color.kind(), CssMediaConditionKind::Feature(_)));
+        assert!(matches!(
+            color.kind(),
+            CssConditionKind::Leaf(CssMediaLeaf::Feature(_))
+        ));
     }
 }
 
@@ -158,14 +168,14 @@ fn clause_shaped_functions_are_valid_operands_inside_typed_media_queries() {
         };
         assert_eq!(query.media_type(), CssMediaType::Screen);
         assert!(
-            matches!(query.condition().unwrap().kind(), CssMediaConditionKind::GeneralEnclosed(value) if value.authored() == Some(operand))
+            matches!(query.condition().unwrap().kind(), CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) if value.authored() == Some(operand))
         );
     }
 }
 
 #[test]
 fn exhausted_alternatives_recover_media_once_after_the_first_valid_clauses() {
-    let report = parse_sheet(&source("layer(theme) screen and, print"));
+    let report = CssParser::default().parse_sheet(source("layer(theme) screen and, print"));
     let [CssRule::Import(import), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("retained import and following rule");
     };
@@ -185,7 +195,7 @@ fn exhausted_alternatives_recover_media_once_after_the_first_valid_clauses() {
 
 #[test]
 fn reserved_bare_media_identifiers_recover_after_an_anonymous_layer_clause() {
-    let report = parse_sheet(&source("layer layer"));
+    let report = CssParser::default().parse_sheet(source("layer layer"));
     let [CssRule::Import(import), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("import with media recovery");
     };
@@ -219,7 +229,7 @@ fn escaped_and_cased_optional_names_keep_original_media_origins() {
 fn failed_clause_probes_do_not_duplicate_retained_eof_closures() {
     for tail in ["layer(", "supports("] {
         let source = format!("@import url(test) {tail}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Import(import)] = report.syntax().rules() else {
             panic!("retained import at EOF");
         };
@@ -231,7 +241,7 @@ fn failed_clause_probes_do_not_duplicate_retained_eof_closures() {
         };
         assert_eq!(
             statement.error().code(),
-            surgeist_css::CssErrorCode::UnexpectedEnd
+            surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
         );
         assert_eq!(
             statement.action(),
@@ -243,16 +253,19 @@ fn failed_clause_probes_do_not_duplicate_retained_eof_closures() {
         );
         assert_eq!(statement.span().start().byte_offset().value(), 0);
         assert_eq!(statement.span().end().byte_offset().value(), source.len());
-        let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
-            panic!("typed statement EOF");
-        };
+        let detail = statement.error();
         assert_eq!(
-            detail.expectation().as_str(),
+            detail.code(),
+            CssErrorCode::UnexpectedEnd,
+            "typed statement EOF"
+        );
+        assert_eq!(
+            detail.expectation().unwrap().as_str(),
             "a semicolon or block terminating an at-rule"
         );
         assert_eq!(
             closure.error().code(),
-            surgeist_css::CssErrorCode::UnexpectedEnd
+            surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
         );
         assert_eq!(
             closure.action(),
@@ -265,7 +278,9 @@ fn failed_clause_probes_do_not_duplicate_retained_eof_closures() {
         assert_eq!(closure.span().start().byte_offset().value(), source.len());
         assert_eq!(closure.span().end().byte_offset().value(), source.len());
         assert_eq!(
-            validate_sheet(&source),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result(),
             report.clone().into_validation_result()
         );
     }
@@ -274,7 +289,7 @@ fn failed_clause_probes_do_not_duplicate_retained_eof_closures() {
 #[test]
 fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation() {
     let source = "@import url(test) layer(theme) and (color";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("retained import with complete media grammar");
     };
@@ -283,19 +298,21 @@ fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation()
     let [CssMediaQuery::Condition(condition)] = import.media().unwrap().queries() else {
         panic!("complete media condition, not recovery");
     };
-    let CssMediaConditionKind::And(operands) = condition.kind() else {
+    let CssConditionKind::And(operands) = condition.kind() else {
         panic!("complete media conjunction");
     };
     let [layer, color] = operands.conditions() else {
         panic!("both original operands");
     };
     assert!(
-        matches!(layer.kind(), CssMediaConditionKind::GeneralEnclosed(value) if value.authored() == Some("layer(theme)"))
+        matches!(layer.kind(), CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(value)) if value.authored() == Some("layer(theme)"))
     );
     assert!(matches!(
         color.kind(),
-        CssMediaConditionKind::Feature(surgeist_css::CssMediaFeatureQuery::Boolean(
-            surgeist_css::CssMediaFeatureKind::Color
+        CssConditionKind::Leaf(CssMediaLeaf::Feature(
+            surgeist_css::query::media::CssMediaFeatureQuery::Boolean(
+                surgeist_css::query::media::CssMediaFeatureKind::Color
+            )
         ))
     ));
     let [statement, closure] = report.diagnostics() else {
@@ -303,7 +320,7 @@ fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation()
     };
     assert_eq!(
         statement.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         statement.action(),
@@ -315,16 +332,19 @@ fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation()
     );
     assert_eq!(statement.span().start().byte_offset().value(), 0);
     assert_eq!(statement.span().end().byte_offset().value(), source.len());
-    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
-        panic!("typed statement EOF");
-    };
+    let detail = statement.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "typed statement EOF"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(
         closure.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         closure.action(),
@@ -337,7 +357,9 @@ fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation()
     assert_eq!(closure.span().start().byte_offset().value(), source.len());
     assert_eq!(closure.span().end().byte_offset().value(), source.len());
     assert_eq!(
-        validate_sheet(source),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
         report.clone().into_validation_result()
     );
 }
@@ -346,7 +368,7 @@ fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation()
 fn lexical_errors_remain_terminal_across_optional_clause_probes() {
     for (tail, token) in [("layer(url(a b))", "url(a b)"), ("supports(])", "]")] {
         let source = source(tail);
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
         let [diagnostic] = report.diagnostics() else {
             panic!("one terminal lexical failure");
@@ -360,11 +382,10 @@ fn lexical_errors_remain_terminal_across_optional_clause_probes() {
             diagnostic.error().position().byte_offset().value(),
             source.find(token).unwrap()
         );
-        let surgeist_css::ErrorKind::InvalidComponentValue(error) = diagnostic.error().kind()
-        else {
+        let Some(error) = diagnostic.error().component_error() else {
             panic!("original typed component error");
         };
-        let surgeist_css::CssValueOrigin::Parsed(origin) = error.origin() else {
+        let surgeist_css::component::CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("original parsed origin");
         };
         assert_eq!(origin.span().start(), diagnostic.error().position());
@@ -374,7 +395,7 @@ fn lexical_errors_remain_terminal_across_optional_clause_probes() {
 #[test]
 fn excessive_nesting_stops_the_import_without_erasing_its_resource_error() {
     let tail = format!("{}x{}", "future(".repeat(257), ")".repeat(257));
-    let report = parse_sheet(&source(&tail));
+    let report = CssParser::default().parse_sheet(source(&tail));
     assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
     let [diagnostic] = report.diagnostics() else {
         panic!("one terminal resource failure");
@@ -396,7 +417,7 @@ fn an_invalid_target_precedes_unentered_nested_prelude_components() {
         format!("url(\"asset\" 1) {deep}"),
     ] {
         let source = format!("@import {target}; .after {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid-target failure");

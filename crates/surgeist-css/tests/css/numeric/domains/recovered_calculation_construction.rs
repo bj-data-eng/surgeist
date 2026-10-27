@@ -4,24 +4,31 @@
 //! public checked constructor admits only closed calculations, whatever its
 //! root type or range.
 
-use surgeist_css::{
-    CssComponentValueRef, CssFlexCalculation, CssFontWidth, CssKnownPropertyValueRef,
-    CssLengthCalculation, CssLengthPercentageCalculation, CssLineHeight, CssNumberCalculation,
-    CssNumericConstructionError, CssNumericConstructionErrorKind, CssPercentageCalculation,
-    CssSpecifiedFlex, CssSpecifiedLength, CssSpecifiedLengthPercentage,
-    CssSpecifiedNonNegativeFlex, CssSpecifiedNonNegativeLength,
-    CssSpecifiedNonNegativeLengthPercentage, CssSpecifiedNonNegativeNumber,
-    CssSpecifiedNonNegativePercentage, CssSpecifiedNumber, CssSpecifiedPercentage,
-    CssStripeThickness, CssValueOrigin, parse_component_values, parse_style_attribute,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssAngle, CssCalculation, CssFlex, CssInteger, CssLength, CssLengthPercentage, CssNonNegative,
+    CssNumber, CssNumeric, CssNumericConstructionError, CssPercentage, CssPositive,
+    CssSpecifiedRatio,
 };
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::box_model::CssAspectRatioValue;
+use surgeist_css::values::font::{
+    CssAbsoluteFontWeight, CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue,
+    CssFontStyle, CssFontWeight, CssFontWeightRange, CssFontWidth, CssObliqueAngleRange,
+};
+use surgeist_css::values::image::CssStripeThickness;
+use surgeist_css::values::text::CssLineHeight;
 
-fn property(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList> {
-    let report = parse_style_attribute(source);
+fn property(
+    source: &str,
+) -> surgeist_css::CssParseReport<surgeist_css::declaration::CssDeclarationList> {
+    let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1, "{source}");
     // Syntax 3 §5.4.9: the implicit closure at EOF is a parse error.
     crate::css::support::value_assertions::assert_first_code(
         report.diagnostics(),
-        surgeist_css::CssErrorCode::UnexpectedEnd,
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd,
     );
     report
 }
@@ -40,32 +47,32 @@ macro_rules! known {
     }};
 }
 
-fn recovered_number() -> CssNumberCalculation {
+fn recovered_number() -> CssCalculation<CssNumber> {
     let report = property("line-height:calc(1 + 2");
-    let CssLineHeight::Number(value) = known!(report, LineHeight).line_height() else {
+    let CssLineHeight::Number(value) = known!(report, LineHeight).value() else {
         panic!("number")
     };
     value.calculation().expect("retained number math").clone()
 }
 
-fn recovered_length_percentage() -> CssLengthPercentageCalculation {
+fn recovered_length_percentage() -> CssCalculation<CssLengthPercentage> {
     let report = property("line-height:calc(1px + 2%");
-    let CssLineHeight::LengthPercentage(value) = known!(report, LineHeight).line_height() else {
+    let CssLineHeight::LengthPercentage(value) = known!(report, LineHeight).value() else {
         panic!("length-percentage")
     };
     value.calculation().expect("retained length math").clone()
 }
 
-fn recovered_length() -> CssLengthCalculation {
+fn recovered_length() -> CssCalculation<CssLength> {
     let report = property("outline-offset:calc(1px + 2px");
     known!(report, OutlineOffset)
-        .offset()
+        .value()
         .calculation()
         .expect("retained length math")
         .clone()
 }
 
-fn recovered_percentage() -> CssPercentageCalculation {
+fn recovered_percentage() -> CssCalculation<CssPercentage> {
     let report = property("font-width:calc(50% + 10%");
     let CssFontWidth::Percentage(value) = known!(report, FontWidth).value() else {
         panic!("percentage")
@@ -76,7 +83,7 @@ fn recovered_percentage() -> CssPercentageCalculation {
         .clone()
 }
 
-fn recovered_flex() -> CssFlexCalculation {
+fn recovered_flex() -> CssCalculation<CssFlex> {
     let report = property("outline-color:stripes(red calc(2fr + 3fr");
     let Some(CssStripeThickness::Flex(flex)) = known!(report, OutlineColor)
         .value()
@@ -94,12 +101,9 @@ fn recovered_flex() -> CssFlexCalculation {
 /// The rejection reports the implicit closure of the recovered root function.
 fn assert_recovered(
     error: CssNumericConstructionError,
-    components: &surgeist_css::CssComponentValues,
+    components: &surgeist_css::component::CssComponentValues,
 ) {
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
-    );
+    assert!(error.is_recovered_component(), "{error:?}");
     let [root] = components.items() else {
         panic!("one math root")
     };
@@ -117,111 +121,301 @@ fn assert_recovered(
 fn number_constructors_reject_recovered_math_and_accept_closed_math() {
     let recovered = recovered_number();
     assert_recovered(
-        CssSpecifiedNumber::try_from_calculation(recovered.clone()).unwrap_err(),
+        CssNumeric::<CssNumber>::try_from_calculation(recovered.clone()).unwrap_err(),
         recovered.components(),
     );
     assert_recovered(
-        CssSpecifiedNonNegativeNumber::try_from_calculation(recovered.clone()).unwrap_err(),
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(recovered.clone())
+            .unwrap_err(),
         recovered.components(),
     );
     let closed = || {
-        CssNumberCalculation::try_from_components(parse_component_values("calc(1 + 2)").unwrap())
-            .unwrap()
+        CssCalculation::<CssNumber>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(1 + 2)").unwrap(),
+            Default::default(),
+        )
+        .unwrap()
     };
-    let signed = CssSpecifiedNumber::try_from_calculation(closed()).unwrap();
-    assert_eq!(signed.serialize_specified().unwrap(), "calc(3)");
-    let nonnegative = CssSpecifiedNonNegativeNumber::try_from_calculation(closed()).unwrap();
-    assert_eq!(nonnegative.serialize_specified().unwrap(), "calc(3)");
+    let signed = CssNumeric::<CssNumber>::try_from_calculation(closed()).unwrap();
+    assert_eq!(
+        signed.serialize_specified(Default::default()).unwrap(),
+        "calc(3)"
+    );
+    let nonnegative =
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(closed()).unwrap();
+    assert_eq!(
+        nonnegative.serialize_specified(Default::default()).unwrap(),
+        "calc(3)"
+    );
 }
 
 #[test]
 fn percentage_constructors_reject_recovered_math_and_accept_closed_math() {
     let recovered = recovered_percentage();
     assert_recovered(
-        CssSpecifiedPercentage::try_from_calculation(recovered.clone()).unwrap_err(),
+        CssNumeric::<CssPercentage>::try_from_calculation(recovered.clone()).unwrap_err(),
         recovered.components(),
     );
     assert_recovered(
-        CssSpecifiedNonNegativePercentage::try_from_calculation(recovered.clone()).unwrap_err(),
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(recovered.clone())
+            .unwrap_err(),
         recovered.components(),
     );
     let closed = || {
-        CssPercentageCalculation::try_from_components(
-            parse_component_values("calc(50% + 10%)").unwrap(),
+        CssCalculation::<CssPercentage>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(50% + 10%)").unwrap(),
+            Default::default(),
         )
         .unwrap()
     };
-    let signed = CssSpecifiedPercentage::try_from_calculation(closed()).unwrap();
-    assert_eq!(signed.serialize_specified().unwrap(), "calc(60%)");
-    let nonnegative = CssSpecifiedNonNegativePercentage::try_from_calculation(closed()).unwrap();
-    assert_eq!(nonnegative.serialize_specified().unwrap(), "calc(60%)");
+    let signed = CssNumeric::<CssPercentage>::try_from_calculation(closed()).unwrap();
+    assert_eq!(
+        signed.serialize_specified(Default::default()).unwrap(),
+        "calc(60%)"
+    );
+    let nonnegative =
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(closed()).unwrap();
+    assert_eq!(
+        nonnegative.serialize_specified(Default::default()).unwrap(),
+        "calc(60%)"
+    );
 }
 
 #[test]
 fn length_constructors_reject_recovered_math_and_accept_closed_math() {
     let recovered = recovered_length();
     assert_recovered(
-        CssSpecifiedLength::try_from_calculation(recovered.clone()).unwrap_err(),
+        CssNumeric::<CssLength>::try_from_calculation(recovered.clone()).unwrap_err(),
         recovered.components(),
     );
     assert_recovered(
-        CssSpecifiedNonNegativeLength::try_from_calculation(recovered.clone()).unwrap_err(),
+        CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(recovered.clone())
+            .unwrap_err(),
         recovered.components(),
     );
     let closed = || {
-        CssLengthCalculation::try_from_components(
-            parse_component_values("calc(1px + 2px)").unwrap(),
+        CssCalculation::<CssLength>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(1px + 2px)").unwrap(),
+            Default::default(),
         )
         .unwrap()
     };
-    let signed = CssSpecifiedLength::try_from_calculation(closed()).unwrap();
-    assert_eq!(signed.serialize_specified().unwrap(), "calc(3px)");
-    let nonnegative = CssSpecifiedNonNegativeLength::try_from_calculation(closed()).unwrap();
-    assert_eq!(nonnegative.serialize_specified().unwrap(), "calc(3px)");
+    let signed = CssNumeric::<CssLength>::try_from_calculation(closed()).unwrap();
+    assert_eq!(
+        signed.serialize_specified(Default::default()).unwrap(),
+        "calc(3px)"
+    );
+    let nonnegative =
+        CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(closed()).unwrap();
+    assert_eq!(
+        nonnegative.serialize_specified(Default::default()).unwrap(),
+        "calc(3px)"
+    );
 }
 
 #[test]
 fn length_percentage_constructors_reject_recovered_math_and_accept_closed_math() {
     let recovered = recovered_length_percentage();
     assert_recovered(
-        CssSpecifiedLengthPercentage::try_from_calculation(recovered.clone()).unwrap_err(),
+        CssNumeric::<CssLengthPercentage>::try_from_calculation(recovered.clone()).unwrap_err(),
         recovered.components(),
     );
     assert_recovered(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(recovered.clone())
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(recovered.clone())
             .unwrap_err(),
         recovered.components(),
     );
     let closed = || {
-        CssLengthPercentageCalculation::try_from_components(
-            parse_component_values("calc(1px + 2%)").unwrap(),
+        CssCalculation::<CssLengthPercentage>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(1px + 2%)").unwrap(),
+            Default::default(),
         )
         .unwrap()
     };
-    let signed = CssSpecifiedLengthPercentage::try_from_calculation(closed()).unwrap();
-    assert_eq!(signed.serialize_specified().unwrap(), "calc(2% + 1px)");
+    let signed = CssNumeric::<CssLengthPercentage>::try_from_calculation(closed()).unwrap();
+    assert_eq!(
+        signed.serialize_specified(Default::default()).unwrap(),
+        "calc(2% + 1px)"
+    );
     let nonnegative =
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(closed()).unwrap();
-    assert_eq!(nonnegative.serialize_specified().unwrap(), "calc(2% + 1px)");
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(closed()).unwrap();
+    assert_eq!(
+        nonnegative.serialize_specified(Default::default()).unwrap(),
+        "calc(2% + 1px)"
+    );
+}
+
+fn closed<C>(
+    text: &str,
+    construct: fn(
+        surgeist_css::component::CssComponentValues,
+        surgeist_css::component::CssComponentValueLimits,
+    ) -> Result<C, CssNumericConstructionError>,
+) -> C {
+    construct(
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
+}
+
+// The five ranged domains of #1390 share the #1374 checked/recovering split.
+
+#[test]
+fn font_weight_number_constructor_rejects_recovered_math_and_accepts_closed_math() {
+    let report = property("font-weight:calc(400 + 1");
+    let CssFontWeight::Absolute(CssAbsoluteFontWeight::Number(value)) =
+        known!(report, FontWeight).value()
+    else {
+        panic!("number weight")
+    };
+    let recovered = value.calculation().expect("retained number math").clone();
+    assert_recovered(
+        CssNumeric::<CssNumber, CssFontWeightRange>::try_from_calculation(recovered.clone())
+            .unwrap_err(),
+        recovered.components(),
+    );
+    let weight = CssNumeric::<CssNumber, CssFontWeightRange>::try_from_calculation(closed(
+        "calc(400 + 1)",
+        CssCalculation::<CssNumber>::try_from_components,
+    ))
+    .unwrap();
+    assert_eq!(
+        weight.serialize_specified(Default::default()).unwrap(),
+        "calc(401)"
+    );
+}
+
+#[test]
+fn font_feature_index_constructor_rejects_recovered_math_and_accepts_closed_math() {
+    let report = property("font-feature-settings:\"liga\" calc(1 + 1");
+    let CssAuthoredFontFeatureSettings::Features(features) =
+        known!(report, FontFeatureSettings).value()
+    else {
+        panic!("feature list")
+    };
+    let CssAuthoredFontFeatureValue::Index(index) = features.features()[0].value() else {
+        panic!("feature index")
+    };
+    let recovered = index.calculation().expect("retained integer math").clone();
+    assert_recovered(
+        CssNumeric::<CssInteger, CssNonNegative>::try_from_calculation(recovered.clone())
+            .unwrap_err(),
+        recovered.components(),
+    );
+    let index = CssNumeric::<CssInteger, CssNonNegative>::try_from_calculation(closed(
+        "calc(1 + 1)",
+        CssCalculation::<CssInteger>::try_from_components,
+    ))
+    .unwrap();
+    assert_eq!(
+        index.serialize_specified(Default::default()).unwrap(),
+        "calc(2)"
+    );
+}
+
+#[test]
+fn ratio_operand_constructor_rejects_recovered_math_and_accepts_closed_math() {
+    let report = property("aspect-ratio:1 / calc(1 + 1");
+    let CssAspectRatioValue::Ratio(ratio) = known!(report, AspectRatio).value() else {
+        panic!("ratio")
+    };
+    let recovered = ratio
+        .denominator()
+        .and_then(|operand| operand.calculation())
+        .expect("retained number math")
+        .clone();
+    assert_recovered(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(recovered.clone())
+            .unwrap_err(),
+        recovered.components(),
+    );
+    let operand = CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(closed(
+        "calc(1 + 1)",
+        CssCalculation::<CssNumber>::try_from_components,
+    ))
+    .unwrap();
+    assert_eq!(
+        CssSpecifiedRatio::new(operand, None)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "calc(2) / 1"
+    );
+}
+
+#[test]
+fn page_line_minimum_constructor_rejects_recovered_math_and_accepts_closed_math() {
+    let report = property("orphans:calc(1 + 1");
+    let recovered = known!(report, Orphans)
+        .value()
+        .calculation()
+        .expect("retained integer math")
+        .clone();
+    assert_recovered(
+        CssNumeric::<CssInteger, CssPositive>::try_from_calculation(recovered.clone()).unwrap_err(),
+        recovered.components(),
+    );
+    let minimum = CssNumeric::<CssInteger, CssPositive>::try_from_calculation(closed(
+        "calc(1 + 1)",
+        CssCalculation::<CssInteger>::try_from_components,
+    ))
+    .unwrap();
+    assert_eq!(
+        minimum.serialize_specified(Default::default()).unwrap(),
+        "calc(2)"
+    );
+}
+
+#[test]
+fn oblique_angle_constructor_rejects_recovered_math_and_accepts_closed_math() {
+    let report = property("font-style:oblique calc(10deg + 1deg");
+    let CssFontStyle::Oblique { angle: Some(angle) } = known!(report, FontStyle).value() else {
+        panic!("oblique angle")
+    };
+    let recovered = angle.calculation().expect("retained angle math").clone();
+    assert_recovered(
+        CssNumeric::<CssAngle, CssObliqueAngleRange>::try_from_calculation(recovered.clone())
+            .unwrap_err(),
+        recovered.components(),
+    );
+    let angle = CssNumeric::<CssAngle, CssObliqueAngleRange>::try_from_calculation(closed(
+        "calc(10deg + 1deg)",
+        CssCalculation::<CssAngle>::try_from_components,
+    ))
+    .unwrap();
+    assert_eq!(
+        angle.serialize_specified(Default::default()).unwrap(),
+        "calc(11deg)"
+    );
 }
 
 #[test]
 fn flex_constructors_reject_recovered_math_and_accept_closed_math() {
     let recovered = recovered_flex();
     assert_recovered(
-        CssSpecifiedFlex::try_from_calculation(recovered.clone()).unwrap_err(),
+        CssNumeric::<CssFlex>::try_from_calculation(recovered.clone()).unwrap_err(),
         recovered.components(),
     );
     assert_recovered(
-        CssSpecifiedNonNegativeFlex::try_from_calculation(recovered.clone()).unwrap_err(),
+        CssNumeric::<CssFlex, CssNonNegative>::try_from_calculation(recovered.clone()).unwrap_err(),
         recovered.components(),
     );
     let closed = || {
-        CssFlexCalculation::try_from_components(parse_component_values("calc(2fr + 3fr)").unwrap())
-            .unwrap()
+        CssCalculation::<CssFlex>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(2fr + 3fr)").unwrap(),
+            Default::default(),
+        )
+        .unwrap()
     };
-    let signed = CssSpecifiedFlex::try_from_calculation(closed()).unwrap();
-    assert_eq!(signed.serialize_specified().unwrap(), "calc(5fr)");
-    let nonnegative = CssSpecifiedNonNegativeFlex::try_from_calculation(closed()).unwrap();
-    assert_eq!(nonnegative.serialize_specified().unwrap(), "calc(5fr)");
+    let signed = CssNumeric::<CssFlex>::try_from_calculation(closed()).unwrap();
+    assert_eq!(
+        signed.serialize_specified(Default::default()).unwrap(),
+        "calc(5fr)"
+    );
+    let nonnegative =
+        CssNumeric::<CssFlex, CssNonNegative>::try_from_calculation(closed()).unwrap();
+    assert_eq!(
+        nonnegative.serialize_specified(Default::default()).unwrap(),
+        "calc(5fr)"
+    );
 }

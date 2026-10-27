@@ -2,9 +2,11 @@
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#pseudo-element-syntax
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid
 //! https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/
-use surgeist_css::{
-    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssPseudoElement,
-    CssPseudoElementSegment, CssRecoveryAction, CssSelector, parse_selector,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoElement, CssPseudoElementSegment, CssSelector,
 };
 
 #[test]
@@ -21,7 +23,7 @@ fn named_pseudos_retain_defined_elements_and_reject_unknown_names() {
         (":first-line", CssPseudoElement::FirstLine),
         ("::before", CssPseudoElement::Before),
     ] {
-        let report = parse_selector(input, &context);
+        let report = CssSelector::parse(&CssParser::default(), input, &context);
         assert!(report.is_clean(), "{input}: {report:?}");
         let Some(CssSelector::Compound(compound)) = report.syntax() else {
             panic!("{input}: expected retained pseudo-element compound: {report:?}");
@@ -36,7 +38,7 @@ fn named_pseudos_retain_defined_elements_and_reject_unknown_names() {
         assert!(compound.pseudo_classes().is_empty(), "{input}");
     }
     for input in [":test", ":test-test", "::test", "::test-test"] {
-        let report = parse_selector(input, &context);
+        let report = CssSelector::parse(&CssParser::default(), input, &context);
         assert!(report.syntax().is_none(), "{input}: {report:?}");
         assert!(!report.is_clean(), "{input}: {report:?}");
         assert!(
@@ -63,7 +65,7 @@ fn unknown_functional_pseudos_reject_complete_raw_inputs() {
         ":unknown( 1 + 2 /* comment */ + 3 )",
         "::test(1 + 2)",
     ] {
-        let report = parse_selector(input, &context);
+        let report = CssSelector::parse(&CssParser::default(), input, &context);
         assert!(report.syntax().is_none(), "{input}: {report:?}");
         assert!(!report.is_clean(), "{input}: {report:?}");
         assert!(

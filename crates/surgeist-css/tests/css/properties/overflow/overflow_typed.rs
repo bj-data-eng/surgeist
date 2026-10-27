@@ -1,8 +1,17 @@
 //! Authored Overflow 3 keywords and the Cascade 5 overlay alias.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::longhand_contributions;
 use crate::css::support::normal_declaration as parsed;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownPropertyValueRef, CssLonghandValue, CssLonghandValueRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssOverflow, CssOverflowValue};
 
 fn ordinary(source: &CssDeclaration) -> Vec<CssLonghandValue> {
     longhand_contributions(source)
@@ -21,36 +30,29 @@ fn every_keyword_serializes_canonically_with_one_node_and_exact_bytes() {
         (CssOverflow::Scroll, "scroll"),
         (CssOverflow::Auto, "auto"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), text);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    text.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, text.len()))
                 .unwrap(),
             text
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, text.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, text.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, text.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, text.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, text.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, text.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
@@ -64,10 +66,13 @@ fn shorthand_retains_authored_arity_and_charges_outer_and_child_nodes() {
         (single.x(), single.authored_y(), single.y()),
         (CssOverflow::Clip, None, CssOverflow::Clip)
     );
-    assert_eq!(single.serialize_specified().unwrap(), "clip");
+    assert_eq!(
+        single.serialize_specified(Default::default()).unwrap(),
+        "clip"
+    );
     assert_eq!(
         single
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 4))
+            .serialize_specified(CssSerializationLimits::new(2, 2, 4))
             .unwrap(),
         "clip"
     );
@@ -84,30 +89,31 @@ fn shorthand_retains_authored_arity_and_charges_outer_and_child_nodes() {
         CssOverflowValue::new(CssOverflow::Visible, None),
         CssOverflowValue::new(CssOverflow::Visible, Some(CssOverflow::Visible))
     );
-    assert_eq!(pair.serialize_specified().unwrap(), "visible auto");
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 12))
+        pair.serialize_specified(Default::default()).unwrap(),
+        "visible auto"
+    );
+    assert_eq!(
+        pair.serialize_specified(CssSerializationLimits::new(3, 3, 12))
             .unwrap(),
         "visible auto"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(2, 3, 12),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(2, 3, 12),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 2, 12),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(3, 2, 12),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(3, 3, 11),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(3, 3, 11),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            pair.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&pair.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -177,7 +183,13 @@ fn parsed_aliases_and_wrappers_keep_semantics_separate_from_authored_spelling() 
         );
 
         assert_eq!(value.as_css(), text);
-        assert_eq!(value.value().serialize_specified().unwrap(), "auto");
+        assert_eq!(
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "auto"
+        );
     }
 }
 
@@ -227,10 +239,10 @@ fn exact_axes_retain_authored_arity_and_reenter_to_auto() {
     assert_eq!(y.view(), CssLonghandValueRef::OverflowY(&CssOverflow::Auto));
 
     let pending = parsed("overflow", "var(--axes)");
-    let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+    let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
         panic!("pending overflow")
     };
-    let replacement = parse_component_values("overlay clip").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "overlay clip").unwrap();
     let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("reentered axis contributions")
     };

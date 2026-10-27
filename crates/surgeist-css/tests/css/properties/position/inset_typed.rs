@@ -1,7 +1,14 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssInsetValue, CssLayoutPosition};
+use surgeist_css::values::common::{CssBoxSideKind, CssFourSides, CssSidePair};
 
 fn component(text: &str) -> CssComponentValue {
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [value] = components.items() else {
         panic!("one component")
     };
@@ -13,21 +20,22 @@ fn inset(text: &str) -> CssInsetValue {
         return CssInsetValue::Auto;
     }
     let numeric = if text.starts_with("calc(") {
-        CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(
-                parse_component_values(text).unwrap(),
+        CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default(),
             )
             .unwrap(),
         )
         .unwrap()
     } else {
-        CssSpecifiedLengthPercentage::try_from_component(component(text)).unwrap()
+        CssNumeric::<CssLengthPercentage>::try_from_component(component(text)).unwrap()
     };
     CssInsetValue::LengthPercentage(numeric)
 }
 
 fn wrapper(name: &str, text: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("{name}:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("{name}:{text}"));
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     report.syntax()[0].clone()
 }
@@ -41,27 +49,21 @@ fn position_keywords_serialize_canonically_with_exact_limits() {
         (CssLayoutPosition::Sticky, "sticky"),
         (CssLayoutPosition::Fixed, "fixed"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), keyword);
         assert_eq!(
-            value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    keyword.len()
-                ))
-                .unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             keyword
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    keyword.len() - 1
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, keyword.len()))
+                .unwrap(),
+            keyword
+        );
+        assert!(
+            value
+                .serialize_specified(CssSerializationLimits::new(1, 1, keyword.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
     }
 }
@@ -94,23 +96,31 @@ fn exact_literals_math_and_origin_blind_equality() {
             "calc(1px + 2%)" => "calc(2% + 1px)".to_owned(),
             other => other.to_owned(),
         };
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(parsed_value.as_css(), text);
         if let CssInsetValue::LengthPercentage(numeric) = &value {
             assert!(numeric.origin() != parsed_value.value().origin().unwrap());
         }
     }
-    assert_ne!(inset("1px"), inset("1.0px"));
+    assert_eq!(inset("1px"), inset("1.0px"));
     assert_ne!(inset("calc(1px + 2%)"), inset("calc(2% + 1px)"));
     assert_ne!(inset("auto"), inset("0"));
 
     let programmatic = CssInsetValue::LengthPercentage(
-        CssSpecifiedLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_dimension("1.5", "px").unwrap(),
         )
         .unwrap(),
     );
-    assert_eq!(programmatic.serialize_specified().unwrap(), "1.5px");
+    assert_eq!(
+        programmatic
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "1.5px"
+    );
     assert_eq!(programmatic, inset("1.5px"));
     assert!(matches!(
         programmatic.origin(),
@@ -120,13 +130,19 @@ fn exact_literals_math_and_origin_blind_equality() {
 
 #[test]
 fn pair_and_four_side_preserve_authored_arity_and_role_order() {
-    let single = CssInsetPair::new(inset("-1px"), None);
-    assert_eq!(single.start(), single.end());
-    assert!(single.authored_end().is_none());
-    assert_eq!(single.serialize_specified().unwrap(), "-1px");
-    let explicit = CssInsetPair::new(inset("-1px"), Some(inset("-1px")));
+    let single = CssSidePair::new(inset("-1px"), None);
+    assert_eq!(single.first(), single.second());
+    assert!(single.authored_second().is_none());
+    assert_eq!(
+        single.serialize_specified(Default::default()).unwrap(),
+        "-1px"
+    );
+    let explicit = CssSidePair::new(inset("-1px"), Some(inset("-1px")));
     assert_ne!(single, explicit);
-    assert_eq!(explicit.serialize_specified().unwrap(), "-1px -1px");
+    assert_eq!(
+        explicit.serialize_specified(Default::default()).unwrap(),
+        "-1px"
+    );
     for kind in [CssBoxSideKind::Physical, CssBoxSideKind::Logical] {
         for (authored, expected) in [
             (vec!["1px"], ["1px", "1px", "1px", "1px"]),
@@ -138,86 +154,80 @@ fn pair_and_four_side_preserve_authored_arity_and_role_order() {
             ),
         ] {
             let value =
-                CssInsetShorthand::try_new(kind, authored.iter().map(|text| inset(text)).collect())
+                CssFourSides::try_new(kind, authored.iter().map(|text| inset(text)).collect())
                     .unwrap();
-            assert_eq!(value.authored_values().len(), authored.len());
+            assert_eq!(value.authored().len(), authored.len());
             assert_eq!(
                 value
-                    .assigned_values()
-                    .map(|item| item.serialize_specified().unwrap()),
+                    .assigned()
+                    .map(|item| item.serialize_specified(Default::default()).unwrap()),
                 expected
             );
         }
         let value =
-            CssInsetShorthand::try_new(kind, vec![inset("1px"), inset("2%"), inset("-3px")])
-                .unwrap();
-        let assigned = value.assigned_values();
+            CssFourSides::try_new(kind, vec![inset("1px"), inset("2%"), inset("-3px")]).unwrap();
+        let assigned = value.assigned();
         assert_eq!(
-            assigned.map(|value| value.serialize_specified().unwrap()),
+            assigned.map(|value| value.serialize_specified(Default::default()).unwrap()),
             ["1px", "2%", "-3px", "2%"]
         );
-        assert_eq!(value.authored_values().len(), 3);
+        assert_eq!(value.authored().len(), 3);
         let prefix = if kind == CssBoxSideKind::Logical {
             "logical "
         } else {
             ""
         };
         assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             format!("{prefix}1px 2% -3px")
         );
     }
-    assert!(CssInsetShorthand::try_new(CssBoxSideKind::Physical, vec![]).is_none());
-    assert!(CssInsetShorthand::try_new(CssBoxSideKind::Physical, vec![inset("auto"); 5]).is_none());
+    assert!(CssFourSides::<CssInsetValue>::try_new(CssBoxSideKind::Physical, vec![]).is_none());
+    assert!(CssFourSides::try_new(CssBoxSideKind::Physical, vec![inset("auto"); 5]).is_none());
 }
 
 #[test]
 fn aggregate_serialization_limits_include_each_authored_component() {
-    let pair = CssInsetPair::new(inset("1px"), Some(inset("auto")));
+    // One aggregate node plus each authored component.
+    let pair = CssSidePair::new(inset("1px"), Some(inset("auto")));
     assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 8))
+        pair.serialize_specified(CssSerializationLimits::new(3, 3, 8))
             .unwrap(),
         "1px auto"
     );
-    assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 2, 8))
+    assert!(
+        pair.serialize_specified(CssSerializationLimits::new(2, 3, 8))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 1, 8))
+    assert!(
+        pair.serialize_specified(CssSerializationLimits::new(3, 2, 8))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
-        pair.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 7))
+    assert!(
+        pair.serialize_specified(CssSerializationLimits::new(3, 3, 7))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
     let four =
-        CssInsetShorthand::try_new(CssBoxSideKind::Logical, vec![inset("auto"), inset("1px")])
-            .unwrap();
+        CssFourSides::try_new(CssBoxSideKind::Logical, vec![inset("auto"), inset("1px")]).unwrap();
     assert_eq!(
-        four.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 16))
+        four.serialize_specified(CssSerializationLimits::new(3, 3, 16))
             .unwrap(),
         "logical auto 1px"
     );
-    assert_eq!(
-        four.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 3, 16))
+    assert!(
+        four.serialize_specified(CssSerializationLimits::new(2, 3, 16))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     let math = inset("calc(1px + 2%)");
     // `calc(1px + 2%)` has more than one authored input node.
-    assert_eq!(
-        math.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 100))
+    assert!(
+        math.serialize_specified(CssSerializationLimits::new(1, 1, 100))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
 }
 
@@ -248,12 +258,18 @@ fn physical_insets_preserve_all_checked_magnitudes() {
         panic!("inset")
     };
     assert_eq!(
-        value.value().authored_values(),
+        value.value().authored(),
         &[inset("auto"), inset("10px"), inset("5%")]
     );
-    assert_eq!(value.value().serialize_specified().unwrap(), "auto 10px 5%");
     assert_eq!(
-        value.value().assigned_values(),
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "auto 10px 5%"
+    );
+    assert_eq!(
+        value.value().assigned(),
         [&inset("auto"), &inset("10px"), &inset("5%"), &inset("10px")]
     );
     assert_eq!(value.value().kind(), CssBoxSideKind::Physical);
@@ -267,8 +283,8 @@ fn physical_insets_preserve_all_checked_magnitudes() {
 
 #[test]
 fn physical_wrappers_compare_authored_math_without_diagnostic_origins() {
-    let first = parse_style_attribute("top:calc(1px + 2%);");
-    let second = parse_style_attribute("color:red; top:calc(1px + 2%);");
+    let first = CssParser::default().parse_block_contents("top:calc(1px + 2%);");
+    let second = CssParser::default().parse_block_contents("color:red; top:calc(1px + 2%);");
     assert!(first.is_clean() && second.is_clean());
     let CssKnownPropertyValueRef::Top(left) =
         first.syntax()[0].known().unwrap().property_value().unwrap()
@@ -303,7 +319,7 @@ fn physical_wrappers_compare_authored_math_without_diagnostic_origins() {
     assert_ne!(left, spelling);
 
     let first = wrapper("inset", "auto calc(1px + 2%)");
-    let second = parse_style_attribute("color:red; inset:auto calc(1px + 2%);");
+    let second = CssParser::default().parse_block_contents("color:red; inset:auto calc(1px + 2%);");
     assert!(second.is_clean());
     let CssKnownPropertyValueRef::Inset(left) = first.known().unwrap().property_value().unwrap()
     else {

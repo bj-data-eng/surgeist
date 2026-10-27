@@ -1,13 +1,19 @@
 //! Real-brace style-body parsing retains authored contents and genuine origins.
 use crate::css::support::authored_syntax::assert_diagnostics;
-use surgeist_css::{
-    CssDeclaration, CssKnownProperty, CssKnownPropertyValueRef, CssNamespaceContext,
-    CssNamespaceName, CssNamespacePrefix, CssRecoveryAction, CssRule, CssSelector,
-    CssStyleSelector, CssValueOrigin, parse_style_block,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule, CssStyleBlock};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector, CssStyleSelector};
 
-fn parse(source: &str) -> surgeist_css::CssParseReport<Option<surgeist_css::CssStyleBlock>> {
-    parse_style_block(source, &CssNamespaceContext::default())
+fn parse(source: &str) -> surgeist_css::CssParseReport<Option<surgeist_css::rule::CssStyleBlock>> {
+    CssStyleBlock::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    )
 }
 
 fn color(declaration: &CssDeclaration, expected: &str) {
@@ -205,7 +211,11 @@ fn relative_children_retain_namespace_constraints_without_a_fabricated_parent() 
         Some(prefix.clone()),
         CssNamespaceName::new("urn:svg"),
     )]);
-    let report = parse_style_block("{> svg|leaf{color:red} svg|leaf&{color:blue}}", &context);
+    let report = CssStyleBlock::parse(
+        &CssParser::default(),
+        "{> svg|leaf{color:red} svg|leaf&{color:blue}}",
+        &context,
+    );
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::Style(relative), CssRule::Style(absolute)] =
         report.syntax().as_ref().unwrap().rules()
@@ -217,14 +227,14 @@ fn relative_children_retain_namespace_constraints_without_a_fabricated_parent() 
     };
     assert_eq!(
         relative.combinator(),
-        surgeist_css::CssSelectorCombinator::Child
+        surgeist_css::selector::CssSelectorCombinator::Child
     );
     let CssSelector::Compound(compound) = relative.selector() else {
         panic!("qualified type")
     };
     assert_eq!(
         compound.type_selector().unwrap().namespace(),
-        &surgeist_css::CssNamespaceConstraint::Named(prefix.clone())
+        &surgeist_css::selector::CssNamespaceConstraint::Named(prefix.clone())
     );
     let [CssStyleSelector::Selector(CssSelector::Compound(compound))] =
         absolute.selectors().selectors()
@@ -243,8 +253,8 @@ fn relative_children_retain_namespace_constraints_without_a_fabricated_parent() 
     assert_diagnostics(
         missing.diagnostics(),
         &[(
-            surgeist_css::CssErrorCode::InvalidSelector,
-            surgeist_css::CssRecoveryAction::DropQualifiedRule,
+            surgeist_css::diagnostic::CssErrorCode::InvalidSelector,
+            surgeist_css::diagnostic::CssRecoveryAction::DropQualifiedRule,
             "{".len(),
         )],
     );

@@ -1,12 +1,17 @@
 //! Checked media construction and canonical authored output share parsed semantics.
 use crate::css::support::authored_syntax::component_list as values;
-use surgeist_css::{
-    CssBlockKind, CssComponentValue, CssComponentValueErrorKind, CssComponentValueLimits,
-    CssComponentValues, CssMediaCondition, CssMediaConditionKind, CssMediaConstructionError,
-    CssMediaFeatureQuery, CssMediaQuery, CssMediaRangeRef, CssMediaSerializationError,
-    CssSerializedOrigin, CssValueOrigin, parse_component_values, parse_media_query,
-    parse_media_query_list,
+use crate::css::support::byte_limits;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin,
 };
+use surgeist_css::query::media::{
+    CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaQueryList, CssMediaRangeRef,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
 fn plain_width(value: CssComponentValue) -> CssComponentValues {
     values(vec![
@@ -25,21 +30,22 @@ fn plain_width(value: CssComponentValue) -> CssComponentValues {
 #[test]
 fn programmatic_numeric_queries_have_checked_values_without_source_coordinates() {
     let components = plain_width(CssComponentValue::try_dimension("-1e999", "px").unwrap());
-    let query = CssMediaQuery::try_from_components(components).unwrap();
+    let query = CssMediaQuery::try_from_components(components, Default::default()).unwrap();
     assert_eq!(query.position(), None);
     assert!(matches!(query.origin(), CssValueOrigin::Programmatic));
     let CssMediaQuery::Condition(condition) = &query else {
         panic!("condition-only query");
     };
     assert_eq!(condition.position(), None);
-    let CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(range)) = condition.kind()
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Width(range))) =
+        condition.kind()
     else {
         panic!("known width");
     };
     let CssMediaRangeRef::Plain { value } = range.view() else {
         panic!("plain value");
     };
-    let surgeist_css::CssCalculationExpressionRef::Value(literal) =
+    let surgeist_css::numeric::CssCalculationExpressionRef::Value(literal) =
         value.calculation().expression()
     else {
         panic!("exact length");
@@ -50,27 +56,35 @@ fn programmatic_numeric_queries_have_checked_values_without_source_coordinates()
         literal.literal().origin(),
         CssValueOrigin::Programmatic
     ));
-    assert_eq!(query.serialize().unwrap().as_css(), "(width: -1e999px)");
+    assert_eq!(
+        query.serialize_tokens(Default::default()).unwrap().as_css(),
+        "(width: -1e999px)"
+    );
 }
 
 #[test]
 fn cloned_parsed_numeric_children_keep_their_original_source_in_programmatic_queries() {
-    let parsed = parse_component_values("/* 😀 */\n-2em").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "/* 😀 */\n-2em").unwrap();
     let operand = parsed.items().last().unwrap().clone();
     let expected = operand.origin().clone();
     let components = plain_width(operand);
-    let first = CssMediaCondition::try_from_components(components.clone()).unwrap();
-    let second = CssMediaCondition::try_from_components(components).unwrap();
+    let first =
+        CssCondition::<CssMediaLeaf>::try_from_components(components.clone(), Default::default())
+            .unwrap();
+    let second =
+        CssCondition::<CssMediaLeaf>::try_from_components(components, Default::default()).unwrap();
     assert_eq!(first, second);
     assert_eq!(first.position(), None);
-    let CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(range)) = first.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Width(range))) =
+        first.kind()
+    else {
         panic!("width");
     };
     let CssMediaRangeRef::Plain { value } = range.view() else {
         panic!("plain width");
     };
     assert_eq!(value.calculation().origin(), &expected);
-    let serialized = first.serialize().unwrap();
+    let serialized = first.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), "(width: -2em)");
     assert!(
         matches!(serialized.origin_at(8), Some(CssSerializedOrigin::Token(origin)) if origin == &expected)
@@ -84,46 +98,62 @@ fn opaque_programmatic_functions_preserve_original_components_and_token_boundari
         CssComponentValue::try_ident("e2").unwrap(),
     ]);
     let original = CssComponentValue::try_function("Future", args).unwrap();
-    let condition = CssMediaCondition::try_from_components(values(vec![original.clone()])).unwrap();
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) = condition.kind() else {
+    let condition = CssCondition::<CssMediaLeaf>::try_from_components(
+        values(vec![original.clone()]),
+        Default::default(),
+    )
+    .unwrap();
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) = condition.kind() else {
         panic!("opaque function");
     };
     assert_eq!(enclosed.component(), &original);
     assert_eq!(enclosed.position(), None);
-    assert_eq!(condition.serialize().unwrap().as_css(), "Future(1/**/e2)");
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "Future(1/**/e2)"
+    );
 }
 
 #[test]
 fn checked_construction_rejects_recovery_and_query_condition_context_mismatches() {
-    let recovered = parse_component_values("future(").unwrap();
-    assert!(matches!(
-        CssMediaQuery::try_from_components(recovered),
-        Err(CssMediaConstructionError::RecoveredInput { .. })
-    ));
-    assert!(matches!(
-        CssMediaCondition::try_from_components(parse_component_values("screen").unwrap()),
-        Err(CssMediaConstructionError::InvalidConditionGrammar { .. })
-    ));
-    assert!(matches!(
-        CssMediaQuery::try_from_components(parse_component_values("screen, print").unwrap()),
-        Err(CssMediaConstructionError::InvalidQueryGrammar { .. })
-    ));
+    let recovered = CssComponentValues::parse(&CssParser::default(), "future(").unwrap();
+    assert!(
+        CssMediaQuery::try_from_components(recovered, Default::default())
+            .as_ref()
+            .is_err_and(|error| error.is_recovered_input())
+    );
+    assert!(
+        CssCondition::<CssMediaLeaf>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "screen").unwrap(),
+            Default::default()
+        )
+        .as_ref()
+        .is_err_and(|error| error.is_invalid_condition_grammar())
+    );
+    assert!(
+        CssMediaQuery::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "screen, print").unwrap(),
+            Default::default()
+        )
+        .as_ref()
+        .is_err_and(|error| error.is_invalid_query_grammar())
+    );
 }
 
 #[test]
 fn grammar_errors_map_inserted_token_boundaries_back_to_original_input() {
-    let original = parse_component_values("/* 😀 */\nprint").unwrap();
+    let original = CssComponentValues::parse(&CssParser::default(), "/* 😀 */\nprint").unwrap();
     let extra = original.items().last().unwrap().clone();
     let origin = extra.origin().clone();
-    let error = CssMediaQuery::try_from_components(values(vec![
-        CssComponentValue::try_ident("screen").unwrap(),
-        extra,
-    ]))
+    let error = CssMediaQuery::try_from_components(
+        values(vec![CssComponentValue::try_ident("screen").unwrap(), extra]),
+        Default::default(),
+    )
     .unwrap_err();
-    assert!(matches!(
-        error,
-        CssMediaConstructionError::InvalidQueryGrammar { .. }
-    ));
+    assert!(error.is_invalid_query_grammar());
     assert_eq!(error.origin(), &origin);
 }
 
@@ -135,23 +165,22 @@ fn requested_component_limits_preserve_their_actual_failure_categories() {
     for (limits, expected) in [
         (
             CssComponentValueLimits::try_new(0, usize::MAX, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, 0, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, usize::MAX, 7).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
-        let error =
-            CssMediaQuery::try_from_components_with_limits(components.clone(), limits).unwrap_err();
-        let CssMediaConstructionError::Component(error) = error else {
+        let error = CssMediaQuery::try_from_components(components.clone(), limits).unwrap_err();
+        let Some(error) = error.component_error() else {
             panic!("typed component resource failure");
         };
-        assert_eq!(error.kind(), expected);
+        assert_eq!(component_failure(error), expected);
         assert!(matches!(error.origin(), CssValueOrigin::Programmatic));
     }
 }
@@ -160,17 +189,19 @@ fn requested_component_limits_preserve_their_actual_failure_categories() {
 fn construction_byte_budget_includes_canonical_ratio_expansion() {
     let source = "(aspect-ratio:2)";
     let canonical = "(aspect-ratio: 2 / 1)";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let tight = CssComponentValueLimits::try_new(256, usize::MAX, source.len()).unwrap();
-    let CssMediaConstructionError::Component(error) =
-        CssMediaQuery::try_from_components_with_limits(components.clone(), tight).unwrap_err()
-    else {
+    let outer = CssMediaQuery::try_from_components(components.clone(), tight).unwrap_err();
+    let Some(error) = outer.component_error() else {
         panic!("canonical output exceeds selected byte limit");
     };
-    assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+    assert!(error.is_byte_limit(), "{error:?}");
     let exact = CssComponentValueLimits::try_new(256, usize::MAX, canonical.len()).unwrap();
-    let query = CssMediaQuery::try_from_components_with_limits(components, exact).unwrap();
-    assert_eq!(query.serialize().unwrap().as_css(), canonical);
+    let query = CssMediaQuery::try_from_components(components, exact).unwrap();
+    assert_eq!(
+        query.serialize_tokens(Default::default()).unwrap().as_css(),
+        canonical
+    );
 }
 
 #[test]
@@ -185,38 +216,51 @@ fn canonical_queries_preserve_symbolic_values_and_authored_order() {
         ("future(1/**/e2)", "future(1/**/e2)"),
         ("(FuTuRe: ACTIVE)", "(FuTuRe: ACTIVE)"),
     ] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-        let output = report.syntax().serialize().unwrap();
+        let output = report
+            .syntax()
+            .serialize_tokens(Default::default())
+            .unwrap();
         assert_eq!(output.as_css(), expected);
-        let reparsed = parse_media_query(output.as_css());
+        let reparsed = CssMediaQuery::parse(&CssParser::default(), output.as_css());
         assert!(reparsed.is_clean());
-        assert_eq!(reparsed.syntax().serialize().unwrap().as_css(), expected);
+        assert_eq!(
+            reparsed
+                .syntax()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            expected
+        );
     }
 }
 
 #[test]
 fn a_recovered_member_prevents_partial_list_serialization() {
-    let report = parse_media_query_list("screen and, print");
+    let report = CssMediaQueryList::parse(&CssParser::default(), "screen and, print");
     assert!(!report.is_clean());
-    let CssMediaSerializationError::RecoveredNever { origin } =
-        report.syntax().serialize().unwrap_err()
-    else {
-        panic!("recovered member failure");
-    };
-    assert!(matches!(origin, CssValueOrigin::Parsed(_)));
+    let error = report
+        .syntax()
+        .serialize_tokens(Default::default())
+        .unwrap_err();
+    assert!(
+        crate::css::support::is_recovered_media_failure(&error),
+        "recovered member failure: {error:?}"
+    );
+    assert!(matches!(error.origin(), Some(CssValueOrigin::Parsed(_))));
     assert_eq!(
-        parse_media_query("not all")
+        CssMediaQuery::parse(&CssParser::default(), "not all")
             .syntax()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "not all"
     );
     assert_eq!(
-        parse_media_query_list("")
+        CssMediaQueryList::parse(&CssParser::default(), "")
             .syntax()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         ""
@@ -225,7 +269,7 @@ fn a_recovered_member_prevents_partial_list_serialization() {
 
 #[test]
 fn unknown_features_keep_their_domain_reason_and_original_component() {
-    use surgeist_css::CssUnknownMediaFeatureReason;
+    use surgeist_css::query::media::CssUnknownMediaFeatureReason;
     for (source, reason) in [
         ("(future: foo)", CssUnknownMediaFeatureReason::UnknownName),
         ("(min-width)", CssUnknownMediaFeatureReason::UnknownName),
@@ -235,50 +279,56 @@ fn unknown_features_keep_their_domain_reason_and_original_component() {
             CssUnknownMediaFeatureReason::InvalidOperation,
         ),
     ] {
-        let original = parse_component_values(source).unwrap();
-        let condition = CssMediaCondition::try_from_components(original.clone()).unwrap();
-        let CssMediaConditionKind::UnknownFeature(unknown) = condition.kind() else {
+        let original = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+        let condition =
+            CssCondition::<CssMediaLeaf>::try_from_components(original.clone(), Default::default())
+                .unwrap();
+        let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(unknown)) = condition.kind() else {
             panic!("unknown feature: {source}");
         };
         assert_eq!(unknown.reason(), reason);
         assert_eq!(unknown.component(), &original.items()[0]);
         assert_eq!(unknown.authored(), Some(source));
     }
-    let report = parse_media_query("(aspect-ratio: -1/2)");
+    let report = CssMediaQuery::parse(&CssParser::default(), "(aspect-ratio: -1/2)");
     let CssMediaQuery::Condition(condition) = report.syntax() else {
         panic!("retained enclosure");
     };
     assert!(matches!(
         condition.kind(),
-        CssMediaConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_))
     ));
 }
 
 #[test]
 fn negation_preserves_unknown_conditions_and_separate_unknown_media_types() {
     for source in ["not (future: foo)", "not future()"] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean());
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("condition negation");
         };
-        let CssMediaConditionKind::Not(operand) = condition.kind() else {
+        let CssConditionKind::Not(operand) = condition.kind() else {
             panic!("retained negation");
         };
         assert!(matches!(
             operand.kind(),
-            CssMediaConditionKind::UnknownFeature(_) | CssMediaConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(_))
+                | CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_))
         ));
     }
-    let report = parse_media_query("not future-type");
+    let report = CssMediaQuery::parse(&CssParser::default(), "not future-type");
     let CssMediaQuery::Typed(query) = report.syntax() else {
         panic!("typed media query");
     };
     assert_eq!(
         query.modifier(),
-        Some(surgeist_css::CssMediaQueryModifier::Not)
+        Some(surgeist_css::query::media::CssMediaQueryModifier::Not)
     );
-    assert_eq!(query.media_type(), surgeist_css::CssMediaType::Unknown);
+    assert_eq!(
+        query.media_type(),
+        surgeist_css::query::media::CssMediaType::Unknown
+    );
     assert!(query.unknown_media_type().is_some());
 }
 
@@ -293,27 +343,30 @@ fn generic_feature_math_uses_named_numeric_domains_without_admitting_percentages
         "(future: calc(1% / 1%))",
         "(future: 3qu)",
     ] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("condition");
         };
-        let CssMediaConditionKind::UnknownFeature(unknown) = condition.kind() else {
+        let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(unknown)) = condition.kind() else {
             panic!("valid generic feature with unknown name: {source}");
         };
         assert_eq!(
             unknown.reason(),
-            surgeist_css::CssUnknownMediaFeatureReason::UnknownName
+            surgeist_css::query::media::CssUnknownMediaFeatureReason::UnknownName
         );
     }
     for source in ["(future: calc(1%))", "(future: calc(1px * 1px))"] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean());
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("condition");
         };
         assert!(
-            matches!(condition.kind(), CssMediaConditionKind::GeneralEnclosed(_)),
+            matches!(
+                condition.kind(),
+                CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_))
+            ),
             "{source}"
         );
     }
@@ -322,15 +375,46 @@ fn generic_feature_math_uses_named_numeric_domains_without_admitting_percentages
 #[test]
 fn repeated_identifiers_retain_the_middle_feature_names_own_origin() {
     let source = "(future < future < future)";
-    let components = parse_component_values(source).unwrap();
-    let surgeist_css::CssComponentValueRef::Block(block) = components.items()[0].view() else {
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+    let surgeist_css::component::CssComponentValueRef::Block(block) = components.items()[0].view()
+    else {
         panic!("parenthesized feature");
     };
     let expected = block.values().items()[4].origin().clone();
-    let condition = CssMediaCondition::try_from_components(components).unwrap();
-    let output = condition.serialize().unwrap();
+    let condition =
+        CssCondition::<CssMediaLeaf>::try_from_components(components, Default::default()).unwrap();
+    let output = condition.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), source);
     assert!(
         matches!(output.origin_at(10), Some(CssSerializedOrigin::Token(origin)) if origin == &expected)
+    );
+}
+
+#[test]
+fn media_tokens_refuse_one_byte_below_their_serialized_length() {
+    let report =
+        CssMediaQueryList::parse(&CssParser::default(), "screen and (min-width: 10px), print");
+    assert!(report.is_clean());
+    let list = report.syntax();
+    let unlimited = list.serialize_tokens(Default::default()).unwrap();
+    let length = unlimited.as_css().len();
+    assert_eq!(
+        list.serialize_tokens(byte_limits(length)).unwrap().as_css(),
+        unlimited.as_css()
+    );
+    let error = list.serialize_tokens(byte_limits(length - 1)).unwrap_err();
+    assert!(error.is_byte_limit(), "{error:?}");
+    assert!(matches!(error.origin(), Some(CssValueOrigin::Parsed(_))));
+    let query = &list.queries()[0];
+    let query_length = query
+        .serialize_tokens(Default::default())
+        .unwrap()
+        .as_css()
+        .len();
+    assert!(
+        query
+            .serialize_tokens(byte_limits(query_length - 1))
+            .unwrap_err()
+            .is_byte_limit()
     );
 }

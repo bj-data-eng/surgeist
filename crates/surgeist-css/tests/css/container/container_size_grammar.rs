@@ -6,22 +6,27 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#using-variables
 //! https://www.w3.org/TR/2024/WD-css-values-5-20241111/#tree-counting
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssContainerCondition, CssContainerConditionKind,
-    CssGeneralEnclosed, CssRule, CssValueOrigin, parse_component_values, parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::query::container::CssContainerLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind, CssGeneralEnclosed};
+use surgeist_css::rule::CssRule;
 
 fn assert_classification(query: &str, recognized: bool) {
     let source = format!("@container {query} {{}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{query}: {:?}", report.diagnostics());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("retained container for {query}")
     };
     let parsed = rule.prelude().entries()[0].query().unwrap();
-    let components = parse_component_values(query).unwrap();
-    let checked = CssContainerCondition::try_from_components(components.clone()).unwrap();
-    let enclosed = CssContainerCondition::try_from_enclosed(
+    let components = CssComponentValues::parse(&CssParser::default(), query).unwrap();
+    let checked = CssCondition::<CssContainerLeaf>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
+    let enclosed = CssCondition::<CssContainerLeaf>::try_from_enclosed(
         CssGeneralEnclosed::try_from_component(components.items()[0].clone()).unwrap(),
     )
     .unwrap();
@@ -32,12 +37,19 @@ fn assert_classification(query: &str, recognized: bool) {
         ("enclosed", &enclosed),
     ] {
         let actual = match condition.kind() {
-            CssContainerConditionKind::Feature(_) => true,
-            CssContainerConditionKind::GeneralEnclosed(_) => false,
+            CssConditionKind::Leaf(CssContainerLeaf::Feature(_)) => true,
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_)) => false,
             other => panic!("unexpected {route} leaf for {query}: {other:?}"),
         };
         assert_eq!(actual, recognized, "{route} recognition for {query}");
-        assert_eq!(condition.serialize().unwrap().as_css().trim(), query);
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css()
+                .trim(),
+            query
+        );
         let CssValueOrigin::Parsed(origin) = condition.origin() else {
             panic!("retained parsed origin for {route}: {query}")
         };
@@ -267,20 +279,24 @@ fn programmatic_signed_length_keeps_programmatic_origins_and_exact_spelling() {
             .into_iter()
             .map(|token| CssComponentValue::try_token(token).unwrap())
             .collect(),
+        Default::default(),
     )
     .unwrap();
-    let condition = CssContainerCondition::try_from_enclosed(
+    let condition = CssCondition::<CssContainerLeaf>::try_from_enclosed(
         CssGeneralEnclosed::try_parenthesized(values).unwrap(),
     )
     .unwrap();
     assert!(matches!(
         condition.kind(),
-        CssContainerConditionKind::Feature(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Feature(_))
     ));
     assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(condition.position(), None);
     assert_eq!(
-        condition.serialize().unwrap().as_css(),
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "(width:-12345678901234567890.123456789px)"
     );
 }

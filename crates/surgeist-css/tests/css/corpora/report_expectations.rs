@@ -13,11 +13,14 @@
 
 use std::ops::Range;
 
-use surgeist_css::{
-    CssDeclaration, CssErrorCode, CssImportance, CssKnownPropertyValueRef, CssPropertyNameRef,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSourcePosition, CssTokenKind,
-    CssTokenSummary, ErrorKind, parse_sheet, parse_style_attribute,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{
+    CssError, CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
 };
+use surgeist_css::property::{CssKnownPropertyValueRef, CssPropertyNameRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::source::CssSourcePosition;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Entry {
@@ -170,12 +173,14 @@ fn check_case(case: &Case) {
     let mut retained = Vec::new();
     match case.entry {
         Entry::Sheet => {
-            let report = parse_sheet(input);
+            let report = CssParser::default().parse_sheet(input);
             let mut declarations = Vec::new();
             for rule in report.syntax().rules() {
                 observe_rule(rule, &mut retained, &mut declarations);
             }
-            let strict = surgeist_css::validate_sheet(input);
+            let strict = surgeist_css::CssParser::default()
+                .parse_sheet(input)
+                .into_validation_result();
             let validation = report.clone().into_validation_result();
             if report.is_clean() {
                 assert_eq!(strict, Ok(report.syntax().clone()), "{label}: strict sheet");
@@ -207,13 +212,15 @@ fn check_case(case: &Case) {
             );
         }
         Entry::Style => {
-            let report = parse_style_attribute(input);
+            let report = CssParser::default().parse_block_contents(input);
             let mut declarations = Vec::new();
             for declaration in report.syntax().iter() {
                 retained.push(Retained::Accept(observe_declaration(declaration)));
                 declarations.push(declaration);
             }
-            let strict = surgeist_css::validate_style_attribute(input);
+            let strict = surgeist_css::CssParser::default()
+                .parse_block_contents(input)
+                .into_validation_result();
             let validation = report.clone().into_validation_result();
             if report.is_clean() {
                 assert_eq!(strict, Ok(report.syntax().clone()), "{label}: strict style");
@@ -284,7 +291,12 @@ fn observe_rule<'a>(
                 .selectors()
                 .selectors()
                 .iter()
-                .map(|selector| selector.selector().to_specified_css().unwrap())
+                .map(|selector| {
+                    selector
+                        .selector()
+                        .serialize_specified(Default::default())
+                        .unwrap()
+                })
                 .collect::<Vec<_>>();
             retained.push(Retained::Style(selectors.join(", ")));
             for declaration in rule.declarations().iter() {
@@ -299,7 +311,10 @@ fn observe_rule<'a>(
             retained.push(Retained::Keyframes);
             for block in rule.blocks() {
                 retained.push(Retained::Keyframe(
-                    block.selectors().serialize_key_text().unwrap(),
+                    block
+                        .selectors()
+                        .serialize_key_text(Default::default())
+                        .unwrap(),
                 ));
                 for declaration in block.declarations().iter() {
                     let declaration = declaration.source();
@@ -414,28 +429,29 @@ fn observe_diagnostic(diagnostic: &CssRecoveryDiagnostic) -> Reject {
         offset: error.position().byte_offset().value(),
         span: diagnostic.span().start().byte_offset().value()
             ..diagnostic.span().end().byte_offset().value(),
-        subject: subject(error.kind()),
+        subject: subject(error),
     }
 }
 
-fn subject(kind: &ErrorKind) -> Subject {
-    let token = |token: Option<&CssTokenSummary>| {
-        token.map_or(Subject::End, |token| {
+fn subject(error: &CssError) -> Subject {
+    let token = || {
+        error.encountered().map_or(Subject::End, |token| {
             Subject::Token(token.kind(), token.authored().to_owned())
         })
     };
-    match kind {
-        ErrorKind::UnexpectedEnd(_) => Subject::End,
-        ErrorKind::UnexpectedToken(detail) => token(Some(detail.encountered())),
-        ErrorKind::UnknownAtRule(detail) => Subject::Name(detail.name().as_str().to_owned()),
-        ErrorKind::UnknownProperty(detail) => Subject::Name(detail.name().as_str().to_owned()),
-        ErrorKind::InvalidAtRulePlacement(detail) => {
-            Subject::Name(detail.name().as_str().to_owned())
+    match error.code() {
+        CssErrorCode::UnexpectedEnd => Subject::End,
+        CssErrorCode::UnexpectedToken
+        | CssErrorCode::InvalidQualifiedRule
+        | CssErrorCode::InvalidSelector
+        | CssErrorCode::InvalidPropertyValue => token(),
+        CssErrorCode::UnknownAtRule | CssErrorCode::InvalidAtRulePlacement => {
+            Subject::Name(error.at_rule().unwrap().as_str().to_owned())
         }
-        ErrorKind::InvalidQualifiedRule(detail) => token(detail.encountered()),
-        ErrorKind::InvalidSelector(detail) => token(detail.encountered()),
-        ErrorKind::InvalidPropertyValue(detail) => token(detail.encountered()),
-        other => panic!("no expectation row subject for {other:?}"),
+        CssErrorCode::UnknownProperty => {
+            Subject::Name(error.property_name().unwrap().as_str().to_owned())
+        }
+        _ => panic!("no expectation row subject for {error:?}"),
     }
 }
 
@@ -742,43 +758,31 @@ fn top_level_semicolons_and_closers_open_qualified_rule_preludes() {
 // (CSS 2.1 §4.2) whose remnants run to the next top-level semicolon (Syntax 3
 // (2026-10-01) §5.5.6), and a style attribute admits no at-rules or nested
 // rules. Declarations between the dropped units are retained.
-// https://www.w3.org/TR/2013/REC-css-style-attr-20131107/#syntax
-// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-the-remnants-of-a-bad-declaration
+// Syntax 3 (2026 CRD) §5.5.5 ("consume a block's contents"), the one
+// declaration-list front (#1353 decision 1): an at-rule is consumed whole, a
+// root `}` ends the contents, and any other unit that is not a declaration is
+// reconsumed as a qualified rule with `;` as its stop token (§5.5.3), so a
+// block ends that unit and the declarations after it are kept.
+// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
+// https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule
 #[test]
-fn style_attribute_non_declaration_units_drop_through_the_next_semicolon() {
-    use CssErrorCode::{UnexpectedEnd, UnexpectedToken, UnknownAtRule};
-    use CssRecoveryAction::DropDeclaration;
-    const BASIS: &str = "Style Attributes §3; CSS 2.1 §4.2; Syntax 3 §5.5.6";
+fn style_attribute_non_declaration_units_drop_through_their_stop_token() {
+    use CssErrorCode::{UnexpectedEnd, UnexpectedToken};
+    use CssRecoveryAction::{DropAtRule, DropDeclaration, DropQualifiedRule};
+    const BASIS: &str = "Syntax 3 (2026 CRD) §5.5.5, §5.5.3";
     check_cases([
         case(
             BASIS,
             Entry::Style,
             "@unknown screen { color: red; } } color: red; ) width: 2px; ] height: 3px;",
         )
-        .rejects([
-            reject(UnknownAtRule, DropDeclaration, 0, 0..31, name("unknown")),
-            reject(
-                UnexpectedToken,
-                DropDeclaration,
-                32,
-                32..44,
-                token(CssTokenKind::CloseCurlyBracket, "}"),
-            ),
-            reject(
-                UnexpectedToken,
-                DropDeclaration,
-                46,
-                46..58,
-                token(CssTokenKind::CloseParenthesis, ")"),
-            ),
-            reject(
-                UnexpectedToken,
-                DropDeclaration,
-                60,
-                60..73,
-                token(CssTokenKind::CloseSquareBracket, "]"),
-            ),
-        ]),
+        .rejects([reject(
+            UnexpectedToken,
+            DropAtRule,
+            0,
+            0..31,
+            token(CssTokenKind::AtKeyword, "@unknown"),
+        )]),
         case(
             BASIS,
             Entry::Style,
@@ -786,16 +790,23 @@ fn style_attribute_non_declaration_units_drop_through_the_next_semicolon() {
         )
         .retains([
             accept("color", "red", 18..22),
+            accept("opacity", "1", 56..58),
             accept("height", "2px", 75..79),
             accept("--kept", "yes", 91..95),
         ])
         .rejects([
-            reject(UnknownAtRule, DropDeclaration, 0, 0..11, name("unknown")),
             reject(
                 UnexpectedToken,
-                DropDeclaration,
+                DropAtRule,
+                0,
+                0..11,
+                token(CssTokenKind::AtKeyword, "@unknown"),
+            ),
+            reject(
+                UnexpectedToken,
+                DropQualifiedRule,
                 24,
-                24..58,
+                24..47,
                 token(CssTokenKind::Delim, "."),
             ),
             reject(UnexpectedEnd, DropDeclaration, 66, 60..67, Subject::End),
@@ -803,7 +814,7 @@ fn style_attribute_non_declaration_units_drop_through_the_next_semicolon() {
                 UnexpectedToken,
                 DropDeclaration,
                 81,
-                81..82,
+                81..83,
                 token(CssTokenKind::Comma, ","),
             ),
         ])
@@ -833,10 +844,8 @@ fn column_combinator_after_an_explicit_nesting_selector_is_retained() {
 }
 
 fn column_selector_structure(observed: &Observed<'_>) {
-    use surgeist_css::{
-        CssComponentValueRef, CssSelector, CssSelectorCombinator, CssStyleSelector, CssValueOrigin,
-        CssValueTokenRef,
-    };
+    use surgeist_css::component::{CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
+    use surgeist_css::selector::{CssSelector, CssSelectorCombinator, CssStyleSelector};
     let [CssRule::Style(parent)] = observed.rules else {
         panic!("one retained outer style rule")
     };
@@ -868,12 +877,18 @@ fn column_selector_structure(observed: &Observed<'_>) {
     };
     assert!(declaration.custom().is_none());
     let known = declaration.known().expect("known color declaration");
-    assert_eq!(known.property(), surgeist_css::CssKnownProperty::Color);
+    assert_eq!(
+        known.property(),
+        surgeist_css::property::CssKnownProperty::Color
+    );
     let Some(CssKnownPropertyValueRef::Color(value)) = known.property_value() else {
         panic!("typed color value")
     };
     assert_eq!(value.value().named().expect("named color").name(), "red");
-    assert_eq!(declaration.to_specified_css().unwrap(), "color: red;");
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        "color: red;"
+    );
     let name = declaration.parsed_name().expect("original name token");
     let value = declaration.parsed_value().expect("original value region");
     assert_column_position(name.span().start(), 22);
@@ -911,7 +926,7 @@ fn column_selector_structure(observed: &Observed<'_>) {
 }
 
 fn assert_column_compound(
-    compound: &surgeist_css::CssCompoundSelector,
+    compound: &surgeist_css::selector::CssCompoundSelector,
     nesting_selectors: usize,
     classes: &[&str],
 ) {
@@ -1011,7 +1026,7 @@ fn text_wrap_style_auto(observed: &Observed<'_>) {
     assert_eq!(value.value().mode(), None);
     assert_eq!(
         value.value().style(),
-        Some(surgeist_css::CssTextWrapStyle::Auto)
+        Some(surgeist_css::values::text::CssTextWrapStyle::Auto)
     );
 }
 
@@ -1020,21 +1035,33 @@ fn auto_timing_name(observed: &Observed<'_>) {
     match sole_value(observed) {
         CssKnownPropertyValueRef::AnimationName(value) => {
             assert!(matches!(
-                value.names().names(),
-                [surgeist_css::CssAnimationName::Custom(name)] if name.as_str() == "auto"
+                value.value().names(),
+                [surgeist_css::values::animation::CssAnimationName::Custom(name)] if name.as_str() == "auto"
             ));
-            assert_eq!(value.names().serialize_specified().unwrap(), "auto");
+            assert_eq!(
+                value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                "auto"
+            );
         }
         CssKnownPropertyValueRef::TransitionProperty(value) => {
             assert!(matches!(
-                value.properties().properties(),
-                [surgeist_css::CssTransitionProperty::Custom(name)] if name.as_str() == "auto"
+                value.value().properties(),
+                [surgeist_css::values::animation::CssTransitionProperty::Custom(name)] if name.as_str() == "auto"
             ));
-            assert_eq!(value.properties().serialize_specified().unwrap(), "auto");
+            assert_eq!(
+                value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                "auto"
+            );
         }
         other => panic!("unexpected timing name value: {other:?}"),
     }
-    let surgeist_css::CssValueOrigin::Parsed(token) = declaration
+    let surgeist_css::component::CssValueOrigin::Parsed(token) = declaration
         .value_components()
         .items()
         .last()
@@ -1051,35 +1078,49 @@ fn auto_timing_name(observed: &Observed<'_>) {
     );
     assert_eq!(token.span().end().byte_offset().value(), end);
     let canonical = format!("{};", observed.input);
-    assert_eq!(declaration.to_specified_css().unwrap(), canonical);
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        canonical
+    );
     assert!(declaration.same_occurrence(&declaration.clone()));
-    let reparsed = parse_style_attribute(&canonical);
+    let reparsed = CssParser::default().parse_block_contents(&canonical);
     assert!(reparsed.is_clean());
     assert_eq!(reparsed.syntax()[0].body(), declaration.body());
-    assert_eq!(reparsed.syntax()[0].to_specified_css().unwrap(), canonical);
+    assert_eq!(
+        reparsed.syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
+        canonical
+    );
 }
 
 fn content_contents(observed: &Observed<'_>) {
     let CssKnownPropertyValueRef::Content(value) = sole_value(observed) else {
         panic!("checked content wrapper")
     };
-    let surgeist_css::CssContentValue::Generated(generated) = value.value() else {
+    let surgeist_css::values::content::CssContentValue::Generated(generated) = value.value() else {
         panic!("generated contents")
     };
     assert!(matches!(
         generated.items(),
-        [surgeist_css::CssContentValueItem::Contents]
+        [surgeist_css::values::content::CssContentValueItem::Contents]
     ));
     assert!(matches!(
         generated.body(),
-        surgeist_css::CssGeneratedContentBodyRef::List([
-            surgeist_css::CssContentValueItem::Contents
+        surgeist_css::values::content::CssGeneratedContentBodyRef::List([
+            surgeist_css::values::content::CssContentValueItem::Contents
         ])
     ));
-    assert_eq!(value.value().serialize_specified().unwrap(), "contents");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "contents"
+    );
     assert!(matches!(
         observed.declarations[0].value_components().items()[0].origin(),
-        surgeist_css::CssValueOrigin::Parsed(_)
+        surgeist_css::component::CssValueOrigin::Parsed(_)
     ));
 }
 
@@ -1087,20 +1128,24 @@ fn signed_thickness(observed: &Observed<'_>) {
     let CssKnownPropertyValueRef::TextDecorationThickness(value) = sole_value(observed) else {
         panic!("typed signed thickness")
     };
-    let surgeist_css::CssTextDecorationThickness::Length(length) = value.value() else {
+    let surgeist_css::values::text::CssTextDecorationThickness::Length(length) = value.value()
+    else {
         panic!("signed length branch")
     };
-    let component = length.literal_component().expect("exact literal");
+    let component = length
+        .literal()
+        .map(|literal| literal.component())
+        .expect("exact literal");
     assert!(matches!(
         component.view(),
-        surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension {
+        surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension {
             number,
             unit: "px",
         }) if number.representation() == "-1"
     ));
     assert!(matches!(
         component.origin(),
-        surgeist_css::CssValueOrigin::Parsed(_)
+        surgeist_css::component::CssValueOrigin::Parsed(_)
     ));
 }
 
@@ -1110,12 +1155,14 @@ fn last_line_match_parent(observed: &Observed<'_>) {
     };
     assert_eq!(
         value.value(),
-        &surgeist_css::CssTextAlignLastValue::Keyword(surgeist_css::CssTextAlign::MatchParent)
+        &surgeist_css::values::text::CssTextAlignLastValue::Keyword(
+            surgeist_css::values::text::CssTextAlign::MatchParent
+        )
     );
 }
 
 fn overflow_auto(observed: &Observed<'_>) {
-    use surgeist_css::CssOverflow;
+    use surgeist_css::values::box_model::CssOverflow;
     match sole_value(observed) {
         CssKnownPropertyValueRef::Overflow(value) => {
             assert_eq!(value.value().x(), CssOverflow::Auto);
@@ -1138,9 +1185,9 @@ fn inline_flow_display(observed: &Observed<'_>) {
     };
     assert_eq!(
         *value.value(),
-        surgeist_css::CssDisplayValue::OutsideInside {
-            outside: surgeist_css::CssDisplayOutside::Inline,
-            inside: surgeist_css::CssDisplayInside::Flow,
+        surgeist_css::values::box_model::CssDisplayValue::OutsideInside {
+            outside: surgeist_css::values::box_model::CssDisplayOutside::Inline,
+            inside: surgeist_css::values::box_model::CssDisplayInside::Flow,
         }
     );
 }
@@ -1180,7 +1227,7 @@ fn intrinsic_auto_repeat_in_the_grid_shorthand_is_retained() {
 }
 
 fn auto_fit_grid(observed: &Observed<'_>) {
-    use surgeist_css::{
+    use surgeist_css::values::layout::{
         CssGridAutoFlowAxis, CssGridAutoRepeatKind, CssGridAutoTrackComponent,
         CssGridTrackBreadthKind, CssGridTrackRepeatComponent,
     };
@@ -1200,7 +1247,7 @@ fn auto_fit_grid(observed: &Observed<'_>) {
             .unwrap()
             .length_percentage()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "12px"
     );
@@ -1218,7 +1265,11 @@ fn auto_fit_grid(observed: &Observed<'_>) {
     let breadth = size.breadth().unwrap();
     assert_eq!(breadth.kind(), CssGridTrackBreadthKind::Fraction);
     assert_eq!(
-        breadth.flex().unwrap().serialize_specified().unwrap(),
+        breadth
+            .flex()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "1fr"
     );
 }
@@ -1346,9 +1397,10 @@ fn general_enclosed_style_and_scroll_state_container_queries_are_retained() {
 }
 
 fn container_query(observed: &Observed<'_>) {
-    use surgeist_css::{
-        CssContainerConditionKind, CssContainerScrollFeature, CssContainerScrollQueryKind,
-        CssContainerStuckKeyword, CssContainerStuckValueRef,
+    use surgeist_css::query::CssConditionKind;
+    use surgeist_css::query::container::{
+        CssContainerLeaf, CssContainerScrollFeature, CssContainerStuckKeyword,
+        CssContainerStuckValueRef, CssScrollStateLeaf,
     };
     named_colors(observed);
     let input = observed.input;
@@ -1358,13 +1410,17 @@ fn container_query(observed: &Observed<'_>) {
     };
     let value = container.prelude().entries()[0].query().unwrap();
     match query.as_str() {
-        "style(color: red)" => assert!(matches!(value.kind(), CssContainerConditionKind::Style(_))),
+        "style(color: red)" => assert!(matches!(
+            value.kind(),
+            CssConditionKind::Leaf(CssContainerLeaf::Style(_))
+        )),
         "scroll-state(stuck: top)" => {
-            let CssContainerConditionKind::ScrollState(scroll) = value.kind() else {
+            let CssConditionKind::Leaf(CssContainerLeaf::ScrollState(scroll)) = value.kind() else {
                 panic!("scroll-state")
             };
-            let CssContainerScrollQueryKind::Feature(CssContainerScrollFeature::Stuck(operand)) =
-                scroll.kind()
+            let CssConditionKind::Leaf(CssScrollStateLeaf::Feature(
+                CssContainerScrollFeature::Stuck(operand),
+            )) = scroll.kind()
             else {
                 panic!("stuck feature")
             };
@@ -1372,15 +1428,24 @@ fn container_query(observed: &Observed<'_>) {
                 operand.view(),
                 CssContainerStuckValueRef::Keyword(CssContainerStuckKeyword::Top)
             ));
-            assert_eq!(operand.serialize().unwrap().as_css(), "top");
+            assert_eq!(
+                operand
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                "top"
+            );
         }
         _ => assert!(matches!(
             value.kind(),
-            CssContainerConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
         )),
     }
-    assert_eq!(value.serialize().unwrap().as_css(), format!("{query} "));
-    let surgeist_css::CssValueOrigin::Parsed(origin) = value.origin() else {
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        format!("{query} ")
+    );
+    let surgeist_css::component::CssValueOrigin::Parsed(origin) = value.origin() else {
         panic!("original query source")
     };
     assert_eq!(origin.source().as_str(), input);
@@ -1467,7 +1532,7 @@ fn removed_masonry_and_flow_tolerance_properties_are_unknown() {
 #[test]
 fn removed_track_declarations_preserve_adjacent_current_alignment_and_custom_semantics() {
     let input = "color: red; align-tracks: center; align-content: first baseline !important; justify-tracks: var(--old); --align-tracks: center";
-    let report = parse_style_attribute(input);
+    let report = CssParser::default().parse_block_contents(input);
     assert!(!report.is_clean());
     assert_eq!(report.diagnostics().len(), 2);
     for (diagnostic, name) in report
@@ -1475,10 +1540,13 @@ fn removed_track_declarations_preserve_adjacent_current_alignment_and_custom_sem
         .iter()
         .zip(["align-tracks", "justify-tracks"])
     {
-        let ErrorKind::UnknownProperty(detail) = diagnostic.error().kind() else {
-            panic!("unknown obsolete property")
-        };
-        assert_eq!(detail.name().as_str(), name);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::UnknownProperty,
+            "unknown obsolete property"
+        );
+        assert_eq!(detail.property_name().unwrap().as_str(), name);
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
         assert_eq!(
             diagnostic.error().position().byte_offset().value(),
@@ -1490,7 +1558,7 @@ fn removed_track_declarations_preserve_adjacent_current_alignment_and_custom_sem
     };
     assert_eq!(
         color.known().unwrap().property(),
-        surgeist_css::CssKnownProperty::Color
+        surgeist_css::property::CssKnownProperty::Color
     );
     let Some(CssKnownPropertyValueRef::Color(value)) = color.known().unwrap().property_value()
     else {
@@ -1505,9 +1573,17 @@ fn removed_track_declarations_preserve_adjacent_current_alignment_and_custom_sem
     };
     assert_eq!(
         value.value().value(),
-        surgeist_css::CssAlignmentValue::Baseline(surgeist_css::CssBaselinePosition::First)
+        surgeist_css::values::layout::CssAlignmentValue::Baseline(
+            surgeist_css::values::layout::CssBaselinePosition::First
+        )
     );
-    assert_eq!(value.value().serialize_specified().unwrap(), "baseline");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "baseline"
+    );
     let custom = custom.custom().unwrap();
     assert_eq!(custom.name().as_str(), "--align-tracks");
     assert_eq!(custom.value().value().unwrap().as_css(), "center");

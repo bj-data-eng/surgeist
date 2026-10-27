@@ -1,8 +1,12 @@
 //! Public construction and bounded specified serialization for Flexbox 1
 //! §§5.1–5.3. The direction and wrap keywords stay symbolic until layout.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::layout::{CssFlexDirection, CssFlexFlow, CssFlexWrap};
 
 const PROGRAMMATIC_FLOW: CssFlexFlow =
     CssFlexFlow::new(CssFlexDirection::ColumnReverse, CssFlexWrap::Wrap);
@@ -15,7 +19,10 @@ fn all_direction_keywords_serialize_as_their_specified_identifiers() {
         (CssFlexDirection::Column, "column"),
         (CssFlexDirection::ColumnReverse, "column-reverse"),
     ] {
-        assert_eq!(direction.serialize_specified().unwrap(), keyword);
+        assert_eq!(
+            direction.serialize_specified(Default::default()).unwrap(),
+            keyword
+        );
         let source = declaration(&format!("flex-direction:{keyword}"));
         let CssKnownPropertyValueRef::FlexDirection(value) =
             source.known().unwrap().property_value().unwrap()
@@ -33,7 +40,10 @@ fn all_wrap_keywords_serialize_as_their_specified_identifiers() {
         (CssFlexWrap::Wrap, "wrap"),
         (CssFlexWrap::WrapReverse, "wrap-reverse"),
     ] {
-        assert_eq!(wrap.serialize_specified().unwrap(), keyword);
+        assert_eq!(
+            wrap.serialize_specified(Default::default()).unwrap(),
+            keyword
+        );
         let source = declaration(&format!("flex-wrap:{keyword}"));
         let CssKnownPropertyValueRef::FlexWrap(value) =
             source.known().unwrap().property_value().unwrap()
@@ -61,7 +71,10 @@ fn every_typed_flow_pair_is_constructible_and_serializes_direction_first() {
             assert_eq!(flow.direction(), direction);
             assert_eq!(flow.wrap(), wrap);
             let canonical = format!("{direction_text} {wrap_text}");
-            assert_eq!(flow.serialize_specified().unwrap(), canonical);
+            assert_eq!(
+                flow.serialize_specified(Default::default()).unwrap(),
+                canonical
+            );
 
             let source = declaration(&format!("flex-flow:{canonical}"));
             let CssKnownPropertyValueRef::FlexFlow(value) =
@@ -69,8 +82,14 @@ fn every_typed_flow_pair_is_constructible_and_serializes_direction_first() {
             else {
                 panic!("parsed flow: {canonical}")
             };
-            assert_eq!(value.flow(), &flow);
-            assert_eq!(value.flow().serialize_specified().unwrap(), canonical);
+            assert_eq!(value.value(), &flow);
+            assert_eq!(
+                value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                canonical
+            );
         }
     }
 }
@@ -103,15 +122,27 @@ fn parsed_flow_keeps_authored_spelling_and_serializes_omitted_initials() {
             panic!("ordinary flow: {authored}")
         };
         assert_eq!(value.as_css(), authored);
-        assert_eq!(value.flow().serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
         let reparsed = declaration(&format!("flex-flow:{expected}"));
         let CssKnownPropertyValueRef::FlexFlow(reparsed) =
             reparsed.known().unwrap().property_value().unwrap()
         else {
             panic!("reparsed canonical flow: {expected}")
         };
-        assert_eq!(reparsed.flow(), value.flow());
-        assert_eq!(reparsed.flow().serialize_specified().unwrap(), expected);
+        assert_eq!(reparsed.value(), value.value());
+        assert_eq!(
+            reparsed
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -142,35 +173,32 @@ fn individual_keywords_respect_exact_input_projection_and_byte_limits() {
     let value = CssFlexDirection::Row;
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 3))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 3))
             .unwrap(),
         "row"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, 3),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, 1, 3),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, 3),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(1, 0, 3),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 2),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(1, 1, 2),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
     assert_eq!(
         CssFlexWrap::WrapReverse
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 12))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 12))
             .unwrap(),
         "wrap-reverse"
     );
@@ -180,30 +208,31 @@ fn individual_keywords_respect_exact_input_projection_and_byte_limits() {
 fn flow_uses_one_cumulative_budget_for_both_component_keywords() {
     let flow = CssFlexFlow::new(CssFlexDirection::Row, CssFlexWrap::Wrap);
     assert_eq!(
-        flow.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 2, 8))
+        flow.serialize_specified(CssSerializationLimits::new(2, 2, 8))
             .unwrap(),
         "row wrap"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 2, 8),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(1, 2, 8),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 1, 8),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(2, 1, 8),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(2, 2, 7),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(2, 2, 7),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            flow.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&flow.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
-    assert_eq!(flow.serialize_specified().unwrap(), "row wrap");
+    assert_eq!(
+        flow.serialize_specified(Default::default()).unwrap(),
+        "row wrap"
+    );
 }

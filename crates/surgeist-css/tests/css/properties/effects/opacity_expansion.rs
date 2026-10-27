@@ -3,11 +3,25 @@
 //! expansion/normalization contracts. Values below are specified, not computed.
 //! Raw authored text assertions do not claim canonical serialization (§17).
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssSystemColor;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem,
+    CssNormalizedSheet, CssRuleContextKindRef,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::effects::{CssOpacityScalarKind, CssOpacityValue};
 
 fn ordinary(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("opacity has intrinsic expansion")
+        source.expand().expect("opacity has intrinsic expansion")
     else {
         panic!("completed ordinary longhand")
     };
@@ -136,7 +150,7 @@ fn opacity_expansion_accepts_and_keeps_distinct_authored_numeric_branches() {
             contribution
                 .source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             *value
@@ -160,26 +174,23 @@ fn opacity_expansion_accepts_and_keeps_distinct_authored_numeric_branches() {
 #[test]
 fn opacity_pending_reentry_is_strict_atomic_and_reusable() {
     let source = declaration("opacity:var(--fade)!important");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending opacity")
     };
     assert!(handle.source().same_occurrence(&source));
     for input in ["var(--again)", "calc(var(--again) + 1)"] {
         let error = handle
-            .reenter(parse_component_values(input).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), input).unwrap())
             .unwrap_err();
-        assert_eq!(error.kind(), &CssExpansionErrorKind::ResidualSubstitution);
+        assert!(error.is_residual_substitution(), "{error:?}");
     }
     for input in ["1px", "0.5 0.6", "inherit extra", "0.5!important"] {
         let error = handle
-            .reenter(parse_component_values(input).unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), input).unwrap())
             .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
-            "{input}: {error:?}"
-        );
+        assert!(error.replacement_error().is_some(), "{input}: {error:?}");
     }
-    let replacement = parse_component_values("150%").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "150%").unwrap();
     for _ in 0..2 {
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
@@ -199,7 +210,7 @@ fn opacity_pending_reentry_is_strict_atomic_and_reusable() {
         assert_eq!(scalar.kind(), CssOpacityScalarKind::Percentage);
         assert_eq!(
             CssOpacityValue::Scalar(scalar.clone())
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             "1.5"
         );
@@ -220,7 +231,7 @@ fn opacity_pending_reentry_is_strict_atomic_and_reusable() {
         );
     }
     let CssContributions::Longhands(values) = handle
-        .reenter(parse_component_values("inherit").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
         .unwrap()
     else {
         panic!("global reentry")
@@ -237,7 +248,7 @@ fn opacity_pending_reentry_is_strict_atomic_and_reusable() {
 fn recovered_child_fixture_normalizes_original_opacity_with_order_and_context() {
     // Preserve the exact original R53/structured_rules fixture.
     let source = ".card { color: red; .bad, { color: blue; } color: green; .child { opacity: 1; } color: black; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
@@ -260,7 +271,9 @@ fn recovered_child_fixture_normalizes_original_opacity_with_order_and_context() 
         &child.declarations()[0],
         &black.declarations()[0],
     ];
-    let normalized = normalize_report(&report).expect("color and opacity both normalize");
+    let normalized = report
+        .normalize(Default::default())
+        .expect("color and opacity both normalize");
     assert_eq!(normalized.diagnostics(), report.diagnostics());
     let values = normalized_declarations(normalized.syntax());
     assert_eq!(values.len(), 4);
@@ -282,7 +295,7 @@ fn recovered_child_fixture_normalizes_original_opacity_with_order_and_context() 
             value
                 .source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             format!(" {text}")
@@ -352,7 +365,7 @@ fn recovered_child_fixture_normalizes_original_opacity_with_order_and_context() 
 #[test]
 fn opacity_normalization_consumes_one_declaration_and_one_contribution() {
     let source = ".p{opacity:150%!important}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean());
     for (limits, resource, limit, offset) in [
         (
@@ -374,18 +387,14 @@ fn opacity_normalization_consumes_one_declaration_and_one_contribution() {
             3,
         ),
     ] {
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-        );
+        let error = report.syntax().normalize(limits).unwrap_err();
+        assert_eq!(error.exhausted_limit(), Some((resource, limit)));
         assert_eq!(error.position().unwrap().byte_offset().value(), offset);
     }
-    let normalized = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap(),
-    )
-    .unwrap();
+    let normalized = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap())
+        .unwrap();
     let values = normalized_declarations(&normalized);
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].order(), 0);
@@ -393,13 +402,12 @@ fn opacity_normalization_consumes_one_declaration_and_one_contribution() {
     assert!(
         matches!(authored_opacity(values[0].source()), CssOpacityValue::Scalar(value) if value.numeric().representation() == "150")
     );
-    let pending = parse_sheet(".p{opacity:var(--fade)}");
+    let pending = CssParser::default().parse_sheet(".p{opacity:var(--fade)}");
     assert!(pending.is_clean());
-    let normalized = normalize_sheet_with_limits(
-        pending.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap(),
-    )
-    .unwrap();
+    let normalized = pending
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap())
+        .unwrap();
     let values = normalized_declarations(&normalized);
     assert_eq!(values.len(), 1);
     assert!(matches!(values[0].expansion(), CssExpansion::Pending(_)));

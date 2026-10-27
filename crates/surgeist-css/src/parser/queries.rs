@@ -1,4 +1,4 @@
-mod features;
+pub(crate) mod features;
 use features::{
     AdmittedMediaFeature, classify_generic_media_feature, media_numeric_error,
     parse_generic_media_feature,
@@ -7,7 +7,7 @@ use features::{
 pub(crate) fn construct_when_media_feature(
     component: CssComponentValue,
     limits: CssComponentValueLimits,
-) -> Result<crate::CssWhenMediaFeature, crate::CssWhenConstructionError> {
+) -> Result<crate::query::CssWhenMediaFeature, crate::query::CssConditionConstructionError> {
     features::construct_when_media_feature(component, limits)
 }
 use cssparser::{
@@ -18,17 +18,27 @@ use super::boolean_condition::{BooleanConditionGrammar, parse_boolean_condition}
 use super::recovery::{
     RecoveryState, comma_member_span, first_non_trivia_position, recovery_action_for_error,
 };
-use crate::error::{
-    CssFeatureId, Error, basic, from_parse_error, invalid_syntax, is_nesting_limit_error,
-    unexpected_at, with_media_query_context,
-};
-use crate::media::{MediaConditionSyntax, MediaFeatureShape, MediaTypedSyntax};
-use crate::numeric::{CalculationRoot, NumericInputContext};
-use crate::syntax::*;
-use crate::{
+use crate::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
     CssValueOrigin,
 };
+use crate::diagnostic::error::{
+    basic, from_parse_error, invalid_syntax, is_nesting_limit_error, unexpected_at,
+    with_media_query_context,
+};
+use crate::diagnostic::{CssError, CssFeatureId};
+use crate::numeric::expression::CssCalculationExpression;
+use crate::numeric::expression::{CalculationRoot, NumericInputContext};
+use crate::query::CssGeneralEnclosed;
+use crate::query::media::construction::{
+    MediaConditionSyntax, MediaFeatureShape, MediaTypedSyntax,
+};
+use crate::query::media::{
+    CssMediaConstructionError, CssMediaLeaf, CssMediaQuery, CssMediaQueryList,
+    CssMediaQueryModifier, CssMediaType, CssNeverMediaQuery, CssTypedMediaQuery,
+    CssUnknownMediaType,
+};
+use crate::query::{CssCondition, CssConditionKind, CssConditionList};
 
 pub(super) static IMPLEMENTED_MEDIA: &[CssFeatureId] = &[
     CssFeatureId::new("ext.media.custom-media"),
@@ -89,9 +99,9 @@ pub(super) static IMPLEMENTED_CONTAINER_EXTENSIONS: &[CssFeatureId] = &[
 pub(crate) fn parse_media_query_list<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> std::result::Result<CssMediaQueryList, ParseError<'i, Error>> {
+) -> std::result::Result<CssMediaQueryList, ParseError<'i, CssError>> {
     parse_media_query_list_with_closures(source, input, diagnostics, recovery)
         .map(|parsed| parsed.queries)
 }
@@ -105,9 +115,9 @@ pub(super) struct ParsedMediaQueryList {
 pub(super) fn parse_media_query_list_with_closures<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> std::result::Result<ParsedMediaQueryList, ParseError<'i, Error>> {
+) -> std::result::Result<ParsedMediaQueryList, ParseError<'i, CssError>> {
     if input.is_exhausted() {
         return Ok(ParsedMediaQueryList {
             queries: CssMediaQueryList::new(Vec::new()),
@@ -136,7 +146,7 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
         let following_comma = match input.next().cloned() {
             Ok(Token::Comma) => {
                 comma_origins.push(CssValueOrigin::Parsed(
-                    crate::CssParsedOrigin::from_range(
+                    crate::source::CssParsedOrigin::from_range(
                         recovery.source_snapshot(),
                         comma_start..input.position().byte_index(),
                     )
@@ -162,7 +172,7 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
             Err(error) => {
                 let action = recovery_action_for_error(
                     &error,
-                    crate::CssRecoveryAction::ReplaceMediaQueryWithNever,
+                    crate::diagnostic::CssRecoveryAction::ReplaceMediaQueryWithNever,
                 );
                 let error = if media_terminal_error(&error) {
                     error
@@ -183,7 +193,8 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
                 }
                 let position = first_non_trivia_position(source, member_start, member_end);
                 let error = from_parse_error(source, error);
-                let Some(diagnostic) = crate::CssRecoveryDiagnostic::new(error, span, action)
+                let Some(diagnostic) =
+                    crate::diagnostic::CssRecoveryDiagnostic::new(error, span, action)
                 else {
                     return Err(with_media_query_context(
                         invalid_syntax(input.current_source_location()),
@@ -192,7 +203,7 @@ pub(super) fn parse_media_query_list_with_closures<'i, 't>(
                 };
                 diagnostics.push(diagnostic);
                 queries.push(CssMediaQuery::Never(CssNeverMediaQuery::new(
-                    crate::CssParsedOrigin::from_range(
+                    crate::source::CssParsedOrigin::from_range(
                         recovery.source_snapshot(),
                         position.byte_offset().value()..member_end,
                     )
@@ -219,7 +230,7 @@ pub(super) fn parse_media_query<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<CssMediaQuery, ParseError<'i, Error>> {
+) -> Result<CssMediaQuery, ParseError<'i, CssError>> {
     parse_media_query_inner(
         source,
         input,
@@ -233,7 +244,7 @@ fn parse_media_query_inner<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> Result<CssMediaQuery, ParseError<'i, Error>> {
+) -> Result<CssMediaQuery, ParseError<'i, CssError>> {
     let typed = match input.try_parse(|p| parse_typed_media_query(source, p, numeric)) {
         Ok(query) => return Ok(CssMediaQuery::Typed(query)),
         Err(error) if media_committed_error(&error) => return Err(error),
@@ -246,7 +257,7 @@ fn parse_media_query_inner<'i, 't>(
         .map(CssMediaQuery::Condition)
         .map_err(|condition| {
             let reach =
-                |error: &ParseError<'i, Error>| (error.location.line, error.location.column);
+                |error: &ParseError<'i, CssError>| (error.location.line, error.location.column);
             if reach(&typed) > reach(&condition) {
                 typed
             } else {
@@ -258,7 +269,7 @@ fn parse_typed_media_query<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> Result<CssTypedMediaQuery, ParseError<'i, Error>> {
+) -> Result<CssTypedMediaQuery, ParseError<'i, CssError>> {
     let start = input.state();
     let modifier = input.try_parse(parse_media_query_modifier).ok();
     let modifier_component = if modifier.is_some() {
@@ -308,7 +319,7 @@ fn parse_typed_media_query<'i, 't>(
 
 fn parse_media_query_modifier<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssMediaQueryModifier, ParseError<'i, Error>> {
+) -> std::result::Result<CssMediaQueryModifier, ParseError<'i, CssError>> {
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
     match_ignore_ascii_case! { &ident,
@@ -327,7 +338,7 @@ fn parse_media_type<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> std::result::Result<ParsedMediaType, ParseError<'i, Error>> {
+) -> std::result::Result<ParsedMediaType, ParseError<'i, CssError>> {
     let location = input.current_source_location();
     let position = first_non_trivia_parser_position(input);
     let ident = input.expect_ident_cloned().map_err(basic)?;
@@ -357,7 +368,7 @@ fn parse_media_condition<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> std::result::Result<CssMediaCondition, ParseError<'i, Error>> {
+) -> std::result::Result<CssCondition<CssMediaLeaf>, ParseError<'i, CssError>> {
     parse_media_condition_with_or(source, input, true, numeric)
 }
 
@@ -365,7 +376,7 @@ fn parse_media_condition_without_or<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> std::result::Result<CssMediaCondition, ParseError<'i, Error>> {
+) -> std::result::Result<CssCondition<CssMediaLeaf>, ParseError<'i, CssError>> {
     parse_media_condition_with_or(source, input, false, numeric)
 }
 
@@ -373,7 +384,7 @@ fn take_media_keyword<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
     keyword: &str,
-) -> Result<Option<CssValueOrigin>, ParseError<'i, Error>> {
+) -> Result<Option<CssValueOrigin>, ParseError<'i, CssError>> {
     let start = input.state();
     input.skip_whitespace();
     let offset = input.position().byte_index();
@@ -396,7 +407,7 @@ fn parse_media_condition_with_or<'i, 't>(
     input: &mut Parser<'i, 't>,
     allow_or: bool,
     numeric: &MediaInput<'_>,
-) -> Result<CssMediaCondition, ParseError<'i, Error>> {
+) -> Result<CssCondition<CssMediaLeaf>, ParseError<'i, CssError>> {
     parse_boolean_condition(
         &mut MediaConditionGrammar {
             source,
@@ -415,13 +426,13 @@ struct MediaConditionGrammar<'s, 'i, 't, 'n> {
 }
 impl<'i> BooleanConditionGrammar for MediaConditionGrammar<'_, 'i, '_, '_> {
     type Operator = CssValueOrigin;
-    type Node = CssMediaCondition;
-    type Error = ParseError<'i, Error>;
+    type Node = CssCondition<CssMediaLeaf>;
+    type Error = ParseError<'i, CssError>;
 
     fn keyword(&mut self, keyword: &'static str) -> Result<Option<CssValueOrigin>, Self::Error> {
         take_media_keyword(self.input, self.numeric, keyword)
     }
-    fn operand(&mut self) -> Result<CssMediaCondition, Self::Error> {
+    fn operand(&mut self) -> Result<CssCondition<CssMediaLeaf>, Self::Error> {
         parse_media_in_parens(self.source, self.input, self.numeric)
     }
     // The enclosing query owns what follows a media condition.
@@ -431,30 +442,30 @@ impl<'i> BooleanConditionGrammar for MediaConditionGrammar<'_, 'i, '_, '_> {
     fn negation(
         &mut self,
         operator: CssValueOrigin,
-        operand: CssMediaCondition,
-    ) -> CssMediaCondition {
-        CssMediaCondition::new(
-            CssMediaConditionKind::Not(Box::new(operand)),
+        operand: CssCondition<CssMediaLeaf>,
+    ) -> CssCondition<CssMediaLeaf> {
+        CssCondition::media(
+            CssConditionKind::Not(Box::new(operand)),
             operator,
             MediaConditionSyntax::Not,
         )
     }
-    fn single(&mut self, operand: CssMediaCondition) -> CssMediaCondition {
+    fn single(&mut self, operand: CssCondition<CssMediaLeaf>) -> CssCondition<CssMediaLeaf> {
         operand
     }
     fn junction(
         &mut self,
         conjunction: bool,
         operators: Vec<CssValueOrigin>,
-        operands: Vec<CssMediaCondition>,
-    ) -> CssMediaCondition {
+        operands: Vec<CssCondition<CssMediaLeaf>>,
+    ) -> CssCondition<CssMediaLeaf> {
         let origin = operands[0].origin().clone();
-        let operands = CssMediaConditionList::new(operands);
-        CssMediaCondition::new(
+        let operands = CssConditionList::new(operands);
+        CssCondition::media(
             if conjunction {
-                CssMediaConditionKind::And(operands)
+                CssConditionKind::And(operands)
             } else {
-                CssMediaConditionKind::Or(operands)
+                CssConditionKind::Or(operands)
             },
             origin,
             MediaConditionSyntax::Junction(operators),
@@ -465,7 +476,7 @@ fn parse_media_in_parens<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
     numeric: &MediaInput<'_>,
-) -> Result<CssMediaCondition, ParseError<'i, Error>> {
+) -> Result<CssCondition<CssMediaLeaf>, ParseError<'i, CssError>> {
     input.skip_whitespace();
     let start = input.state();
     let component = numeric
@@ -475,7 +486,9 @@ fn parse_media_in_parens<'i, 't>(
     let origin = component.origin().clone();
     let closing = match component.view() {
         CssComponentValueRef::Function(_) => None,
-        CssComponentValueRef::Block(block) if block.kind() == crate::CssBlockKind::Parenthesis => {
+        CssComponentValueRef::Block(block)
+            if block.kind() == crate::component::CssBlockKind::Parenthesis =>
+        {
             Some(block.closing_origin().clone())
         }
         _ => {
@@ -495,7 +508,7 @@ fn parse_media_in_parens<'i, 't>(
             }) {
                 Ok(inner) => {
                     return Ok(Some((
-                        CssMediaConditionKind::Parenthesized(Box::new(inner)),
+                        CssConditionKind::Parenthesized(Box::new(inner)),
                         MediaConditionSyntax::Group { closing },
                     )));
                 }
@@ -518,23 +531,23 @@ fn parse_media_in_parens<'i, 't>(
                 // reference, so as a feature name that name is responsible,
                 // wherever the range form places it.
                 if !matches!(syntax.shape, MediaFeatureShape::Boolean) {
-                    return Err(crate::error::custom_media_context_error(
+                    return Err(crate::diagnostic::error::custom_media_context_error(
                         syntax.name_location,
                         &syntax.name_text,
                     ));
                 }
-                let name = crate::CssCustomMediaName::try_from_component(syntax.name)
+                let name = crate::query::media::CssCustomMediaName::try_from_component(syntax.name)
                     .expect("selected extension identifier");
                 return Ok(Some((
-                    CssMediaConditionKind::CustomMediaReference(
-                        crate::CssCustomMediaReference::new(
+                    CssConditionKind::Leaf(CssMediaLeaf::CustomMediaReference(
+                        crate::query::media::CssCustomMediaReference::new(
                             name,
                             component
                                 .take()
                                 .expect("selected custom media enclosure")
                                 .into_owned(),
                         ),
-                    ),
+                    )),
                     MediaConditionSyntax::Enclosed,
                 )));
             }
@@ -547,18 +560,18 @@ fn parse_media_in_parens<'i, 't>(
             let admitted = classify_generic_media_feature(source, p, numeric, &initial, syntax)?;
             Ok(Some(match admitted {
                 AdmittedMediaFeature::Feature(feature, syntax) => (
-                    CssMediaConditionKind::Feature(feature),
+                    CssConditionKind::Leaf(CssMediaLeaf::Feature(feature)),
                     MediaConditionSyntax::Feature(syntax),
                 ),
                 AdmittedMediaFeature::Unknown(feature) => (
-                    CssMediaConditionKind::UnknownFeature(feature),
+                    CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(feature)),
                     MediaConditionSyntax::Enclosed,
                 ),
             }))
         })?;
         input.reset(&end);
         if let Some((kind, syntax)) = candidate {
-            return Ok(CssMediaCondition::new(kind, origin, syntax));
+            return Ok(CssCondition::media(kind, origin, syntax));
         }
     }
     input.reset(&end);
@@ -566,26 +579,28 @@ fn parse_media_in_parens<'i, 't>(
         component.expect("opaque media enclosure").into_owned(),
     )
     .map_err(|_| invalid_syntax(start.source_location()))?;
-    Ok(CssMediaCondition::new(
-        CssMediaConditionKind::GeneralEnclosed(enclosed),
+    Ok(CssCondition::media(
+        CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)),
         origin,
         MediaConditionSyntax::Enclosed,
     ))
 }
-fn first_non_trivia_parser_position(input: &mut Parser<'_, '_>) -> crate::CssSourcePosition {
+fn first_non_trivia_parser_position(
+    input: &mut Parser<'_, '_>,
+) -> crate::source::CssSourcePosition {
     let initial = input.state();
     let position = loop {
         let token_start = input.state();
         match input.next_including_whitespace_and_comments() {
             Ok(Token::WhiteSpace(_) | Token::Comment(_)) => {}
             Ok(_) => {
-                break crate::CssSourcePosition::from_cssparser(
+                break crate::source::CssSourcePosition::from_cssparser(
                     token_start.position(),
                     token_start.source_location(),
                 );
             }
             Err(_) => {
-                break crate::CssSourcePosition::from_cssparser(
+                break crate::source::CssSourcePosition::from_cssparser(
                     input.position(),
                     input.current_source_location(),
                 );
@@ -604,7 +619,8 @@ impl<'a> MediaInput<'a> {
     fn collect(
         &self,
         input: &mut Parser<'_, '_>,
-    ) -> Result<std::borrow::Cow<'a, CssComponentValue>, crate::CssNumericConstructionError> {
+    ) -> Result<std::borrow::Cow<'a, CssComponentValue>, crate::numeric::CssNumericConstructionError>
+    {
         self.numeric.collect(input)
     }
     fn origin_at(&self, offset: usize) -> Option<CssValueOrigin> {
@@ -617,14 +633,14 @@ impl<'a> MediaInput<'a> {
     }
     fn admit<'input>(
         &self,
-        values: impl Into<crate::numeric::CalculationComponents<'input>>,
+        values: impl Into<crate::numeric::expression::CalculationComponents<'input>>,
         root: CalculationRoot,
-    ) -> Result<CssCalculationExpression, crate::CssNumericConstructionError> {
+    ) -> Result<CssCalculationExpression, crate::numeric::CssNumericConstructionError> {
         self.numeric.admit_with_limits(values, root, self.limits)
     }
     fn error_location(
         &self,
-        error: &crate::CssNumericConstructionError,
+        error: &crate::numeric::CssNumericConstructionError,
         fallback: cssparser::SourceLocation,
         offset: usize,
     ) -> cssparser::SourceLocation {
@@ -634,7 +650,7 @@ impl<'a> MediaInput<'a> {
         &self,
         input: &mut Parser<'i, '_>,
         start: &cssparser::ParserState,
-    ) -> Result<CssComponentValues, ParseError<'i, Error>> {
+    ) -> Result<CssComponentValues, ParseError<'i, CssError>> {
         let end = input.state();
         let items = match self.numeric.ordinary() {
             NumericInputContext::QuirkyLengths(_) => unreachable!("ordinary numeric provenance"),
@@ -647,7 +663,7 @@ impl<'a> MediaInput<'a> {
                 while input.position().byte_index() < end.position().byte_index() {
                     items.push(
                         CssComponentValue::collect_from_parser(input, snapshot).map_err(|e| {
-                            crate::error::invalid_component_value(
+                            crate::diagnostic::error::invalid_component_value(
                                 input.current_source_location(),
                                 e,
                             )
@@ -674,23 +690,24 @@ impl<'a> MediaInput<'a> {
                     .collect()
             }
         };
-        CssComponentValues::try_new(items)
-            .map_err(|e| crate::error::invalid_component_value(input.current_source_location(), e))
+        CssComponentValues::try_new(items, Default::default()).map_err(|e| {
+            crate::diagnostic::error::invalid_component_value(input.current_source_location(), e)
+        })
     }
 }
-fn media_committed_error(error: &ParseError<'_, Error>) -> bool {
+fn media_committed_error(error: &ParseError<'_, CssError>) -> bool {
     media_terminal_error(error)
-        || matches!(&error.kind, cssparser::ParseErrorKind::Custom(error) if matches!(error.kind(), crate::ErrorKind::InvalidMediaQuery(detail) if detail.is_committed_context()))
+        || matches!(&error.kind, cssparser::ParseErrorKind::Custom(error) if matches!(error.kind(), crate::diagnostic::error::ErrorKind::InvalidMediaQuery(detail) if detail.is_committed_context()))
 }
-pub(super) fn media_terminal_error(error: &ParseError<'_, Error>) -> bool {
+pub(super) fn media_terminal_error(error: &ParseError<'_, CssError>) -> bool {
     is_nesting_limit_error(error)
-        || matches!(&error.kind,cssparser::ParseErrorKind::Custom(error) if matches!(error.kind(),crate::ErrorKind::InvalidComponentValue(_)))
+        || matches!(&error.kind,cssparser::ParseErrorKind::Custom(error) if matches!(error.kind(),crate::diagnostic::error::ErrorKind::InvalidComponentValue(_)))
 }
 pub(super) fn check_media_member_components<'i>(
     source: &str,
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
-) -> Result<Vec<usize>, ParseError<'i, Error>> {
+) -> Result<Vec<usize>, ParseError<'i, CssError>> {
     match recovery.check_comma_member_components(source, input, "official.media.query-list-core") {
         Ok(openings) => Ok(openings),
         Err(error) if is_nesting_limit_error(&error) => Err(error),
@@ -701,7 +718,7 @@ pub(super) fn check_media_member_components<'i>(
                 if let Err(detail) =
                     CssComponentValue::collect_from_parser(input, recovery.source_snapshot())
                 {
-                    component_error = Some(crate::error::invalid_component_value(
+                    component_error = Some(crate::diagnostic::error::invalid_component_value(
                         input.current_source_location(),
                         detail,
                     ));
@@ -717,7 +734,7 @@ pub(super) fn check_media_import_components<'i>(
     source: &str,
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
-) -> Result<(), ParseError<'i, Error>> {
+) -> Result<(), ParseError<'i, CssError>> {
     match recovery.check_specialized_components(source, input, "official.media.query-list-core") {
         Ok(_) => Ok(()),
         Err(error) if is_nesting_limit_error(&error) => Err(error),
@@ -727,7 +744,7 @@ pub(super) fn check_media_import_components<'i>(
                 while !input.is_exhausted() {
                     CssComponentValue::collect_from_parser(input, recovery.source_snapshot())
                         .map_err(|detail| {
-                            crate::error::invalid_component_value(
+                            crate::diagnostic::error::invalid_component_value(
                                 input.current_source_location(),
                                 detail,
                             )
@@ -756,7 +773,7 @@ pub(crate) fn construct_media_query(
     limits: CssComponentValueLimits,
 ) -> Result<CssMediaQuery, CssMediaConstructionError> {
     let (deep, origin) = deep_media_components(&values);
-    crate::media::with_media_stack(
+    crate::query::media::construction::with_media_stack(
         deep,
         || origin,
         move || construct_media(values, limits, false),
@@ -765,9 +782,9 @@ pub(crate) fn construct_media_query(
 pub(crate) fn construct_media_condition(
     values: CssComponentValues,
     limits: CssComponentValueLimits,
-) -> Result<CssMediaCondition, CssMediaConstructionError> {
+) -> Result<CssCondition<CssMediaLeaf>, CssMediaConstructionError> {
     let (deep, origin) = deep_media_components(&values);
-    match crate::media::with_media_stack(
+    match crate::query::media::construction::with_media_stack(
         deep,
         || origin,
         move || construct_media(values, limits, true),
@@ -783,11 +800,13 @@ fn construct_media(
 ) -> Result<CssMediaQuery, CssMediaConstructionError> {
     values.validate_with_limits(limits)?;
     if let Some(origin) = values.first_implicit_origin() {
-        return Err(CssMediaConstructionError::RecoveredInput {
-            origin: origin.clone(),
-        });
+        return Err(CssMediaConstructionError::from(
+            crate::query::media::construction::MediaConstructionKind::RecoveredInput {
+                origin: origin.clone(),
+            },
+        ));
     }
-    let serialized = values.serialize_with_limit(limits.max_css_bytes())?;
+    let serialized = values.serialize_tokens(limits)?;
     let source = serialized.as_css();
     let numeric = NumericInputContext::components(&values, &serialized);
     let context = MediaInput {
@@ -806,11 +825,16 @@ fn construct_media(
         input.expect_exhausted()?;
         Ok(query)
     })();
-    let query = result.map_err(|error: ParseError<'_, Error>| {
+    let query = result.map_err(|error: ParseError<'_, CssError>| {
         if let cssparser::ParseErrorKind::Custom(error) = &error.kind
-            && let crate::ErrorKind::InvalidComponentValue(component) = error.kind()
+            && let crate::diagnostic::error::ErrorKind::InvalidComponentValue(component) =
+                error.kind()
         {
-            return CssMediaConstructionError::Component(component.as_ref().clone());
+            return CssMediaConstructionError::from(
+                crate::query::media::construction::MediaConstructionKind::Component(
+                    component.as_ref().clone(),
+                ),
+            );
         }
         let error = from_parse_error(source, error);
         let origin = serialized
@@ -818,20 +842,31 @@ fn construct_media(
             .cloned()
             .unwrap_or(CssValueOrigin::Programmatic);
         if condition_only {
-            CssMediaConstructionError::InvalidConditionGrammar { origin }
+            CssMediaConstructionError::from(
+                crate::query::media::construction::MediaConstructionKind::InvalidConditionGrammar {
+                    origin,
+                },
+            )
         } else {
-            CssMediaConstructionError::InvalidQueryGrammar { origin }
+            CssMediaConstructionError::from(
+                crate::query::media::construction::MediaConstructionKind::InvalidQueryGrammar {
+                    origin,
+                },
+            )
         }
     })?;
-    crate::media::check_canonical_limit(&query, limits.max_css_bytes()).map_err(
-        |error| match error {
-            CssMediaSerializationError::Component(error) => {
-                CssMediaConstructionError::Component(error)
+    crate::query::media::construction::check_canonical_limit(&query, limits.max_css_bytes())
+        .map_err(|error| match error {
+            crate::query::media::construction::MediaSerializationFailure::Component(error) => {
+                CssMediaConstructionError::from(
+                    crate::query::media::construction::MediaConstructionKind::Component(error),
+                )
             }
-            CssMediaSerializationError::RecoveredNever { origin } => {
-                CssMediaConstructionError::RecoveredInput { origin }
-            }
-        },
-    )?;
+            crate::query::media::construction::MediaSerializationFailure::RecoveredNever {
+                origin,
+            } => CssMediaConstructionError::from(
+                crate::query::media::construction::MediaConstructionKind::RecoveredInput { origin },
+            ),
+        })?;
     Ok(query)
 }

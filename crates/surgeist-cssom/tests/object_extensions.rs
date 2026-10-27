@@ -1,5 +1,5 @@
 //! Concrete extension operations preserve their native owner contracts.
-use surgeist_css::{CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits};
+use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::*;
 
 fn create(source: &str, limits: CssomLimits) -> (CssomStore, CssomSheetId, Vec<CssomRuleId>) {
@@ -211,14 +211,14 @@ fn family_output_and_input_budgets_remain_cumulative_and_failure_does_not_publis
     let rule = store.css_font_feature_values_rule(&ids[0]).unwrap();
     let _result = rule.set_font_family(&mut store, "A, B").unwrap();
     assert_eq!(
-        rule.font_family(&store, CssSpecifiedValueSerializationLimits::new(2, 2, 4))
+        rule.font_family(&store, CssSerializationLimits::new(2, 2, 4))
             .unwrap(),
         "A, B"
     );
     for limits in [
-        CssSpecifiedValueSerializationLimits::new(1, 2, 4),
-        CssSpecifiedValueSerializationLimits::new(2, 1, 4),
-        CssSpecifiedValueSerializationLimits::new(2, 2, 3),
+        CssSerializationLimits::new(1, 2, 4),
+        CssSerializationLimits::new(2, 1, 4),
+        CssSerializationLimits::new(2, 2, 3),
     ] {
         assert!(matches!(
             rule.font_family(&store, limits),
@@ -320,13 +320,13 @@ fn palette_and_profile_getters_remain_available_independently_of_wrapper_capabil
         CssomCapture::<CssColorProfileRule>::components,
     ] {
         assert_eq!(
-            getter(&empty, CssSpecifiedValueSerializationLimits::new(0, 0, 0)).unwrap(),
+            getter(&empty, CssSerializationLimits::new(0, 0, 0)).unwrap(),
             ""
         );
     }
     assert_eq!(empty.name(Default::default()).unwrap(), "device-cmyk");
     assert!(
-        matches!(capture.components(CssSpecifiedValueSerializationLimits::new(2,2,6)), Err(CssomError::Value(error)) if error.kind()==CssSpecifiedValueSerializationErrorKind::ByteLimit)
+        matches!(capture.components(CssSerializationLimits::new(2,2,6)), Err(CssomError::Value(error)) if error.is_byte_limit())
     );
     drop(store);
     assert_eq!(capture.src(Default::default()).unwrap(), "url(\"\")");

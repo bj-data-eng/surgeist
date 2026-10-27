@@ -2,10 +2,29 @@
 //! Source: Filter Effects 1 WD20181218 §§3,9.13.1–2,10,11.5;
 //! selected Color4 and complete shared Color owner, Values4, Cascade5,
 //! Variables1, Syntax3 and CSSOM WD20210826 §6.7.2.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::property_admission::assert_same_grammar_facts;
 use crate::css::support::{
     check_named_components as checked_components, detached_checked_declaration as checked,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandContributions, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 const FLOOD: &str = "flood-color";
 const ALPHA: &str = "flood-opacity";
@@ -80,9 +99,15 @@ fn property(name: &str) -> CssKnownProperty {
 }
 fn fronts(name: &str, text: &str) -> Vec<CssDeclaration> {
     let css = format!("/*😀*/{}:{text}!important", name.to_ascii_uppercase());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert_eq!(&validate_style_attribute(&css).unwrap(), report.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap(),
+        report.syntax()
+    );
     let [parsed] = report.syntax().as_slice() else {
         panic!("one complete authored occurrence")
     };
@@ -103,8 +128,16 @@ fn fronts(name: &str, text: &str) -> Vec<CssDeclaration> {
         checked(name, text, true),
     ];
     for report in [
-        parse_property_value_text(text, CssPropertyNameRef::Known(p), CssImportance::Important),
-        parse_property_value_text_for_grammar(text, p.grammar(), CssImportance::Important),
+        CssParser::default().parse_property_value(
+            text,
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(p)),
+            CssImportance::Important,
+        ),
+        CssParser::default().parse_property_value(
+            text,
+            CssPropertyTextTarget::Grammar(p.grammar()),
+            CssImportance::Important,
+        ),
     ] {
         assert!(
             report.is_clean(),
@@ -121,7 +154,11 @@ fn fronts(name: &str, text: &str) -> Vec<CssDeclaration> {
         assert_eq!(source.importance(), CssImportance::Important);
         assert_eq!(source.known().unwrap().grammar(), p.grammar());
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             text
         );
     }
@@ -131,37 +168,33 @@ fn canonical(name: &str, text: &str, expected: &str) {
     for source in fronts(name, text) {
         let before = source.clone();
         let expected = format!("{name}: {expected} !important;");
-        let exact = CssSpecifiedValueSerializationLimits::new(65_536, 262_144, expected.len());
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        let exact = CssSerializationLimits::new(65_536, 262_144, expected.len());
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for _ in 0..2 {
-            let short =
-                CssSpecifiedValueSerializationLimits::new(65_536, 262_144, expected.len() - 1);
-            assert_eq!(
+            let short = CssSerializationLimits::new(65_536, 262_144, expected.len() - 1);
+            assert!(
                 source
-                    .to_specified_css_with_limits(short)
+                    .serialize_specified(short)
                     .unwrap_err()
-                    .kind(),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
+                    .is_byte_limit()
             );
             assert_eq!(source, before);
         }
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
+        // Canonical text must be accepted again through the actual strict owner.
+        let css = source.serialize_specified(Default::default()).unwrap();
+        let report = CssParser::default().parse_block_contents(&css);
+        assert!(report.is_clean());
         assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
+            report.syntax()[0]
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected
         );
-        // Canonical text must be accepted again through the actual strict owner.
-        let css = source.to_specified_css().unwrap();
-        let report = parse_style_attribute(&css);
-        assert!(report.is_clean());
-        assert_eq!(report.syntax()[0].to_specified_css().unwrap(), expected);
     }
 }
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one authored terminal")
     };
@@ -177,7 +210,7 @@ fn completed(source: &CssDeclaration) -> CssLonghandContributions {
 fn invalid(name: &str, text: &str) {
     let p = property(name);
     let css = format!("color:red;{name}:{text};color:blue");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert_eq!(report.syntax().len(), 2, "atomic grammar rejection: {css}");
     assert!(
         report
@@ -189,29 +222,42 @@ fn invalid(name: &str, text: &str) {
         panic!("one atomic diagnostic: {css}")
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    match diagnostic.error().kind() {
-        ErrorKind::InvalidPropertyValue(v) => assert_eq!(v.property(), p),
-        ErrorKind::InvalidColorSyntax(_) if name == FLOOD || name == LIGHT => {}
+    match diagnostic.error().code() {
+        CssErrorCode::InvalidPropertyValue => {
+            let v = diagnostic.error();
+            assert_eq!(v.known_property().unwrap(), p)
+        }
+        CssErrorCode::InvalidColorSyntax if name == FLOOD || name == LIGHT => {}
         other => panic!("property-owned grammar diagnostic: {other:?}"),
     }
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let before = values.clone();
     for grammar in [false, true] {
-        assert_eq!(
-            checked_components(name, values.clone(), grammar)
-                .unwrap_err()
-                .kind(),
-            &CssPropertyValueErrorKind::Grammar(diagnostic.error().kind().clone()),
-            "{name}:{text}"
+        assert_same_grammar_facts(
+            &checked_components(name, values.clone(), grammar).unwrap_err(),
+            diagnostic.error(),
+            "{name}:{text}",
         );
     }
     for report in [
-        parse_property_value_text(text, CssPropertyNameRef::Known(p), CssImportance::Normal),
-        parse_property_value_text_for_grammar(text, p.grammar(), CssImportance::Normal),
+        CssParser::default().parse_property_value(
+            text,
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(p)),
+            CssImportance::Normal,
+        ),
+        CssParser::default().parse_property_value(
+            text,
+            CssPropertyTextTarget::Grammar(p.grammar()),
+            CssImportance::Normal,
+        ),
     ] {
         assert!(report.syntax().is_none());
         assert!(!report.is_clean());
@@ -244,9 +290,11 @@ fn four_filter_longhands_are_recognized_case_insensitively_with_intrinsic_metada
         };
         // Existing generic API bridges independently sourced initial spelling;
         // new payload variants need direct typed functional assertions at GREEN.
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(initial).unwrap()])
-                .unwrap();
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(initial).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let control = checked_components(name, components, true).unwrap();
         canonical(name, initial, canonical_initial);
         let values = completed(&control);
@@ -380,9 +428,10 @@ fn four_terminal_expansions_preserve_original_occurrence_and_both_importance_sta
         (INTERPOLATION, "auto"),
     ] {
         for importance in [CssImportance::Normal, CssImportance::Important] {
-            let source = parse_property_value(
-                CssPropertyNameRef::Known(property(name)),
-                parse_component_values(text).unwrap(),
+            let source = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 importance,
             )
             .unwrap();
@@ -408,17 +457,18 @@ fn whole_pending_substitutions_reenter_strictly_reusably_and_preserve_replacemen
         for text in ["var(--filter)", "env(filter)", "attr(data-filter *)"] {
             for source in fronts(name, text) {
                 let before = source.clone();
-                let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+                let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                     panic!("pending whole value")
                 };
                 assert!(handle.source().same_occurrence(&source));
                 for residual in ["var(--again)", "env(again)", "attr(data-again *)"] {
-                    assert_eq!(
+                    assert!(
                         handle
-                            .reenter(parse_component_values(residual).unwrap())
+                            .reenter(
+                                CssComponentValues::parse(&CssParser::default(), residual).unwrap()
+                            )
                             .unwrap_err()
-                            .kind(),
-                        &CssExpansionErrorKind::ResidualSubstitution
+                            .is_residual_substitution()
                     );
                 }
                 for rejected in [
@@ -429,17 +479,21 @@ fn whole_pending_substitutions_reenter_strictly_reusably_and_preserve_replacemen
                     "initial;color:red",
                 ] {
                     for _ in 0..2 {
-                        assert!(matches!(
+                        assert!(
                             handle
-                                .reenter(parse_component_values(rejected).unwrap())
+                                .reenter(
+                                    CssComponentValues::parse(&CssParser::default(), rejected)
+                                        .unwrap()
+                                )
                                 .unwrap_err()
-                                .kind(),
-                            CssExpansionErrorKind::InvalidReplacement(_)
-                        ));
+                                .replacement_error()
+                                .is_some()
+                        );
                     }
                 }
                 for valid in [replacement, "inherit"] {
-                    let components = parse_component_values(valid).unwrap();
+                    let components =
+                        CssComponentValues::parse(&CssParser::default(), valid).unwrap();
                     let snapshot = components.clone();
                     let CssContributions::Longhands(values) =
                         handle.reenter(components.clone()).unwrap()
@@ -483,14 +537,11 @@ fn strict_checked_admission_rejects_original_implicit_closures_before_serialized
             "env(filter".into(),
             "attr(data-filter *".into(),
         ] {
-            let components = parse_component_values(&text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
             let before = components.clone();
             for grammar in [false, true] {
                 let error = checked_components(name, components.clone(), grammar).unwrap_err();
-                assert!(matches!(
-                    error.kind(),
-                    CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-                ));
+                assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
                 assert!(matches!(
                     error.origin(),
                     CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { .. }))
@@ -499,19 +550,25 @@ fn strict_checked_admission_rejects_original_implicit_closures_before_serialized
             assert_eq!(components, before);
         }
         let source = checked(name, "var(--filter)", true);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
-        assert!(matches!(
-            handle
-                .reenter(parse_component_values(&format!("{ordinary}/*")).unwrap())
-                .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
         assert!(
             handle
-                .reenter(parse_component_values(&format!("{ordinary}/**/")).unwrap())
+                .reenter(
+                    CssComponentValues::parse(&CssParser::default(), format!("{ordinary}/*"))
+                        .unwrap()
+                )
+                .unwrap_err()
+                .replacement_error()
+                .is_some()
+        );
+        assert!(
+            handle
+                .reenter(
+                    CssComponentValues::parse(&CssParser::default(), format!("{ordinary}/**/"))
+                        .unwrap()
+                )
                 .is_ok()
         );
     }
@@ -519,11 +576,11 @@ fn strict_checked_admission_rejects_original_implicit_closures_before_serialized
 #[test]
 fn nested_filter_declarations_normalize_in_source_order_with_exact_cumulative_limits() {
     let css = ".outer{flood-color:red!important;flood-opacity:150%;.child{lighting-color:currentcolor}color-interpolation-filters:auto;flood-opacity:var(--alpha)}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(1, 3, 5, 5).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -582,11 +639,8 @@ fn nested_filter_declarations_normalize_in_source_order_with_exact_cumulative_li
             CssNormalizationResource::Contributions,
         ),
     ] {
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit: 4 }
-        );
+        let error = report.syntax().normalize(limits).unwrap_err();
+        assert_eq!(error.exhausted_limit(), Some((resource, 4)));
         assert_eq!(error.declaration_order(), Some(4));
         assert!(
             error
@@ -596,7 +650,7 @@ fn nested_filter_declarations_normalize_in_source_order_with_exact_cumulative_li
         );
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 #[test]
 fn selected_filter_property_support_provenance_points_to_the_exact_filter1_clauses() {
@@ -631,82 +685,67 @@ fn borrowed_keyword_color_and_numeric_providers_keep_three_node_declaration_pric
         let source = checked(name, text, true);
         let before = source.clone();
         let expected = format!("{name}: {output} !important;");
-        let exact = CssSpecifiedValueSerializationLimits::new(3, 3, expected.len());
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        let exact = CssSerializationLimits::new(3, 3, expected.len());
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(2, 3, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(2, 3, expected.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(3, 2, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(3, 2, expected.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(3, 3, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(3, 3, expected.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             for _ in 0..2 {
                 assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
+                    serialization_failure(&source.serialize_specified(limits).unwrap_err()),
                     kind
                 );
                 assert_eq!(source, before);
             }
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     }
 }
 #[test]
 fn sheet_siblings_share_final_bytes_and_fail_atomically_at_the_later_rule() {
-    let report = parse_sheet(
-        ".a{flood-color:red!important;flood-opacity:150%}.b{lighting-color:currentcolor;color-interpolation-filters:linearRGB}",
-    );
+    let report = CssParser::default().parse_sheet(".a{flood-color:red!important;flood-opacity:150%}.b{lighting-color:currentcolor;color-interpolation-filters:linearRGB}");
     assert!(report.is_clean());
     let sheet = report.syntax();
     let before = sheet.clone();
     let expected = ".a { flood-color: red !important; flood-opacity: 1.5; }\n.b { lighting-color: currentcolor; color-interpolation-filters: linearrgb; }";
-    let exact = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
-    let short =
-        CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    let exact = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
+    let short = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len() - 1);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|v| v.to_specified_css_with_limits(short).is_ok())
+            .all(|v| v.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
-        );
+        let error = sheet.serialize_specified(short).unwrap_err();
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn huge_flood_exponents_report_atomic_output_limits_without_clamping_or_mutation() {
     let source = checked(ALPHA, "1e1000000000%", true);
     let before = source.clone();
     for _ in 0..2 {
-        assert_eq!(
-            source.to_specified_css().unwrap_err().kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+        assert!(
+            source
+                .serialize_specified(Default::default())
+                .unwrap_err()
+                .is_byte_limit()
         );
         assert_eq!(source, before);
     }
@@ -745,34 +784,25 @@ fn hinted_flood_calculation_uses_existing_seven_input_eight_projection_provider_
     let source = checked(ALPHA, "calc((1px + 1%) / 1px)", true);
     let before = source.clone();
     let expected = "flood-opacity: calc((1% + 1px) / 1px) !important;";
-    let exact = CssSpecifiedValueSerializationLimits::new(9, 10, expected.len());
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    let exact = CssSerializationLimits::new(9, 10, expected.len());
+    assert_eq!(source.serialize_specified(exact).unwrap(), expected);
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(8, 10, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(8, 10, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(9, 9, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(9, 9, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
     ] {
         assert_eq!(
-            source
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&source.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(source, before);
     }
-    assert_eq!(
-        source.to_specified_css_with_limits(exact).unwrap(),
-        expected
-    );
+    assert_eq!(source.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn invalid_filter_declaration_diagnostics_keep_byte_and_utf16_coordinates() {
@@ -785,7 +815,7 @@ fn invalid_filter_declaration_diagnostics_keep_byte_and_utf16_coordinates() {
         let prefix = "/*😀*/ ";
         let target = format!("{name}:{value};");
         let css = format!("{prefix}{target}color:blue");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         assert!(!report.is_clean());
         let [sibling] = report.syntax().as_slice() else {
             panic!("one surviving sibling")
@@ -817,7 +847,11 @@ fn invalid_filter_declaration_diagnostics_keep_byte_and_utf16_coordinates() {
             css[..byte].encode_utf16().count()
         );
         assert_eq!(
-            validate_style_attribute(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }

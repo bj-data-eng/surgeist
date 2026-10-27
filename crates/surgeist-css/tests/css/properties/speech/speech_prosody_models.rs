@@ -2,8 +2,24 @@
 //! Independent authority: pinned Speech 1 §§11.2–11.4/12.1, Values 4 §§5.6,
 //! 10.9/10.12, and CSSOM serialize-a-css-value/component-value. These tests
 //! distinguish exact admission, specified projection and downstream voice use.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_declaration as declaration;
-use surgeist_css::*;
+use crate::css::support::value_assertions::literal_specified;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationType, CssFrequency, CssFrequencyPercentage, CssFrequencyUnit,
+    CssNonNegative, CssNumeric, CssNumericDimension, CssNumericLiteral, CssPercentage, CssTime,
+    CssTimeUnit,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::speech::{
+    CssSemitoneLiteral, CssVoiceDuration, CssVoiceLevel, CssVoiceOffset, CssVoicePitchRange,
+    CssVoiceRate, CssVoiceRateKeyword,
+};
 
 fn pitch(source: &CssDeclaration) -> &CssVoicePitchRange {
     match source.known().unwrap().property_value().unwrap() {
@@ -20,66 +36,81 @@ fn rate(source: &CssDeclaration) -> &CssVoiceRate {
     };
     value.value()
 }
-fn frequency(number: &str, unit: CssFrequencyUnit) -> CssFrequencyValue {
-    CssFrequencyValue::from_literal(CssFrequencyLiteral::try_new(number, unit).unwrap())
+fn frequency(number: &str, unit: CssFrequencyUnit) -> CssNumeric<CssFrequency> {
+    CssNumeric::<CssFrequency>::try_from_literal(
+        CssNumericLiteral::<CssFrequency>::try_new(number, unit).unwrap(),
+    )
+    .unwrap()
 }
-fn percentage(text: &str) -> CssSpecifiedPercentage {
-    CssSpecifiedPercentage::try_from_component(
+fn percentage(text: &str) -> CssNumeric<CssPercentage> {
+    CssNumeric::<CssPercentage>::try_from_component(
         CssComponentValue::try_token(&format!("{text}%")).unwrap(),
     )
     .unwrap()
 }
-fn nonnegative_percentage(text: &str) -> CssSpecifiedNonNegativePercentage {
-    CssSpecifiedNonNegativePercentage::try_from_component(
+fn nonnegative_percentage(text: &str) -> CssNumeric<CssPercentage, CssNonNegative> {
+    CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
         CssComponentValue::try_token(&format!("{text}%")).unwrap(),
     )
     .unwrap()
 }
-fn calculation(text: &str) -> CssFrequencyPercentageCalculation {
-    CssFrequencyPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-        .unwrap()
+fn calculation(text: &str) -> CssCalculation<CssFrequencyPercentage> {
+    CssCalculation::<CssFrequencyPercentage>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+        Default::default(),
+    )
+    .unwrap()
 }
 
 #[test]
 fn duration_checked_construction_distinguishes_auto_nonnegative_time_and_retained_math() {
     assert_eq!(
-        CssVoiceDuration::Auto.serialize_specified().unwrap(),
+        CssVoiceDuration::Auto
+            .serialize_specified(Default::default())
+            .unwrap(),
         "auto"
     );
     for (text, output) in [("-0", "0s"), ("+3", "3s"), ("0.25", "0.25s")] {
-        let value = CssVoiceDuration::try_time(CssTimeValue::from_literal(
-            CssTimeLiteral::try_new(text, CssTimeUnit::Seconds).unwrap(),
-        ))
+        let value = CssVoiceDuration::try_time(
+            CssNumeric::<CssTime>::try_from_literal(
+                CssNumericLiteral::<CssTime>::try_new(text, CssTimeUnit::Seconds).unwrap(),
+            )
+            .unwrap(),
+        )
         .unwrap();
-        assert_eq!(value.serialize_specified().unwrap(), output);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            output
+        );
         let CssVoiceDuration::Time(duration) = value else {
             panic!("time")
         };
-        assert_eq!(
-            duration
-                .time()
-                .literal()
-                .unwrap()
-                .numeric()
-                .representation(),
-            text
-        );
+        assert_eq!(duration.literal().unwrap().numeric().representation(), text);
     }
     for text in ["-1", "-1e-999"] {
-        let error = CssVoiceDuration::try_time(CssTimeValue::from_literal(
-            CssTimeLiteral::try_new(text, CssTimeUnit::Seconds).unwrap(),
-        ))
-        .unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
-    }
-    let time = CssTimeValue::try_from_calculation(
-        CssTimeCalculation::try_from_components(parse_component_values("calc(-1s)").unwrap())
+        let error = CssVoiceDuration::try_time(
+            CssNumeric::<CssTime>::try_from_literal(
+                CssNumericLiteral::<CssTime>::try_new(text, CssTimeUnit::Seconds).unwrap(),
+            )
             .unwrap(),
+        )
+        .unwrap_err();
+        assert!(error.is_out_of_range(), "{error:?}");
+    }
+    let time = CssNumeric::<CssTime>::try_from_calculation(
+        CssCalculation::<CssTime>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(-1s)").unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     let value = CssVoiceDuration::try_time(time).unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "calc(-1s)");
-    assert!(matches!(value, CssVoiceDuration::Time(value) if value.time().calculation().is_some()));
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "calc(-1s)"
+    );
+    assert!(matches!(value, CssVoiceDuration::Time(value) if value.calculation().is_some()));
 }
 
 #[test]
@@ -87,7 +118,7 @@ fn absolute_pitch_range_requires_exact_positive_ordinary_frequency_and_normalize
     for text in ["0", "-0", "-20", "-1e-999"] {
         let error =
             CssVoicePitchRange::try_absolute(frequency(text, CssFrequencyUnit::Hertz)).unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        assert!(error.is_out_of_range(), "{error:?}");
     }
     for (text, unit, output) in [
         ("30", CssFrequencyUnit::Hertz, "30hz absolute"),
@@ -99,7 +130,10 @@ fn absolute_pitch_range_requires_exact_positive_ordinary_frequency_and_normalize
         ),
     ] {
         let value = CssVoicePitchRange::try_absolute(frequency(text, unit)).unwrap();
-        assert_eq!(value.serialize_specified().unwrap(), output);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            output
+        );
         assert_eq!(
             value
                 .absolute_frequency()
@@ -117,7 +151,7 @@ fn absolute_pitch_range_requires_exact_positive_ordinary_frequency_and_normalize
         for text in ["absolute +2kHz", "+2kHz absolute"] {
             assert_eq!(
                 pitch(&declaration(name, text))
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 "2khz absolute"
             );
@@ -138,17 +172,17 @@ fn ordinary_absolute_frequency_fails_closed_when_shared_precision_rounds_to_zero
         for text in ["1e-999", "0.00000049"] {
             let value = CssVoicePitchRange::try_absolute(frequency(text, unit)).unwrap();
             let original = value.clone();
-            let error = value.serialize_specified().unwrap_err();
-            assert_eq!(
-                error.kind(),
-                CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
-            );
+            let error = value.serialize_specified(Default::default()).unwrap_err();
+            assert!(error.is_unrepresentable_value(), "{error:?}");
             assert_eq!(value, original);
             let literal = value.absolute_frequency().unwrap().literal().unwrap();
             assert_eq!(literal.numeric().representation(), text);
             assert!(matches!(literal.origin(), CssValueOrigin::Programmatic));
             // The primitive's policy and legal relative zero emission remain intact.
-            assert_eq!(literal.serialize_specified().unwrap(), format!("0{suffix}"));
+            assert_eq!(
+                literal_specified(literal, Default::default()).unwrap(),
+                format!("0{suffix}")
+            );
             let relative = CssVoicePitchRange::try_relative(
                 None,
                 Some(CssVoiceOffset::Frequency(
@@ -157,7 +191,7 @@ fn ordinary_absolute_frequency_fails_closed_when_shared_precision_rounds_to_zero
             )
             .unwrap();
             assert_eq!(
-                relative.serialize_specified().unwrap(),
+                relative.serialize_specified(Default::default()).unwrap(),
                 format!("0{suffix}")
             );
             for name in ["voice-pitch", "voice-range"] {
@@ -168,9 +202,11 @@ fn ordinary_absolute_frequency_fails_closed_when_shared_precision_rounds_to_zero
                     .unwrap()
                     .origin()
                     .clone();
-                assert_eq!(
-                    pitch(&source).serialize_specified().unwrap_err().kind(),
-                    CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+                assert!(
+                    pitch(&source)
+                        .serialize_specified(Default::default())
+                        .unwrap_err()
+                        .is_unrepresentable_value()
                 );
                 assert_eq!(source, original);
                 assert_eq!(
@@ -183,9 +219,14 @@ fn ordinary_absolute_frequency_fails_closed_when_shared_precision_rounds_to_zero
         // CSSOM nearest rounding with ties away from zero preserves positivity.
         for text in ["0.0000005", "0.000001"] {
             let value = CssVoicePitchRange::try_absolute(frequency(text, unit)).unwrap();
-            let css = value.serialize_specified().unwrap();
+            let css = value.serialize_specified(Default::default()).unwrap();
             assert_eq!(css, format!("0.000001{suffix} absolute"));
-            assert!(validate_style_attribute(&format!("voice-pitch:{css}")).is_ok());
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(format!("voice-pitch:{css}"))
+                    .into_validation_result()
+                    .is_ok()
+            );
         }
     }
 }
@@ -197,27 +238,24 @@ fn absolute_precision_failure_respects_resources_encountered_before_value_detect
         let original = value.clone();
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, usize::MAX, usize::MAX),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, usize::MAX, usize::MAX),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, usize::MAX, usize::MAX),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(1, usize::MAX, usize::MAX),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(usize::MAX, 1, usize::MAX),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(usize::MAX, 1, usize::MAX),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, 0),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(usize::MAX, usize::MAX, 0),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(value, original);
@@ -227,28 +265,18 @@ fn absolute_precision_failure_respects_resources_encountered_before_value_detect
             CssFrequencyUnit::Kilohertz => 4,
             _ => unreachable!("selected units"),
         };
-        assert_eq!(
+        assert!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    2,
-                    2,
-                    literal_bytes - 1
-                ))
+                .serialize_specified(CssSerializationLimits::new(2, 2, literal_bytes - 1))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         // Once the formatted literal fits, fail before visiting/emitting absolute.
-        assert_eq!(
+        assert!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    2,
-                    2,
-                    literal_bytes
-                ))
+                .serialize_specified(CssSerializationLimits::new(2, 2, literal_bytes))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+                .is_unrepresentable_value()
         );
         assert_eq!(value, original);
     }
@@ -257,36 +285,42 @@ fn absolute_precision_failure_respects_resources_encountered_before_value_detect
 #[test]
 fn absolute_frequency_calculations_defer_range_checks_and_reject_ordinary_root_conversion() {
     for text in ["calc(-20Hz)", "calc(0Hz)"] {
-        let frequency = CssFrequencyValue::try_from_calculation(
-            CssFrequencyCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap(),
+        let frequency = CssNumeric::<CssFrequency>::try_from_calculation(
+            CssCalculation::<CssFrequency>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
         let value = CssVoicePitchRange::try_absolute(frequency).unwrap();
         assert!(value.absolute_frequency().unwrap().calculation().is_some());
-        let output = value.serialize_specified().unwrap();
-        assert!(validate_style_attribute(&format!("voice-pitch:{output}")).is_ok());
+        let output = value.serialize_specified(Default::default()).unwrap();
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("voice-pitch:{output}"))
+                .into_validation_result()
+                .is_ok()
+        );
     }
-    let ordinary = CssFrequencyValue::try_from_calculation(
-        CssFrequencyCalculation::try_literal("0", CssFrequencyUnit::Hertz).unwrap(),
+    let ordinary = CssNumeric::<CssFrequency>::try_from_calculation(
+        CssCalculation::<CssFrequency>::try_literal("0", CssFrequencyUnit::Hertz).unwrap(),
     )
     .unwrap();
     assert!(ordinary.literal().is_some());
-    assert_eq!(
+    assert!(
         CssVoicePitchRange::try_absolute(ordinary)
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::OutOfRange
+            .is_out_of_range()
     );
 }
 
 #[test]
 fn relative_pitch_range_is_nonempty_and_preserves_level_and_offset_omissions() {
-    assert_eq!(
+    assert!(
         CssVoicePitchRange::try_relative(None, None)
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::EmptyValue
+            .is_empty_value()
     );
     for (level, keyword) in [
         (CssVoiceLevel::XLow, "x-low"),
@@ -299,17 +333,23 @@ fn relative_pitch_range_is_nonempty_and_preserves_level_and_offset_omissions() {
         assert_eq!(value.level(), Some(level));
         assert!(value.offset().is_none());
         assert!(value.absolute_frequency().is_none());
-        assert_eq!(value.serialize_specified().unwrap(), keyword);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            keyword
+        );
     }
     let offset = CssVoiceOffset::Frequency(frequency("-20", CssFrequencyUnit::Hertz));
     let value = CssVoicePitchRange::try_relative(None, Some(offset)).unwrap();
     assert_eq!(value.level(), None);
-    assert_eq!(value.serialize_specified().unwrap(), "-20hz");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "-20hz"
+    );
     for name in ["voice-pitch", "voice-range"] {
         for text in ["-20Hz high", "high -20Hz"] {
             assert_eq!(
                 pitch(&declaration(name, text))
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 "high -20hz"
             );
@@ -318,13 +358,13 @@ fn relative_pitch_range_is_nonempty_and_preserves_level_and_offset_omissions() {
         // offsets differ from keyword-only inheritance on later voice changes.
         assert_eq!(
             pitch(&declaration(name, "high 0Hz"))
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             "high 0hz"
         );
         assert_eq!(
             pitch(&declaration(name, "high 0%"))
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             "high 0%"
         );
@@ -343,28 +383,33 @@ fn semitone_terminal_keeps_exact_signed_coefficients_and_rejects_other_units_and
         let value = CssSemitoneLiteral::try_new(text).unwrap();
         assert_eq!(value.numeric().representation(), text);
         assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
-        assert_eq!(value.serialize_specified().unwrap(), output);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            output
+        );
         let model = CssVoicePitchRange::try_relative(
             Some(CssVoiceLevel::Low),
             Some(CssVoiceOffset::Semitones(value)),
         )
         .unwrap();
         assert_eq!(
-            model.serialize_specified().unwrap(),
+            model.serialize_specified(Default::default()).unwrap(),
             format!("low {output}")
         );
     }
-    let escaped = parse_component_values(r"-3.5S\54").unwrap();
+    let escaped = CssComponentValues::parse(&CssParser::default(), r"-3.5S\54").unwrap();
     let value = CssSemitoneLiteral::try_from_component(escaped.items()[0].clone()).unwrap();
     assert_eq!(value.component(), &escaped.items()[0]);
-    assert_eq!(value.serialize_specified().unwrap(), "-3.5st");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "-3.5st"
+    );
     for text in ["2Hz", "2s", "2deg", "2%", "2", "calc(2st)"] {
-        let components = parse_component_values(text).unwrap();
-        assert_eq!(
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+        assert!(
             CssSemitoneLiteral::try_from_component(components.items()[0].clone())
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::InvalidToken
+                .is_invalid_token()
         );
     }
 }
@@ -413,16 +458,18 @@ fn frequency_percentage_root_reuses_shared_hint_algebra_and_excludes_other_dimen
         "calc(1Hz * 1Hz)",
     ] {
         assert!(
-            CssFrequencyPercentageCalculation::try_from_components(
-                parse_component_values(text).unwrap()
+            CssCalculation::<CssFrequencyPercentage>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default()
             )
             .is_err(),
             "{text}"
         );
     }
     assert!(
-        CssFrequencyCalculation::try_from_components(
-            parse_component_values("calc(10Hz + 25%)").unwrap()
+        CssCalculation::<CssFrequency>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(10Hz + 25%)").unwrap(),
+            Default::default()
         )
         .is_err()
     );
@@ -444,11 +491,16 @@ fn mixed_offsets_preserve_unresolved_frequency_basis_during_shared_specified_pro
         )
         .unwrap();
         assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             format!("high {output}")
         );
         let before = value.clone();
-        assert!(validate_style_attribute(&format!("voice-range:high {output}")).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("voice-range:high {output}"))
+                .into_validation_result()
+                .is_ok()
+        );
         assert_eq!(value, before);
     }
     let ordinary = CssVoiceOffset::try_from_calculation(calculation("25%")).unwrap();
@@ -459,9 +511,10 @@ fn mixed_offsets_preserve_unresolved_frequency_basis_during_shared_specified_pro
 
 #[test]
 fn voice_rate_models_preserve_omitted_keyword_and_modifier_independently() {
-    assert_eq!(
-        CssVoiceRate::try_new(None, None).unwrap_err().kind(),
-        &CssNumericConstructionErrorKind::EmptyValue
+    assert!(
+        CssVoiceRate::try_new(None, None)
+            .unwrap_err()
+            .is_empty_value()
     );
     for (keyword, output) in [
         (CssVoiceRateKeyword::Normal, "normal"),
@@ -474,11 +527,17 @@ fn voice_rate_models_preserve_omitted_keyword_and_modifier_independently() {
         let value = CssVoiceRate::keyword_only(keyword);
         assert_eq!(value.keyword(), Some(keyword));
         assert!(value.percentage().is_none());
-        assert_eq!(value.serialize_specified().unwrap(), output);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            output
+        );
     }
     let value = CssVoiceRate::try_new(None, Some(nonnegative_percentage("120"))).unwrap();
     assert_eq!(value.keyword(), None);
-    assert_eq!(value.serialize_specified().unwrap(), "120%");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "120%"
+    );
     assert_ne!(
         value,
         CssVoiceRate::try_new(
@@ -489,13 +548,13 @@ fn voice_rate_models_preserve_omitted_keyword_and_modifier_independently() {
     );
     assert_eq!(
         rate(&declaration("voice-rate", "120% fast"))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "fast 120%"
     );
     assert_eq!(
         rate(&declaration("voice-rate", "fast calc(-1%)"))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "fast calc(-1%)"
     );
@@ -515,29 +574,27 @@ fn exact_neutral_rate_modifier_is_omitted_beside_keyword_but_authored_identity_a
         assert_ne!(value, CssVoiceRate::keyword_only(CssVoiceRateKeyword::Fast));
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 4))
+                .serialize_specified(CssSerializationLimits::new(3, 3, 4))
                 .unwrap(),
             "fast"
         );
-        assert_eq!(
+        assert!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 3, 4))
+                .serialize_specified(CssSerializationLimits::new(2, 3, 4))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                .is_input_node_limit()
         );
-        assert_eq!(
+        assert!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 2, 4))
+                .serialize_specified(CssSerializationLimits::new(3, 2, 4))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+                .is_projection_node_limit()
         );
     }
     assert_eq!(
         CssVoiceRate::try_new(None, Some(nonnegative_percentage("100")))
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "100%"
     );
@@ -548,10 +605,13 @@ fn exact_neutral_rate_modifier_is_omitted_beside_keyword_but_authored_identity_a
         Some(nonnegative_percentage("100.00000001")),
     )
     .unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "fast 100%");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "fast 100%"
+    );
     assert_eq!(
         rate(&declaration("voice-rate", "fast calc(100%)"))
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "fast calc(100%)"
     );
@@ -565,7 +625,7 @@ fn checked_composition_rejects_original_recovered_numeric_children() {
         ("voice-range", "high calc(25%"),
         ("voice-rate", "fast calc(-1%"),
     ] {
-        let report = parse_style_attribute(&format!("{name}:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{text}"));
         assert!(!report.is_clean());
         let source = &report.syntax()[0];
         let error = match source.known().unwrap().property_value().unwrap() {
@@ -573,7 +633,7 @@ fn checked_composition_rejects_original_recovered_numeric_children() {
                 let CssVoiceDuration::Time(duration) = value.value() else {
                     panic!("time")
                 };
-                CssVoiceDuration::try_time(duration.time().clone()).unwrap_err()
+                CssVoiceDuration::try_time(duration.clone().into_any_range()).unwrap_err()
             }
             CssKnownPropertyValueRef::VoicePitch(value) => CssVoicePitchRange::try_absolute(
                 value.value().absolute_frequency().unwrap().clone(),
@@ -585,10 +645,7 @@ fn checked_composition_rejects_original_recovered_numeric_children() {
                     panic!("calculation")
                 };
                 let error = CssVoiceOffset::try_from_calculation(calculation.clone()).unwrap_err();
-                assert_eq!(
-                    error.kind(),
-                    &CssNumericConstructionErrorKind::RecoveredComponent
-                );
+                assert!(error.is_recovered_component(), "{error:?}");
                 CssVoicePitchRange::try_relative(
                     value.value().level(),
                     value.value().offset().cloned(),
@@ -601,10 +658,7 @@ fn checked_composition_rejects_original_recovered_numeric_children() {
             }
             _ => panic!("prosody wrapper"),
         };
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RecoveredComponent
-        );
+        assert!(error.is_recovered_component(), "{error:?}");
         assert!(matches!(
             error.origin(),
             Some(CssValueOrigin::ImplicitClosure { .. })
@@ -627,33 +681,30 @@ fn mixed_pitch_and_rate_serializers_share_atomic_cumulative_limits() {
     .unwrap();
     for value in [pitch, offset] {
         let original = value.clone();
-        let css = value.serialize_specified().unwrap();
+        let css = value.serialize_specified(Default::default()).unwrap();
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(1, usize::MAX, usize::MAX),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(1, usize::MAX, usize::MAX),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(usize::MAX, 1, usize::MAX),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(usize::MAX, 1, usize::MAX),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, css.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(usize::MAX, usize::MAX, css.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(value, original);
         }
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     usize::MAX,
                     usize::MAX,
                     css.len()
@@ -663,28 +714,26 @@ fn mixed_pitch_and_rate_serializers_share_atomic_cumulative_limits() {
         );
     }
     assert_eq!(
-        rate.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(3, 3, 9))
+        rate.serialize_specified(CssSerializationLimits::new(3, 3, 9))
             .unwrap(),
         "fast 120%"
     );
-    assert_eq!(
-        rate.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(2, 3, 9))
+    assert!(
+        rate.serialize_specified(CssSerializationLimits::new(2, 3, 9))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
     let literal = CssSemitoneLiteral::try_new("-3.5").unwrap();
     assert_eq!(
         literal
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 6))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 6))
             .unwrap(),
         "-3.5st"
     );
-    assert_eq!(
+    assert!(
         literal
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 5))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 5))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }

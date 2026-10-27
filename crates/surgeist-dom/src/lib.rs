@@ -299,7 +299,6 @@ pub use store::{
     Dom, DomChange, DomChanges, DomCommit, DomError, DomHistoryError, DomLimits, DomResource,
     DomUsage,
 };
-pub use surgeist_css::CssViewTransitionIdent;
 pub use surgeist_html::{
     Attribute, DocumentString, HtmlCustomElementState, HtmlDocumentMode, HtmlShadowRootMode,
     HtmlShadowRootProperties, HtmlSlotAssignment, Namespace, OrderedAttributes, QualifiedName,

@@ -1,9 +1,13 @@
 //! Neutral component cursor and query range helpers.
-use crate::media_features::MediaRangeState;
+use crate::query::media::media_features::MediaRangeState;
 use std::ops::Range;
 
-use crate::supports::trivia;
-use crate::*;
+use crate::component::{
+    CssComponentValue, CssComponentValueError, CssComponentValueRef, CssComponentValues,
+    CssValueTokenRef,
+};
+use crate::query::CssQueryComparison;
+use crate::query::supports::construction::trivia;
 
 pub(super) struct ComponentCursor<'a> {
     pub(super) items: &'a [CssComponentValue],
@@ -81,7 +85,7 @@ pub(super) fn authored_operand(
         return Ok(None);
     };
     Ok(Some((
-        CssComponentValues::try_new(items.to_vec())?,
+        CssComponentValues::try_new(items.to_vec(), Default::default())?,
         pending,
     )))
 }
@@ -170,14 +174,16 @@ pub(super) fn query_range_chain<T>(
 }
 
 pub(super) fn media_literal_number(
-    value: &crate::CssComponentValues,
-) -> Option<crate::CssNumericTokenRef<'_>> {
+    value: &crate::component::CssComponentValues,
+) -> Option<crate::component::CssNumericTokenRef<'_>> {
     value.items().iter().find_map(|c| match c.view() {
-        crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Number(n)) => Some(n),
+        crate::component::CssComponentValueRef::Token(
+            crate::component::CssValueTokenRef::Number(n),
+        ) => Some(n),
         _ => None,
     })
 }
-pub(super) fn negative_literal(number: crate::CssNumericTokenRef<'_>) -> bool {
+pub(super) fn negative_literal(number: crate::component::CssNumericTokenRef<'_>) -> bool {
     let text = number.representation();
     text.starts_with('-')
         && text

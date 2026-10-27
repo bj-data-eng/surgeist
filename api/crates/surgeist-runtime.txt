@@ -433,7 +433,7 @@ pub fn surgeist_runtime::DomStyleParsedPrefixError::source(&self) -> core::optio
 impl core::fmt::Display for surgeist_runtime::DomStyleParsedPrefixError
 pub fn surgeist_runtime::DomStyleParsedPrefixError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_runtime::DomStyleParsedSheetError
-pub surgeist_runtime::DomStyleParsedSheetError::Css(surgeist_css::utf16_input::CssUtf16InputError<surgeist_runtime::DomStyleRuntimeError>)
+pub surgeist_runtime::DomStyleParsedSheetError::Css(surgeist_css::source::utf16_input::CssUtf16InputError<surgeist_runtime::DomStyleRuntimeError>)
 pub surgeist_runtime::DomStyleParsedSheetError::Runtime(surgeist_runtime::DomStyleRuntimeError)
 pub surgeist_runtime::DomStyleParsedSheetError::Sheet(surgeist_dom::parsed_style::sheet::DomParsedHtmlStyleSheetError)
 impl core::convert::From<surgeist_dom::parsed_style::DomParsedHtmlStyleError> for surgeist_runtime::DomStyleParsedSheetError
@@ -501,7 +501,7 @@ pub fn surgeist_runtime::DomStyleRootWithdrawalError::fmt(&self, f: &mut core::f
 pub enum surgeist_runtime::DomStyleRuntimeError
 pub surgeist_runtime::DomStyleRuntimeError::Admission
 pub surgeist_runtime::DomStyleRuntimeError::Binding
-pub surgeist_runtime::DomStyleRuntimeError::Css(surgeist_css::utf16_input::CssUtf16InputError<surgeist_dom::store::DomError>)
+pub surgeist_runtime::DomStyleRuntimeError::Css(surgeist_css::source::utf16_input::CssUtf16InputError<surgeist_dom::store::DomError>)
 pub surgeist_runtime::DomStyleRuntimeError::Cssom(surgeist_cssom::model::CssomError)
 pub surgeist_runtime::DomStyleRuntimeError::Dispatch(surgeist_runtime::DomEventDispatchError)
 pub surgeist_runtime::DomStyleRuntimeError::Dom(surgeist_dom::store::DomError)
@@ -1246,7 +1246,7 @@ impl core::fmt::Debug for surgeist_runtime::DomStyleParsedSheetOutcome
 pub fn surgeist_runtime::DomStyleParsedSheetOutcome::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::DomStyleProcessedSheet
 impl surgeist_runtime::DomStyleProcessedSheet
-pub fn surgeist_runtime::DomStyleProcessedSheet::media_diagnostics(&self) -> &[surgeist_css::report::CssRecoveryDiagnostic]
+pub fn surgeist_runtime::DomStyleProcessedSheet::media_diagnostics(&self) -> &[surgeist_css::diagnostic::recovery::CssRecoveryDiagnostic]
 pub fn surgeist_runtime::DomStyleProcessedSheet::root(&self) -> surgeist_dom::identity::NodeId
 pub fn surgeist_runtime::DomStyleProcessedSheet::sheet(&self) -> &surgeist_cssom::identity::CssomSheetId
 pub struct surgeist_runtime::DomStyleRootWithdrawal
@@ -1305,7 +1305,7 @@ impl core::fmt::Debug for surgeist_runtime::DomStyleRuntime
 pub fn surgeist_runtime::DomStyleRuntime::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_runtime::DomStyleRuntimeLimits
 pub surgeist_runtime::DomStyleRuntimeLimits::completions: usize
-pub surgeist_runtime::DomStyleRuntimeLimits::css_input: surgeist_css::utf16_input::CssUtf16InputLimits
+pub surgeist_runtime::DomStyleRuntimeLimits::css_input: surgeist_css::source::utf16_input::CssUtf16InputLimits
 pub surgeist_runtime::DomStyleRuntimeLimits::reports: usize
 pub surgeist_runtime::DomStyleRuntimeLimits::roots: usize
 pub surgeist_runtime::DomStyleRuntimeLimits::storage_bytes: usize

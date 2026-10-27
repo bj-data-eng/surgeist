@@ -162,7 +162,7 @@ fn full_transition_payload(
         own.append(graph_payload(&transition.records, |record| {
             source::storage::Payload {
                 bytes: size_of::<Record>()
-                    + size_of::<surgeist_css::CssViewTransitionIdent>()
+                    + size_of::<surgeist_css::values::view_transition::CssViewTransitionIdent>()
                     + record.name.retained_buffer_bytes(),
                 units: 0,
             }

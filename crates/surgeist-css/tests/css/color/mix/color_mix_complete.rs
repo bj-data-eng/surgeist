@@ -6,7 +6,16 @@ use crate::css::support::color_and_selector_fixtures::{
 use crate::css::support::color_property::color_property_value as wrapper;
 use crate::css::support::detached_checked_declaration;
 use surgeist_color::{ColorSpace, PredefinedColorSpace};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColorMix;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::common::CssBoxSideKind;
 
 fn admitted_mix(text: &str) -> [CssColorMix; 2] {
     let mut mixes = Vec::new();
@@ -110,7 +119,7 @@ fn percentage_math_weights_keep_specified_range_deferral() {
                     .calculation()
                     .unwrap()
                     .components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 if text.contains("-5%") {
@@ -127,7 +136,7 @@ fn percentage_math_weights_keep_specified_range_deferral() {
                         .calculation()
                         .unwrap()
                         .components()
-                        .serialize()
+                        .serialize_tokens(Default::default())
                         .unwrap()
                         .as_css(),
                     "calc(120%)"
@@ -162,9 +171,10 @@ fn custom_interpolation_names_are_symbolic_authored_references() {
 #[test]
 fn one_component_border_color_uses_complete_shared_mix_grammar() {
     let text = "color-mix(red, green, blue)";
-    let supplied = parse_component_values(text).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BorderColor),
+    let supplied = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BorderColor)),
         supplied.clone(),
         CssImportance::Normal,
     )
@@ -178,8 +188,8 @@ fn one_component_border_color_uses_complete_shared_mix_grammar() {
         };
         let colors = value.value();
         assert_eq!(colors.kind(), CssBoxSideKind::Physical);
-        assert_eq!(colors.authored_values().len(), 1);
-        let [top, right, bottom, left] = colors.assigned_values();
+        assert_eq!(colors.authored().len(), 1);
+        let [top, right, bottom, left] = colors.assigned();
         assert_eq!(top.color_mix_value().unwrap().components().len(), 3);
         assert_eq!(top, right);
         assert_eq!(top, bottom);
@@ -193,7 +203,7 @@ fn one_component_border_color_uses_complete_shared_mix_grammar() {
 /// a truncated argument list or a calculation names no single token, so only
 /// the color grammar kind is checked.
 fn rejected(text: &str, responsible: Option<(&str, usize)>) {
-    let report = parse_style_attribute(&format!("color:{text};opacity:.5"));
+    let report = CssParser::default().parse_block_contents(format!("color:{text};opacity:.5"));
     let [diagnostic] = report.diagnostics() else {
         panic!("{text}: one diagnostic: {report:?}")
     };
@@ -215,9 +225,10 @@ fn rejected(text: &str, responsible: Option<(&str, usize)>) {
         report.syntax()[0].known().unwrap().property(),
         CssKnownProperty::Opacity
     );
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
-        parse_component_values(text).unwrap(),
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         CssImportance::Normal,
     );
     match responsible {
@@ -225,10 +236,7 @@ fn rejected(text: &str, responsible: Option<(&str, usize)>) {
             assert_color_value_rejected_at(checked, CssKnownProperty::Color, text, token, at)
         }
         None => assert!(
-            matches!(
-                checked.unwrap_err().kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidColorSyntax(_))
-            ),
+            checked.unwrap_err().code() == Some(CssErrorCode::InvalidColorSyntax),
             "{text}"
         ),
     }
@@ -313,23 +321,28 @@ fn qualified_substitutions_keep_the_whole_mix_pending_and_reentry_strict() {
             let known = declaration.known().unwrap();
             assert!(known.property_value().is_none());
             assert_eq!(known.substitution_dependent().unwrap().as_css(), text);
-            let CssExpansion::Pending(pending) = expand_declaration(&declaration).unwrap() else {
+            let CssExpansion::Pending(pending) = declaration.expand().unwrap() else {
                 panic!("pending mix")
             };
             assert!(pending.source().same_occurrence(&declaration));
             for replacement in ["color-mix(var(--items))", "color-mix(red env(), blue)"] {
-                assert_eq!(
+                assert!(
                     pending
-                        .reenter(parse_component_values(replacement).unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), replacement).unwrap()
+                        )
                         .unwrap_err()
-                        .kind(),
-                    &CssExpansionErrorKind::ResidualSubstitution
+                        .is_residual_substitution()
                 );
             }
             assert!(
                 pending
                     .reenter(
-                        parse_component_values("color-mix(in srgb, red calc(30), blue)").unwrap()
+                        CssComponentValues::parse(
+                            &CssParser::default(),
+                            "color-mix(in srgb, red calc(30), blue)"
+                        )
+                        .unwrap()
                     )
                     .is_err()
             );
@@ -342,10 +355,12 @@ fn pending_mix_reenters_complete_ordinary_grammar_with_original_occurrence() {
         parsed("color", "color-mix(var(--items))"),
         detached_checked_declaration("color", "color-mix(var(--items))", false),
     ] {
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending source")
         };
-        let replacement = parse_component_values("color-mix(red, green, blue)").unwrap();
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), "color-mix(red, green, blue)")
+                .unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("color longhand")

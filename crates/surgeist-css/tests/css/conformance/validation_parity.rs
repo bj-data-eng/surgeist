@@ -1,12 +1,15 @@
-use surgeist_css::{
-    CssDeclarationList, CssMediaConditionKind, CssMediaFeatureQuery, CssMediaQuery, CssParseReport,
-    CssRecoveryAction, CssRule, CssSheet, parse_sheet, parse_style_attribute, validate_sheet,
-    validate_style_attribute,
-};
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery};
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn assert_sheet_parity(source: &str) -> CssParseReport<CssSheet> {
-    let ordinary = parse_sheet(source);
-    let strict = validate_sheet(source);
+    let ordinary = CssParser::default().parse_sheet(source);
+    let strict = CssParser::default()
+        .parse_sheet(source)
+        .into_validation_result();
 
     if ordinary.is_clean() {
         assert_eq!(strict, Ok(ordinary.syntax().clone()), "{source}");
@@ -25,8 +28,10 @@ fn assert_sheet_parity(source: &str) -> CssParseReport<CssSheet> {
 }
 
 fn assert_style_parity(source: &str) -> CssParseReport<CssDeclarationList> {
-    let ordinary = parse_style_attribute(source);
-    let strict = validate_style_attribute(source);
+    let ordinary = CssParser::default().parse_block_contents(source);
+    let strict = CssParser::default()
+        .parse_block_contents(source)
+        .into_validation_result();
 
     if ordinary.is_clean() {
         assert_eq!(strict, Ok(ordinary.syntax().clone()), "{source}");
@@ -57,7 +62,7 @@ fn validation_accepts_opaque_and_signed_media_syntax_and_rejects_malformed_recov
     let CssMediaQuery::Typed(typed) = &rule.query().queries()[0] else {
         panic!("expected typed unknown media query")
     };
-    let CssMediaConditionKind::GeneralEnclosed(enclosed) =
+    let CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(enclosed)) =
         typed.condition().expect("retained condition").kind()
     else {
         panic!("unknown-unit calculation must remain a general enclosure")
@@ -66,7 +71,7 @@ fn validation_accepts_opaque_and_signed_media_syntax_and_rejects_malformed_recov
     assert!(matches!(
         &rule.query().queries()[1],
         CssMediaQuery::Condition(condition)
-            if matches!(condition.kind(), CssMediaConditionKind::Feature(CssMediaFeatureQuery::Width(_)))
+            if matches!(condition.kind(), CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Width(_))))
     ));
 
     let scripting = assert_sheet_parity("@media screen,(scripting: enabled),print {}");
@@ -77,7 +82,7 @@ fn validation_accepts_opaque_and_signed_media_syntax_and_rejects_malformed_recov
     assert!(matches!(
         &rule.query().queries()[1],
         CssMediaQuery::Condition(condition)
-            if matches!(condition.kind(), CssMediaConditionKind::Feature(CssMediaFeatureQuery::Scripting(_)))
+            if matches!(condition.kind(), CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Scripting(_))))
     ));
 
     for source in ["@media screen,layer,print {}", "@media screen,,print {}"] {
@@ -204,17 +209,20 @@ fn validation_namespace_statement_eof_retains_the_same_payload_as_terminated_inp
     };
     assert_eq!(
         diagnostic.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         diagnostic.action(),
         CssRecoveryAction::RetainNonconformingRule
     );
-    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-        panic!("statement termination payload")
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "statement termination payload"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(
@@ -392,9 +400,9 @@ fn validation_page_rules_match_ordinary_retention_and_recovery() {
             .map(|declaration| declaration.known().unwrap().property())
             .collect::<Vec<_>>(),
         [
-            surgeist_css::CssKnownProperty::Color,
-            surgeist_css::CssKnownProperty::MarginTop,
-            surgeist_css::CssKnownProperty::MarginBottom
+            surgeist_css::property::CssKnownProperty::Color,
+            surgeist_css::property::CssKnownProperty::MarginTop,
+            surgeist_css::property::CssKnownProperty::MarginBottom
         ]
     );
 
@@ -412,12 +420,18 @@ fn validation_page_rules_match_ordinary_retention_and_recovery() {
     let [retained] = page.declarations().properties().as_slice() else {
         panic!("only valid negative margin remains")
     };
-    let surgeist_css::CssKnownPropertyValueRef::MarginBottom(value) =
+    let surgeist_css::property::CssKnownPropertyValueRef::MarginBottom(value) =
         retained.known().unwrap().property_value().unwrap()
     else {
         panic!("negative physical margin")
     };
-    assert_eq!(value.value().serialize_specified().unwrap(), "-2cm");
+    assert_eq!(
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "-2cm"
+    );
     assert_eq!(recovered.diagnostics().len(), 3);
     assert!(
         recovered
@@ -485,11 +499,8 @@ fn validation_parity_preserves_structural_and_specialized_depth_diagnostics() {
     style.push_str(&"f(".repeat(257));
     style.push('x');
     style.push_str(&")".repeat(257));
-    let style = assert_style_parity(&style);
-    assert!(
-        style
-            .diagnostics()
-            .iter()
-            .any(|diagnostic| { diagnostic.action() == CssRecoveryAction::StopAtNestingLimit })
-    );
+    let report = assert_style_parity(&style);
+    // Block contents charges the component limits for the whole input.
+    assert!(report.syntax().is_empty());
+    crate::css::support::parse_report::assert_contents_refused(&report, &style, "style depth 257");
 }

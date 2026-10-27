@@ -1,9 +1,12 @@
 //! Domain and arity expectations from CSS Values 4 §10. Type checking does not
 //! evaluate the real-number result or reject deferred arithmetic singularities.
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::NumericFailure as N;
 use crate::css::support::value_assertions::assert_calculation_rejected;
-use surgeist_css::{
-    CssAngleCalculation, CssLengthCalculation, CssLengthPercentageCalculation,
-    CssNumberCalculation, CssPercentageCalculation, parse_component_values,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{
+    CssAngle, CssCalculation, CssLength, CssLengthPercentage, CssNumber, CssPercentage,
 };
 
 #[test]
@@ -31,8 +34,11 @@ fn numeric_functions_enforce_argument_domains_and_arity() {
         "calc(1px / 1px)",
     ] {
         assert!(
-            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap())
-                .is_ok(),
+            CssCalculation::<CssNumber>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default()
+            )
+            .is_ok(),
             "{source}"
         );
     }
@@ -65,7 +71,6 @@ fn numeric_functions_enforce_argument_domains_and_arity() {
         // argument outside the function's accepted types an argument-type
         // failure, and arguments whose types cannot be made consistent are
         // incompatible. The remaining cases admit more than one reading.
-        use surgeist_css::CssNumericConstructionErrorKind as N;
         let kind = match source {
             "min()" | "max()" | "clamp(1, 2)" | "round()" | "mod(1)" | "rem(1, 2, 3)"
             | "abs(1, 2)" | "sign()" | "log(1, 2, 3)" => Some(N::Arity),
@@ -75,7 +80,10 @@ fn numeric_functions_enforce_argument_domains_and_arity() {
             _ => None,
         };
         assert_calculation_rejected(
-            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()),
+            CssCalculation::<CssNumber>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default(),
+            ),
             kind,
         );
     }
@@ -91,8 +99,11 @@ fn inverse_trigonometry_returns_angles_and_checks_argument_types() {
         "atan2(1, 2)",
     ] {
         assert!(
-            CssAngleCalculation::try_from_components(parse_component_values(source).unwrap())
-                .is_ok(),
+            CssCalculation::<CssAngle>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default()
+            )
+            .is_ok(),
             "{source}"
         );
     }
@@ -105,14 +116,16 @@ fn inverse_trigonometry_returns_angles_and_checks_argument_types() {
     ] {
         // Values 4 §10.5: asin/acos/atan take a <number>; atan2 takes two
         // consistent arguments.
-        use surgeist_css::CssNumericConstructionErrorKind as N;
         let kind = match source {
             "atan2(1px, 1s)" => N::IncompatibleTypes,
             "atan2(1)" => N::Arity,
             _ => N::InvalidArgumentType,
         };
         assert_calculation_rejected(
-            CssAngleCalculation::try_from_components(parse_component_values(source).unwrap()),
+            CssCalculation::<CssAngle>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default(),
+            ),
             Some(kind),
         );
     }
@@ -121,27 +134,32 @@ fn inverse_trigonometry_returns_angles_and_checks_argument_types() {
 #[test]
 fn percentage_resolution_depends_on_the_explicit_root_context() {
     for source in ["min(1px, 2%)", "clamp(none, 2%, 3px)", "hypot(3px, 4%)"] {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         assert_calculation_rejected(
-            CssLengthCalculation::try_from_components(values.clone()),
-            Some(surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch),
+            CssCalculation::<CssLength>::try_from_components(values.clone(), Default::default()),
+            Some(NumericFailure::RootDomainMismatch),
         );
         assert!(
-            CssLengthPercentageCalculation::try_from_components(values).is_ok(),
+            CssCalculation::<CssLengthPercentage>::try_from_components(values, Default::default())
+                .is_ok(),
             "{source}"
         );
     }
     for source in ["min(1%, 2%)", "abs(-2%)", "round(2%, 1%)"] {
         assert!(
-            CssPercentageCalculation::try_from_components(parse_component_values(source).unwrap())
-                .is_ok(),
+            CssCalculation::<CssPercentage>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default()
+            )
+            .is_ok(),
             "{source}"
         );
     }
     // Percentages can cancel without requiring a layout basis in a pure root.
     assert!(
-        CssLengthCalculation::try_from_components(
-            parse_component_values("calc(10% / 10% * 1px)").unwrap()
+        CssCalculation::<CssLength>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "calc(10% / 10% * 1px)").unwrap(),
+            Default::default()
         )
         .is_ok()
     );
@@ -156,14 +174,20 @@ fn only_actual_whitespace_satisfies_binary_sum_separators() {
         "calc(-(1))",
     ] {
         assert_calculation_rejected(
-            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()),
-            Some(surgeist_css::CssNumericConstructionErrorKind::MalformedExpression),
+            CssCalculation::<CssNumber>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default(),
+            ),
+            Some(NumericFailure::MalformedExpression),
         );
     }
     for source in ["calc(1\t+\n2)", "calc(1 /*a*/+ /*b*/2)", "calc(-1 + +2)"] {
         assert!(
-            CssNumberCalculation::try_from_components(parse_component_values(source).unwrap())
-                .is_ok(),
+            CssCalculation::<CssNumber>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+                Default::default()
+            )
+            .is_ok(),
             "{source}"
         );
     }

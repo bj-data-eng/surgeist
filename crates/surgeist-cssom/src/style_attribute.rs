@@ -1,7 +1,8 @@
 //! Lossless owner-attribute ingress. CSS owns preprocessing and declaration grammar.
 use crate::{declaration_budget::DeclarationBudget, *};
 use std::{fmt, sync::Arc};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::source::{CssUtf16InputError, CssUtf16InputLimits, CssUtf16Resource};
 
 /// Actual original owner text. UTF8 convenience is encoded without CSS interpretation
 /// and follows the same CSS producer boundary as native UTF16.
@@ -106,10 +107,9 @@ impl CssomBatch {
                 }
                 None => encode_input("", input_limits, &mut poll)?,
             };
-            let report = context.parse_declaration_block_contents_utf16_with_limits(
+            let report = CssParser::new(context, component_limits).parse_block_contents_utf16(
                 original,
                 input_limits,
-                component_limits,
                 poll,
             )?;
             this.prepare_attribute_report(id, report, budget)
@@ -139,25 +139,28 @@ fn encode_input<E>(
     limits: CssUtf16InputLimits,
     poll: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Arc<Vec<u16>>, CssUtf16InputError<E>> {
-    use CssUtf16InputError::{Allocation, CapacityOverflow, Interrupted, Limit};
     let mut count = 0_usize;
     for scalar in text.chars() {
-        poll().map_err(Interrupted)?;
+        poll().map_err(CssUtf16InputError::interrupted)?;
         count = count
             .checked_add(scalar.len_utf16())
-            .ok_or(CapacityOverflow)?;
+            .ok_or_else(CssUtf16InputError::capacity_overflow)?;
         if count > limits.max_input_units {
-            return Err(Limit("input units"));
+            return Err(CssUtf16InputError::limit(CssUtf16Resource::InputUnits));
         }
     }
-    let bytes = count.checked_mul(2).ok_or(CapacityOverflow)?;
+    let bytes = count
+        .checked_mul(2)
+        .ok_or_else(CssUtf16InputError::capacity_overflow)?;
     if bytes > limits.max_retained_bytes {
-        return Err(Limit("retained source bytes"));
+        return Err(CssUtf16InputError::limit(CssUtf16Resource::RetainedBytes));
     }
     let mut units = Vec::new();
-    units.try_reserve_exact(count).map_err(|_| Allocation)?;
+    units
+        .try_reserve_exact(count)
+        .map_err(|_| CssUtf16InputError::allocation())?;
     for scalar in text.chars() {
-        poll().map_err(Interrupted)?;
+        poll().map_err(CssUtf16InputError::interrupted)?;
         let mut encoded = [0; 2];
         units.extend_from_slice(scalar.encode_utf16(&mut encoded));
     }

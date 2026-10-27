@@ -2,16 +2,21 @@
 //! section 2.1 decodes escapes into the identifier token's value exactly once.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#style-container
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#escaping
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::query::container::{
+    CssContainerLeaf, CssContainerStyleFeature, CssContainerStyleFeatureName, CssStyleQueryLeaf,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::CssRule;
 
-fn style_query(authored: &str) -> CssContainerStyleQuery {
+fn style_query(authored: &str) -> CssCondition<CssStyleQueryLeaf> {
     let source = format!("@container style({authored}) {{ .x {{ color:red }} }}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("one retained container rule")
     };
-    let CssContainerConditionKind::Style(query) =
+    let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) =
         rule.prelude().entries()[0].query().unwrap().kind()
     else {
         panic!(
@@ -30,9 +35,9 @@ fn escaped_style_presence_names_retain_the_decoded_identifier() {
         (r"--a\5c b", r"--a\b"),
     ] {
         let query = style_query(authored);
-        let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Boolean(
+        let CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(CssContainerStyleFeature::Boolean(
             CssContainerStyleFeatureName::Custom(name),
-        )) = query.kind()
+        ))) = query.kind()
         else {
             panic!("presence query")
         };
@@ -48,28 +53,34 @@ fn escaped_style_value_names_are_not_tokenized_twice() {
         (r"--a\5c b", r"--a\b"),
     ] {
         let query = style_query(&format!("{authored}: red"));
-        let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain {
+        let CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(CssContainerStyleFeature::Plain {
             name: CssContainerStyleFeatureName::Custom(name),
             value,
-        }) = query.kind()
+        })) = query.kind()
         else {
             panic!("value query")
         };
         assert_eq!(name.as_str(), expected);
-        assert_eq!(value.serialize().unwrap().as_css(), " red");
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            " red"
+        );
     }
 }
 
 #[test]
 fn plain_style_names_preserve_case_and_value() {
     let query = style_query("--Theme: red");
-    let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain {
+    let CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(CssContainerStyleFeature::Plain {
         name: CssContainerStyleFeatureName::Custom(name),
         value,
-    }) = query.kind()
+    })) = query.kind()
     else {
         panic!("value query")
     };
     assert_eq!(name.as_str(), "--Theme");
-    assert_eq!(value.serialize().unwrap().as_css(), " red");
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        " red"
+    );
 }

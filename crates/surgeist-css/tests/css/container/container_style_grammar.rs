@@ -3,24 +3,40 @@
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#style-container
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#typedef-declaration-value
 use crate::css::support::authored_syntax::checked_container_condition as checked;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::query::container::CssContainerLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::CssRule;
 
 fn assert_style(source: &str) {
     let condition = checked(source);
     assert!(
-        matches!(condition.kind(), CssContainerConditionKind::Style(_)),
+        matches!(
+            condition.kind(),
+            CssConditionKind::Leaf(CssContainerLeaf::Style(_))
+        ),
         "recognized authored style query: {source}"
     );
-    assert_eq!(condition.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
 
     let sheet_source = format!("@container {source} {{ .x {{ color: red }} }}");
-    let report = parse_sheet(&sheet_source);
+    let report = CssParser::default().parse_sheet(&sheet_source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("container rule")
     };
     let parsed = rule.prelude().entries()[0].query().unwrap();
-    assert!(matches!(parsed.kind(), CssContainerConditionKind::Style(_)));
+    assert!(matches!(
+        parsed.kind(),
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
+    ));
 }
 
 fn assert_opaque(source: &str) {
@@ -28,19 +44,25 @@ fn assert_opaque(source: &str) {
     assert!(
         matches!(
             condition.kind(),
-            CssContainerConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
         ),
         "unrecognized style enclosure: {source}"
     );
-    assert_eq!(condition.serialize().unwrap().as_css(), source);
-    let report = parse_sheet(&format!("@container {source} {{}}"));
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
+    let report = CssParser::default().parse_sheet(format!("@container {source} {{}}"));
     assert!(report.is_clean());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("retained container with opaque style operand")
     };
     assert!(matches!(
         rule.prelude().entries()[0].query().unwrap().kind(),
-        CssContainerConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
     ));
 }
 
@@ -141,19 +163,29 @@ fn style_value_comparison_exclusions_reach_nested_tokens() {
 
 #[test]
 fn programmatic_style_function_uses_the_same_admission_boundary() {
-    let arguments = CssComponentValues::try_new(vec![
-        CssComponentValue::try_token("color").unwrap(),
-        CssComponentValue::try_token(":").unwrap(),
-        CssComponentValue::try_token("red").unwrap(),
-    ])
+    let arguments = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_token("color").unwrap(),
+            CssComponentValue::try_token(":").unwrap(),
+            CssComponentValue::try_token("red").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
     let function = CssComponentValue::try_function("style", arguments).unwrap();
-    let values = CssComponentValues::try_new(vec![function]).unwrap();
-    let condition = CssContainerCondition::try_from_components(values).unwrap();
+    let values = CssComponentValues::try_new(vec![function], Default::default()).unwrap();
+    let condition =
+        CssCondition::<CssContainerLeaf>::try_from_components(values, Default::default()).unwrap();
     assert!(matches!(
         condition.kind(),
-        CssContainerConditionKind::Style(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
     ));
     assert_eq!(condition.origin(), &CssValueOrigin::Programmatic);
-    assert_eq!(condition.serialize().unwrap().as_css(), "style(color:red)");
+    assert_eq!(
+        condition
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "style(color:red)"
+    );
 }

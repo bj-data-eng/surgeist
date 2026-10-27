@@ -1,26 +1,36 @@
 //! Pure length consumers re-admit authored math in their own percentage context.
 //! Values 4 numeric typing permits percentage units to cancel without a basis.
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::known_property;
 use crate::css::support::value_assertions::{
     assert_calculation_rejected, assert_first_property_rejection,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssCalculation, CssLength, CssLengthPercentage, CssNumeric, CssNumericConstructionError,
+    CssNumericDimension,
+};
 
-fn mixed_calculation(source: &str) -> (CssLengthPercentageCalculation, CssComponentValues) {
-    let components = parse_component_values(source).unwrap();
-    let calculation =
-        CssLengthPercentageCalculation::try_from_components(components.clone()).unwrap();
+fn mixed_calculation(source: &str) -> (CssCalculation<CssLengthPercentage>, CssComponentValues) {
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
+        components.clone(),
+        Default::default(),
+    )
+    .unwrap();
     (calculation, components)
 }
 fn pure(
-    calculation: CssLengthPercentageCalculation,
-) -> Result<CssSpecifiedLength, CssNumericConstructionError> {
-    CssSpecifiedLength::try_from_calculation(CssLengthCalculation::try_from_components(
+    calculation: CssCalculation<CssLengthPercentage>,
+) -> Result<CssNumeric<CssLength>, CssNumericConstructionError> {
+    CssNumeric::<CssLength>::try_from_calculation(CssCalculation::<CssLength>::try_from_components(
         calculation.components().clone(),
+        Default::default(),
     )?)
 }
 fn assert_pure_tree_preserves_components(
-    calculation: &CssLengthCalculation,
+    calculation: &CssCalculation<CssLength>,
     expected: &CssComponentValues,
 ) {
     assert_eq!(calculation.components(), expected);
@@ -55,13 +65,17 @@ fn pure_constructor_readmits_percentage_cancellation_and_preserves_original_comp
 #[test]
 fn pure_constructor_readmits_typed_children_inside_a_public_sum() {
     let (child, components) = mixed_calculation("calc(10% / 10% * 1px)");
-    let sum = CssLengthPercentageCalculation::try_sum(child, []).unwrap();
+    let sum =
+        CssCalculation::<CssLengthPercentage>::try_sum(child, [], Default::default()).unwrap();
     let value = pure(sum).expect("checked sum retains pure cancellation");
     let calculation = value.calculation().unwrap();
     assert_eq!(calculation.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(calculation.position(), None);
     assert_eq!(
-        calculation.serialize().unwrap().as_css(),
+        calculation
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "calc(calc(10% / 10% * 1px))"
     );
     let CssComponentValueRef::Function(outer) = calculation.components().items()[0].view() else {
@@ -90,10 +104,14 @@ fn pure_consumers_reject_uncancelled_percentage_context_even_inside_a_sum() {
         let (value, _) = mixed_calculation(source);
         assert!(pure(value.clone()).is_err(), "{source}");
         assert_calculation_rejected(
-            CssLengthCalculation::try_from_components(value.components().clone()),
-            Some(surgeist_css::CssNumericConstructionErrorKind::RootDomainMismatch),
+            CssCalculation::<CssLength>::try_from_components(
+                value.components().clone(),
+                Default::default(),
+            ),
+            Some(NumericFailure::RootDomainMismatch),
         );
-        let sum = CssLengthPercentageCalculation::try_sum(value, []).unwrap();
+        let sum =
+            CssCalculation::<CssLengthPercentage>::try_sum(value, [], Default::default()).unwrap();
         assert!(pure(sum).is_err(), "{source}");
     }
 }
@@ -108,7 +126,7 @@ fn parsed_border_shadow_and_transform_accept_pure_percentage_cancellation() {
         "transform: translateZ(calc(10% / 10% * 1px))",
         "transform: perspective(calc(10% / 10% * 1px))",
     ] {
-        let report = parse_style_attribute(declaration);
+        let report = CssParser::default().parse_block_contents(declaration);
         assert!(
             report.is_clean(),
             "{declaration}: {:?}",
@@ -127,7 +145,7 @@ fn parsed_pure_consumers_reject_length_percentage_results() {
         "transform: translateZ(calc(1px + 10%))",
         "transform: perspective(calc(1px + 10%))",
     ] {
-        let report = parse_style_attribute(declaration);
+        let report = CssParser::default().parse_block_contents(declaration);
         let (name, _) = declaration.split_once(':').unwrap();
         assert_first_property_rejection(report.diagnostics(), known_property(name));
         assert!(report.syntax().is_empty(), "{declaration}");

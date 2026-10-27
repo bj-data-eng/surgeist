@@ -1,13 +1,22 @@
 //! Shared substitution diagnostics retain genuine missing-argument boundaries.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
+};
+use surgeist_css::declaration::{CssCustomPropertyName, CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::property::{
+    CssKnownProperty, CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget,
+};
 
 #[test]
 fn missing_custom_variable_name_points_to_closing_or_input_end() {
     let name = CssCustomPropertyName::try_new("--x").unwrap();
     for text in ["var()", "var( )", "var(/**/)", "var(", "var( ", "var(/**/"] {
-        let report = parse_property_value_text(
+        let report = CssParser::default().parse_property_value(
             text,
-            CssPropertyNameRef::Custom(&name),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Custom(&name)),
             CssImportance::Normal,
         );
         assert!(report.syntax().is_none(), "{text}");
@@ -33,41 +42,46 @@ fn missing_custom_variable_name_points_to_closing_or_input_end() {
 fn checked_missing_variable_name_keeps_original_closing_origin() {
     let name = CssCustomPropertyName::try_new("--x").unwrap();
     for text in ["var()", "var( )", "var(/**/)", "var(", "var( ", "var(/**/"] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let CssComponentValueRef::Function(function) = values.items()[0].view() else {
             panic!("var function")
         };
         let expected = CssSerializedOrigin::Token(function.closing_origin().clone());
-        let error = parse_property_value(
-            CssPropertyNameRef::Custom(&name),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
             values,
             CssImportance::Normal,
         )
         .unwrap_err();
         assert!(
-            matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ),
+            error.code() == Some(CssErrorCode::UnexpectedEnd),
             "{text}: {error:?}"
         );
-        assert_eq!(error.origin(), &expected, "{text}");
+        assert_eq!(error.origin(), expected, "{text}");
     }
     for argument in [" ", "/**/"] {
-        let values = CssComponentValues::try_new(vec![
-            CssComponentValue::try_function("var", parse_component_values(argument).unwrap())
+        let values = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_function(
+                    "var",
+                    CssComponentValues::parse(&CssParser::default(), argument).unwrap(),
+                )
                 .unwrap(),
-        ])
+            ],
+            Default::default(),
+        )
         .unwrap();
-        let error = parse_property_value(
-            CssPropertyNameRef::Custom(&name),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
             values,
             CssImportance::Normal,
         )
         .unwrap_err();
         assert_eq!(
             error.origin(),
-            &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
+            CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
         );
     }
 }
@@ -75,42 +89,52 @@ fn checked_missing_variable_name_keeps_original_closing_origin() {
 #[test]
 fn invalid_known_variable_name_preserves_the_responsible_identifier() {
     let text = "display:var(x)";
-    let report = parse_style_attribute(text);
+    let report = CssParser::default().parse_block_contents(text);
     let error = report.diagnostics()[0].error();
     assert_eq!(error.position().byte_offset().value(), 12);
-    let ErrorKind::InvalidPropertyValue(detail) = error.kind() else {
-        panic!("property context")
-    };
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "property context"
+    );
     let token = detail.encountered().unwrap();
     assert_eq!(token.kind(), CssTokenKind::Ident);
     assert_eq!(token.authored(), "x");
 
-    let components = parse_component_values("var(x)").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "var(x)").unwrap();
     let CssComponentValueRef::Function(function) = components.items()[0].view() else {
         panic!("var")
     };
     let expected = CssSerializedOrigin::Token(function.values().items()[0].origin().clone());
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Display),
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
         components,
         CssImportance::Normal,
     )
     .unwrap_err();
-    assert_eq!(error.origin(), &expected);
+    assert_eq!(error.origin(), expected);
 }
 
 #[test]
 fn nested_custom_bad_string_preserves_lexical_category_and_neighbor_recovery() {
-    let report = parse_style_attribute("--x:f(\"x\n);display:block");
+    let report = CssParser::default().parse_block_contents("--x:f(\"x\n);display:block");
     assert_eq!(report.diagnostics().len(), 1);
     let diagnostic = &report.diagnostics()[0];
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedToken);
     assert_eq!(diagnostic.error().position().byte_offset().value(), 6);
-    let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-        panic!("lexical category")
-    };
-    assert_eq!(detail.encountered().kind(), CssTokenKind::BadString);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnexpectedToken,
+        "lexical category"
+    );
+    assert_eq!(
+        detail.encountered().unwrap().kind(),
+        CssTokenKind::BadString
+    );
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),
@@ -127,9 +151,9 @@ fn nonempty_custom_variable_mismatches_keep_their_categories() {
         ("var(--x bad)", CssErrorCode::UnexpectedToken, 8),
         ("var(--x,;)", CssErrorCode::UnexpectedToken, 8),
     ] {
-        let report = parse_property_value_text(
+        let report = CssParser::default().parse_property_value(
             text,
-            CssPropertyNameRef::Custom(&name),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Custom(&name)),
             CssImportance::Normal,
         );
         let diagnostic = report

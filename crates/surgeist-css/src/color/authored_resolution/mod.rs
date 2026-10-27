@@ -1,23 +1,15 @@
 //! Checked authored operands over the canonical CSS numerical resolver.
 
-mod input;
-pub(super) mod lowering;
-pub(super) mod numeric;
-mod path;
-mod position;
-mod scalar;
-pub(super) mod site;
-mod spelling;
-pub use path::{
-    CssColorComponentPath, CssColorPathBuffer, CssColorPathCapacityObservation, CssColorPathHandle,
-    CssColorPathInspectionLayout, CssColorPathReservationLayout, CssColorPathReservationStatus,
-    CssColorPathStep,
-};
-pub(crate) use spelling::authored_hue_degrees;
+pub(crate) mod input;
+pub(crate) mod lowering;
+pub(crate) mod numeric;
+pub(crate) mod path;
+pub(crate) mod position;
+pub(crate) mod scalar;
+pub(crate) mod site;
+pub(crate) mod spelling;
 
-mod controlled;
-pub use controlled::*;
-mod ordinary;
-pub use ordinary::*;
-mod numerical;
-pub use numerical::*;
+pub(crate) mod controlled;
+pub(crate) mod ordinary;
+#[cfg(test)]
+pub(crate) mod tests;

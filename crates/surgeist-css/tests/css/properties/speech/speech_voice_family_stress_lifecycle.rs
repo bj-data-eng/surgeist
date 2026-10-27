@@ -12,7 +12,16 @@ use crate::css::support::named_property::longhand_contributions as expanded;
 use crate::css::support::{
     important_speech_declaration as declaration, known_property as property,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
 
 const PROPERTIES: [&str; 2] = ["voice-family", "voice-stress"];
 
@@ -22,9 +31,10 @@ fn assert_admitted(name: &str, value: &str) {
     assert!(known.property_value().is_some());
     assert!(known.global().is_none());
     assert!(known.substitution_dependent().is_none());
-    let components = parse_component_values(value).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(property(name)),
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
         components.clone(),
         CssImportance::Important,
     )
@@ -35,11 +45,25 @@ fn assert_admitted(name: &str, value: &str) {
     assert_eq!(checked.importance(), CssImportance::Important);
     assert!(checked.position().is_none());
     assert_eq!(
-        source.value_components().serialize().unwrap().as_css(),
+        source
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         value
     );
-    assert!(validate_style_attribute(&format!("{name}:{value}")).is_ok());
-    assert!(validate_sheet(&format!(".speech{{{name}:{value}}}")).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(format!("{name}:{value}"))
+            .into_validation_result()
+            .is_ok()
+    );
+    assert!(
+        CssParser::default()
+            .parse_sheet(format!(".speech{{{name}:{value}}}"))
+            .into_validation_result()
+            .is_ok()
+    );
     let values = expanded(&source);
     let [item] = values.items() else {
         panic!("one terminal contribution")
@@ -152,7 +176,7 @@ fn voice_properties_decode_keyword_case_escapes_and_preserve_authored_tokens() {
             "Mike/**/Smith, 'preserve', NEUTRAL",
         ),
     ] {
-        let report = parse_style_attribute(&format!("{name}:{value}!important"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{value}!important"));
         assert!(
             report.is_clean(),
             "{name}:{value}: {:?}",
@@ -166,21 +190,27 @@ fn voice_properties_decode_keyword_case_escapes_and_preserve_authored_tokens() {
         let components = source.value_components();
         assert_eq!(
             components
-                .serialize_with_limit(value.len())
+                .serialize_tokens(crate::css::support::byte_limits(value.len()))
                 .unwrap()
                 .as_css(),
             value
         );
+        assert!(
+            components
+                .serialize_tokens(crate::css::support::byte_limits(value.len() - 1))
+                .unwrap_err()
+                .is_byte_limit()
+        );
         assert_eq!(
             components
-                .serialize_with_limit(value.len() - 1)
-                .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::ByteLimit
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            value
         );
-        assert_eq!(components.serialize().unwrap().as_css(), value);
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(property(canonical)),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property(canonical))),
             components.clone(),
             CssImportance::Important,
         )
@@ -282,7 +312,7 @@ fn invalid_voice_grammars_drop_one_complete_declaration_without_losing_valid_sib
     ] {
         for value in invalid {
             let source = format!("color:red;{name}:{value};height:1px");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.syntax().len(), 2, "{source}");
             assert_eq!(
                 report.syntax()[0].known().unwrap().property(),
@@ -307,13 +337,18 @@ fn invalid_voice_grammars_drop_one_complete_declaration_without_losing_valid_sib
                 "{source}"
             );
             assert_eq!(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
             assert!(
-                parse_property_value(
-                    CssPropertyNameRef::Known(property(name)),
-                    parse_component_values(value).unwrap(),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
+                    CssComponentValues::parse(&CssParser::default(), value).unwrap(),
                     CssImportance::Normal
                 )
                 .is_err(),
@@ -343,13 +378,14 @@ fn voice_substitution_reentry_checks_the_original_grammar_atomically_and_keeps_o
                 .as_css(),
             "var(--voice)"
         );
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("symbolic voice property")
         };
         for text in [valid, "inherit"] {
-            let replacement = parse_component_values(text).unwrap();
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(property(name)),
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
                 replacement.clone(),
                 CssImportance::Important,
             )
@@ -375,23 +411,22 @@ fn voice_substitution_reentry_checks_the_original_grammar_atomically_and_keeps_o
             "normal;color:red",
         ] {
             let error = handle
-                .reenter(parse_component_values(text).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                 .unwrap_err();
             assert!(
-                matches!(error.kind(), CssExpansionErrorKind::InvalidReplacement(_)),
+                error.replacement_error().is_some(),
                 "{name}:{text}: {error:?}"
             );
         }
-        assert_eq!(
+        assert!(
             handle
-                .reenter(parse_component_values("var(--again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         assert!(
             handle
-                .reenter(parse_component_values(valid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), valid).unwrap())
                 .is_ok()
         );
     }
@@ -402,7 +437,7 @@ fn invalid_voice_variant_diagnostic_keeps_exact_token_position_and_recovery_span
     let prefix = "color:red;/*😀*/";
     let unit = "voice-family:young male 0;";
     let source = format!("{prefix}{unit}height:1px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.syntax().len(), 2);
     let [diagnostic] = report.diagnostics() else {
         panic!("one nonpositive variant diagnostic")
@@ -422,7 +457,7 @@ fn invalid_voice_variant_diagnostic_keeps_exact_token_position_and_recovery_span
         prefix.len() + unit.len()
     );
     let sheet_source = format!(".a{{{source}}}");
-    let sheet = parse_sheet(&sheet_source);
+    let sheet = CssParser::default().parse_sheet(&sheet_source);
     let [CssRule::Style(rule)] = sheet.syntax().rules() else {
         panic!("retained rule")
     };
@@ -437,7 +472,11 @@ fn invalid_voice_variant_diagnostic_keeps_exact_token_position_and_recovery_span
         source.find("0;").unwrap() + 3
     );
     assert_eq!(
-        validate_sheet(&sheet_source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(&sheet_source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         sheet.diagnostics()
     );
 }

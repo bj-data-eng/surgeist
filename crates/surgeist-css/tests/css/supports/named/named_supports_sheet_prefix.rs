@@ -3,13 +3,14 @@
 //! reopen imports after a namespace or imports/namespaces after a body rule.
 //! https://drafts.csswg.org/css-conditional-5/#supports-condition-rule
 
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNamespacePrefix, CssRecoveryAction, CssRule,
-    CssRuleConstructionErrorKind, CssSheet, CssValueOrigin, parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::{CssNamespacePrefix, CssRule, CssSheet};
+use surgeist_css::selector::CssNamespaceContext;
 
 fn clean_rules(source: &str) -> Vec<CssRule> {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report.syntax().rules().to_vec()
 }
@@ -49,7 +50,7 @@ fn parser_keeps_interleaved_definitions_imports_namespaces_and_real_origins() {
         "@namespace m 'urn:m';",
         "n|item, m|item {}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert!(matches!(
         report.syntax().rules(),
@@ -120,7 +121,7 @@ fn checked_sheet_keeps_named_definitions_transparent_between_imports_and_namespa
 #[test]
 fn named_definition_does_not_reopen_imports_after_a_namespace() {
     let source = "@namespace n 'urn:n';@supports-condition --x{}@import 'late.css';n|item {}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [
@@ -146,10 +147,7 @@ fn named_definition_does_not_reopen_imports_after_a_namespace() {
     let position = import.position();
     rules.extend(late);
     let error = CssSheet::try_from_rules(rules).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssRuleConstructionErrorKind::InvalidPreludeOrder
-    );
+    assert!(error.is_invalid_prelude_order(), "{error:?}");
     assert_eq!(error.path(), &[2]);
     assert_eq!(error.position(), position);
 }
@@ -159,7 +157,7 @@ fn named_definition_does_not_reopen_imports_or_namespaces_after_ordinary_body() 
     for late in ["@import 'late.css';", "@namespace late 'urn:late';"] {
         let prefix = ".body{}@supports-condition --x{}";
         let source = format!("{prefix}{late}.after{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(matches!(
             report.syntax().rules(),
             [
@@ -179,10 +177,7 @@ fn named_definition_does_not_reopen_imports_or_namespaces_after_ordinary_body() 
         let mut rules = clean_rules(prefix);
         rules.extend(clean_rules(late));
         let error = CssSheet::try_from_rules(rules).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssRuleConstructionErrorKind::InvalidPreludeOrder
-        );
+        assert!(error.is_invalid_prelude_order(), "{error:?}");
         assert_eq!(error.path(), &[2]);
     }
 }
@@ -193,9 +188,6 @@ fn named_prefix_preserves_absent_namespace_prefix_rejection() {
     let body = clean_rules("@namespace m 'urn:m';m|item {}");
     rules.push(body[1].clone());
     let error = CssSheet::try_from_rules(rules).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssRuleConstructionErrorKind::NamespaceMismatch
-    );
+    assert!(error.is_namespace_mismatch(), "{error:?}");
     assert_eq!(error.path(), &[2]);
 }

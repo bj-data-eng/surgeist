@@ -1,14 +1,32 @@
 //! `@font-face` (CSS Fonts 4) descriptors, sources and numeric ranges through
 //! the public stylesheet parser and constructors.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::numeric::{CssAngle, CssNonNegative, CssNumber, CssNumeric, CssPercentage};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontDisplay, CssFontFaceDescriptor,
+    CssFontFaceDescriptorKind, CssFontFaceDescriptorValue, CssFontFaceDescriptors,
+    CssFontFaceFamily, CssFontFaceRule, CssFontFaceSource, CssFontFaceSourceList,
+    CssFontFaceUrlSource, CssFontFormat, CssFontFormatHint, CssFontLocalName, CssFontTechHint,
+    CssUnicodeRange, CssUnicodeRangeList,
+};
+use surgeist_css::values::font::{
+    CssAbsoluteFontWeight, CssFontFaceObliqueRange, CssFontFaceStyle, CssFontFaceWeight,
+    CssFontFaceWidth, CssFontStyleKeyword, CssFontWeightRange, CssFontWidth, CssFontWidthKeyword,
+    CssObliqueAngleRange,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
 
-fn oblique_angle(spelling: &str) -> CssFontObliqueAngle {
-    CssFontObliqueAngle::try_from_component(CssComponentValue::try_token(spelling).unwrap())
-        .expect("valid exact oblique angle")
+fn oblique_angle(spelling: &str) -> CssNumeric<CssAngle, CssObliqueAngleRange> {
+    CssNumeric::<CssAngle, CssObliqueAngleRange>::try_from_component(
+        CssComponentValue::try_token(spelling).unwrap(),
+    )
+    .expect("valid exact oblique angle")
 }
 
 fn font_face_rule(rule: &CssRule) -> &CssFontFaceRule {
@@ -29,15 +47,23 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
     assert!(empty.effective(CssFontFaceDescriptorKind::Src).is_none());
     assert_eq!(empty.occurrences().len(), 0);
     assert_eq!(
-        CssFontFaceUrlSource::new(surgeist_css::CssUrl::new(""), None, Vec::new())
-            .url()
-            .as_str(),
+        CssFontFaceUrlSource::new(
+            surgeist_css::values::common::CssUrl::new(""),
+            None,
+            Vec::new()
+        )
+        .url()
+        .as_str(),
         ""
     );
     assert_eq!(
-        CssFontFaceUrlSource::new(surgeist_css::CssUrl::new("   "), None, Vec::new())
-            .url()
-            .as_str(),
+        CssFontFaceUrlSource::new(
+            surgeist_css::values::common::CssUrl::new("   "),
+            None,
+            Vec::new()
+        )
+        .url()
+        .as_str(),
         "   "
     );
 
@@ -88,13 +114,13 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
         CssFontFaceDescriptor::new(
             CssFontFaceDescriptorValue::FontWidth(CssFontFaceWidth::Range {
                 start: CssFontWidth::Percentage(
-                    CssSpecifiedNonNegativePercentage::try_from_component(
+                    CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
                         CssComponentValue::try_token("75%").unwrap(),
                     )
                     .unwrap(),
                 ),
                 end: Some(CssFontWidth::Percentage(
-                    CssSpecifiedNonNegativePercentage::try_from_component(
+                    CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
                         CssComponentValue::try_token("125%").unwrap(),
                     )
                     .unwrap(),
@@ -118,7 +144,7 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
     assert_eq!(face_value!(descriptors, Src), &src);
     assert_eq!(
         face_value!(descriptors, FontWeight)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "400 700"
     );
@@ -130,7 +156,7 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
         face_value!(descriptors, FontWidth)
             .end()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "125%"
     );
@@ -153,8 +179,8 @@ fn font_face_names_and_urls_preserve_empty_and_whitespace_authored_strings() {
     );
     assert_eq!(
         CssFontFaceUrlSource::new(
-            surgeist_css::CssUrl::new("fonts/avenir.woff2"),
-            Some(surgeist_css::CssFontFormat::Keyword(
+            surgeist_css::values::common::CssUrl::new("fonts/avenir.woff2"),
+            Some(surgeist_css::rule::font_face::CssFontFormat::Keyword(
                 CssFontFormatHint::Woff2
             )),
             vec![CssFontTechHint::Variations]
@@ -168,9 +194,13 @@ fn font_face_names_and_urls_preserve_empty_and_whitespace_authored_strings() {
         assert_eq!(CssFontFaceFamily::try_new(value).unwrap().as_str(), value);
         assert_eq!(CssFontLocalName::try_new(value).unwrap().as_str(), value);
         assert_eq!(
-            CssFontFaceUrlSource::new(surgeist_css::CssUrl::new(value), None, Vec::new())
-                .url()
-                .as_str(),
+            CssFontFaceUrlSource::new(
+                surgeist_css::values::common::CssUrl::new(value),
+                None,
+                Vec::new()
+            )
+            .url()
+            .as_str(),
             value
         );
     }
@@ -182,8 +212,8 @@ fn font_face_source_and_unicode_lists_reject_empty_values() {
     assert_eq!(CssUnicodeRangeList::try_new(Vec::new()), None);
 
     let url = CssFontFaceUrlSource::new(
-        surgeist_css::CssUrl::new("fonts/avenir.woff2"),
-        Some(surgeist_css::CssFontFormat::Keyword(
+        surgeist_css::values::common::CssUrl::new("fonts/avenir.woff2"),
+        Some(surgeist_css::rule::font_face::CssFontFormat::Keyword(
             CssFontFormatHint::Woff2,
         )),
         vec![CssFontTechHint::ColorCOLRv1],
@@ -206,11 +236,16 @@ fn font_face_source_and_unicode_lists_reject_empty_values() {
 #[test]
 fn font_face_numeric_descriptors_enforce_invariants() {
     for valid in ["1", "400", "1000"] {
-        assert_eq!(weight_number(valid).serialize_specified().unwrap(), valid);
+        assert_eq!(
+            weight_number(valid)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            valid
+        );
     }
     for invalid in ["0", "1001", "0.999", "1000.001"] {
         assert!(
-            CssFontWeightNumber::try_from_component(
+            CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
                 CssComponentValue::try_number(invalid).unwrap()
             )
             .is_err()
@@ -221,19 +256,19 @@ fn font_face_numeric_descriptors_enforce_invariants() {
             start: CssAbsoluteFontWeight::Number(weight_number("700")),
             end: Some(CssAbsoluteFontWeight::Number(weight_number("400"))),
         }
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "700 400"
     );
 
     assert!(
-        CssSpecifiedNonNegativePercentage::try_from_component(
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("0%").unwrap()
         )
         .is_ok()
     );
     assert!(
-        CssSpecifiedNonNegativePercentage::try_from_component(
+        CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("-0.1%").unwrap()
         )
         .is_err()
@@ -243,21 +278,35 @@ fn font_face_numeric_descriptors_enforce_invariants() {
         end: Some(CssFontWidth::Keyword(CssFontWidthKeyword::Condensed)),
     };
     assert_eq!(
-        descending_width.serialize_specified().unwrap(),
+        descending_width
+            .serialize_specified(Default::default())
+            .unwrap(),
         "expanded condensed"
     );
 
     let descending =
         CssFontFaceObliqueRange::new(oblique_angle("90deg"), Some(oblique_angle("-90deg")));
-    assert_eq!(descending.start().serialize_specified().unwrap(), "90deg");
     assert_eq!(
-        descending.end().unwrap().serialize_specified().unwrap(),
+        descending
+            .start()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "90deg"
+    );
+    assert_eq!(
+        descending
+            .end()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "-90deg"
     );
     for invalid in ["-90.1deg", "90.1deg"] {
         assert!(
-            CssFontObliqueAngle::try_from_component(CssComponentValue::try_token(invalid).unwrap())
-                .is_err()
+            CssNumeric::<CssAngle, CssObliqueAngleRange>::try_from_component(
+                CssComponentValue::try_token(invalid).unwrap()
+            )
+            .is_err()
         );
     }
 
@@ -271,8 +320,9 @@ fn font_face_numeric_descriptors_enforce_invariants() {
 
 #[test]
 fn font_face_rule_parser_accepts_descriptor_block() {
-    let sheet = parse_sheet(
-        r#"@font-face {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"@font-face {
             font-family: "Inter";
             src: url("inter.woff2") format("woff2");
             font-weight: 400 700;
@@ -280,8 +330,8 @@ fn font_face_rule_parser_accepts_descriptor_block() {
             font-display: swap;
             unicode-range: U+0000-00FF, U+0100-017F;
         }"#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one font-face rule");
     };
@@ -299,7 +349,7 @@ fn font_face_rule_parser_accepts_descriptor_block() {
     assert!(source.tech().is_empty());
     assert_eq!(
         face_value!(descriptors, FontWeight)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "400 700"
     );
@@ -322,12 +372,10 @@ fn font_face_rule_parser_accepts_descriptor_block() {
 
 #[test]
 fn font_face_rule_parser_accepts_source_list_forms() {
-    let sheet = parse_sheet(
-        r#"@font-face {
+    let sheet = CssParser::default().parse_sheet(r#"@font-face {
             font-family: Avenir Next;
             src: local("Inter"), url("inter.woff2") format("woff2"), url("inter-var.woff2") tech(variations);
-        }"#,
-    )
+        }"#)
     .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one font-face rule");
@@ -360,15 +408,16 @@ fn font_face_rule_parser_accepts_source_list_forms() {
 
 #[test]
 fn font_face_rule_parser_accepts_strict_numeric_ranges() {
-    let sheet = parse_sheet(
-        r#"@font-face {
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"@font-face {
             font-family: Inter;
             src: url(inter.woff2);
             font-style: oblique -10deg 20deg;
             font-stretch: 75% 125%;
         }"#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
     let [rule] = sheet.rules() else {
         panic!("expected one font-face rule");
     };
@@ -380,16 +429,26 @@ fn font_face_rule_parser_accepts_strict_numeric_ranges() {
     else {
         panic!("expected oblique range");
     };
-    assert_eq!(oblique.start().serialize_specified().unwrap(), "-10deg");
     assert_eq!(
-        oblique.end().unwrap().serialize_specified().unwrap(),
+        oblique
+            .start()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "-10deg"
+    );
+    assert_eq!(
+        oblique
+            .end()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "20deg"
     );
     assert_eq!(
         face_value!(descriptors, FontWidth)
             .start()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "75%"
     );
@@ -397,7 +456,7 @@ fn font_face_rule_parser_accepts_strict_numeric_ranges() {
         face_value!(descriptors, FontWidth)
             .end()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "125%"
     );

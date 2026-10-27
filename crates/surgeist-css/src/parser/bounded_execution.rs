@@ -5,19 +5,20 @@
 //! the 256-level structural contract never depends on the caller's stack size.
 //! When that thread cannot be started (resource pressure, or a target without
 //! threads), deep recursion never falls back to the caller's stack and never
-//! panics: the input is refused with a typed `NestingLimit` outcome whose limit
-//! is the depth trusted on the caller's stack, located at the first opening
-//! beyond it. Refused syntax is empty, `None` or the front door's documented
+//! panics: the input is refused with a typed `ParserUnavailable` outcome whose
+//! limit is the depth trusted on the caller's stack, located at the first
+//! opening beyond it (#1277). Refused syntax is empty, `None` or the front door's documented
 //! replacement. The refusal is a resource failure for every consumer; a front
 //! door may still append its tokenizer EOF and escape diagnostics after it.
 //! Media construction and serialization, whose depth is a model walk rather
 //! than source nesting, share the same thread policy through [`media`].
 
 use super::recovery;
-use crate::{
-    CssComponentValue, CssComponentValueError, CssComponentValueErrorKind, CssParseReport,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssSourcePosition, CssSourceSpan, CssValueOrigin,
-};
+use crate::CssParseReport;
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{CssComponentValue, CssComponentValueError, CssValueOrigin};
+use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
+use crate::source::{CssSourcePosition, CssSourceSpan};
 
 /// The parser thread's stack, sized for 256 levels of the largest recursive frames.
 const PARSER_STACK_BYTES: usize = 16 * 1024 * 1024;
@@ -29,7 +30,7 @@ const REFUSED_PRODUCTION: &str = "css.block";
 /// Recursion frame classes with their own trusted caller-stack depth.
 #[derive(Clone, Copy)]
 pub(super) enum StackProfile {
-    /// Stylesheet and style-attribute rule/declaration-list recursion.
+    /// Stylesheet rule and declaration recursion.
     Structural,
     /// Fragment front doors and checked component grammars. Recursive value
     /// and selector grammar can have larger frames than structural rule
@@ -99,7 +100,7 @@ pub(super) fn report<T: Send>(
 }
 
 /// Parses checked components nested `depth` levels deep, refusing deep input
-/// with a component nesting-limit error when the parser thread is unavailable.
+/// with a component `ParserUnavailable` error when the parser thread is unavailable.
 pub(super) fn components<T: Send, E: Send>(
     components: &[CssComponentValue],
     depth: u32,
@@ -108,7 +109,7 @@ pub(super) fn components<T: Send, E: Send>(
 ) -> Result<T, E> {
     execute(StackProfile::Fragment, depth, parse).unwrap_or_else(|unavailable| {
         Err(refused(CssComponentValueError::new(
-            CssComponentValueErrorKind::NestingLimit,
+            CssComponentValueErrorKind::ParserUnavailable,
             unavailable.responsible_component(components),
         )))
     })
@@ -127,15 +128,18 @@ pub(crate) fn run_deep<T: Send>(
 }
 
 /// Media construction or serialization whose caller measured its model as
-/// deep. Without the parser thread the operation fails with the API's
-/// existing component `NestingLimit` error at `origin`.
+/// deep. Without the parser thread the operation fails with a component
+/// `ParserUnavailable` error at `origin`.
 pub(crate) fn media<T: Send, E: Send + From<CssComponentValueError>>(
     deep: bool,
     origin: impl FnOnce() -> CssValueOrigin,
     action: impl FnOnce() -> Result<T, E> + Send,
 ) -> Result<T, E> {
     run_deep(deep, action).unwrap_or_else(|_| {
-        Err(CssComponentValueError::new(CssComponentValueErrorKind::NestingLimit, origin()).into())
+        Err(
+            CssComponentValueError::new(CssComponentValueErrorKind::ParserUnavailable, origin())
+                .into(),
+        )
     })
 }
 
@@ -157,9 +161,14 @@ impl ParserThreadUnavailable {
 
     /// The refusal diagnostic located at the byte offset of the deep construct.
     pub(crate) fn diagnostic_at(&self, source: &str, opening: usize) -> CssRecoveryDiagnostic {
-        let error = crate::error::from_parse_error(
+        let error = crate::diagnostic::error::from_parse_error(
             source,
-            crate::error::nesting_limit(source, opening, self.direct_depth, REFUSED_PRODUCTION),
+            crate::diagnostic::error::parser_unavailable(
+                source,
+                opening,
+                self.direct_depth,
+                REFUSED_PRODUCTION,
+            ),
         );
         let span = CssSourceSpan::new(
             CssSourcePosition::from_byte_offset_in(source, 0),
@@ -235,16 +244,18 @@ fn with_parser_thread_unavailable<R>(action: impl FnOnce() -> R) -> R {
 mod tests {
     //! The crate's structural contract retains up to 256 nested levels. Input
     //! deeper than the caller-stack depth needs the larger parser stack; when
-    //! that thread cannot start, the parse is refused with a typed nesting
-    //! limit at the first opening the caller's stack is not trusted with.
+    //! that thread cannot start, the parse is refused with a typed
+    //! `ParserUnavailable` outcome at the first opening the caller's stack is
+    //! not trusted with (#1277).
     use super::with_parser_thread_unavailable;
-    use crate::{
-        CssComponentValueErrorKind, CssImportance, CssKnownProperty, CssMediaQuery,
-        CssPropertyNameRef, CssPropertyValueErrorKind, CssRecoveryAction, CssRecoveryDiagnostic,
-        CssSerializedOrigin, CssValueOrigin, ErrorKind,
-    };
+    use crate::component::values::CssComponentValueErrorKind;
+    use crate::component::{CssSerializedOrigin, CssValueOrigin};
+    use crate::declaration::CssImportance;
+    use crate::diagnostic::{CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+    use crate::property::{CssKnownProperty, CssPropertyNameRef};
+    use crate::query::media::CssMediaQuery;
 
-    /// Structural sheet and style-attribute recursion runs directly to 128 levels.
+    /// Structural sheet recursion runs directly to 128 levels.
     const STRUCTURAL_DIRECT_DEPTH: u32 = 128;
     /// Fragment value/selector recursion runs directly below 64 levels.
     const FRAGMENT_DIRECT_DEPTH: u32 = 63;
@@ -258,12 +269,20 @@ mod tests {
         let [diagnostic] = diagnostics else {
             panic!("one refusal diagnostic: {diagnostics:?}")
         };
-        let ErrorKind::NestingLimit(error) = diagnostic.error().kind() else {
-            panic!("typed nesting refusal: {diagnostic:?}")
-        };
-        assert_eq!(error.limit(), limit);
+        let error = diagnostic.error();
+        assert_eq!(
+            error.code(),
+            CssErrorCode::ParserUnavailable,
+            "{diagnostic:?}"
+        );
+        assert_eq!(error.nesting_limit(), Some(limit));
+        assert_eq!(
+            error.production().map(|value| value.as_str()),
+            Some("css.block")
+        );
+        assert!(error.is_resource_refusal());
         assert_eq!(diagnostic.action(), CssRecoveryAction::StopAtNestingLimit);
-        assert_eq!(diagnostic.error().position().byte_offset().value(), opening);
+        assert_eq!(error.position().byte_offset().value(), opening);
         assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
         assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
     }
@@ -275,21 +294,102 @@ mod tests {
     #[test]
     fn deep_sheet_is_refused_typed_when_the_parser_thread_is_unavailable() {
         let source = nested_rules(150);
-        let report = with_parser_thread_unavailable(|| crate::parse_sheet(&source));
+        let report =
+            with_parser_thread_unavailable(|| crate::CssParser::default().parse_sheet(&source));
         assert!(report.syntax().rules().is_empty());
         // `.a{` repeats every three bytes; the brace with 128 enclosing blocks
         // is the 129th, at 3 * 128 + 2.
         assert_refusal(report.diagnostics(), &source, STRUCTURAL_DIRECT_DEPTH, 386);
 
-        let available = crate::parse_sheet(&source);
+        let available = crate::CssParser::default().parse_sheet(&source);
         assert!(available.is_clean(), "{:?}", available.diagnostics());
         assert_eq!(available.syntax().rules().len(), 1);
+    }
+
+    /// #1277: an unavailable parser thread is a refusal of its own, so its
+    /// diagnostic code differs from the 256-level structural nesting limit
+    /// that the same input reaches when it is genuinely too deep.
+    #[test]
+    fn parser_thread_refusal_is_not_reported_as_the_nesting_limit() {
+        let refused = with_parser_thread_unavailable(|| {
+            crate::CssParser::default().parse_sheet(nested_rules(150))
+        });
+        let excessive = crate::CssParser::default().parse_sheet(nested_rules(300));
+        let nesting = excessive
+            .diagnostics()
+            .iter()
+            .find(|diagnostic| diagnostic.action() == CssRecoveryAction::StopAtNestingLimit)
+            .expect("300 levels exceed the structural nesting limit");
+        let [refusal] = refused.diagnostics() else {
+            panic!("one refusal diagnostic: {:?}", refused.diagnostics())
+        };
+        assert_eq!(refusal.action(), CssRecoveryAction::StopAtNestingLimit);
+        assert_ne!(refusal.error().code(), nesting.error().code());
+        // Both remain resource refusals, so publishing consumers abort on both.
+        assert_eq!(refusal.error().code(), CssErrorCode::ParserUnavailable);
+        assert_eq!(nesting.error().code(), CssErrorCode::NestingLimit);
+        assert!(refusal.error().is_resource_refusal());
+        assert!(nesting.error().is_resource_refusal());
+    }
+
+    /// #1277 at the component level: the refusal of deep checked components
+    /// differs from a component nesting limit set by the caller's limits.
+    #[test]
+    fn component_parser_thread_refusal_is_not_reported_as_the_nesting_limit() {
+        let source = format!("{}color{}", "(".repeat(70), ")".repeat(70));
+        let components = crate::component::values::parse_component_values(&source).unwrap();
+        let refused = with_parser_thread_unavailable(|| {
+            CssMediaQuery::try_from_components(components.clone(), Default::default())
+        })
+        .expect_err("refused without the parser thread");
+        let refused = refused
+            .component_error()
+            .expect("component refusal")
+            .clone();
+        let limited = crate::component::values::parse_component_values_with_limits(
+            &source,
+            crate::component::CssComponentValueLimits::try_new(1, usize::MAX, usize::MAX).unwrap(),
+        )
+        .expect_err("the caller's depth limit refuses the nesting");
+        assert_eq!(limited.kind(), CssComponentValueErrorKind::NestingLimit);
+        assert_ne!(refused.kind(), limited.kind());
+        // Both remain resource limits, so publishing consumers abort on both.
+        assert!(refused.is_parser_unavailable() && !refused.is_nesting_limit());
+        assert!(refused.is_resource_limit());
+        assert!(limited.is_resource_limit());
+    }
+
+    /// A diagnostic that carries the component refusal is a resource refusal too,
+    /// the grouping CSSOM's publication admission reads.
+    #[test]
+    fn component_parser_thread_refusal_in_a_diagnostic_is_a_resource_refusal() {
+        let source = format!("{}color{}", "(".repeat(70), ")".repeat(70));
+        let components = crate::component::values::parse_component_values(&source).unwrap();
+        let refused = with_parser_thread_unavailable(|| {
+            CssMediaQuery::try_from_components(components, Default::default())
+        })
+        .expect_err("refused without the parser thread");
+        let component = refused
+            .component_error()
+            .expect("component refusal")
+            .clone();
+        let error = crate::diagnostic::error::from_parse_error(
+            &source,
+            crate::diagnostic::error::invalid_component_value(
+                cssparser::SourceLocation { line: 0, column: 1 },
+                component,
+            ),
+        );
+        assert_eq!(error.code(), CssErrorCode::InvalidComponentValue);
+        assert!(error.component_error().unwrap().is_parser_unavailable());
+        assert!(error.is_resource_refusal());
     }
 
     #[test]
     fn shallow_sheet_needs_no_parser_thread() {
         let source = nested_rules(STRUCTURAL_DIRECT_DEPTH as usize);
-        let report = with_parser_thread_unavailable(|| crate::parse_sheet(&source));
+        let report =
+            with_parser_thread_unavailable(|| crate::CssParser::default().parse_sheet(&source));
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         assert_eq!(report.syntax().rules().len(), 1);
     }
@@ -298,13 +398,17 @@ mod tests {
     fn deep_style_attribute_is_refused_typed_when_the_parser_thread_is_unavailable() {
         let prefix = "color: red; width: ";
         let source = format!("{prefix}{}{}", "(".repeat(150), ")".repeat(150));
-        let report = with_parser_thread_unavailable(|| crate::parse_style_attribute(&source));
+        let report = with_parser_thread_unavailable(|| {
+            crate::CssParser::default().parse_block_contents(&source)
+        });
         assert!(report.syntax().is_empty());
+        // Block contents is a fragment front, so its direct recursion ends below
+        // 64 levels like the other fragments; the 64th opening is refused.
         assert_refusal(
             report.diagnostics(),
             &source,
-            STRUCTURAL_DIRECT_DEPTH,
-            prefix.len() + 128,
+            FRAGMENT_DIRECT_DEPTH,
+            prefix.len() + 63,
         );
     }
 
@@ -316,7 +420,9 @@ mod tests {
     fn deep_declaration_fragment_is_refused_typed_instead_of_panicking() {
         let prefix = "width: ";
         let source = format!("{prefix}{}", nested_calc(70));
-        let report = with_parser_thread_unavailable(|| crate::parse_declaration(&source));
+        let report = with_parser_thread_unavailable(|| {
+            crate::declaration::CssDeclaration::parse(&crate::CssParser::default(), &source)
+        });
         assert!(report.syntax().is_none());
         // Each `calc(` is five bytes; this function has 63 enclosing levels.
         assert_refusal(
@@ -326,43 +432,56 @@ mod tests {
             prefix.len() + 5 * 63,
         );
 
-        let available = crate::parse_declaration(&source);
+        let available =
+            crate::declaration::CssDeclaration::parse(&crate::CssParser::default(), &source);
         assert!(available.is_clean(), "{:?}", available.diagnostics());
     }
 
     #[test]
     fn deep_media_query_fragment_is_refused_as_a_never_query() {
         let source = format!("{}{}", "(".repeat(70), ")".repeat(70));
-        let report = with_parser_thread_unavailable(|| crate::parse_media_query(&source));
+        let report = with_parser_thread_unavailable(|| {
+            crate::query::media::CssMediaQuery::parse(&crate::CssParser::default(), &source)
+        });
         assert!(matches!(report.syntax(), CssMediaQuery::Never(_)));
         assert_refusal(report.diagnostics(), &source, FRAGMENT_DIRECT_DEPTH, 63);
     }
 
     #[test]
     fn deep_checked_components_are_refused_with_the_responsible_component() {
-        let components = crate::parse_component_values(&nested_calc(70)).unwrap();
+        let components =
+            crate::component::values::parse_component_values(&nested_calc(70)).unwrap();
         let error = with_parser_thread_unavailable(|| {
-            crate::parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Width),
+            crate::declaration::CssDeclaration::try_from_components(
+                &crate::CssParser::default(),
+                crate::property::CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                    CssKnownProperty::Width,
+                )),
                 components.clone(),
                 CssImportance::Normal,
             )
         })
         .expect_err("refused without the parser thread");
+        let component = error.component_error().expect("component refusal");
         assert_eq!(
-            error.kind(),
-            &CssPropertyValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit)
+            component.kind(),
+            CssComponentValueErrorKind::ParserUnavailable
         );
+        assert!(component.is_resource_limit());
+        assert_eq!(error.code(), None);
         let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
             panic!("parsed responsible component: {error:?}")
         };
         assert_eq!(origin.span().start().byte_offset().value(), 5 * 63);
 
         assert!(
-            crate::parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Width),
+            crate::declaration::CssDeclaration::try_from_components(
+                &crate::CssParser::default(),
+                crate::property::CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                    CssKnownProperty::Width
+                )),
                 components,
-                CssImportance::Normal,
+                CssImportance::Normal
             )
             .is_ok()
         );
@@ -377,30 +496,35 @@ mod tests {
     #[test]
     fn deep_cssom_media_query_is_refused_typed_instead_of_panicking() {
         let source = deep_not_condition();
-        assert!(super::recovery::maximum_nested_depth(&source) <= FRAGMENT_DIRECT_DEPTH);
-        let report = with_parser_thread_unavailable(|| crate::parse_cssom_media_query(&source));
+        assert!(crate::parser::recovery::maximum_nested_depth(&source) <= FRAGMENT_DIRECT_DEPTH);
+        let report = with_parser_thread_unavailable(|| {
+            crate::query::media::CssMediaQuery::parse_medium(&crate::CssParser::default(), &source)
+        });
         assert!(report.syntax().is_none());
         let refusals = report
             .diagnostics()
             .iter()
-            .filter(|diagnostic| matches!(diagnostic.error().kind(), ErrorKind::NestingLimit(_)))
+            .filter(|diagnostic| diagnostic.error().code() == CssErrorCode::ParserUnavailable)
             .collect::<Vec<_>>();
         let [refusal] = refusals.as_slice() else {
             panic!("one refusal: {:?}", report.diagnostics())
         };
-        let ErrorKind::NestingLimit(error) = refusal.error().kind() else {
-            unreachable!()
-        };
-        assert_eq!(error.limit(), FRAGMENT_DIRECT_DEPTH);
+        assert_eq!(refusal.error().nesting_limit(), Some(FRAGMENT_DIRECT_DEPTH));
+        assert!(refusal.error().is_resource_refusal());
         assert_eq!(refusal.action(), CssRecoveryAction::StopAtNestingLimit);
 
-        let available = crate::parse_cssom_media_query(&source);
+        let available =
+            crate::query::media::CssMediaQuery::parse_medium(&crate::CssParser::default(), &source);
         assert!(available.is_clean(), "{:?}", available.diagnostics());
         assert!(available.syntax().is_some());
     }
 
-    fn assert_media_component_refusal(error: &crate::CssComponentValueError, offset: usize) {
-        assert_eq!(error.kind(), CssComponentValueErrorKind::NestingLimit);
+    fn assert_media_component_refusal(
+        error: &crate::component::CssComponentValueError,
+        offset: usize,
+    ) {
+        assert_eq!(error.kind(), CssComponentValueErrorKind::ParserUnavailable);
+        assert!(error.is_resource_limit());
         let CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("parsed responsible component: {error:?}")
         };
@@ -410,31 +534,33 @@ mod tests {
     #[test]
     fn deep_media_construction_is_refused_with_its_component_error() {
         let source = format!("{}color{}", "(".repeat(70), ")".repeat(70));
-        let components = crate::parse_component_values(&source).unwrap();
+        let components = crate::component::values::parse_component_values(&source).unwrap();
         let error = with_parser_thread_unavailable(|| {
-            CssMediaQuery::try_from_components(components.clone())
+            CssMediaQuery::try_from_components(components.clone(), Default::default())
         })
         .expect_err("refused without the parser thread");
-        let crate::CssMediaConstructionError::Component(error) = &error else {
+        let Some(error) = error.component_error() else {
             panic!("component refusal: {error:?}")
         };
         // The block with 63 enclosing blocks opens at byte 63.
         assert_media_component_refusal(error, 63);
-        assert!(CssMediaQuery::try_from_components(components).is_ok());
+        assert!(CssMediaQuery::try_from_components(components, Default::default()).is_ok());
     }
 
     #[test]
     fn deep_media_serialization_is_refused_with_its_component_error() {
         let source = deep_not_condition();
-        let report = crate::parse_media_query(&source);
+        let report =
+            crate::query::media::CssMediaQuery::parse(&crate::CssParser::default(), &source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let query = report.syntax();
-        let error = with_parser_thread_unavailable(|| query.serialize())
+        let error = with_parser_thread_unavailable(|| query.serialize_tokens(Default::default()))
             .expect_err("refused without the parser thread");
-        let crate::CssMediaSerializationError::Component(error) = &error else {
+        let Some(component) = error.component_error() else {
             panic!("component refusal: {error:?}")
         };
-        assert_media_component_refusal(error, 0);
-        assert!(query.serialize().is_ok());
+        assert!(error.is_unserializable_boundary(), "{error:?}");
+        assert_media_component_refusal(component, 0);
+        assert!(query.serialize_tokens(Default::default()).is_ok());
     }
 }

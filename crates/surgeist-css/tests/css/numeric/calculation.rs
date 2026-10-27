@@ -3,6 +3,7 @@
 mod absolute_length_unit_ratios;
 mod calc_size;
 mod calc_size_composed_contract;
+mod calculation_token_byte_limit;
 mod checked_symbolic_calculation_owners;
 mod exact_numeric_construction;
 mod exact_numeric_function_domains;
@@ -25,6 +26,7 @@ mod numeric_percentage_basis_projection;
 mod numeric_serialization_stack;
 mod numeric_source_order_projection_lifecycle;
 mod numeric_type_operations_lifecycle;
+mod recovered_math_at_end_of_input;
 mod shape_and_filter_calculation_retention;
 mod steps_calculation_admission;
 mod typed_calculations;

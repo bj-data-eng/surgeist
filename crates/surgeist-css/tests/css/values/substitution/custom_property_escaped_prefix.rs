@@ -5,7 +5,10 @@
 //! token, whereas as_str returns its decoded identity.
 
 use std::collections::HashSet;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssCustomPropertyName, CssDeclaration, CssImportance};
+use surgeist_css::property::{CssPropertyNameRef, CssPropertyTarget};
 
 fn name_region(declaration: &CssDeclaration, source: &str, start: usize, end: usize) {
     let origin = declaration.parsed_name().unwrap();
@@ -67,7 +70,7 @@ fn reserved_decoded_name_and_non_identifier_or_residual_source_remain_rejected()
 #[test]
 fn attribute_and_singular_fronts_decode_prefix_escapes_and_retain_original_name_tokens() {
     const SOURCE: &str = r"\2d \2d Theme:RED!important;--Theme:BLUE;-\2d Theme:MiXeD";
-    let report = parse_style_attribute(SOURCE);
+    let report = CssParser::default().parse_block_contents(SOURCE);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [first, second, third] = report.syntax().as_slice() else {
         panic!("three authored custom occurrences");
@@ -104,26 +107,33 @@ fn attribute_and_singular_fronts_decode_prefix_escapes_and_retain_original_name_
             .same_snapshot(third.parsed_name().unwrap().source())
     );
     assert_eq!(
-        validate_style_attribute(SOURCE).unwrap(),
+        CssParser::default()
+            .parse_block_contents(SOURCE)
+            .into_validation_result()
+            .unwrap(),
         report.syntax().clone()
     );
 
     const SINGLE: &str = r"\2d \2d Theme:RED";
-    let report = parse_declaration(SINGLE);
+    let report = CssDeclaration::parse(&CssParser::default(), SINGLE);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = report.syntax().as_ref().unwrap();
     assert_eq!(declaration.custom().unwrap().name(), &plain);
     name_region(declaration, SINGLE, 0, 13);
-    assert_eq!(declaration.to_specified_css().unwrap(), "--Theme: RED;");
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        "--Theme: RED;"
+    );
 }
 
 #[test]
 fn checked_custom_admission_emits_decoded_name_and_preserves_supplied_value_origin() {
     let name = CssCustomPropertyName::try_new(r"\2d \2d Theme").unwrap();
-    let components = parse_component_values("MiXeD").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "MiXeD").unwrap();
     let before_components = components.clone();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Custom(&name),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
         components,
         CssImportance::Important,
     )
@@ -136,7 +146,10 @@ fn checked_custom_admission_emits_decoded_name_and_preserves_supplied_value_orig
     assert_eq!(declaration.value_components(), &before_components);
     assert_eq!(declaration.importance(), CssImportance::Important);
     const EXPECTED: &str = "--Theme: MiXeD !important;";
-    assert_eq!(declaration.to_specified_css().unwrap(), EXPECTED);
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        EXPECTED
+    );
     assert_eq!(declaration, before);
     assert!(declaration.same_occurrence(&before));
     let (CssValueOrigin::Parsed(original), CssValueOrigin::Parsed(retained)) = (
@@ -146,12 +159,18 @@ fn checked_custom_admission_emits_decoded_name_and_preserves_supplied_value_orig
         panic!("supplied value token preserves its actual parsed origin");
     };
     assert!(original.source().same_snapshot(retained.source()));
-    let reparsed = validate_style_attribute(EXPECTED).unwrap();
+    let reparsed = CssParser::default()
+        .parse_block_contents(EXPECTED)
+        .into_validation_result()
+        .unwrap();
     let [reparsed] = reparsed.as_slice() else {
         panic!("one canonical custom declaration");
     };
     assert_eq!(reparsed.custom().unwrap().name(), &name);
-    assert_eq!(reparsed.to_specified_css().unwrap(), EXPECTED);
+    assert_eq!(
+        reparsed.serialize_specified(Default::default()).unwrap(),
+        EXPECTED
+    );
 }
 
 #[test]

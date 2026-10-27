@@ -1,6 +1,9 @@
 //! Checked property construction must handle an already valid component graph at
 //! the same public 256-level ceiling as authored parsing, on the default stack.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
 
 #[test]
 fn checked_mixed_colors_preserve_the_shared_component_depth_boundary() {
@@ -13,7 +16,7 @@ fn checked_mixed_colors_preserve_the_shared_component_depth_boundary() {
                 format!("color-mix(in srgb, {text}, blue)")
             };
         }
-        let report = parse_style_attribute(&format!("color:{text}"));
+        let report = CssParser::default().parse_block_contents(format!("color:{text}"));
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -21,9 +24,11 @@ fn checked_mixed_colors_preserve_the_shared_component_depth_boundary() {
         );
         assert_eq!(report.syntax().len(), 1);
         drop(report);
-        let values = parse_component_values(&text).expect("within the shared depth ceiling");
-        let declaration = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        let values = CssComponentValues::parse(&CssParser::default(), &text)
+            .expect("within the shared depth ceiling");
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             values,
             CssImportance::Normal,
         )

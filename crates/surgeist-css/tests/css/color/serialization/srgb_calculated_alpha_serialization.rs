@@ -8,19 +8,29 @@ use crate::css::support::color_and_selector_fixtures::{
     assert_bounded_serialization, assert_color_limit_error as assert_error, assert_color_limits,
     assert_scratch_serialization,
 };
+use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorNumberLiteral, CssColorSyntax, CssHslColor,
+    CssHwbColor, CssRgbColor,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::numeric::{CssCalculation, CssNumber};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssSidePair;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 fn assert_value(value: &CssColor, expected: &str) {
     let before = value.clone();
-    let result = value.to_specified_css();
-    assert_eq!(result, value.to_specified_css());
+    let result = value.serialize_specified(Default::default());
+    assert_eq!(result, value.serialize_specified(Default::default()));
     assert_eq!(value, &before);
     assert_eq!(result.unwrap(), expected);
     // Reentry asserts admission only. A rounded explicit unity is a direct
@@ -31,14 +41,18 @@ fn assert_value(value: &CssColor, expected: &str) {
 fn assert_text(source: &str, expected: &str) {
     let checked = declaration(source);
     assert_eq!(checked.value_components(), &components(source));
-    let report = parse_style_attribute(&format!("color:{source}!important"));
+    let report = CssParser::default().parse_block_contents(format!("color:{source}!important"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     for value in [&checked, &report.syntax()[0]] {
         let before = value.clone();
         assert_eq!(value.importance(), CssImportance::Important);
         assert_eq!(
-            value.value_components().serialize().unwrap().as_css(),
+            value
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             source
         );
         assert!(matches!(
@@ -438,11 +452,15 @@ fn number(source: &str, programmatic: bool) -> CssColorComponent {
 
 fn checked_color(family: &str, programmatic: bool) -> CssColor {
     let values = if programmatic {
-        let arguments =
-            CssComponentValues::try_new(vec![CssComponentValue::try_number("2").unwrap()]).unwrap();
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_function("calc", arguments).unwrap(),
-        ])
+        let arguments = CssComponentValues::try_new(
+            vec![CssComponentValue::try_number("2").unwrap()],
+            Default::default(),
+        )
+        .unwrap();
+        CssComponentValues::try_new(
+            vec![CssComponentValue::try_function("calc", arguments).unwrap()],
+            Default::default(),
+        )
         .unwrap()
     } else {
         components("calc(2)")
@@ -451,7 +469,9 @@ fn checked_color(family: &str, programmatic: bool) -> CssColor {
         values.items()[0].origin() == &CssValueOrigin::Programmatic,
         programmatic
     );
-    let calculation = CssNumberCalculation::try_from_components(values.clone()).unwrap();
+    let calculation =
+        CssCalculation::<CssNumber>::try_from_components(values.clone(), Default::default())
+            .unwrap();
     assert_eq!(calculation.components(), &values);
     let alpha = Some(CssColorComponent::NumberCalculation(calculation));
     let CssColorComponent::Number(hue) = number("0", programmatic) else {
@@ -553,7 +573,7 @@ fn long_opaque_alpha_requires_scratch_before_omission() {
         6,
         5,
         27,
-        CssColor::to_specified_css_with_limits,
+        CssColor::serialize_specified,
     );
 }
 
@@ -575,15 +595,18 @@ fn nested_mix_prefixes_share_input_projection_and_final_bytes() {
 #[test]
 fn sibling_calculations_share_all_three_limits() {
     // Pair root 1/1 + two child 8/8 graphs = 17/17; separator is one byte.
-    let child = color("rgb(none none none / calc(1 / 128))");
-    let pair = CssBorderColorPair::new(child.clone(), Some(child));
-    let expected = "color(srgb none none none / 0.007813) color(srgb none none none / 0.007813)";
+    // The second child differs (1/64) so that it is written; its text has the same length.
+    let pair = CssSidePair::new(
+        color("rgb(none none none / calc(1 / 128))"),
+        Some(color("rgb(none none none / calc(1 / 64))")),
+    );
+    let expected = "color(srgb none none none / 0.007813) color(srgb none none none / 0.015625)";
     assert_bounded_serialization(
         &pair,
         expected,
         17,
         17,
-        CssBorderColorPair::serialize_specified_with_limits,
+        CssSidePair::<CssColor>::serialize_specified,
     );
 }
 
@@ -592,7 +615,7 @@ fn utf8_prefix_spends_bytes_before_long_opaque_capture() {
     // Pair 1/1 + custom color root/missing channel 2/2 + RGB 6/5 = 9/8.
     // UTF-8 prefix color(--é none) plus separator is 17 bytes. The
     // remaining scratch needs 27, one more than the child's final 26.
-    let pair = CssBorderColorPair::new(
+    let pair = CssSidePair::new(
         color("color(--é none)"),
         Some(color("rgb(none none none / calc(100000000000000000000))")),
     );
@@ -603,7 +626,7 @@ fn utf8_prefix_spends_bytes_before_long_opaque_capture() {
         9,
         8,
         expected.len() + 1,
-        CssBorderColorPair::serialize_specified_with_limits,
+        CssSidePair::<CssColor>::serialize_specified,
     );
 }
 

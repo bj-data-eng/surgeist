@@ -1,6 +1,8 @@
 //! Values4 Appendix C permission belongs to exact named property owners.
-use crate::numeric::NumericInputContext;
-use crate::{CssFeatureId, CssKnownProperty, CssParserContext, CssParserMode};
+use crate::diagnostic::CssFeatureId;
+use crate::numeric::expression::NumericInputContext;
+use crate::property::CssKnownProperty;
+use crate::{CssParserContext, CssParserMode};
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
     &[CssFeatureId::new("official.value.quirky-length")];

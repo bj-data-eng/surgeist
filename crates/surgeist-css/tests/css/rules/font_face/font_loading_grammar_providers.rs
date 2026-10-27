@@ -5,12 +5,23 @@
 //! Initial-value resolution, system font selection and loading stay downstream.
 
 use crate::css::support::rules::{invalid_descriptor, rejected_bang};
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+    CssPropertyTextTarget,
+};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind,
+};
+use surgeist_css::values::font::{CssFontValue, CssFontWeight, CssSystemFont};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn query(source: &str) -> CssParseReport<Option<CssDeclaration>> {
-    parse_property_value_text(
+    CssParser::default().parse_property_value(
         source,
-        CssPropertyNameRef::Known(CssKnownProperty::Font),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Font)),
         CssImportance::Normal,
     )
 }
@@ -21,7 +32,7 @@ fn font(declaration: &CssDeclaration) -> &CssFontValue {
     else {
         panic!("ordinary authored font")
     };
-    value.font()
+    value.value()
 }
 
 #[test]
@@ -57,14 +68,26 @@ fn raw_queries_preserve_relative_values_and_the_original_unwrapped_source() {
             panic!("explicit font query")
         };
         assert_eq!(value.weight(), Some(&expected_weight));
-        assert_eq!(value.size().serialize_specified().unwrap(), expected_size);
+        assert_eq!(
+            value
+                .size()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected_size
+        );
         assert_eq!(value.families().families()[0].as_str(), "Demo");
         assert_eq!(
-            font(&declaration).serialize_specified().unwrap(),
+            font(&declaration)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected_font
         );
         assert_eq!(
-            value.weight().unwrap().serialize_specified().unwrap(),
+            value
+                .weight()
+                .unwrap()
+                .serialize_specified(Default::default())
+                .unwrap(),
             match expected_weight {
                 CssFontWeight::Bolder => "bolder",
                 CssFontWeight::Lighter => "lighter",
@@ -86,7 +109,12 @@ fn system_queries_retain_the_selected_system_branch_without_contextual_resolutio
     ] {
         let declaration = query(source).into_validation_result().unwrap().unwrap();
         assert_eq!(font(&declaration), &CssFontValue::System(expected));
-        assert_eq!(font(&declaration).serialize_specified().unwrap(), source);
+        assert_eq!(
+            font(&declaration)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            source
+        );
     }
 }
 
@@ -184,7 +212,11 @@ fn recovered_query_syntax_remains_available_but_clean_admission_rejects_it() {
 #[test]
 fn source_descriptor_recovery_and_strict_components_have_separate_admission() {
     let source = "url(font.woff2), bad, local(Demo)";
-    let report = parse_font_face_descriptor_value(source, CssFontFaceDescriptorKind::Src);
+    let report = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        source,
+        CssFontFaceDescriptorKind::Src,
+    );
     assert!(report.syntax().is_some());
     let [diagnostic] = report.diagnostics() else {
         panic!("exactly one discarded source member")
@@ -200,10 +232,11 @@ fn source_descriptor_recovery_and_strict_components_have_separate_admission() {
     // <font-src-list> rejects the `bad` member.
     let error = CssAuthoredFontFaceDescriptorValue::try_from_components(
         CssFontFaceDescriptorKind::Src,
-        parse_component_values(source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+        Default::default(),
     )
     .unwrap_err();
-    let CssFontFaceValueErrorKind::Grammar(detail) = error.kind() else {
+    let Some(detail) = error.diagnostic() else {
         panic!("grammar failure: {error:?}")
     };
     invalid_descriptor("font-face", "src")
@@ -214,10 +247,14 @@ fn source_descriptor_recovery_and_strict_components_have_separate_admission() {
         "local(Demo)",
         "url(font.woff2), local(Demo)",
     ] {
-        let value = parse_font_face_descriptor_value(valid, CssFontFaceDescriptorKind::Src)
-            .into_validation_result()
-            .unwrap()
-            .unwrap();
+        let value = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            valid,
+            CssFontFaceDescriptorKind::Src,
+        )
+        .into_validation_result()
+        .unwrap()
+        .unwrap();
         assert!(matches!(
             value,
             CssAuthoredFontFaceDescriptorValue::Ordinary(_)
@@ -234,7 +271,11 @@ fn source_descriptor_recovery_and_strict_components_have_separate_admission() {
         ),
         ("local(Demo);", rejected.clone().at(";")),
     ] {
-        let report = parse_font_face_descriptor_value(invalid, CssFontFaceDescriptorKind::Src);
+        let report = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            invalid,
+            CssFontFaceDescriptorKind::Src,
+        );
         assert!(report.syntax().is_none(), "{invalid}: {report:?}");
         expected.assert_first(&report);
     }

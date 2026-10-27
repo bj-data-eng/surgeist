@@ -5,7 +5,8 @@
 
 use super::component::{ComponentAction, ComponentSyntax, SyntaxFailure};
 use super::grammar::{ComponentRecord, GrammarRecord, GrammarTable, RecipeKind};
-use super::protocol::{CssColorBank, CssColorProtocolError, CssColorSlot, Data};
+use crate::color::controlled::protocol::{ColorProtocolError, Data};
+use crate::color::controlled::{CssColorBank, CssColorSlot};
 
 #[expect(
     clippy::large_enum_variant,
@@ -54,16 +55,16 @@ impl ValidatedGrammar<'_> {
         &self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<ComponentRecord, CssColorProtocolError> {
+    ) -> Result<ComponentRecord, ColorProtocolError> {
         let GrammarRecord::Component(record) = self.table.record(index, slot)? else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
-        let checked = record.checked.ok_or(CssColorProtocolError::WrongSlot)?;
+        let checked = record.checked.ok_or(ColorProtocolError::WrongSlot)?;
         if let super::component::CheckedComponent::Expression { table, .. } =
             checked.component(&self.table.input)?
             && table.length > self.expression_end
         {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         Ok(record)
     }
@@ -73,9 +74,9 @@ impl<'owner> SyntaxPass<'owner> {
         table: GrammarTable<'owner>,
         scratch_end: usize,
         expression_end: usize,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         if scratch_end < table.end || table.root < table.start || table.root >= table.end {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         Ok(Self {
             table,
@@ -96,11 +97,11 @@ impl<'owner> SyntaxPass<'owner> {
             State::Stopped => SyntaxAction::Stopped,
         }
     }
-    fn advance(&mut self) -> Result<(), CssColorProtocolError> {
+    fn advance(&mut self) -> Result<(), ColorProtocolError> {
         let next = self
             .index
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         self.index = next;
         self.state = if next == self.table.end {
             State::Done
@@ -113,17 +114,17 @@ impl<'owner> SyntaxPass<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (SyntaxAction::ReadRecord { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let record = self.table.record(index, slot)?;
         self.index
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         if let GrammarRecord::Component(record) = record {
             if record.checked.is_some() {
-                return Err(CssColorProtocolError::WrongSlot);
+                return Err(ColorProtocolError::WrongSlot);
             }
             let cursor = ComponentSyntax::start(
                 &self.table.input.source()?,
@@ -137,14 +138,12 @@ impl<'owner> SyntaxPass<'owner> {
         } else if let GrammarRecord::Recipe(recipe) = record
             && let RecipeKind::Function(function) = recipe.kind
             && function.function == super::keywords::ColorFunction::Rgb
-            && function.syntax == crate::CssColorSyntax::Legacy
+            && function.syntax == crate::color::CssColorSyntax::Legacy
         {
             if function.count != 3 {
-                return Err(CssColorProtocolError::WrongSlot);
+                return Err(ColorProtocolError::WrongSlot);
             }
-            let index = function
-                .components
-                .ok_or(CssColorProtocolError::WrongSlot)?;
+            let index = function.components.ok_or(ColorProtocolError::WrongSlot)?;
             self.state = State::LegacyRgb {
                 index,
                 remaining: 3,
@@ -162,7 +161,7 @@ impl<'owner> SyntaxPass<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let State::LegacyRgb {
             index: expected,
             remaining,
@@ -170,34 +169,34 @@ impl<'owner> SyntaxPass<'owner> {
             mut sites,
         } = self.state
         else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         if index != expected {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let GrammarRecord::Component(record) = self.table.record(index, slot)? else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         let ordinal = remaining
             .checked_sub(1)
-            .ok_or(CssColorProtocolError::WrongIndex)?;
+            .ok_or(ColorProtocolError::WrongIndex)?;
         if record.ordinal != ordinal || record.role != super::grammar::ComponentRole::Channel {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         domains[ordinal] = record
             .checked
-            .ok_or(CssColorProtocolError::WrongSlot)?
+            .ok_or(ColorProtocolError::WrongSlot)?
             .domain();
         sites[ordinal] = match record.component {
             super::grammar::RawComponent::Atom(token)
             | super::grammar::RawComponent::Math { opener: token, .. } => token.index,
             super::grammar::RawComponent::Authored { .. } => {
-                return Err(CssColorProtocolError::WrongSlot);
+                return Err(ColorProtocolError::WrongSlot);
             }
         };
         if ordinal == 0 {
             if record.previous.is_some() {
-                return Err(CssColorProtocolError::WrongSlot);
+                return Err(ColorProtocolError::WrongSlot);
             }
             if super::channels::legacy_rgb_domains(domains) {
                 self.advance()
@@ -217,9 +216,9 @@ impl<'owner> SyntaxPass<'owner> {
                 Ok(())
             }
         } else {
-            let previous = record.previous.ok_or(CssColorProtocolError::WrongSlot)?;
+            let previous = record.previous.ok_or(ColorProtocolError::WrongSlot)?;
             if previous >= index {
-                return Err(CssColorProtocolError::WrongIndex);
+                return Err(ColorProtocolError::WrongIndex);
             }
             self.state = State::LegacyRgb {
                 index: previous,
@@ -235,9 +234,9 @@ impl<'owner> SyntaxPass<'owner> {
         bank: CssColorBank,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let State::Component { cursor, .. } = &mut self.state else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         cursor.read(bank, index, slot)
     }
@@ -245,9 +244,9 @@ impl<'owner> SyntaxPass<'owner> {
         &self,
         bank: CssColorBank,
         index: usize,
-    ) -> Result<CssColorSlot<'owner>, CssColorProtocolError> {
+    ) -> Result<CssColorSlot<'owner>, ColorProtocolError> {
         let State::Component { cursor, .. } = &self.state else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         cursor.record(bank, index)
     }
@@ -256,24 +255,24 @@ impl<'owner> SyntaxPass<'owner> {
         bank: CssColorBank,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let State::Component { cursor, .. } = &mut self.state else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         cursor.written(bank, index, slot)?;
         self.scratch_end = cursor.scratch_end();
         self.expression_end = cursor.expression_end();
         Ok(())
     }
-    pub(crate) fn kernel(&self) -> super::CssColorKernel {
+    pub(crate) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
         match &self.state {
             State::Component { cursor, .. } => cursor.kernel(),
-            _ => super::CssColorKernel::Transition,
+            _ => crate::color::controlled::CssColorKernel::Transition,
         }
     }
-    pub(crate) fn compute(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(crate) fn compute(&mut self) -> Result<(), ColorProtocolError> {
         let State::Component { record, cursor } = &mut self.state else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         match cursor.action() {
             ComponentAction::Done => {
@@ -281,7 +280,7 @@ impl<'owner> SyntaxPass<'owner> {
                 record.checked = Some(cursor.finish()?.scalar());
                 self.index
                     .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                    .ok_or(ColorProtocolError::Overflow)?;
                 self.state = State::Write(record);
                 Ok(())
             }
@@ -290,15 +289,15 @@ impl<'owner> SyntaxPass<'owner> {
                 Ok(())
             }
             ComponentAction::Compute => cursor.compute(),
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
     pub(crate) fn replacement(
         &self,
         index: usize,
-    ) -> Result<CssColorSlot<'owner>, CssColorProtocolError> {
+    ) -> Result<CssColorSlot<'owner>, ColorProtocolError> {
         if self.action() != (SyntaxAction::Replace { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let State::Write(record) = self.state else {
             unreachable!()
@@ -314,27 +313,27 @@ impl<'owner> SyntaxPass<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (SyntaxAction::Replace { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let State::Write(expected) = self.state else {
             unreachable!()
         };
         let GrammarRecord::Component(actual) = self.table.record(index, slot)? else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         if expected != actual {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         self.advance()
     }
     pub(crate) const fn scratch_end(&self) -> usize {
         self.scratch_end
     }
-    pub(crate) fn finish(&self) -> Result<ValidatedGrammar<'owner>, CssColorProtocolError> {
+    pub(crate) fn finish(&self) -> Result<ValidatedGrammar<'owner>, ColorProtocolError> {
         if !matches!(self.state, State::Done) {
-            return Err(CssColorProtocolError::Terminal);
+            return Err(ColorProtocolError::Terminal);
         }
         Ok(ValidatedGrammar {
             table: self.table,
@@ -353,15 +352,16 @@ impl<'owner> SyntaxPass<'owner> {
 pub(crate) mod tests {
     use super::super::component::CheckedComponent;
     use super::super::grammar::{ColorGrammar, GrammarAction};
-    use super::super::protocol::{ActionDescription, CssColorOperationOwner, LexicalOperation};
     use super::*;
+    use crate::color::controlled::CssColorOperationOwner;
+    use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
     use crate::tokenization::bounded::InputKind;
 
     fn lexical<'owner>(
         owner: &'owner mut CssColorOperationOwner,
         input: &str,
     ) -> (
-        super::super::protocol::LexicalTable<'owner>,
+        crate::color::controlled::protocol::LexicalTable<'owner>,
         Vec<CssColorSlot<'owner>>,
     ) {
         let mut operation = LexicalOperation::start(owner, InputKind::Utf8, input.len()).unwrap();
@@ -468,7 +468,7 @@ pub(crate) mod tests {
                 SyntaxAction::Replace { index } => {
                     assert_eq!(
                         pass.replaced(index, &slots[index]),
-                        Err(CssColorProtocolError::WrongSlot)
+                        Err(ColorProtocolError::WrongSlot)
                     );
                     assert_eq!(pass.action(), SyntaxAction::Replace { index });
                     slots[index] = pass.replacement(index).unwrap();
@@ -514,7 +514,7 @@ pub(crate) mod tests {
         }
         pass.abandon();
         assert_eq!(pass.action(), SyntaxAction::Stopped);
-        assert_eq!(pass.finish().err(), Some(CssColorProtocolError::Terminal));
+        assert_eq!(pass.finish().err(), Some(ColorProtocolError::Terminal));
         Ok(Fixture {
             grammar: result,
             slots,

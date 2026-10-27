@@ -237,11 +237,10 @@ fn assigning_outer_css_text_keeps_original_definition_and_publication_unchanged(
             .unwrap(),
         "--x"
     );
-    let CssomAuthoredRule::Ordinary(after_original) = after.rule(&rule).unwrap().authored() else {
+    let CssomAuthoredRule::Rule(after_original) = after.rule(&rule).unwrap().authored() else {
         panic!("original ordinary occurrence");
     };
-    let CssomAuthoredRule::Ordinary(before_original) = before.rule(&rule).unwrap().authored()
-    else {
+    let CssomAuthoredRule::Rule(before_original) = before.rule(&rule).unwrap().authored() else {
         panic!("original ordinary occurrence");
     };
     assert_eq!(after_original, before_original);

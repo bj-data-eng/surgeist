@@ -1,9 +1,29 @@
 //! Authored environment substitution preserves token identity and boundary policy.
-use surgeist_css::*;
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssValueOrigin,
+};
+use surgeist_css::conformance::{
+    CssFeatureKind, CssSpecificationTier, CssSupportStatus, feature_metadata, specification_source,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::container::CssContainerLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
 fn display(values: CssComponentValues) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Display),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
         values,
         CssImportance::Important,
     )
@@ -12,13 +32,23 @@ fn display(values: CssComponentValues) -> CssDeclaration {
 
 #[test]
 fn programmatic_functions_preserve_mixed_origins_and_separators() {
-    let name = parse_component_values("Future").unwrap().items()[0].clone();
+    let name = CssComponentValues::parse(&CssParser::default(), "Future")
+        .unwrap()
+        .items()[0]
+        .clone();
     let index = CssComponentValue::try_token("2").unwrap();
     // Separate tokens must not become the single environment name Future2.
-    let arguments = CssComponentValues::try_new(vec![name.clone(), index.clone()]).unwrap();
+    let arguments =
+        CssComponentValues::try_new(vec![name.clone(), index.clone()], Default::default()).unwrap();
     let function = CssComponentValue::try_function("env", arguments).unwrap();
-    let values = CssComponentValues::try_new(vec![function]).unwrap();
-    assert_eq!(values.serialize().unwrap().as_css(), "env(Future/**/2)");
+    let values = CssComponentValues::try_new(vec![function], Default::default()).unwrap();
+    assert_eq!(
+        values
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "env(Future/**/2)"
+    );
     let declaration = display(values.clone());
     assert_eq!(declaration.value_components(), &values);
     assert_eq!(declaration.position(), None);
@@ -58,7 +88,7 @@ fn decoded_names_and_nested_functions_keep_authored_case_and_comments() {
         "env(--Future)",
         "env(foo, f([a;b!c], {d:e}))",
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let declaration = display(values.clone());
         assert_eq!(declaration.value_components(), &values);
         assert_eq!(
@@ -71,7 +101,7 @@ fn decoded_names_and_nested_functions_keep_authored_case_and_comments() {
             text
         );
         assert!(matches!(
-            expand_declaration(&declaration).unwrap(),
+            declaration.expand().unwrap(),
             CssExpansion::Pending(_)
         ));
     }
@@ -85,71 +115,92 @@ fn property_substitution_does_not_admit_env_as_size_or_scroll_operands() {
         "scroll-state(snapped:env(foo))",
         "scroll-state(scrollable:env(foo))",
     ] {
-        let condition =
-            CssContainerCondition::try_from_components(parse_component_values(text).unwrap())
-                .unwrap();
-        let CssContainerConditionKind::GeneralEnclosed(opaque) = condition.kind() else {
+        let condition = CssCondition::<CssContainerLeaf>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
+        let CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(opaque)) = condition.kind()
+        else {
             panic!("env must not add query-domain admission: {text}")
         };
         assert_eq!(opaque.authored(), Some(text));
     }
-    let style = CssContainerCondition::try_from_components(
-        parse_component_values("style(--x:env(foo))").unwrap(),
+    let style = CssCondition::<CssContainerLeaf>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "style(--x:env(foo))").unwrap(),
+        Default::default(),
     )
     .unwrap();
-    assert!(matches!(style.kind(), CssContainerConditionKind::Style(_)));
+    assert!(matches!(
+        style.kind(),
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
+    ));
 }
 
 #[test]
 fn style_env_components_obey_explicit_enclosing_resource_limits() {
-    let values = parse_component_values("style(--x:env(foo))").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "style(--x:env(foo))").unwrap();
     for (limits, kind) in [
         (
             CssComponentValueLimits::try_new(1, usize::MAX, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, 1, usize::MAX).unwrap(),
-            CssComponentValueErrorKind::ComponentLimit,
+            ComponentFailure::ComponentLimit,
         ),
         (
             CssComponentValueLimits::try_new(256, usize::MAX, 1).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
     ] {
-        let Err(CssContainerConstructionError::Component(error)) =
-            CssContainerCondition::try_from_components_with_limits(values.clone(), limits)
+        let Err(outer) =
+            CssCondition::<CssContainerLeaf>::try_from_components(values.clone(), limits)
         else {
             panic!("resource failure must not become opaque success")
         };
-        assert_eq!(error.kind(), kind);
+        let Some(error) = outer.component_error() else {
+            panic!("resource failure must not become opaque success")
+        };
+        assert_eq!(component_failure(error), kind);
     }
-    let accepted = CssContainerCondition::try_from_components(values.clone()).unwrap();
+    let accepted =
+        CssCondition::<CssContainerLeaf>::try_from_components(values.clone(), Default::default())
+            .unwrap();
     assert!(matches!(
         accepted.kind(),
-        CssContainerConditionKind::Style(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
     ));
-    assert_eq!(values.serialize().unwrap().as_css(), "style(--x:env(foo))");
+    assert_eq!(
+        values
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "style(--x:env(foo))"
+    );
 }
 
 #[test]
 fn recovered_neighbor_and_pending_normalization_keep_occurrence_order() {
     let source = ".a{display:env(first);display:env(foo -1);display:env(second)!important}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
-    let sheet = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
-    )
-    .unwrap();
+    let sheet = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap())
+        .unwrap();
     let declarations: Vec<_> = sheet
         .items()
         .iter()
@@ -189,17 +240,13 @@ fn recovered_neighbor_and_pending_normalization_keep_occurrence_order() {
         );
     }
     // The second retained declaration exceeds a one-declaration budget.
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 1, 2).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 1, 2).unwrap())
+        .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Declarations,
-            limit: 1,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Declarations, 1))
     );
     assert_eq!(
         error

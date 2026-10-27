@@ -3,11 +3,13 @@
 //! https://www.w3.org/TR/2014/REC-css-namespaces-3-20140320/#css-qnames
 
 use crate::css::support::value_assertions::assert_first_code;
-use surgeist_css::{
-    CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName,
-    CssNamespacePrefix, CssNormalizedItem, CssRecoveryAction, CssRule, CssRuleContextKindRef,
-    CssSelector, CssSelectorCombinator, CssTokenKind, ErrorKind, normalize_report, parse_selector,
-    parse_selector_list, parse_sheet, validate_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule};
+use surgeist_css::selector::{
+    CssNamespaceConstraint, CssNamespaceContext, CssParsedStyleSelectors, CssSelector,
+    CssSelectorCombinator, CssStyleSelectorContext,
 };
 
 fn context() -> CssNamespaceContext {
@@ -18,7 +20,7 @@ fn context() -> CssNamespaceContext {
 }
 
 fn selector(source: &str, context: &CssNamespaceContext) -> CssSelector {
-    let report = parse_selector(source, context);
+    let report = CssSelector::parse(&CssParser::default(), source, context);
     assert!(report.is_clean(), "{source}: {report:?}");
     report.syntax().clone().expect("one retained selector")
 }
@@ -71,7 +73,7 @@ fn normalization_keeps_authored_prefix_distinctions_with_invalid_rule_diagnostic
     for (left, right) in [("*", "*|*"), ("[href]", "[|href]")] {
         let invalid = "missing|leaf{}";
         let source = format!("/*😀*/\r\n{invalid}\r\n{left}{{}}\r\n{right}{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Style(first), CssRule::Style(second)] = report.syntax().rules() else {
             panic!("two valid authored siblings retained: {report:?}");
         };
@@ -90,11 +92,15 @@ fn normalization_keeps_authored_prefix_distinctions_with_invalid_rule_diagnostic
             invalid_start + invalid.len()
         );
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
 
-        let normalized = normalize_report(&report).unwrap();
+        let normalized = report.normalize(Default::default()).unwrap();
         assert!(!normalized.is_clean());
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let styles = normalized
@@ -178,7 +184,7 @@ fn qualified_names_allow_comments_but_keep_whitespace_and_local_wildcards_host_s
         "[*|*]",
         "[|*]",
     ] {
-        let report = parse_selector(source, &context);
+        let report = CssSelector::parse(&CssParser::default(), source, &context);
         assert_first_code(report.diagnostics(), CssErrorCode::InvalidSelector);
         assert!(report.syntax().is_none(), "{source}: {report:?}");
     }
@@ -216,14 +222,17 @@ fn attribute_names_name_the_token_that_cannot_continue_them() {
         ("[*|*]", 3, CssTokenKind::Delim, "*"),
         ("[|*]", 2, CssTokenKind::Delim, "*"),
     ] {
-        let report = parse_selector(source, &context);
+        let report = CssSelector::parse(&CssParser::default(), source, &context);
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         let [diagnostic] = report.diagnostics() else {
             panic!("{source}: one rejection: {report:?}")
         };
-        let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-            panic!("{source}: selector rejection: {diagnostic:?}")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "{source}: selector rejection: {diagnostic:?}"
+        );
         let encountered = detail
             .encountered()
             .map(|token| (token.kind(), token.authored()));
@@ -238,7 +247,7 @@ fn attribute_names_name_the_token_that_cannot_continue_them() {
     }
     // The same rejection in a sheet, where `ns` is undeclared: the missing
     // local name is found before the prefix is resolved.
-    let report = parse_sheet("[ns|*] {}");
+    let report = CssParser::default().parse_sheet("[ns|*] {}");
     let [diagnostic] = report.diagnostics() else {
         panic!("one sheet rejection: {report:?}")
     };
@@ -249,30 +258,40 @@ fn attribute_names_name_the_token_that_cannot_continue_them() {
 #[test]
 fn undeclared_and_ignored_prefixes_recover_at_the_selected_host_unit() {
     let context = context();
-    let strict = parse_selector_list("svg|leaf,missing|leaf", &context);
+    let strict = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        "svg|leaf,missing|leaf",
+        &context,
+        CssStyleSelectorContext::Ordinary,
+    );
     assert!(strict.syntax().is_none());
     assert_eq!(strict.diagnostics().len(), 1);
     assert_eq!(
         strict.diagnostics()[0].action(),
         CssRecoveryAction::RejectInput
     );
-    let forgiving = parse_selector(":is(svg|leaf,missing|leaf)", &context);
+    let forgiving = CssSelector::parse(
+        &CssParser::default(),
+        ":is(svg|leaf,missing|leaf)",
+        &context,
+    );
     assert_eq!(forgiving.diagnostics().len(), 1);
     assert_eq!(
         forgiving.diagnostics()[0].action(),
         CssRecoveryAction::DropSelectorListItem
     );
-    let Some(CssSelector::PseudoClass(surgeist_css::CssPseudoClass::Is(list))) = forgiving.syntax()
+    let Some(CssSelector::PseudoClass(surgeist_css::selector::CssPseudoClass::Is(list))) =
+        forgiving.syntax()
     else {
         panic!("retained forgiving host: {forgiving:?}");
     };
     assert_eq!(
         list.items(),
-        [surgeist_css::CssPseudoSelectorListItem::Selector(selector(
-            "svg|leaf", &context
-        ))]
+        [surgeist_css::selector::CssPseudoSelectorListItem::Selector(
+            selector("svg|leaf", &context)
+        )]
     );
-    let ignored = parse_sheet("@namespace svg ident;svg|leaf{}.after{}");
+    let ignored = CssParser::default().parse_sheet("@namespace svg ident;svg|leaf{}.after{}");
     assert!(matches!(ignored.syntax().rules(), [CssRule::Style(_)]));
     assert_eq!(ignored.diagnostics().len(), 2);
     assert_eq!(

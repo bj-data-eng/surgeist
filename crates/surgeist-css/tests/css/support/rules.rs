@@ -1,12 +1,32 @@
 //! Helpers shared by the at-rule and rule-structure tests, and typed
 //! rejection evidence for their grammar failures.
 
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssDeclarationContextRef, CssError, CssErrorCode, CssTokenSummary};
+use surgeist_css::normalize::{
+    CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet, CssRuleContext,
+    CssRuleContextKindRef,
+};
+use surgeist_css::property::{CssKnownProperty, CssPropertyName, CssPropertyValueError};
+use surgeist_css::rule::counter_style::CssCounterStyleRule;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontDisplay, CssFontFaceDescriptorKind,
+    CssFontFaceDescriptorValue, CssFontFaceRule,
+};
+use surgeist_css::rule::keyframes::CssKeyframesRule;
+use surgeist_css::rule::page::{CssPagePseudo, CssPageRule};
+use surgeist_css::rule::{CssAtRuleName, CssDescriptorName, CssImportRule, CssRule, CssSheet};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssScopeSelectorList, CssSelector, CssStyleSelector,
+};
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::{CssParseReport, CssParser};
 
 /// The sheet of the clean parse of `source`.
 #[track_caller]
 pub fn clean_sheet(source: &str) -> CssSheet {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report.syntax().clone()
 }
@@ -22,24 +42,36 @@ pub fn assert_clean_and_valid<T: Clone>(report: &CssParseReport<T>) {
 /// changing, and that `expected` reparses cleanly to the same text.
 #[track_caller]
 pub fn assert_exact_specified_sheet(source: &str, expected: &str) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let before = report.clone();
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     assert_eq!(report, before);
-    let emitted = parse_sheet(expected);
+    let emitted = CssParser::default().parse_sheet(expected);
     assert!(
         emitted.is_clean(),
         "{expected}: {:?}",
         emitted.diagnostics()
     );
-    assert_eq!(emitted.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        emitted
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 /// The sole rule of the clean sheet `source`, which must be `@counter-style`.
 #[track_caller]
 pub fn sole_counter_style(source: &str) -> CssCounterStyleRule {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("one counter style rule: {source}");
@@ -83,15 +115,15 @@ pub fn ordinary_font_face_descriptor(
     source: &str,
     kind: CssFontFaceDescriptorKind,
 ) -> CssFontFaceDescriptorValue {
-    let report = parse_font_face_descriptor_value(source, kind);
+    let report = CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), source, kind);
     assert!(
         report.is_clean(),
         "{}: {source}: {:?}",
-        kind.css_name(),
+        kind.as_str(),
         report.diagnostics()
     );
     let Some(CssAuthoredFontFaceDescriptorValue::Ordinary(value)) = report.syntax() else {
-        panic!("ordinary {} descriptor: {source}", kind.css_name())
+        panic!("ordinary {} descriptor: {source}", kind.as_str())
     };
     value.clone()
 }
@@ -101,8 +133,9 @@ pub fn ordinary_font_face_descriptor(
 #[track_caller]
 pub fn import_from_components(source: &str) -> CssImportRule {
     CssImportRule::try_from_components(
-        parse_component_values(source).unwrap(),
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
         &CssNamespaceContext::default(),
+        Default::default(),
     )
     .unwrap()
 }
@@ -118,7 +151,7 @@ pub fn page_pseudo(page: &CssPageRule) -> Option<CssPagePseudo> {
 /// The selector of a scope boundary list with exactly one selector member.
 #[track_caller]
 pub fn sole_scope_selector(list: &CssScopeSelectorList) -> &CssSelector {
-    let [CssScopeSelector::Selector(selector)] = list.selectors() else {
+    let [CssStyleSelector::Selector(selector)] = list.selectors() else {
         panic!("one boundary selector: {list:?}")
     };
     selector
@@ -254,75 +287,99 @@ struct ActualRejection<'a> {
     encountered: Option<&'a str>,
 }
 
+/// The rejection facts a stylesheet diagnostic and a checked property-value
+/// failure report; the latter names no at-rule, descriptor or unknown name.
+trait RejectionFacts: std::fmt::Debug {
+    fn rejection_code(&self) -> CssErrorCode;
+    fn encountered(&self) -> Option<&CssTokenSummary>;
+    fn at_rule(&self) -> Option<&CssAtRuleName>;
+    fn descriptor(&self) -> Option<&CssDescriptorName>;
+    fn property_name(&self) -> Option<&CssPropertyName>;
+    fn known_property(&self) -> Option<CssKnownProperty>;
+    fn declaration_context(&self) -> Option<CssDeclarationContextRef<'_>>;
+}
+
+impl RejectionFacts for CssError {
+    fn rejection_code(&self) -> CssErrorCode {
+        self.code()
+    }
+    fn encountered(&self) -> Option<&CssTokenSummary> {
+        self.encountered()
+    }
+    fn at_rule(&self) -> Option<&CssAtRuleName> {
+        self.at_rule()
+    }
+    fn descriptor(&self) -> Option<&CssDescriptorName> {
+        self.descriptor()
+    }
+    fn property_name(&self) -> Option<&CssPropertyName> {
+        self.property_name()
+    }
+    fn known_property(&self) -> Option<CssKnownProperty> {
+        self.known_property()
+    }
+    fn declaration_context(&self) -> Option<CssDeclarationContextRef<'_>> {
+        self.declaration_context()
+    }
+}
+
+impl RejectionFacts for CssPropertyValueError {
+    fn rejection_code(&self) -> CssErrorCode {
+        self.code()
+            .unwrap_or_else(|| panic!("expected a grammar rejection, got {self:?}"))
+    }
+    fn encountered(&self) -> Option<&CssTokenSummary> {
+        self.encountered()
+    }
+    fn at_rule(&self) -> Option<&CssAtRuleName> {
+        None
+    }
+    fn descriptor(&self) -> Option<&CssDescriptorName> {
+        None
+    }
+    fn property_name(&self) -> Option<&CssPropertyName> {
+        None
+    }
+    fn known_property(&self) -> Option<CssKnownProperty> {
+        self.known_property()
+    }
+    fn declaration_context(&self) -> Option<CssDeclarationContextRef<'_>> {
+        self.declaration_context()
+    }
+}
+
 impl<'a> ActualRejection<'a> {
-    fn of(kind: &'a ErrorKind) -> Self {
-        fn token(summary: Option<&CssTokenSummary>) -> Option<&str> {
-            summary.map(CssTokenSummary::authored)
-        }
-        let (code, at_rule, name, encountered) = match kind {
-            ErrorKind::UnexpectedEnd(_) => (CssErrorCode::UnexpectedEnd, None, None, None),
-            ErrorKind::UnexpectedToken(detail) => (
-                CssErrorCode::UnexpectedToken,
+    fn of(error: &'a dyn RejectionFacts) -> Self {
+        let token = error.encountered().map(CssTokenSummary::authored);
+        let at_rule = error.at_rule().map(|name| name.as_str());
+        let descriptor = error.descriptor().map(|name| name.as_str());
+        let (at_rule, name, encountered) = match error.rejection_code() {
+            CssErrorCode::UnexpectedEnd => (None, None, None),
+            CssErrorCode::UnexpectedToken
+            | CssErrorCode::InvalidQualifiedRule
+            | CssErrorCode::InvalidSelector
+            | CssErrorCode::InvalidColorSyntax => (None, None, token),
+            CssErrorCode::InvalidAtRulePlacement
+            | CssErrorCode::UnknownAtRule
+            | CssErrorCode::UnsupportedAtRule => (at_rule, None, None),
+            CssErrorCode::InvalidAtRulePrelude | CssErrorCode::InvalidAtRuleBody => {
+                (at_rule, None, token)
+            }
+            CssErrorCode::UnknownProperty => {
+                (None, error.property_name().map(|name| name.as_str()), None)
+            }
+            CssErrorCode::InvalidPropertyValue => (
                 None,
-                None,
-                token(Some(detail.encountered())),
+                error
+                    .known_property()
+                    .map(|property| property.canonical_name()),
+                token,
             ),
-            ErrorKind::InvalidAtRulePlacement(detail) => (
-                CssErrorCode::InvalidAtRulePlacement,
-                Some(detail.name().as_str()),
-                None,
-                None,
-            ),
-            ErrorKind::InvalidAtRulePrelude(detail) => (
-                CssErrorCode::InvalidAtRulePrelude,
-                Some(detail.name().as_str()),
-                None,
-                token(detail.encountered()),
-            ),
-            ErrorKind::InvalidAtRuleBody(detail) => (
-                CssErrorCode::InvalidAtRuleBody,
-                Some(detail.name().as_str()),
-                None,
-                token(detail.encountered()),
-            ),
-            ErrorKind::UnknownAtRule(detail) => (
-                CssErrorCode::UnknownAtRule,
-                Some(detail.name().as_str()),
-                None,
-                None,
-            ),
-            ErrorKind::UnsupportedAtRule(detail) => (
-                CssErrorCode::UnsupportedAtRule,
-                Some(detail.name().as_str()),
-                None,
-                None,
-            ),
-            ErrorKind::InvalidQualifiedRule(detail) => (
-                CssErrorCode::InvalidQualifiedRule,
-                None,
-                None,
-                token(detail.encountered()),
-            ),
-            ErrorKind::InvalidSelector(detail) => (
-                CssErrorCode::InvalidSelector,
-                None,
-                None,
-                token(detail.encountered()),
-            ),
-            ErrorKind::UnknownProperty(detail) => (
-                CssErrorCode::UnknownProperty,
-                None,
-                Some(detail.name().as_str()),
-                None,
-            ),
-            ErrorKind::InvalidPropertyValue(detail) => (
-                CssErrorCode::InvalidPropertyValue,
-                None,
-                Some(detail.property().canonical_name()),
-                token(detail.encountered()),
-            ),
-            ErrorKind::InvalidDeclarationAnnotation(detail) => {
-                let (at_rule, name) = match detail.context() {
+            CssErrorCode::InvalidDeclarationAnnotation => {
+                let (at_rule, name) = match error
+                    .declaration_context()
+                    .expect("an annotation diagnostic names its declaration context")
+                {
                     CssDeclarationContextRef::Descriptor {
                         at_rule,
                         descriptor,
@@ -341,35 +398,14 @@ impl<'a> ActualRejection<'a> {
                     }
                     other => panic!("annotation context is not mapped for {other:?}"),
                 };
-                (
-                    CssErrorCode::InvalidDeclarationAnnotation,
-                    at_rule,
-                    name,
-                    token(Some(detail.encountered())),
-                )
+                (at_rule, name, token)
             }
-            ErrorKind::UnknownDescriptor(detail) => (
-                CssErrorCode::UnknownDescriptor,
-                Some(detail.at_rule().as_str()),
-                Some(detail.descriptor().as_str()),
-                None,
-            ),
-            ErrorKind::InvalidDescriptorValue(detail) => (
-                CssErrorCode::InvalidDescriptorValue,
-                Some(detail.at_rule().as_str()),
-                Some(detail.descriptor().as_str()),
-                token(detail.encountered()),
-            ),
-            ErrorKind::InvalidColorSyntax(detail) => (
-                CssErrorCode::InvalidColorSyntax,
-                None,
-                None,
-                token(detail.encountered()),
-            ),
+            CssErrorCode::UnknownDescriptor => (at_rule, descriptor, None),
+            CssErrorCode::InvalidDescriptorValue => (at_rule, descriptor, token),
             other => panic!("rejection identity is not mapped for {other:?}"),
         };
         Self {
-            code,
+            code: error.rejection_code(),
             at_rule,
             name,
             encountered,
@@ -413,10 +449,21 @@ impl ExpectedRejection {
         self
     }
 
-    /// Asserts that a structured diagnostic detail is this rejection.
+    /// Asserts that a structured diagnostic is this rejection.
     #[track_caller]
-    pub fn assert_kind(&self, kind: &ErrorKind) {
-        let actual = ActualRejection::of(kind);
+    pub fn assert_kind(&self, error: &CssError) {
+        self.assert_facts(error);
+    }
+
+    /// Asserts that a checked property-value failure is this rejection.
+    #[track_caller]
+    pub fn assert_checked(&self, error: &CssPropertyValueError) {
+        self.assert_facts(error);
+    }
+
+    #[track_caller]
+    fn assert_facts(&self, error: &dyn RejectionFacts) {
+        let actual = ActualRejection::of(error);
         let responsible = match &self.responsible {
             Responsible::Unchecked => true,
             Responsible::End => actual.encountered.is_none(),
@@ -427,15 +474,15 @@ impl ExpectedRejection {
                 && actual.at_rule == self.at_rule.as_deref()
                 && actual.name == self.name.as_deref()
                 && responsible,
-            "expected {self:?}, got {actual:?} from {kind:?}"
+            "expected {self:?}, got {actual:?} from {error:?}"
         );
     }
 
     /// Asserts that a diagnostic error is this rejection.
     #[track_caller]
-    pub fn assert_error(&self, error: &Error) {
+    pub fn assert_error(&self, error: &CssError) {
         assert_eq!(error.code(), self.code, "{error:?}");
-        self.assert_kind(error.kind());
+        self.assert_kind(error);
     }
 
     /// Asserts that the first diagnostic of `report` is this rejection and
@@ -454,7 +501,10 @@ impl ExpectedRejection {
     /// diagnostic is this rejection.
     #[track_caller]
     pub fn assert_sheet(&self, source: &str) {
-        let failure = validate_sheet(source).unwrap_err();
+        let failure = CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err();
         self.assert_error(failure.first().error());
     }
 }

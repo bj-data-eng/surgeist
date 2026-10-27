@@ -111,7 +111,7 @@ fn owner_attribute_result_and_pending_publication_keep_diagnostics_and_exact_sou
                 reached += 1;
                 Ok(())
             }),
-            Err(CssRetainedPayloadError::Admission(allowance))
+            Err(CssRetainedPayloadError::admission(allowance))
         );
         assert_eq!(reached, allowance);
         assert_eq!(result.diagnostics(), before);

@@ -11,14 +11,20 @@ use crate::css::support::color_and_selector_fixtures::assert_strict_validation_r
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_selector_rejected as assert_rejected,
 };
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNormalizedItem, CssPseudoClass, CssRecoveryAction,
-    CssSelector, CssSelectorBinding, normalize_sheet, parse_selector, parse_selector_list,
-    parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssSelectorBinding};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssPseudoClass, CssSelector,
+    CssStyleSelectorContext,
 };
 
 fn assert_clean(source: &str) {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{source}: {report:?}");
     assert!(report.syntax().is_some(), "{source}: {report:?}");
     assert!(report.into_validation_result().is_ok(), "{source}");
@@ -149,7 +155,11 @@ fn logical_arguments_inherit_the_shadow_functions_compound_restriction() {
     for function in [":host", ":host-context", "::slotted"] {
         for logical in ["is", "where"] {
             let source = format!("{function}(:{logical}(.a > .b, .valid))");
-            let report = parse_selector(&source, &CssNamespaceContext::default());
+            let report = CssSelector::parse(
+                &CssParser::default(),
+                &source,
+                &CssNamespaceContext::default(),
+            );
             assert!(report.syntax().is_some(), "{source}: {report:?}");
             let [diagnostic] = report.diagnostics() else {
                 panic!("one invalid compound-only member: {source}: {report:?}");
@@ -329,7 +339,11 @@ fn pseudo_class_after_part_does_not_move_to_the_originating_element() {
         (".button::part(label):hover::before", &[][..]),
         (".button::part(label)::before:hover", &[][..]),
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.is_clean(), "{source}: {report:?}");
         let Some(CssSelector::Compound(compound)) = report.syntax() else {
             panic!("retained originating compound: {source}: {report:?}");
@@ -353,7 +367,11 @@ fn forgiving_suffix_lists_inherit_the_current_pseudo_element_restrictions() {
         "::slotted(.a):is(.a, :hover)",
         "::before:is(.a, :hover)",
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.syntax().is_some(), "{source}: {report:?}");
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid forgiving member: {source}: {report:?}");
@@ -378,13 +396,35 @@ fn forgiving_suffix_lists_inherit_the_current_pseudo_element_restrictions() {
 #[test]
 fn shadow_selector_arguments_do_not_consume_outer_list_separators() {
     let context = CssNamespaceContext::default();
-    let report = parse_selector_list(":host(.a), ::slotted(.b), ::part(label)", &context);
+    let report = CssParsedStyleSelectors::parse(
+        &CssParser::default(),
+        ":host(.a), ::slotted(.b), ::part(label)",
+        &context,
+        CssStyleSelectorContext::Ordinary,
+    );
     assert!(report.is_clean(), "{report:?}");
-    assert_eq!(report.syntax().as_ref().unwrap().selectors().len(), 3);
+    assert_eq!(
+        report
+            .syntax()
+            .as_ref()
+            .unwrap()
+            .selectors()
+            .selectors()
+            .len(),
+        3
+    );
     // Shadow 1: :host() takes one <compound-selector>, so its comma
     // invalidates the whole ordinary list.
     let source = ":host(.a, .b), .valid";
-    assert_selector_input_rejected(source, parse_selector_list(source, &context));
+    assert_selector_input_rejected(
+        source,
+        CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            source,
+            &context,
+            CssStyleSelectorContext::Ordinary,
+        ),
+    );
 }
 
 #[test]
@@ -407,9 +447,9 @@ fn function_contained_nesting_anchors_keep_the_enclosing_parent_binding() {
             } else {
                 format!("{selector} {{ color: red }}")
             };
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{source}: {report:?}");
-            let normalized = normalize_sheet(report.syntax()).unwrap();
+            let normalized = report.syntax().normalize(Default::default()).unwrap();
             let declarations: Vec<_> = normalized
                 .items()
                 .iter()
@@ -456,9 +496,9 @@ fn function_contained_scope_anchors_remain_distinct_from_nesting_anchors() {
         ("::part(label):host(.leaf)", CssSelectorBinding::Absolute),
     ] {
         let source = format!("@scope (.root) {{ {selector} {{ color: red }} }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let declarations: Vec<_> = normalized
             .items()
             .iter()

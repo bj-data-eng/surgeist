@@ -1,11 +1,14 @@
 //! Independent authored selector-provider expectations. Rule traversal is separate.
-use surgeist_css::{
-    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorList, CssRule, CssSelector,
-    CssSpecifiedValueSerializationErrorKind as Kind,
-    CssSpecifiedValueSerializationLimits as Limits, CssStyleSelector, parse_selector, parse_sheet,
+use crate::css::support::failure_classes::SerializationFailure as Kind;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorList, CssSelector, CssStyleSelector,
 };
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 fn parsed(source: &str) -> CssSelector {
-    let report = parse_sheet(&format!("{source} {{ }}"));
+    let report = CssParser::default().parse_sheet(format!("{source} {{ }}"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("style")
@@ -18,9 +21,17 @@ fn parsed(source: &str) -> CssSelector {
 fn exact(source: &str, expected: &str) {
     let selector = parsed(source);
     let before = selector.clone();
-    assert_eq!(selector.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(selector, before);
-    assert_eq!(parsed(expected).to_specified_css().unwrap(), expected);
+    assert_eq!(
+        parsed(expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 #[test]
 fn identifiers_attributes_and_combinators_have_meaningful_boundaries() {
@@ -35,7 +46,8 @@ fn identifiers_attributes_and_combinators_have_meaningful_boundaries() {
 }
 #[test]
 fn qualified_names_reuse_authored_prefix_identity() {
-    let report = parse_sheet("@namespace n 'urn:x'; n|leaf[n|key='v']{} *|*[|key]{} |leaf{}");
+    let report = CssParser::default()
+        .parse_sheet("@namespace n 'urn:x'; n|leaf[n|key='v']{} *|*[|key]{} |leaf{}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let expected = [r#"n|leaf[n|key="v"]"#, "*|*[|key]", "|leaf"];
     for (rule, expected) in report.syntax().rules()[1..].iter().zip(expected) {
@@ -45,7 +57,10 @@ fn qualified_names_reuse_authored_prefix_identity() {
         let CssStyleSelector::Selector(selector) = &rule.selectors().selectors()[0] else {
             panic!("selector")
         };
-        assert_eq!(selector.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 #[test]
@@ -62,10 +77,13 @@ fn nth_patterns_follow_syntax_anb_serialization() {
         ":nth-child(2n+1 of .a, #b):nth-last-child(2n):nth-of-type(-n+3):nth-last-of-type(2)",
     );
     let selector = CssSelector::PseudoClass(CssPseudoClass::NthOfType(
-        surgeist_css::CssNthPattern::AnPlusB(surgeist_css::CssNthAnPlusB::new(-1, i32::MIN)),
+        surgeist_css::selector::CssNthPattern::AnPlusB(surgeist_css::selector::CssNthAnPlusB::new(
+            -1,
+            i32::MIN,
+        )),
     ));
     assert_eq!(
-        selector.to_specified_css().unwrap(),
+        selector.serialize_specified(Default::default()).unwrap(),
         ":nth-of-type(-n-2147483648)"
     );
 }
@@ -92,7 +110,10 @@ fn constructed_names_escape_without_mutating_identity() {
         (CssSelector::Tag("a:b".into()), "a\\:b"),
     ] {
         let before = selector.clone();
-        assert_eq!(selector.to_specified_css().unwrap(), expected);
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(selector, before);
     }
 }
@@ -103,7 +124,7 @@ fn limits_count_final_utf8_and_leave_the_graph_available_for_retry() {
     let before = selector.clone();
     assert_eq!(
         selector
-            .to_specified_css_with_limits(Limits::new(1, 1, expected.len()))
+            .serialize_specified(Limits::new(1, 1, expected.len()))
             .unwrap(),
         expected
     );
@@ -113,41 +134,46 @@ fn limits_count_final_utf8_and_leave_the_graph_available_for_retry() {
         (Limits::new(1, 1, expected.len() - 1), Kind::ByteLimit),
     ] {
         assert_eq!(
-            selector
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&selector.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(selector, before);
     }
-    assert_eq!(selector.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 #[test]
 fn finite_deep_and_wide_lists_use_incremental_checked_work() {
     let mut selector = CssSelector::Class("x".into());
     for _ in 0..255 {
         selector = CssSelector::PseudoClass(CssPseudoClass::Is(
-            CssPseudoSelectorList::try_new(vec![selector]).unwrap(),
+            CssPseudoSelectorList::try_new(vec![selector], Default::default()).unwrap(),
         ));
     }
     let expected = format!("{}.x{}", ":is(".repeat(255), ")".repeat(255));
-    assert_eq!(selector.to_specified_css().unwrap(), expected);
     assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    assert!(
         selector
-            .to_specified_css_with_limits(Limits::new(10, usize::MAX, usize::MAX))
+            .serialize_specified(Limits::new(10, usize::MAX, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     let wide = CssSelector::PseudoClass(CssPseudoClass::Is(
-        CssPseudoSelectorList::try_new(vec![CssSelector::Class("x".into()); 8192]).unwrap(),
+        CssPseudoSelectorList::try_new(
+            vec![CssSelector::Class("x".into()); 8192],
+            Default::default(),
+        )
+        .unwrap(),
     ));
-    assert_eq!(
-        wide.to_specified_css_with_limits(Limits::new(2, usize::MAX, usize::MAX))
+    assert!(
+        wide.serialize_specified(Limits::new(2, usize::MAX, usize::MAX))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
 }
 
@@ -158,9 +184,11 @@ fn unchecked_scalar_names_cannot_silently_change_identity() {
         CssSelector::Key("a\0b".into()),
         CssSelector::Tag(String::new()),
     ] {
-        assert_eq!(
-            selector.to_specified_css().unwrap_err().kind(),
-            Kind::UnrepresentableValue
+        assert!(
+            selector
+                .serialize_specified(Default::default())
+                .unwrap_err()
+                .is_unrepresentable_value()
         );
     }
 }
@@ -169,9 +197,7 @@ fn unchecked_scalar_names_cannot_silently_change_identity() {
 fn enum_carrier_does_not_duplicate_pseudo_class_payload_work() {
     let selector = CssSelector::PseudoClass(CssPseudoClass::Root);
     assert_eq!(
-        selector
-            .to_specified_css_with_limits(Limits::new(1, 1, 6))
-            .unwrap(),
+        selector.serialize_specified(Limits::new(1, 1, 6)).unwrap(),
         ":root"
     );
 }
@@ -185,7 +211,7 @@ fn compound_attribute_and_logical_children_share_exact_semantic_node_budget() {
     let before = selector.clone();
     assert_eq!(
         selector
-            .to_specified_css_with_limits(Limits::new(7, 7, expected.len()))
+            .serialize_specified(Limits::new(7, 7, expected.len()))
             .unwrap(),
         expected
     );
@@ -195,10 +221,7 @@ fn compound_attribute_and_logical_children_share_exact_semantic_node_budget() {
         (Limits::new(7, 7, expected.len() - 1), Kind::ByteLimit),
     ] {
         assert_eq!(
-            selector
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&selector.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(selector, before);
@@ -207,10 +230,17 @@ fn compound_attribute_and_logical_children_share_exact_semantic_node_budget() {
 
 #[test]
 fn symbolic_nesting_anchor_and_scope_pseudo_keep_distinct_authored_identity() {
-    let report = parse_selector("& :scope", &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        "& :scope",
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let selector = report.syntax().as_ref().unwrap();
     let before = selector.clone();
-    assert_eq!(selector.to_specified_css().unwrap(), "& :scope");
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        "& :scope"
+    );
     assert_eq!(selector, &before);
 }

@@ -6,13 +6,26 @@
 //! Number halfway output follows the shared frozen WebKit FIXED policy;
 //! CSSOM's normative decimal-halfway question remains open.
 
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use crate::css::support::value_assertions::literal_specified;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssNonNegative, CssNumeric, CssNumericLiteral, CssResolution, CssResolutionUnit,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssAutoOr;
+use surgeist_css::values::effects::CssClip;
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
-fn literal(text: &str) -> CssResolutionLiteral {
-    let values = parse_component_values(text).unwrap();
+fn literal(text: &str) -> CssNumericLiteral<CssResolution> {
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let component = values
         .items()
         .iter()
@@ -23,13 +36,16 @@ fn literal(text: &str) -> CssResolutionLiteral {
             )
         })
         .unwrap();
-    CssResolutionLiteral::try_from_component(component.clone()).unwrap()
+    CssNumericLiteral::<CssResolution>::try_from_component(component.clone()).unwrap()
 }
 
-fn resolution(text: &str) -> CssResolutionValue {
-    CssResolutionValue::try_from_calculation(
-        CssResolutionCalculation::try_from_components(parse_component_values(text).unwrap())
-            .unwrap(),
+fn resolution(text: &str) -> CssNumeric<CssResolution, CssNonNegative> {
+    CssNumeric::<CssResolution, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssResolution>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -51,19 +67,33 @@ fn ordinary_resolution_converts_exact_units_before_six_place_rounding() {
     ] {
         let value = literal(text);
         let original = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{text}");
+        assert_eq!(
+            literal_specified(&value, Default::default()).unwrap(),
+            expected,
+            "{text}"
+        );
         assert_eq!(value, original);
         assert_eq!(value.component(), original.component());
         let reparsed = literal(expected);
         assert_eq!(reparsed.unit(), CssResolutionUnit::Dppx);
-        assert_eq!(reparsed.serialize_specified().unwrap(), expected);
-        let value = CssResolutionValue::from_literal(value);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            literal_specified(&reparsed, Default::default()).unwrap(),
+            expected
+        );
+        let value = CssNumeric::<CssResolution, CssNonNegative>::try_from_literal(value).unwrap();
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value.literal(), Some(&original));
     }
-    let constructed = CssResolutionLiteral::try_new("192", CssResolutionUnit::Dpi).unwrap();
+    let constructed =
+        CssNumericLiteral::<CssResolution>::try_new("192", CssResolutionUnit::Dpi).unwrap();
     let before = constructed.clone();
-    assert_eq!(constructed.serialize_specified().unwrap(), "2dppx");
+    assert_eq!(
+        literal_specified(&constructed, Default::default()).unwrap(),
+        "2dppx"
+    );
     assert_eq!(constructed, before);
 }
 
@@ -78,16 +108,17 @@ fn resolution_zero_tiny_and_huge_coefficients_remain_exact_authored_values() {
         let value = literal(text);
         let original = value.clone();
         assert_eq!(
-            value
-                .serialize_specified_with_limits(Limits::new(1, 100, 5))
-                .unwrap(),
+            literal_specified(&value, Limits::new(1, 100, 5)).unwrap(),
             "0dppx"
         );
         assert_eq!(value, original);
     }
     let huge = literal("1e30dpi");
     let expected = "10416666666666666666666666666.666667dppx";
-    assert_eq!(huge.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        literal_specified(&huge, Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(huge.numeric().representation(), "1e30");
     for text in [
         "1e1000000000dpi",
@@ -95,23 +126,23 @@ fn resolution_zero_tiny_and_huge_coefficients_remain_exact_authored_values() {
     ] {
         let value = literal(text);
         let original = value.clone();
-        assert_eq!(
-            value
-                .serialize_specified_with_limits(Limits::new(1, 100, 16))
+        assert!(
+            literal_specified(&value, Limits::new(1, 100, 16))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, original);
     }
-    // Adding emission does not weaken ordinary negative-range admission.
+    // Adding emission does not weaken the ordinary nonnegative range.
     for text in ["-1dpi", "-1e-999999dpcm"] {
-        let component = parse_component_values(text).unwrap().items()[0].clone();
-        assert_eq!(
-            CssResolutionLiteral::try_from_component(component)
+        let component = CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone();
+        assert!(
+            CssNumeric::<CssResolution, CssNonNegative>::try_from_component(component)
                 .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::OutOfRange
+                .is_out_of_range()
         );
     }
 }
@@ -133,38 +164,28 @@ fn converted_resolution_bytes_and_shared_work_limits_fail_atomically() {
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&literal_specified(&value, limits).unwrap_err()),
             kind
         );
         assert_eq!(value, before);
     }
     assert_eq!(
-        value
-            .serialize_specified_with_limits(Limits::new(1, usize::MAX, expected.len()))
-            .unwrap(),
+        literal_specified(&value, Limits::new(1, usize::MAX, expected.len())).unwrap(),
         expected
     );
     let carry = literal("0.000048dpi");
-    assert_eq!(
-        carry
-            .serialize_specified_with_limits(Limits::new(1, usize::MAX, 11))
+    assert!(
+        literal_specified(&carry, Limits::new(1, usize::MAX, 11))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
-        carry
-            .serialize_specified_with_limits(Limits::new(1, usize::MAX, 12))
-            .unwrap(),
+        literal_specified(&carry, Limits::new(1, usize::MAX, 12)).unwrap(),
         "0.000001dppx"
     );
     let zero = literal("-0dppx");
     assert_eq!(
-        zero.serialize_specified_with_limits(Limits::new(1, 1, 5))
-            .unwrap(),
+        literal_specified(&zero, Limits::new(1, 1, 5)).unwrap(),
         "0dppx"
     );
 }
@@ -186,7 +207,10 @@ fn escaped_resolution_units_and_crlf_non_bmp_provenance_survive_emission() {
     assert_eq!(parsed.span().start().line().value(), 1);
     assert_eq!(value.numeric().representation(), "+0192");
     assert_eq!(value.unit(), CssResolutionUnit::Dpi);
-    assert_eq!(value.serialize_specified().unwrap(), "2dppx");
+    assert_eq!(
+        literal_specified(&value, Default::default()).unwrap(),
+        "2dppx"
+    );
     assert_eq!(value.component(), &component);
     assert_eq!(value.origin(), &origin);
 }
@@ -203,29 +227,40 @@ fn resolution_calculations_share_the_numeric_projection_without_clamping_or_muta
         let calculation = value.calculation().unwrap();
         let components = calculation.components().clone();
         let ty = calculation.numeric_type();
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{text}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{text}"
+        );
         assert_eq!(value, original);
         assert_eq!(value.origin(), original.origin());
         assert_eq!(value.calculation().unwrap().components(), &components);
         assert_eq!(value.calculation().unwrap().numeric_type(), ty);
-        assert_eq!(components.serialize().unwrap().as_css(), text);
         assert_eq!(
-            resolution(expected).serialize_specified().unwrap(),
-            expected
+            components
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            text
         );
         assert_eq!(
+            resolution(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
+        assert!(
             value
-                .serialize_specified_with_limits(Limits::new(100, 100, expected.len() - 1))
+                .serialize_specified(Limits::new(100, 100, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, original);
     }
 }
 
 fn clip(text: &str) -> CssClip {
-    let report = parse_style_attribute(&format!("clip:{text}"));
+    let report = CssParser::default().parse_block_contents(format!("clip:{text}"));
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Clip(value) = report.syntax()[0]
         .known()
@@ -235,7 +270,7 @@ fn clip(text: &str) -> CssClip {
     else {
         panic!("clip property")
     };
-    value.clip().clone()
+    value.value().clone()
 }
 
 #[test]
@@ -256,13 +291,26 @@ fn legacy_rect_scalar_components_keep_order_and_canonical_commas() {
     ] {
         let value = clip(text);
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, before);
-        assert_eq!(clip(expected).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            clip(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
-    assert_eq!(CssClip::Auto.serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        CssClip::Auto
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "auto"
+    );
     // Modern clip-path rect() has its own whitespace grammar and provider.
-    let report = parse_style_attribute("clip-path:rect(1px 2px 3px 4px)");
+    let report = CssParser::default().parse_block_contents("clip-path:rect(1px 2px 3px 4px)");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
         .known()
@@ -273,7 +321,10 @@ fn legacy_rect_scalar_components_keep_order_and_canonical_commas() {
         panic!("clip-path property")
     };
     assert_eq!(
-        value.value().serialize_specified().unwrap(),
+        value
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "rect(1px 2px 3px 4px)"
     );
 }
@@ -289,24 +340,21 @@ fn legacy_rect_children_spend_one_cumulative_budget_and_preserve_edge_origins() 
         (Limits::new(5, 100, expected.len() - 1), Kind::ByteLimit),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(value, before);
     }
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(5, 5, expected.len()))
+            .serialize_specified(Limits::new(5, 5, expected.len()))
             .unwrap(),
         expected
     );
     let CssClip::Rect(rect) = &value else {
         panic!("rectangle")
     };
-    let CssClipEdge::Length(top) = rect.top() else {
+    let CssAutoOr::Value(top) = rect.top() else {
         panic!("length edge")
     };
     let CssValueOrigin::Parsed(origin) = top.origin() else {

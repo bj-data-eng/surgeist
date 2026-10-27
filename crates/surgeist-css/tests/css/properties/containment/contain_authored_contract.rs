@@ -8,8 +8,22 @@
 //! No future Style variant or generated Contain longhand variant is named.
 
 use crate::css::support::authored_property;
+use crate::css::support::failure_classes::serialization_failure;
 use authored_property::{ParserFront, assert_source, checked_components};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandContributions, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssContain, CssContainComponent, CssContainComponentList};
 
 const PROPERTY: CssKnownProperty = CssKnownProperty::Contain;
 const FRONTS: [ParserFront; 5] = [
@@ -66,11 +80,10 @@ fn containment(source: &CssDeclaration) -> &CssContain {
     else {
         panic!("existing typed contain wrapper")
     };
-    value.containment()
+    value.value()
 }
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one ordinary longhand")
     };
@@ -188,7 +201,7 @@ fn escaped_style_tokens_preserve_original_components_source_coordinates_and_impo
         }
     }
     let input = r"/*😀*/\73 tyle";
-    let components = parse_component_values(input).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), input).unwrap();
     let token=components.items().iter().find(|v|matches!(v.view(),CssComponentValueRef::Token(CssValueTokenRef::Ident(name)) if name=="style")).unwrap();
     let CssValueOrigin::Parsed(origin) = token.origin() else {
         panic!("original escaped style origin")
@@ -207,7 +220,12 @@ fn escaped_style_tokens_preserve_original_components_source_coordinates_and_impo
         )
         .unwrap();
         assert_eq!(source.value_components(), &components);
-        assert_eq!(containment(&source).serialize_specified().unwrap(), "style");
+        assert_eq!(
+            containment(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "style"
+        );
     }
 }
 
@@ -235,11 +253,11 @@ fn intrinsic_metadata_is_noninherited_with_an_ordinary_initial_and_one_terminal(
 fn normalization_counts_one_terminal_per_occurrence_and_preserves_order_importance_and_pending_state()
  {
     let css = ".a{contain:paint size!important;contain:style;contain:inherit!important;contain:var(--contain)}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean());
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(0, 1, 4, 4).unwrap();
-    let normalized = normalize_report_with_limits(&report, exact).unwrap();
+    let normalized = report.normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .syntax()
         .items()
@@ -279,27 +297,22 @@ fn normalization_counts_one_terminal_per_occurrence_and_preserves_order_importan
             assert_terminals(values, item.source());
         }
     }
-    let error = normalize_report_with_limits(
-        &report,
-        CssNormalizationLimits::try_new(0, 1, 4, 3).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .normalize(CssNormalizationLimits::try_new(0, 1, 4, 3).unwrap())
+        .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 3
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 3))
     );
     assert_eq!(error.declaration_order(), Some(3));
     assert_eq!(report, before);
-    assert!(normalize_report_with_limits(&report, exact).is_ok());
+    assert!(report.normalize(exact).is_ok());
 }
 
 #[test]
 fn every_specified_state_keeps_exact_aggregate_leaf_and_declaration_byte_costs_with_atomic_reuse() {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
+    use CssSerializationLimits as Limits;
     for canonical in STATES {
         let source = ParserFront::CheckedGrammar.valid(PROPERTY, canonical, canonical);
         let before = source.clone();
@@ -311,10 +324,7 @@ fn every_specified_state_keeps_exact_aggregate_leaf_and_declaration_byte_costs_w
         };
         let value = containment(&source);
         let exact = Limits::new(primitive_nodes, primitive_nodes, canonical.len());
-        assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
-            canonical
-        );
+        assert_eq!(value.serialize_specified(exact).unwrap(), canonical);
         for (limits, kind) in [
             (
                 Limits::new(primitive_nodes - 1, primitive_nodes, canonical.len()),
@@ -331,20 +341,14 @@ fn every_specified_state_keeps_exact_aggregate_leaf_and_declaration_byte_costs_w
         ] {
             for _ in 0..2 {
                 assert_eq!(
-                    value
-                        .serialize_specified_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
+                    serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                     kind
                 );
             }
         }
         let nodes = primitive_nodes + 2;
         let exact = Limits::new(nodes, nodes, expected.len());
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
                 Limits::new(nodes - 1, nodes, expected.len()),
@@ -361,18 +365,12 @@ fn every_specified_state_keeps_exact_aggregate_leaf_and_declaration_byte_costs_w
         ] {
             for _ in 0..2 {
                 assert_eq!(
-                    source
-                        .to_specified_css_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
+                    serialization_failure(&source.serialize_specified(limits).unwrap_err()),
                     kind
                 );
             }
         }
-        assert_eq!(
-            source.to_specified_css_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(source.serialize_specified(exact).unwrap(), expected);
         assert_eq!(source, before);
     }
 }
@@ -382,40 +380,29 @@ fn sibling_sheet_output_shares_a_cumulative_byte_budget_and_remains_reusable_aft
     let input = ".a{contain:paint style size!important;contain:strict;contain:content}";
     let expected =
         ".a { contain: size style paint !important; contain: strict; contain: content; }";
-    let report = parse_sheet(input);
+    let report = CssParser::default().parse_sheet(input);
     assert!(report.is_clean());
     let before = report.clone();
-    let limits = CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
+    let limits = CssSerializationLimits::new(usize::MAX, usize::MAX, expected.len());
     assert_eq!(
-        report
-            .syntax()
-            .to_specified_css_with_limits(limits)
-            .unwrap(),
+        report.syntax().serialize_specified(limits).unwrap(),
         expected
     );
     for _ in 0..2 {
         let error = report
             .syntax()
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
+            .serialize_specified(CssSerializationLimits::new(
                 usize::MAX,
                 usize::MAX,
                 expected.len() - 1,
             ))
             .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
-            )
-        );
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(0));
         assert_eq!(report, before);
     }
     assert_eq!(
-        report
-            .syntax()
-            .to_specified_css_with_limits(limits)
-            .unwrap(),
+        report.syntax().serialize_specified(limits).unwrap(),
         expected
     );
 }

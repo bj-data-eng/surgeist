@@ -8,12 +8,16 @@
 //! Authored spelling, semantic inspection, and importance are Surgeist public contracts.
 //! No calculation is evaluated here.
 
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::numeric::{
     CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationType,
-    CssCalculationValueRef, CssGridAutoRepeatKind, CssGridAutoTrackComponent,
-    CssGridGeneralTrackComponent, CssGridLineNames, CssGridTrackList, CssGridTrackRepeatComponent,
-    CssGridTrackSize, CssImportance, CssKnownProperty, CssKnownPropertyValueRef,
-    CssSpecifiedNonNegativeLengthPercentage, parse_style_attribute, validate_style_attribute,
+    CssCalculationValueRef, CssLengthPercentage, CssNonNegative, CssNumeric,
+};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::layout::{
+    CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridGeneralTrackComponent,
+    CssGridLineNames, CssGridTrackList, CssGridTrackRepeatComponent, CssGridTrackSize,
 };
 
 #[derive(Clone, Copy)]
@@ -89,7 +93,7 @@ fn auto_fit_repeat_preserves_trailing_line_names_after_a_typed_calculation() {
 
 fn assert_repeat(authored: &str, mode: RepeatMode, case: ContentCase) {
     let source = format!("GRID-TEMPLATE-COLUMNS:  {authored} !IMPORTANT; color: red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration, sibling] = report.syntax().as_slice() else {
         panic!("{source}: the Grid declaration and following color must both remain");
@@ -126,9 +130,15 @@ fn assert_repeat(authored: &str, mode: RepeatMode, case: ContentCase) {
     let length = breadth.length_percentage().expect("a length-valued track");
     match case {
         ContentCase::LiteralTrailing => {
-            assert_eq!(length.serialize_specified().unwrap(), "2px");
             assert_eq!(
-                value.value().serialize_specified().unwrap(),
+                length.serialize_specified(Default::default()).unwrap(),
+                "2px"
+            );
+            assert_eq!(
+                value
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 "repeat(2, 2px [end])".replace(
                     "2,",
                     match mode {
@@ -153,7 +163,13 @@ fn assert_repeat(authored: &str, mode: RepeatMode, case: ContentCase) {
         panic!("{source}: expected the unchanged color sibling");
     };
     assert_eq!(color.as_css(), "red");
-    assert!(validate_style_attribute(&source).is_ok(), "{source}");
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok(),
+        "{source}"
+    );
 }
 
 fn ordered_repeat_content(
@@ -171,7 +187,10 @@ fn ordered_repeat_content(
                 panic!("exactly one integer repeat must remain");
             };
             assert!(
-                matches!(repeat.count(), surgeist_css::CssPositiveIntegerValue::Literal(count) if count.integer().numeric().representation() == "2")
+                repeat
+                    .count()
+                    .literal()
+                    .is_some_and(|count| count.numeric().representation() == "2")
             );
             match (case, repeat.content().components()) {
                 (
@@ -228,7 +247,7 @@ fn ordered_repeat_content(
     }
 }
 
-fn assert_one_pixel_times_two(length: &CssSpecifiedNonNegativeLengthPercentage) {
+fn assert_one_pixel_times_two(length: &CssNumeric<CssLengthPercentage, CssNonNegative>) {
     let calculation = length.calculation().expect("retain typed calculation");
     assert_eq!(calculation.result_type(), CssCalculationType::Length);
     let CssCalculationExpressionRef::NestedCalc(root) = calculation.expression() else {

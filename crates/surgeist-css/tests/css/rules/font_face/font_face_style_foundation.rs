@@ -2,17 +2,23 @@
 //! (2026-09-07) §4.4. Typed authored ranges follow with the model.
 
 use crate::css::support::rules::invalid_descriptor;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind,
+};
 
 type Kind = CssFontFaceDescriptorKind;
 
 fn admitted(value: &str) {
-    let raw = parse_font_face_descriptor_value(value, Kind::FontStyle);
+    let raw =
+        CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), value, Kind::FontStyle);
     assert!(raw.is_clean(), "raw {value}: {:?}", raw.diagnostics());
     assert!(raw.syntax().is_some(), "raw descriptor: {value}");
 
     let source = format!("@font-face{{font-family:Demo;font-style:{value}}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(
         report.is_clean(),
         "sheet {source}: {:?}",
@@ -32,7 +38,12 @@ fn admitted(value: &str) {
         record.position().unwrap().byte_offset().value(),
         source.find("font-style:").unwrap()
     );
-    assert!(validate_sheet(&source).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .is_ok()
+    );
 }
 
 #[test]
@@ -62,7 +73,7 @@ fn descriptor_accepts_auto_directions_bounded_single_and_authored_ranges() {
 #[test]
 fn duplicate_style_occurrences_remain_ordered_with_last_effective() {
     let source = "@font-face{font-style:auto;font-style:oblique 90deg -90deg;font-style:left}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("one font-face rule");
@@ -78,7 +89,7 @@ fn duplicate_style_occurrences_remain_ordered_with_last_effective() {
             .value(),
         source.rfind("font-style:").unwrap()
     );
-    let absent = parse_sheet("@font-face{}");
+    let absent = CssParser::default().parse_sheet("@font-face{}");
     let [CssRule::FontFace(rule)] = absent.syntax().rules() else {
         panic!("empty font-face remains a rule");
     };
@@ -97,14 +108,18 @@ fn invalid_descriptor_angles_and_arity_drop_locally_with_original_position() {
         "oblique 10deg 20deg 30deg",
         "auto 10deg",
     ] {
-        let raw = parse_font_face_descriptor_value(invalid, Kind::FontStyle);
+        let raw = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            invalid,
+            Kind::FontStyle,
+        );
         assert!(raw.syntax().is_none(), "raw accepted {invalid}: {raw:?}");
         invalid_descriptor("font-face", "font-style").assert_first(&raw);
 
         let source = format!(
             "@font-face{{font-family:Demo;font-style:normal;src:url(face);font-style:{invalid};font-display:swap}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("font-face survives invalid descriptor: {source}");
         };
@@ -132,14 +147,19 @@ fn invalid_descriptor_angles_and_arity_drop_locally_with_original_position() {
             source.find("font-style:normal").unwrap()
         );
         assert!(rule.descriptors().effective(Kind::FontDisplay).is_some());
-        assert!(validate_sheet(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 }
 
 #[test]
 fn valid_env_defers_whole_style_descriptor_without_relaxing_ordinary_grammar() {
     let source = "@font-face{font-style:normal;font-style:wide env(style)}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("one font-face rule");

@@ -3,7 +3,19 @@
 //! Canonical serialization of new semantic states needs the future current
 //! value API; this RED uses only existing public parsing and expansion APIs.
 
-use surgeist_css::*;
+use crate::css::support::property_admission::assert_same_grammar_facts;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssPropertyGrammar, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::layout::{CssGridAutoFlow, CssGridAutoFlowAxis};
 
 fn grammar() -> CssPropertyGrammar {
     CssPropertyGrammar::from_name("grid-auto-flow").expect("known grid longhand")
@@ -11,7 +23,7 @@ fn grammar() -> CssPropertyGrammar {
 
 fn parsed(value: &str) -> CssDeclaration {
     let source = format!("grid-auto-flow:{value} !important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one grid-auto-flow declaration: {source}")
@@ -20,9 +32,10 @@ fn parsed(value: &str) -> CssDeclaration {
 }
 
 fn checked(value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar()),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Important,
     )
     .unwrap_or_else(|error| panic!("checked grid-auto-flow {value}: {error:?}"))
@@ -30,7 +43,7 @@ fn checked(value: &str) -> CssDeclaration {
 
 fn terminal(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("intrinsic grid-auto-flow expansion")
+        source.expand().expect("intrinsic grid-auto-flow expansion")
     else {
         panic!("one completed longhand expansion")
     };
@@ -130,7 +143,7 @@ fn normal_cannot_combine_with_dense_and_duplicate_or_conflicting_keywords_reject
         "dense column row",
     ] {
         let source = format!("color:red;grid-auto-flow:{value};color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -139,20 +152,24 @@ fn normal_cannot_combine_with_dense_and_duplicate_or_conflicting_keywords_reject
             "{source}"
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
             "{source}"
         );
-        assert_eq!(
-            parse_property_value_for_grammar(
-                grammar(),
-                parse_component_values(value).unwrap(),
-                CssImportance::Normal
+        assert_same_grammar_facts(
+            &CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(grammar()),
+                CssComponentValues::parse(&CssParser::default(), value).unwrap(),
+                CssImportance::Normal,
             )
-            .unwrap_err()
-            .kind(),
-            &CssPropertyValueErrorKind::Grammar(report.diagnostics()[0].error().kind().clone()),
-            "checked accepted {value}"
+            .unwrap_err(),
+            report.diagnostics()[0].error(),
+            "checked accepted {value}",
         );
     }
 }
@@ -185,10 +202,10 @@ fn metadata_has_noninherited_normal_initial_and_all_includes_longhand() {
     assert!(!all.excludes(CssPropertyNameRef::Known(CssKnownProperty::GridAutoFlow)));
     let source = parsed("normal");
     assert_eq!(source.importance(), CssImportance::Important);
-    let all_source = parse_style_attribute("all:initial!important");
+    let all_source = CssParser::default().parse_block_contents("all:initial!important");
     assert!(all_source.is_clean());
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all_source.syntax()[0]).unwrap()
+        all_source.syntax()[0].expand().unwrap()
     else {
         panic!("symbolic all reset")
     };
@@ -213,17 +230,16 @@ fn globals_are_terminal_and_pending_reentry_is_strict_repeatable_and_provenanced
     }
 
     let source = parsed("var(--flow)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("symbolic grid-auto-flow pending substitution")
     };
     assert!(pending.source().same_occurrence(&source));
     assert_eq!(pending.source().importance(), CssImportance::Important);
-    assert_eq!(
+    assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for value in [
         "normal dense",
@@ -233,18 +249,16 @@ fn globals_are_terminal_and_pending_reentry_is_strict_repeatable_and_provenanced
         "inherit row",
     ] {
         assert!(
-            matches!(
-                pending
-                    .reenter(parse_component_values(value).unwrap())
-                    .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ),
+            pending
+                .reenter(CssComponentValues::parse(&CssParser::default(), value).unwrap())
+                .unwrap_err()
+                .replacement_error()
+                .is_some(),
             "{value}"
         );
     }
     for value in ["dense", "normal", "dense column", "inherit"] {
-        let replacement = parse_component_values(value).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), value).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -264,13 +278,13 @@ fn globals_are_terminal_and_pending_reentry_is_strict_repeatable_and_provenanced
 #[test]
 fn normalization_keeps_order_importance_and_original_occurrences() {
     let sheet = ".p{color:red;grid-auto-flow:dense!important;grid-auto-flow:column;opacity:1}";
-    let report = parse_sheet(sheet);
+    let report = CssParser::default().parse_sheet(sheet);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssRule::Style(rule) = &report.syntax().rules()[0] else {
         panic!("one style rule")
     };
     let originals = rule.declarations();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()

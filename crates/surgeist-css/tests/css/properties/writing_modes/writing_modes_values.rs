@@ -1,6 +1,22 @@
 //! Selected Writing Modes keyword values and intrinsic, context-free transport.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::important_property_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::text::{
+    CssDirection, CssTextOrientation, CssUnicodeBidi, CssWritingMode,
+};
 
 #[derive(Clone, Copy, Debug)]
 enum Expected {
@@ -35,23 +51,20 @@ impl Expected {
             _ => panic!("expected {self:?}, got {value:?}"),
         }
     }
-    fn serialize(
-        self,
-        limits: CssSpecifiedValueSerializationLimits,
-    ) -> Result<String, CssSpecifiedValueSerializationError> {
+    fn serialize(self, limits: CssSerializationLimits) -> Result<String, CssSerializationError> {
         match self {
-            Self::Direction(value) => value.serialize_specified_with_limits(limits),
-            Self::Bidi(value) => value.serialize_specified_with_limits(limits),
-            Self::Writing(value) => value.serialize_specified_with_limits(limits),
-            Self::Orientation(value) => value.serialize_specified_with_limits(limits),
+            Self::Direction(value) => value.serialize_specified(limits),
+            Self::Bidi(value) => value.serialize_specified(limits),
+            Self::Writing(value) => value.serialize_specified(limits),
+            Self::Orientation(value) => value.serialize_specified(limits),
         }
     }
-    fn default_serialize(self) -> Result<String, CssSpecifiedValueSerializationError> {
+    fn default_serialize(self) -> Result<String, CssSerializationError> {
         match self {
-            Self::Direction(value) => value.serialize_specified(),
-            Self::Bidi(value) => value.serialize_specified(),
-            Self::Writing(value) => value.serialize_specified(),
-            Self::Orientation(value) => value.serialize_specified(),
+            Self::Direction(value) => value.serialize_specified(Default::default()),
+            Self::Bidi(value) => value.serialize_specified(Default::default()),
+            Self::Writing(value) => value.serialize_specified(Default::default()),
+            Self::Orientation(value) => value.serialize_specified(Default::default()),
         }
     }
 }
@@ -116,33 +129,36 @@ fn all_sixteen_typed_keywords_serialize_canonically_with_atomic_limits() {
         assert_eq!(value.default_serialize().unwrap(), text);
         assert_eq!(
             value
-                .serialize(CssSpecifiedValueSerializationLimits::new(1, 1, text.len()))
+                .serialize(CssSerializationLimits::new(1, 1, text.len()))
                 .unwrap(),
             text
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 0, 0),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, 0),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, 0),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, text.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, text.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, 0),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, 0),
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(value.serialize(limits).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&value.serialize(limits).unwrap_err()),
+                kind
+            );
         }
         let source = declaration(value.property(), text);
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("ordinary")
         };
@@ -152,7 +168,11 @@ fn all_sixteen_typed_keywords_serialize_canonically_with_atomic_limits() {
         value.assert_payload(item.ordinary_value().unwrap().view());
         assert!(item.source().same_occurrence(&source));
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             text
         );
     }
@@ -163,21 +183,26 @@ fn checked_values_and_pending_reentry_preserve_typed_payload_and_both_origins() 
     for &(expected, text) in VALUES {
         let property = expected.property();
         let pending_source = declaration(property, "var(--mode)");
-        let CssExpansion::Pending(pending) = expand_declaration(&pending_source).unwrap() else {
+        let CssExpansion::Pending(pending) = pending_source.expand().unwrap() else {
             panic!("pending")
         };
         for components in [
-            parse_component_values(&text.to_ascii_uppercase()).unwrap(),
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()]).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), text.to_ascii_uppercase()).unwrap(),
+            CssComponentValues::try_new(
+                vec![CssComponentValue::try_token(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap(),
         ] {
-            let source = parse_property_value(
-                CssPropertyNameRef::Known(property),
+            let source = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Important,
             )
             .unwrap();
             let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("ordinary")
             };
@@ -213,10 +238,10 @@ fn normalized_writing_modes_preserve_authored_order_and_do_not_apply_bidi_or_ori
             "@media all{".repeat(depth),
             "}".repeat(depth)
         );
-        let report = parse_sheet(&text);
+        let report = CssParser::default().parse_sheet(&text);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         for _ in 0..2 {
-            let sheet = normalize_sheet(report.syntax()).unwrap();
+            let sheet = report.syntax().normalize(Default::default()).unwrap();
             let items: Vec<_> = sheet
                 .items()
                 .iter()
@@ -302,13 +327,11 @@ fn parsed_wrapper_accessors_serialize_case_escapes_and_trivia_without_mutation()
             ($wrapper:expr, $value:expr, $expected:expr) => {{
                 let value = $value;
                 assert_eq!(value, &$expected);
-                let output = value.serialize_specified().unwrap();
+                let output = value.serialize_specified(Default::default()).unwrap();
                 let error = value
-                    .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                        1, 1, 0,
-                    ))
+                    .serialize_specified(CssSerializationLimits::new(1, 1, 0))
                     .unwrap_err();
-                ($wrapper.as_css(), output, error.kind())
+                ($wrapper.as_css(), output, serialization_failure(&error))
             }};
         }
         let (raw, canonical, error) = match source.known().unwrap().property_value().unwrap() {
@@ -316,22 +339,26 @@ fn parsed_wrapper_accessors_serialize_case_escapes_and_trivia_without_mutation()
                 project!(value, value.value(), CssDirection::Rtl)
             }
             CssKnownPropertyValueRef::UnicodeBidi(value) => {
-                project!(value, value.bidi(), CssUnicodeBidi::IsolateOverride)
+                project!(value, value.value(), CssUnicodeBidi::IsolateOverride)
             }
             CssKnownPropertyValueRef::WritingMode(value) => {
                 project!(value, value.value(), CssWritingMode::SidewaysLr)
             }
             CssKnownPropertyValueRef::TextOrientation(value) => {
-                project!(value, value.orientation(), CssTextOrientation::Upright)
+                project!(value, value.value(), CssTextOrientation::Upright)
             }
             _ => panic!("selected keyword wrapper"),
         };
         assert_eq!(raw, expected_raw);
         assert_eq!(canonical, expected);
-        assert_eq!(error, CssSpecifiedValueSerializationErrorKind::ByteLimit);
+        assert_eq!(error, SerializationFailure::ByteLimit);
         assert_eq!(source.value_components(), &components);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             input
         );
     }
@@ -340,13 +367,18 @@ fn parsed_wrapper_accessors_serialize_case_escapes_and_trivia_without_mutation()
 #[test]
 fn recovered_keyword_neighbor_preserves_four_occurrences_with_exact_budgets() {
     let source = ".a{direction:rtl;unicode-bidi:rtl;writing-mode:sideways-lr;text-orientation:upright;unicode-bidi:isolate!important}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    assert!(validate_sheet(source).is_err());
+    assert!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .is_err()
+    );
     for (limits, resource, limit) in [
         (
             CssNormalizationLimits::try_new(0, 0, 4, 4).unwrap(),
@@ -365,17 +397,18 @@ fn recovered_keyword_neighbor_preserves_four_occurrences_with_exact_budgets() {
         ),
     ] {
         assert_eq!(
-            normalize_sheet_with_limits(report.syntax(), limits)
+            report
+                .syntax()
+                .normalize(limits)
                 .unwrap_err()
-                .kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
+                .exhausted_limit(),
+            Some((resource, limit))
         );
     }
-    let sheet = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 4, 4).unwrap(),
-    )
-    .unwrap();
+    let sheet = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 4, 4).unwrap())
+        .unwrap();
     let items: Vec<_> = sheet
         .items()
         .iter()

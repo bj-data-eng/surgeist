@@ -2,10 +2,11 @@
 //! Grammar authority: pinned MQ4 2026-02-19 section 3, mq-syntax.
 //! Balanced enclosures retain their own grammar classification alongside grouping.
 
-use surgeist_css::{
-    CssErrorCode, CssMediaConditionKind, CssMediaQuery, CssMediaType, CssRecoveryAction, CssRule,
-    parse_media_query, parse_media_query_list, parse_sheet, validate_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList, CssMediaType};
+use surgeist_css::rule::CssRule;
 
 #[test]
 fn ungrouped_known_conditions_retain_their_operators() {
@@ -14,15 +15,15 @@ fn ungrouped_known_conditions_retain_their_operators() {
         ("(color) and (monochrome)", "and"),
         ("(color) or (monochrome)", "or"),
     ] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let CssMediaQuery::Condition(condition) = report.syntax() else {
             panic!("condition query");
         };
         let actual = match condition.kind() {
-            CssMediaConditionKind::Not(_) => "not",
-            CssMediaConditionKind::And(_) => "and",
-            CssMediaConditionKind::Or(_) => "or",
+            CssConditionKind::Not(_) => "not",
+            CssConditionKind::And(_) => "and",
+            CssConditionKind::Or(_) => "or",
             _ => panic!("expected operator"),
         };
         assert_eq!(actual, expected);
@@ -41,7 +42,7 @@ fn grouped_known_features_and_legal_typed_conditions_are_clean() {
         "screen and ((color) or (monochrome))",
         "only screen and ((color) or (monochrome)) and (width)",
     ] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert!(!report.syntax().is_guaranteed_false(), "{source}");
         assert_eq!(
@@ -63,7 +64,7 @@ fn ungrouped_not_chains_and_typed_bare_or_recover_one_whole_query() {
         "screen and (color) or (monochrome)",
         "screen and not (color) and (monochrome)",
     ] {
-        let report = parse_media_query(source);
+        let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(
             matches!(report.syntax(), CssMediaQuery::Never(_)),
             "{source}"
@@ -87,7 +88,7 @@ fn ungrouped_not_chains_and_typed_bare_or_recover_one_whole_query() {
 #[test]
 fn grouped_query_and_malformed_neighbor_retain_exact_list_ownership() {
     let source = "/*😀*/ ((color)), not not (color), print";
-    let report = parse_media_query_list(source);
+    let report = CssMediaQueryList::parse(&CssParser::default(), source);
     let [first, middle, CssMediaQuery::Typed(last)] = report.syntax().queries() else {
         panic!("exactly three ordered members");
     };
@@ -142,7 +143,7 @@ fn media_and_import_share_grouping_and_comma_local_recovery() {
         "@media ((color)), not not (color), print {} .after {color:red}",
         "@import \"x\" ((color)), not not (color), print; .after {color:red}",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [owner, CssRule::Style(_)] = report.syntax().rules() else {
             panic!("owner and sibling");
         };
@@ -184,7 +185,7 @@ fn grouped_depth_limit_retains_comma_sibling_at_255_256_and_257() {
     for depth in [255, 256, 257] {
         let query = grouped(depth);
         let source = format!("screen,{query},print");
-        let report = parse_media_query_list(&source);
+        let report = CssMediaQueryList::parse(&CssParser::default(), &source);
         let [
             CssMediaQuery::Typed(first),
             middle,
@@ -224,7 +225,7 @@ fn inherited_sheet_depth_limits_groups_without_consuming_later_members() {
     for total_depth in [255, 256, 257] {
         let query = grouped(total_depth - 1);
         let source = format!("@media screen {{ @media {query},print {{}} }} .after {{color:red}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Media(outer), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("outer owner and sibling");
         };
@@ -256,7 +257,7 @@ fn inherited_sheet_depth_limits_groups_without_consuming_later_members() {
 #[test]
 fn grouped_eof_closure_is_published_only_for_retained_owners() {
     let source = "((color)";
-    let raw = parse_media_query(source);
+    let raw = CssMediaQuery::parse(&CssParser::default(), source);
     assert!(!raw.syntax().is_guaranteed_false());
     let [diagnostic] = raw.diagnostics() else {
         panic!("one group closure");
@@ -277,7 +278,7 @@ fn grouped_eof_closure_is_published_only_for_retained_owners() {
     assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
 
     let import_source = "@import \"x\" ((color)";
-    let import = parse_sheet(import_source);
+    let import = CssParser::default().parse_sheet(import_source);
     assert!(matches!(import.syntax().rules(), [CssRule::Import(_)]));
     assert_eq!(
         import
@@ -295,7 +296,7 @@ fn grouped_eof_closure_is_published_only_for_retained_owners() {
     };
     assert_eq!(
         statement.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         statement.action(),
@@ -310,16 +311,19 @@ fn grouped_eof_closure_is_published_only_for_retained_owners() {
         statement.span().end().byte_offset().value(),
         import_source.len()
     );
-    let surgeist_css::ErrorKind::UnexpectedEnd(detail) = statement.error().kind() else {
-        panic!("typed statement EOF");
-    };
+    let detail = statement.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "typed statement EOF"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(
         closure.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         closure.action(),
@@ -338,11 +342,13 @@ fn grouped_eof_closure_is_published_only_for_retained_owners() {
         import_source.len()
     );
     assert_eq!(
-        validate_sheet(import_source),
+        CssParser::default()
+            .parse_sheet(import_source)
+            .into_validation_result(),
         import.clone().into_validation_result()
     );
 
-    let discarded = parse_sheet("@media ((color)");
+    let discarded = CssParser::default().parse_sheet("@media ((color)");
     assert!(discarded.syntax().rules().is_empty());
     assert_eq!(
         discarded

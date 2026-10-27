@@ -14,6 +14,7 @@ pub mod csstree;
 pub mod descriptor_phases;
 pub mod digest;
 pub mod external_consumer;
+pub mod failure_classes;
 #[macro_use]
 pub mod font_face;
 pub mod isolated_stack;
@@ -21,6 +22,7 @@ pub mod lab_direct_component_cases;
 pub mod math_depth;
 pub mod named_property;
 pub mod parse_report;
+pub mod position_view;
 pub mod property_admission;
 pub mod property_expectations;
 pub mod rules;
@@ -29,12 +31,43 @@ pub mod sheet_cases;
 pub mod serialization_limits;
 pub mod value_assertions;
 
-use surgeist_css::*;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyTextTarget, CssPropertyValueError,
+};
+use surgeist_css::rule::CssStyleAncestor;
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
+use surgeist_css::serialization::{
+    CssRuleGraphInput, CssRuleSerializationError, CssRuleSerializationLimits,
+    CssSerializationError, CssSerializationLimits,
+};
+use surgeist_css::{CssParser, CssParserContext};
+
+/// Whether `error` is the serialization failure of a recovered media member:
+/// an unserializable boundary without a lexical component cause.
+pub fn is_recovered_media_failure(error: &CssSerializationError) -> bool {
+    error.is_unserializable_boundary() && std::error::Error::source(error).is_none()
+}
+
+/// Component limits that bound only the serialized byte length, for
+/// `serialize_tokens`; the structural limits keep their defaults.
+pub fn byte_limits(max_css_bytes: usize) -> CssComponentValueLimits {
+    let defaults = CssComponentValueLimits::default();
+    CssComponentValueLimits::try_new(
+        defaults.max_nesting_depth(),
+        defaults.max_components(),
+        max_css_bytes,
+    )
+    .expect("the default nesting depth is valid")
+}
 
 /// The sole declaration of the clean style attribute `css`.
 #[track_caller]
 pub fn sole_declaration(css: &str) -> CssDeclaration {
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one declaration: {css}: {:?}", report.syntax())
@@ -71,13 +104,20 @@ pub fn normal_declaration(name: &str, value: &str) -> CssDeclaration {
 pub fn validated_important_declaration(name: &str, value: &str) -> CssDeclaration {
     let source = important_declaration(name, value);
     assert!(
-        validate_style_attribute(&format!("{name}:{value}!important")).is_ok(),
+        CssParser::default()
+            .parse_block_contents(format!("{name}:{value}!important"))
+            .into_validation_result()
+            .is_ok(),
         "{name}:{value}!important"
     );
     assert_eq!(source.known().unwrap().property().canonical_name(), name);
     assert_eq!(source.importance(), CssImportance::Important);
     assert_eq!(
-        source.value_components().serialize().unwrap().as_css(),
+        source
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         value
     );
     source
@@ -102,10 +142,16 @@ pub fn color_declaration(text: &str) -> CssDeclaration {
 /// value keeps its parsed origin.
 pub fn parsed_color(text: &str) -> CssColor {
     let source = format!("color:{text}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1, "{source}");
-    assert_eq!(validate_style_attribute(&source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     let declaration = &report.syntax()[0];
     let CssValueOrigin::Parsed(origin) = declaration.value_components().items()[0].origin() else {
         panic!("parsed function origin: {source}");
@@ -122,13 +168,14 @@ pub fn parsed_color(text: &str) -> CssColor {
 
 /// Component values of input that must tokenize.
 pub fn component_values(source: &str) -> CssComponentValues {
-    parse_component_values(source).unwrap()
+    CssComponentValues::parse(&CssParser::default(), source).unwrap()
 }
 
 /// An important `color` declaration checked from component values.
 pub fn checked_color_declaration(source: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         component_values(source),
         CssImportance::Important,
     )
@@ -158,9 +205,10 @@ pub fn selected_grammar(name: &str) -> CssPropertyGrammar {
 
 /// An important declaration checked against a named property grammar.
 pub fn checked_grammar_declaration(name: &str, value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        selected_grammar(name),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(selected_grammar(name)),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Important,
     )
     .unwrap_or_else(|error| panic!("checked {name}:{value}: {error:?}"))
@@ -171,9 +219,10 @@ pub fn checked_property_grammar_declaration(
     property: CssKnownProperty,
     css: &str,
 ) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        property.grammar(),
-        parse_component_values(css).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(property.grammar()),
+        CssComponentValues::parse(&CssParser::default(), css).unwrap(),
         CssImportance::Important,
     )
     .unwrap()
@@ -185,12 +234,18 @@ pub fn check_property_components(
     property: CssKnownProperty,
     components: CssComponentValues,
     grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
+) -> Result<CssDeclaration, CssPropertyValueError> {
     if grammar {
-        parse_property_value_for_grammar(property.grammar(), components, CssImportance::Important)
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(property.grammar()),
+            components,
+            CssImportance::Important,
+        )
     } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(property),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             components,
             CssImportance::Important,
         )
@@ -222,9 +277,14 @@ pub fn authored_declaration_through_front(name: &str, input: &str, front: usize)
     let source = match front {
         0 => {
             let css = format!("/*😀*/{name}:{input}!important");
-            let report = parse_style_attribute(&css);
+            let report = CssParser::default().parse_block_contents(&css);
             assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-            assert_eq!(validate_style_attribute(&css), Ok(report.syntax().clone()));
+            assert_eq!(
+                CssParser::default()
+                    .parse_block_contents(&css)
+                    .into_validation_result(),
+                Ok(report.syntax().clone())
+            );
             let [source] = report.syntax().as_slice() else {
                 panic!("one authored occurrence")
             };
@@ -233,7 +293,7 @@ pub fn authored_declaration_through_front(name: &str, input: &str, front: usize)
             source.clone()
         }
         1 | 2 => {
-            let components = parse_component_values(input).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), input).unwrap();
             let before = components.clone();
             let source = check_property_components(p, components.clone(), front == 2).unwrap();
             assert_eq!(components, before);
@@ -244,13 +304,17 @@ pub fn authored_declaration_through_front(name: &str, input: &str, front: usize)
         }
         3 | 4 => {
             let report = if front == 3 {
-                parse_property_value_text(
+                CssParser::default().parse_property_value(
                     input,
-                    CssPropertyNameRef::Known(p),
+                    CssPropertyTextTarget::Property(CssPropertyNameRef::Known(p)),
                     CssImportance::Important,
                 )
             } else {
-                parse_property_value_text_for_grammar(input, p.grammar(), CssImportance::Important)
+                CssParser::default().parse_property_value(
+                    input,
+                    CssPropertyTextTarget::Grammar(p.grammar()),
+                    CssImportance::Important,
+                )
             };
             assert!(
                 report.is_clean(),
@@ -286,9 +350,10 @@ pub fn authored_parsed_declaration(name: &str, value: &str) -> CssDeclaration {
 
 /// A normal-importance declaration checked by known property name.
 pub fn normal_checked_declaration(property: CssKnownProperty, text: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(text).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         CssImportance::Normal,
     )
     .unwrap()
@@ -299,8 +364,9 @@ pub fn important_checked_components(
     property: CssKnownProperty,
     components: CssComponentValues,
 ) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
         components,
         CssImportance::Important,
     )
@@ -310,9 +376,10 @@ pub fn important_checked_components(
 /// An important declaration checked by known property that retains its
 /// component values.
 pub fn retained_checked_declaration(property: CssKnownProperty, value: &str) -> CssDeclaration {
-    let components = parse_component_values(value).unwrap();
-    let source = parse_property_value(
-        CssPropertyNameRef::Known(property),
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+    let source = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
         components.clone(),
         CssImportance::Important,
     )
@@ -325,10 +392,11 @@ pub fn retained_checked_declaration(property: CssKnownProperty, value: &str) -> 
 pub fn check_property_text(
     property: CssKnownProperty,
     text: &str,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
-    parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(text).unwrap(),
+) -> Result<CssDeclaration, CssPropertyValueError> {
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         CssImportance::Important,
     )
 }
@@ -346,13 +414,13 @@ pub fn contextual_checked_declaration(
     name: &str,
     text: &str,
 ) -> CssDeclaration {
-    context
-        .parse_property_value_for_grammar(
-            known_property(name).grammar(),
-            parse_component_values(text).unwrap(),
-            CssImportance::Important,
-        )
-        .unwrap()
+    CssDeclaration::try_from_components(
+        &CssParser::new(context, Default::default()),
+        CssPropertyTarget::Grammar(known_property(name).grammar()),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+        CssImportance::Important,
+    )
+    .unwrap()
 }
 
 /// Checks important component values by property name or, when `grammar`
@@ -361,13 +429,19 @@ pub fn check_named_components(
     name: &str,
     values: CssComponentValues,
     grammar: bool,
-) -> Result<CssDeclaration, CssPropertyValueParseError> {
+) -> Result<CssDeclaration, CssPropertyValueError> {
     let p = known_property(name);
     if grammar {
-        parse_property_value_for_grammar(p.grammar(), values, CssImportance::Important)
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(p.grammar()),
+            values,
+            CssImportance::Important,
+        )
     } else {
-        parse_property_value(
-            CssPropertyNameRef::Known(p),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(p)),
             values,
             CssImportance::Important,
         )
@@ -377,7 +451,7 @@ pub fn check_named_components(
 /// An important checked declaration that keeps its component values and
 /// carries no source position, parsed name or parsed value.
 pub fn detached_checked_declaration(name: &str, text: &str, grammar: bool) -> CssDeclaration {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let before = values.clone();
     let source = check_named_components(name, values.clone(), grammar).unwrap();
     assert_eq!(source.value_components(), &values);
@@ -391,8 +465,9 @@ pub fn detached_checked_declaration(name: &str, text: &str, grammar: bool) -> Cs
 
 /// An important Speech 1 declaration checked from component values.
 pub fn important_speech_components(name: &str, components: CssComponentValues) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(known_property(name)),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(known_property(name))),
         components,
         CssImportance::Important,
     )
@@ -401,21 +476,59 @@ pub fn important_speech_components(name: &str, components: CssComponentValues) -
 
 /// A clean selector validated with the default namespace context.
 pub fn validated_selector(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{source:?}: {report:?}");
     report.into_validation_result().unwrap().unwrap()
 }
 
 /// A clean selector validated in a namespace context.
 pub fn validated_selector_in(source: &str, context: &CssNamespaceContext) -> CssSelector {
-    let report = parse_selector(source, context);
+    let report = CssSelector::parse(&CssParser::default(), source, context);
     assert!(report.is_clean(), "{source:?}: {report:?}");
     report.into_validation_result().unwrap().unwrap()
 }
 
 /// The selector admitted by a clean default-namespace parse.
 pub fn admitted_selector(source: &str) -> CssSelector {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.is_clean(), "{source}: {report:?}");
     report.syntax().as_ref().expect("admitted selector").clone()
+}
+
+/// Graph limits that bound only the values, as the former value-limited rule
+/// views did: the structural depth bound is lifted.
+pub fn graph_limits(values: CssSerializationLimits) -> CssRuleSerializationLimits {
+    CssRuleSerializationLimits {
+        values,
+        max_depth: usize::MAX,
+    }
+}
+
+/// The compact specified text of `input` under value-only limits.
+pub fn graph_specified(
+    input: CssRuleGraphInput<'_>,
+    values: CssSerializationLimits,
+) -> Result<String, CssRuleSerializationError> {
+    input.serialize_specified(graph_limits(values))
+}
+
+/// The literal CSSOM text of `input` with no namespace bindings or style
+/// ancestor, under value-only limits.
+pub fn graph_cssom(
+    input: CssRuleGraphInput<'_>,
+    values: CssSerializationLimits,
+) -> Result<String, CssRuleSerializationError> {
+    input.serialize_cssom(
+        &CssNamespaceContext::default(),
+        CssStyleAncestor::Absent,
+        graph_limits(values),
+    )
 }

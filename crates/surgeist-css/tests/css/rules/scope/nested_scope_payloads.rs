@@ -2,10 +2,18 @@
 //! retargeting that style's selectors to newly entered scopes.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-declarations-rule
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::{
+    CssNestedDeclarationsRule, CssRule, CssScopeRule, CssStyleBlock, CssStyleRule,
+};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
 
-fn run(rule: &CssScopedRule) -> &CssNestedDeclarationsRule {
-    let CssScopedRule::NestedDeclarations(run) = rule else {
+fn run(rule: &CssRule) -> &CssNestedDeclarationsRule {
+    let CssRule::NestedDeclarations(run) = rule else {
         panic!("declaration run")
     };
     assert!(!run.declarations().is_empty());
@@ -18,7 +26,11 @@ fn color(declaration: &CssDeclaration, expected: &str, source: &str) {
         CssKnownProperty::Color
     );
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         expected
     );
     let offset = source.find(&format!("color:{expected}")).unwrap();
@@ -42,7 +54,7 @@ fn scope_from_style(style: &CssStyleRule) -> &CssScopeRule {
 }
 
 fn fragment_runs(scope: &CssScopeRule, source: &str) {
-    let [first, CssScopedRule::Style(child), last] = scope.rules().rules() else {
+    let [first, CssRule::Style(child), last] = scope.rules().rules() else {
         panic!("run, child, run")
     };
     let first = run(first);
@@ -63,14 +75,14 @@ fn fragment_runs(scope: &CssScopeRule, source: &str) {
 fn public_fragments_retain_ordered_typed_runs_and_original_value_origins() {
     let ns = CssNamespaceContext::default();
     let source = ".p{@scope{color:red;.child{color:blue}color:green}}";
-    let report = parse_rule(source, &ns);
+    let report = CssRule::parse(&CssParser::default(), source, &ns);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let Some(CssRule::Style(style)) = report.syntax() else {
         panic!("style")
     };
     fragment_runs(scope_from_style(style), source);
     let source = "{@scope{color:red;.child{color:blue}color:green}}";
-    let report = parse_style_block(source, &ns);
+    let report = CssStyleBlock::parse(&CssParser::default(), source, &ns);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Scope(scope)] = report.syntax().as_ref().unwrap().rules() else {
         panic!("scope")
@@ -103,7 +115,7 @@ fn rejected_rule_boundaries_preserve_distinct_scoped_runs_and_eof_retention() {
         ),
     ] {
         let source = format!(".p{{@scope{{color:red;{rejected}color:green");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         expected.assert_first(&report);
         let [CssRule::Style(style)] = report.syntax().rules() else {
             panic!("style")
@@ -120,7 +132,7 @@ fn rejected_rule_boundaries_preserve_distinct_scoped_runs_and_eof_retention() {
         "\\2d -bad:var(){color:blue};",
     ] {
         let source = format!(".p{{@scope{{color:red;{rejected}color:green}}}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Style(style)] = report.syntax().rules() else {
             panic!("style")
         };
@@ -136,9 +148,9 @@ fn rejected_rule_boundaries_preserve_distinct_scoped_runs_and_eof_retention() {
 #[test]
 fn scoped_anchor_child_and_ordinary_grandchild_have_independent_selector_parents() {
     let source = ".p{@scope{color:red;& .child{color:blue;.grand{color:green}}color:black}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let sheet = normalize_sheet(report.syntax()).unwrap();
+    let sheet = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = sheet
         .items()
         .iter()
@@ -187,17 +199,17 @@ fn bounded_scoped_splicing_splits_a_run_around_the_deferred_child() {
             "@media all{".repeat(depth),
             "}".repeat(depth)
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let [CssRule::Style(style)] = report.syntax().rules() else {
             panic!("style")
         };
-        let [red, CssScopedRule::Media(_), green] = scope_from_style(style).rules().rules() else {
+        let [red, CssRule::Media(_), green] = scope_from_style(style).rules().rules() else {
             panic!("split outer run")
         };
         color(&run(red).declarations()[0], "red", &source);
         color(&run(green).declarations()[0], "green", &source);
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let values: Vec<_> = normalized
             .items()
             .iter()
@@ -229,14 +241,14 @@ fn depth_ceiling_keeps_detached_run_payload_and_selector_identity_on_small_stack
                 "@scope{".repeat(255),
                 "}".repeat(255)
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(report.is_clean(), "{:?}", report.diagnostics());
             let [CssRule::Style(style)] = report.syntax().rules() else {
                 panic!("style")
             };
             let mut scope = scope_from_style(style);
             for _ in 1..255 {
-                let [CssScopedRule::Scope(inner)] = scope.rules().rules() else {
+                let [CssRule::Scope(inner)] = scope.rules().rules() else {
                     panic!("scope chain")
                 };
                 scope = inner;
@@ -245,7 +257,7 @@ fn depth_ceiling_keeps_detached_run_payload_and_selector_identity_on_small_stack
                 panic!("run")
             };
             let detached = run(leaf).clone();
-            let normalized = normalize_sheet(report.syntax()).unwrap();
+            let normalized = report.syntax().normalize(Default::default()).unwrap();
             let declaration = normalized
                 .items()
                 .iter()
@@ -271,7 +283,7 @@ fn depth_ceiling_keeps_detached_run_payload_and_selector_identity_on_small_stack
                 "@scope{".repeat(256),
                 "}".repeat(256)
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             assert!(
                 report
                     .diagnostics()

@@ -36,7 +36,7 @@ fn session() -> DomSession {
                 reports: 8,
                 storage_bytes: 1_000_000,
                 work: 100_000,
-                css_input: surgeist_css::CssUtf16InputLimits::default(),
+                css_input: surgeist_css::source::CssUtf16InputLimits::default(),
             },
             element_tasks: crate::DomElementTaskRuntimeLimits {
                 tasks: 8,
@@ -64,7 +64,7 @@ fn limits() -> DomSourceLimits {
 }
 fn requests() -> DomInlineStyleRequestLimits {
     DomInlineStyleRequestLimits {
-        input: surgeist_css::CssUtf16InputLimits::default(),
+        input: surgeist_css::source::CssUtf16InputLimits::default(),
         declaration: surgeist_cssom::CssomDeclarationRequestLimits::default(),
     }
 }

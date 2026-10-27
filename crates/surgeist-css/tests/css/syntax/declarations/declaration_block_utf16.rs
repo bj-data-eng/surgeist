@@ -1,16 +1,21 @@
 //! CSS Syntax preprocessing, raw block recovery and source ownership oracles.
 
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
 use std::sync::Arc;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValueRef, CssValueOrigin};
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::source::{
+    CssDeclarationBlockParseReport, CssSourceRetention, CssSourceRetentionError,
+    CssSourceRetentionResource, CssUtf16InputLimits,
+};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 fn parse_units(context: CssParserContext, units: Arc<Vec<u16>>) -> CssDeclarationBlockParseReport {
-    context
-        .parse_declaration_block_contents_utf16_with_limits(
-            units,
-            CssUtf16InputLimits::default(),
-            CssComponentValueLimits::default(),
-            || Ok::<_, ()>(()),
-        )
+    CssParser::new(context, CssComponentValueLimits::default())
+        .parse_block_contents_utf16(units, CssUtf16InputLimits::default(), || Ok::<_, ()>(()))
         .unwrap()
 }
 
@@ -162,7 +167,9 @@ fn empty_and_wholly_recovered_reports_retain_and_admit_the_root_source() {
             let mut refused = CssSourceRetention::new(bytes - 1, 1000, 20);
             assert_eq!(
                 refused.visit(&report),
-                Err(CssSourceRetentionError::Limit("retained source bytes"))
+                Err(CssSourceRetentionError::limit(
+                    CssSourceRetentionResource::RetainedBytes
+                ))
             );
         }
         let (source, ordinary) = report.into_parts();
@@ -225,7 +232,9 @@ fn actual_parser_mode_and_independent_svg_choice_select_the_owning_grammar() {
     assert_eq!(names(&report), ["color", "width"]);
     assert!(report.report().is_clean(), "{report:?}");
     assert_eq!(
-        report.report().syntax()[0].to_specified_css().unwrap(),
+        report.report().syntax()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "color: rgb(170, 187, 204);"
     );
     let svg = quirks.with_svg_glyph_orientation_vertical();
@@ -285,31 +294,33 @@ fn raw_recovery_drops_nested_units_and_root_closer_stops_without_later_diagnosti
 #[test]
 fn component_admission_counts_the_complete_input_after_a_root_stop() {
     let raw = Arc::new("width:2px} a b c d".encode_utf16().collect());
-    let report = CssParserContext::default()
-        .parse_declaration_block_contents_utf16_with_limits(
-            raw,
-            CssUtf16InputLimits::default(),
-            CssComponentValueLimits::try_new(20, 4, 100).unwrap(),
-            || Ok::<_, ()>(()),
-        )
-        .unwrap();
+    let report = CssParser::new(
+        CssParserContext::default(),
+        CssComponentValueLimits::try_new(20, 4, 100).unwrap(),
+    )
+    .parse_block_contents_utf16(raw, CssUtf16InputLimits::default(), || Ok::<_, ()>(()))
+    .unwrap();
     assert!(report.report().syntax().is_empty());
     assert!(report.report().diagnostics().iter().any(|diagnostic| {
         diagnostic
             .source()
             .unwrap()
             .same_snapshot(report.source().source())
-            && matches!(diagnostic.error().kind(), ErrorKind::InvalidComponentValue(error)
-                if error.kind() == CssComponentValueErrorKind::ComponentLimit)
+            && diagnostic
+                .error()
+                .component_error()
+                .is_some_and(|error| error.is_component_limit())
     }));
-    let prefix = CssParserContext::default()
-        .parse_declaration_block_contents_utf16_with_limits(
-            Arc::new("width:2px}".encode_utf16().collect()),
-            CssUtf16InputLimits::default(),
-            CssComponentValueLimits::try_new(20, 4, 100).unwrap(),
-            || Ok::<_, ()>(()),
-        )
-        .unwrap();
+    let prefix = CssParser::new(
+        CssParserContext::default(),
+        CssComponentValueLimits::try_new(20, 4, 100).unwrap(),
+    )
+    .parse_block_contents_utf16(
+        Arc::new("width:2px}".encode_utf16().collect()),
+        CssUtf16InputLimits::default(),
+        || Ok::<_, ()>(()),
+    )
+    .unwrap();
     assert_eq!(names(&prefix), ["width"]);
     assert!(prefix.report().is_clean(), "{prefix:?}");
 }
@@ -320,19 +331,18 @@ fn normalized_byte_and_depth_limits_refuse_the_whole_declaration_projection() {
         (
             "--é:😀",
             CssComponentValueLimits::try_new(20, 100, 8).unwrap(),
-            CssComponentValueErrorKind::ByteLimit,
+            ComponentFailure::ByteLimit,
         ),
         (
             "width:2px; --x:f(g(1))",
             CssComponentValueLimits::try_new(1, 100, 100).unwrap(),
-            CssComponentValueErrorKind::NestingLimit,
+            ComponentFailure::NestingLimit,
         ),
     ] {
-        let report = CssParserContext::default()
-            .parse_declaration_block_contents_utf16_with_limits(
+        let report = CssParser::new(CssParserContext::default(), limits)
+            .parse_block_contents_utf16(
                 Arc::new(text.encode_utf16().collect()),
                 CssUtf16InputLimits::default(),
-                limits,
                 || Ok::<_, ()>(()),
             )
             .unwrap();
@@ -347,8 +357,10 @@ fn normalized_byte_and_depth_limits_refuse_the_whole_declaration_projection() {
                 .same_snapshot(report.source().source())
         );
         assert!(
-            matches!(diagnostic.error().kind(), ErrorKind::InvalidComponentValue(error)
-            if error.kind() == kind)
+            diagnostic
+                .error()
+                .component_error()
+                .is_some_and(|error| component_failure(error) == kind)
         );
         let retry = parse(text);
         assert!(retry.report().is_clean(), "{retry:?}");
@@ -390,43 +402,30 @@ fn preparation_refusal_and_interruption_return_no_partial_parse() {
             ..base
         },
     ] {
-        assert!(matches!(
-            CssParserContext::default().parse_declaration_block_contents_utf16_with_limits(
-                original.clone(),
-                limits,
-                CssComponentValueLimits::default(),
-                || Ok::<_, ()>(())
-            ),
-            Err(CssUtf16InputError::Limit(_))
-        ));
+        assert!(
+            CssParser::default()
+                .parse_block_contents_utf16(original.clone(), limits, || Ok::<_, ()>(()))
+                .as_ref()
+                .is_err_and(|error| error.exhausted_limit().is_some())
+        );
     }
     let mut total = 0;
-    CssParserContext::default()
-        .parse_declaration_block_contents_utf16_with_limits(
-            original.clone(),
-            base,
-            CssComponentValueLimits::default(),
-            || {
-                total += 1;
-                Ok::<_, usize>(())
-            },
-        )
+    CssParser::default()
+        .parse_block_contents_utf16(original.clone(), base, || {
+            total += 1;
+            Ok::<_, usize>(())
+        })
         .unwrap();
     // Include both observations bracketing the opaque grammar, as well as
     // preparation itself; no polling frequency inside grammar is assumed.
     for stop in [1, 2, 5, total - 1, total] {
         let mut calls = 0;
-        let result = CssParserContext::default()
-            .parse_declaration_block_contents_utf16_with_limits(
-                original.clone(),
-                base,
-                CssComponentValueLimits::default(),
-                || {
-                    calls += 1;
-                    if calls == stop { Err(stop) } else { Ok(()) }
-                },
-            );
-        assert_eq!(result.unwrap_err(), CssUtf16InputError::Interrupted(stop));
+        let result =
+            CssParser::default().parse_block_contents_utf16(original.clone(), base, || {
+                calls += 1;
+                if calls == stop { Err(stop) } else { Ok(()) }
+            });
+        assert_eq!(result.unwrap_err().interruption(), Some(&stop));
         assert_eq!(calls, stop);
         assert_eq!(Arc::strong_count(&original), 1);
     }

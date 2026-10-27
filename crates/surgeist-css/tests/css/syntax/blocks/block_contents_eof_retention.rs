@@ -3,11 +3,11 @@
 //! §§3.3 and 5, retains one nonempty final run at EOF in admitted style and
 //! style-nested group bodies, as at a closing brace.
 
-use surgeist_css::{
-    CssDeclaration, CssErrorCode, CssNormalizedDeclaration, CssNormalizedItem, CssParseReport,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssScopedRule, CssSheet, normalize_sheet,
-    parse_sheet,
-};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedDeclaration, CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn color(declaration: &CssDeclaration, expected: &str, offset: usize) {
     assert_eq!(
@@ -15,7 +15,11 @@ fn color(declaration: &CssDeclaration, expected: &str, offset: usize) {
         "color"
     );
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         expected
     );
     assert_eq!(
@@ -25,7 +29,7 @@ fn color(declaration: &CssDeclaration, expected: &str, offset: usize) {
 }
 
 fn closures(source: &str, expected: usize) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(
         report.diagnostics().len(),
         expected,
@@ -51,7 +55,9 @@ fn closures(source: &str, expected: usize) {
 }
 
 fn normalized_colors(report: &CssParseReport<CssSheet>) -> Vec<CssNormalizedDeclaration> {
-    normalize_sheet(report.syntax())
+    report
+        .syntax()
+        .normalize(Default::default())
         .expect("supported color declarations normalize")
         .items()
         .iter()
@@ -70,7 +76,7 @@ fn declaration_only_style_retains_one_terminal_run_with_or_without_semicolon() {
         (".p{color:red}", 0),
     ] {
         closures(source, expected_closures);
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("one style parent: {source}")
         };
@@ -100,7 +106,7 @@ fn style_eof_after_child_retains_trailing_run_and_normalized_parent_identity() {
         (".p{color:red;.c{}color:blue}", 0),
     ] {
         closures(source, expected_closures);
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("one style parent: {source}")
         };
@@ -169,7 +175,7 @@ fn style_nested_groups_retain_final_eof_run_after_child_with_original_context() 
         for (suffix, expected_closures) in [("", 2), ("}}", 0)] {
             let source = format!(".p{{{prefix}.c{{}}color:blue{suffix}");
             closures(&source, expected_closures);
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             let [CssRule::Style(parent)] = report.syntax().rules() else {
                 panic!("style parent")
             };
@@ -232,10 +238,8 @@ fn style_nested_groups_retain_final_eof_run_after_child_with_original_context() 
                 }
                 CssRule::Scope(rule) => {
                     assert_eq!(group, "scope");
-                    let [
-                        CssScopedRule::Style(child),
-                        CssScopedRule::NestedDeclarations(run),
-                    ] = rule.rules().rules()
+                    let [CssRule::Style(child), CssRule::NestedDeclarations(run)] =
+                        rule.rules().rules()
                     else {
                         panic!("scope child and run")
                     };

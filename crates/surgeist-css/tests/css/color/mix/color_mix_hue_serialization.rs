@@ -3,8 +3,17 @@
 
 use crate::css::support::color_property::normal_checked_color as parsed;
 use crate::css::support::declaration_color;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_color::{ColorSpace, HueInterpolation};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorInterpolation, CssColorInterpolationMethod, CssColorMix,
+    CssColorMixComponent, CssNamedColor,
+};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn constructed(space: ColorSpace, hue: HueInterpolation) -> CssColor {
     CssColor::from_color_mix(
@@ -28,10 +37,21 @@ fn constructed(space: ColorSpace, hue: HueInterpolation) -> CssColor {
 
 fn assert_text(value: &CssColor, expected: &str) {
     let before = value.clone();
-    assert_eq!(value.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(value, &before);
-    assert_eq!(value.to_specified_css().unwrap(), expected);
-    assert_eq!(parsed(expected).to_specified_css().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
+    assert_eq!(
+        parsed(expected)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 }
 
 macro_rules! shorter {
@@ -157,14 +177,21 @@ fn shorter_omission_preserves_style_importance_and_authored_tokens() {
     let source = "color-mix(in lch shorter hue, red, blue)";
     let style = format!("color: {source} !important; opacity: .5");
     let authored = format!(" {source} ");
-    let report = parse_style_attribute(&style);
+    let report = CssParser::default().parse_block_contents(&style);
     assert!(report.diagnostics().is_empty());
-    validate_style_attribute(&style).unwrap();
+    CssParser::default()
+        .parse_block_contents(&style)
+        .into_validation_result()
+        .unwrap();
     assert_eq!(report.syntax().len(), 2);
     let declaration = &report.syntax()[0];
     assert_eq!(declaration.importance(), CssImportance::Important);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         authored
     );
     assert_text(
@@ -172,7 +199,11 @@ fn shorter_omission_preserves_style_importance_and_authored_tokens() {
         "color-mix(in lch, red, blue)",
     );
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         authored
     );
     assert_eq!(
@@ -190,24 +221,21 @@ fn omitted_hue_uses_final_byte_length_and_retains_traversal_costs() {
     let expected = "color-mix(in lch, red, blue)";
     for (limits, error) in [
         (
-            CssSpecifiedValueSerializationLimits::new(3, 24, usize::MAX),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(3, 24, usize::MAX),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 23, usize::MAX),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(4, 23, usize::MAX),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(4, 24, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(4, 24, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         for _ in 0..2 {
             assert_eq!(
-                value
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 error
             );
             assert_eq!(value, before);
@@ -215,11 +243,7 @@ fn omitted_hue_uses_final_byte_length_and_retains_traversal_costs() {
     }
     assert_eq!(
         value
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                4,
-                24,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(4, 24, expected.len()))
             .unwrap(),
         expected
     );

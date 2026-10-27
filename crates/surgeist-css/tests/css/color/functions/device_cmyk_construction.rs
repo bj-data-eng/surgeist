@@ -2,13 +2,31 @@
 //! Color 5 WD20260908 §6 owns grammar/ink identity; the shared structural
 //! ceiling counts every function, including numeric, color and image ancestors.
 use crate::css::support::declaration_color;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssAlphaColor, CssColor,
+    CssColorComponent, CssColorConstructionError, CssColorMix, CssColorMixComponent,
+    CssColorNumberLiteral, CssColorPercentageLiteral, CssColorSyntax, CssContrastColor,
+    CssDeviceCmykColor, CssLightDarkColor, CssNamedColor, CssRelativeColor,
+    CssRelativeColorEnvironment, CssRelativeColorExpression, CssRelativeColorFunction,
+    CssRelativeColorResultDomain,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::numeric::{CssCalculation, CssCalculationType, CssNumber, CssPercentage};
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop, CssImageValue,
+    CssLightDarkImage, CssLinearGradient,
+};
 
 fn number(text: &str, programmatic: bool) -> CssColorComponent {
     let component = if programmatic {
         CssComponentValue::try_number(text).unwrap()
     } else {
-        parse_component_values(text).unwrap().items()[0].clone()
+        CssComponentValues::parse(&CssParser::default(), text)
+            .unwrap()
+            .items()[0]
+            .clone()
     };
     let literal = CssColorNumberLiteral::try_from_component(component.clone()).unwrap();
     assert_eq!(literal.numeric().representation(), text);
@@ -18,27 +36,29 @@ fn number(text: &str, programmatic: bool) -> CssColorComponent {
 fn percentage(text: &str) -> CssColorComponent {
     CssColorComponent::Percentage(
         CssColorPercentageLiteral::try_from_component(
-            parse_component_values(text).unwrap().items()[0].clone(),
+            CssComponentValues::parse(&CssParser::default(), text)
+                .unwrap()
+                .items()[0]
+                .clone(),
         )
         .unwrap(),
     )
 }
 fn calculation(depth: usize, percent: bool) -> CssColorComponent {
     let scalar = if percent { "50%" } else { "0.5" };
-    let raw = parse_component_values(&format!(
-        "{}{scalar}{}",
-        "calc(".repeat(depth),
-        ")".repeat(depth)
-    ))
+    let raw = CssComponentValues::parse(
+        &CssParser::default(),
+        format!("{}{scalar}{}", "calc(".repeat(depth), ")".repeat(depth)),
+    )
     .unwrap();
     assert_eq!(raw.nesting_depth() as usize, depth);
     if percent {
         CssColorComponent::PercentageCalculation(
-            CssPercentageCalculation::try_from_components(raw).unwrap(),
+            CssCalculation::<CssPercentage>::try_from_components(raw, Default::default()).unwrap(),
         )
     } else {
         CssColorComponent::NumberCalculation(
-            CssNumberCalculation::try_from_components(raw).unwrap(),
+            CssCalculation::<CssNumber>::try_from_components(raw, Default::default()).unwrap(),
         )
     }
 }
@@ -90,7 +110,7 @@ fn private_payload_accessors_retain_order_syntax_alpha_and_every_scalar_origin()
         let before = value.clone();
         for _ in 0..3 {
             assert_eq!(
-                value.to_specified_css().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
                 "device-cmyk(-0.2 1.4 none 1.000000000000000000001)"
             );
             assert_eq!(value, before);
@@ -128,7 +148,7 @@ fn legacy_number_and_number_calculation_payloads_are_checked_without_clamping() 
     assert_eq!(payload.alpha(), None);
     assert_eq!(
         CssColor::from_device_cmyk(payload)
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "device-cmyk(-2 calc(0.5) 4 5)"
     );
@@ -140,9 +160,10 @@ fn legacy_number_and_number_calculation_payloads_are_checked_without_clamping() 
         ] {
             let mut channels = std::array::from_fn(|_| number("0", true));
             channels[slot] = invalid;
-            assert_eq!(
-                CssDeviceCmykColor::try_new(CssColorSyntax::Legacy, channels, None).unwrap_err(),
-                CssColorConstructionError::InvalidSyntax
+            assert!(
+                CssDeviceCmykColor::try_new(CssColorSyntax::Legacy, channels, None)
+                    .unwrap_err()
+                    .is_invalid_syntax()
             );
         }
     }
@@ -153,14 +174,14 @@ fn legacy_number_and_number_calculation_payloads_are_checked_without_clamping() 
         calculation(1, false),
         calculation(1, true),
     ] {
-        assert_eq!(
+        assert!(
             CssDeviceCmykColor::try_new(
                 CssColorSyntax::Legacy,
                 std::array::from_fn(|_| number("0", true)),
                 Some(alpha)
             )
-            .unwrap_err(),
-            CssColorConstructionError::InvalidSyntax
+            .unwrap_err()
+            .is_invalid_syntax()
         );
     }
 }
@@ -198,13 +219,13 @@ fn modern_calculation_domains_and_omission_missing_alpha_are_distinct() {
     ));
     assert_eq!(
         CssColor::from_device_cmyk(omitted)
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "device-cmyk(calc(0.5) calc(0.5) 0.5 none)"
     );
     assert_eq!(
         CssColor::from_device_cmyk(missing)
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap(),
         "device-cmyk(calc(0.5) calc(0.5) 0.5 none / none)"
     );
@@ -214,52 +235,54 @@ fn modern_calculation_domains_and_omission_missing_alpha_are_distinct() {
 fn each_numeric_channel_and_alpha_obeys_255_child_plus_one_function_depth() {
     for slot in 0..5 {
         assert!(numeric_payload(255, slot).is_ok());
-        assert_eq!(
-            numeric_payload(256, slot).unwrap_err(),
-            CssColorConstructionError::NestingLimit
-        );
+        assert!(numeric_payload(256, slot).unwrap_err().is_nesting_limit());
         let deepest = CssColor::from_device_cmyk(numeric_payload(255, slot).unwrap());
-        assert_eq!(
-            CssContrastColor::try_new(deepest.clone()).unwrap_err(),
-            CssColorConstructionError::NestingLimit
+        assert!(
+            CssContrastColor::try_new(deepest.clone())
+                .unwrap_err()
+                .is_nesting_limit()
         );
         for (light, dark) in [
             (deepest.clone(), named("blue")),
             (named("blue"), deepest.clone()),
         ] {
-            assert_eq!(
-                CssLightDarkColor::try_new(light, dark).unwrap_err(),
-                CssColorConstructionError::NestingLimit
+            assert!(
+                CssLightDarkColor::try_new(light, dark)
+                    .unwrap_err()
+                    .is_nesting_limit()
             );
         }
-        assert_eq!(
-            CssAlphaColor::try_new(deepest.clone(), None).unwrap_err(),
-            CssColorConstructionError::NestingLimit
+        assert!(
+            CssAlphaColor::try_new(deepest.clone(), None)
+                .unwrap_err()
+                .is_nesting_limit()
         );
-        assert_eq!(
+        assert!(
             CssColorMix::try_new(None, vec![CssColorMixComponent::new(deepest.clone(), None)])
-                .unwrap_err(),
-            CssColorMixConstructionError::NestingLimit
+                .unwrap_err()
+                .is_nesting_limit()
         );
         let channels = ["r", "g", "b"].map(|channel| {
             CssRelativeColorExpression::try_from_components(
-                parse_component_values(channel).unwrap(),
+                CssComponentValues::parse(&CssParser::default(), channel).unwrap(),
                 CssRelativeColorEnvironment::Rgb,
                 CssRelativeColorResultDomain::NumberPercentage,
+                Default::default(),
             )
             .unwrap()
         });
-        assert_eq!(
+        assert!(
             CssRelativeColor::try_new(CssRelativeColorFunction::Rgb, deepest, channels, None)
-                .unwrap_err(),
-            CssColorConstructionError::NestingLimit
+                .unwrap_err()
+                .is_nesting_limit()
         );
         let inner = CssColor::from_device_cmyk(numeric_payload(254, slot).unwrap());
         let wrapped =
             CssColor::from_contrast_color(CssContrastColor::try_new(inner.clone()).unwrap());
-        assert_eq!(
-            CssContrastColor::try_new(wrapped).unwrap_err(),
-            CssColorConstructionError::NestingLimit
+        assert!(
+            CssContrastColor::try_new(wrapped)
+                .unwrap_err()
+                .is_nesting_limit()
         );
         let stops = CssColorStopList::try_new(vec![
             CssColorStopListItem::Stop(Box::new(CssGradientColorStop::from_color(inner, None))),
@@ -271,9 +294,10 @@ fn each_numeric_channel_and_alpha_obeys_255_child_plus_one_function_depth() {
         .unwrap();
         let image =
             CssImageValue::Gradient(CssGradient::Linear(CssLinearGradient::new(None, stops)));
-        assert_eq!(
-            CssLightDarkImage::try_new(image, CssImageValue::None).unwrap_err(),
-            CssImageConstructionError::NestingLimit
+        assert!(
+            CssLightDarkImage::try_new(image, CssImageValue::None)
+                .unwrap_err()
+                .is_nesting_limit()
         );
     }
 }
@@ -281,7 +305,7 @@ fn each_numeric_channel_and_alpha_obeys_255_child_plus_one_function_depth() {
 #[test]
 fn parser_payload_keeps_typed_literals_calculations_and_sources() {
     let text = "color:device-cmyk(-.2 140% calc(1 / 2) calc(50%) / calc(25%))";
-    let report = parse_style_attribute(text);
+    let report = CssParser::default().parse_block_contents(text);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let payload = declaration_color(&report.syntax()[0])
         .device_cmyk_value()

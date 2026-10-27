@@ -1,4 +1,7 @@
-use surgeist_css::{CssKnownProperty, CssRecoveryAction, CssRule, ErrorKind, parse_sheet};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
 
 // The public nesting-limit contract identifies the enclosing grammar production.
 // CSS Syntax token identity is case-insensitive for at-rule names, including
@@ -15,7 +18,7 @@ fn assert_eof_limit(at_keyword: &str, condition: &str, production: &str) {
 fn assert_eof_limit_after_prelude(prelude: &str, condition: &str, production: &str) {
     let before = ".before{}\n";
     let source = format!("{before}{prelude}{}{condition}", "(".repeat(257));
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(matches!(report.syntax().rules(), [CssRule::Style(_)]));
     let [diagnostic] = report.diagnostics() else {
         panic!("{prelude}: {:?}", report.diagnostics());
@@ -30,12 +33,15 @@ fn assert_eof_limit_after_prelude(prelude: &str, condition: &str, production: &s
         before.len()
     );
     assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
-    let ErrorKind::NestingLimit(limit) = diagnostic.error().kind() else {
-        panic!("expected a typed nesting limit");
-    };
-    assert_eq!(limit.limit(), 256);
+    let limit = diagnostic.error();
     assert_eq!(
-        limit.enclosing_production().as_str(),
+        limit.code(),
+        CssErrorCode::NestingLimit,
+        "expected a typed nesting limit"
+    );
+    assert_eq!(limit.nesting_limit().unwrap(), 256);
+    assert_eq!(
+        limit.production().unwrap().as_str(),
         production,
         "{prelude}"
     );
@@ -65,9 +71,12 @@ fn eof_supports_limit_uses_decoded_at_keyword_identity() {
 #[test]
 fn canonical_media_and_supports_eof_limits_keep_their_productions() {
     assert_eof_limit("@media", "width > 1px", "official.media.query-list-core");
-    let media_list = surgeist_css::feature_metadata("official.media.query-list-core")
+    let media_list = surgeist_css::conformance::feature_metadata("official.media.query-list-core")
         .expect("the attributed media production is an atomic catalog record");
-    assert_eq!(media_list.kind(), surgeist_css::CssFeatureKind::MediaQuery);
+    assert_eq!(
+        media_list.kind(),
+        surgeist_css::conformance::CssFeatureKind::MediaQuery
+    );
     assert_eq!(media_list.production(), "#mq-syntax");
     assert_eof_limit("@supports", "display: grid", "baseline.rule.supports");
 }
@@ -102,7 +111,7 @@ fn completed_semicolon_and_curly_rules_survive_a_later_eof_limit() {
     let before = "@layer first; .before{}\n";
     let prelude = "@container (width > 1px) and ";
     let source = format!("{before}{prelude}{}height > 2px", "(".repeat(257));
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(matches!(
         report.syntax().rules(),
         [CssRule::LayerStatement(_), CssRule::Style(_)]
@@ -116,11 +125,10 @@ fn completed_semicolon_and_curly_rules_survive_a_later_eof_limit() {
         before.len()
     );
     assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
-    let ErrorKind::NestingLimit(limit) = diagnostic.error().kind() else {
-        panic!("typed limit");
-    };
+    let limit = diagnostic.error();
+    assert_eq!(limit.code(), CssErrorCode::NestingLimit, "typed limit");
     assert_eq!(
-        limit.enclosing_production().as_str(),
+        limit.production().unwrap().as_str(),
         "baseline.rule.container"
     );
 }
@@ -130,7 +138,7 @@ fn assert_later_declaration_eof_limit(group: Option<&str>) {
     let depth = if group.is_some() { 2 } else { 1 };
     let prefix = format!("{group_start}.before{{}}.target{{margin:1px;--bomb:");
     let source = format!("{prefix}{}x", "f(".repeat(257 - depth));
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let children = if group.is_some() {
         let [parent] = report.syntax().rules() else {
             panic!("parent rule must survive: {report:?}");
@@ -166,11 +174,10 @@ fn assert_later_declaration_eof_limit(group: Option<&str>) {
         diagnostic.error().position().byte_offset().value(),
         prefix.len() + 2 * (256 - depth)
     );
-    let ErrorKind::NestingLimit(limit) = diagnostic.error().kind() else {
-        panic!("typed limit");
-    };
-    assert_eq!(limit.limit(), 256);
-    assert_eq!(limit.enclosing_production().as_str(), "css.declaration");
+    let limit = diagnostic.error();
+    assert_eq!(limit.code(), CssErrorCode::NestingLimit, "typed limit");
+    assert_eq!(limit.nesting_limit().unwrap(), 256);
+    assert_eq!(limit.production().unwrap().as_str(), "css.declaration");
 }
 
 #[test]

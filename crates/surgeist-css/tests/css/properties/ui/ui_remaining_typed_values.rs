@@ -1,7 +1,32 @@
 //! New typed APIs, tested functionally with implementation from UI4/Images4 and CSSOM.
 use crate::css::support::normal_checked_declaration as declaration;
 use crate::css::support::serialization_limits::assert_node_limits;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::conformance::conformance_exclusion;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{
+    CssCalculation, CssFlex, CssNonNegative, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::border::CssOutlineColor;
+use surgeist_css::values::common::CssSidePair;
+use surgeist_css::values::image::{
+    CssImage1D, CssStripe, CssStripeLengthPercentage, CssStripeThickness, CssStripes,
+};
+use surgeist_css::values::ui::{
+    CssAccentColor, CssAppearance, CssCaret, CssCaretAnimation, CssCaretColor, CssCaretShape,
+    CssInteractivity, CssInterestDelayValue, CssNavigation, CssNavigationId,
+    CssNavigationReference, CssNavigationTarget, CssNavigationTargetName,
+};
 
 fn caret(text: &str) -> CssCaret {
     let declaration = declaration(CssKnownProperty::Caret, text);
@@ -10,21 +35,24 @@ fn caret(text: &str) -> CssCaret {
     else {
         panic!("caret")
     };
-    value.caret().clone()
+    value.value().clone()
 }
-fn interest(text: &str) -> CssInterestDelay {
+fn interest(text: &str) -> CssSidePair<CssInterestDelayValue> {
     let declaration = declaration(CssKnownProperty::InterestDelay, text);
     let CssKnownPropertyValueRef::InterestDelay(value) =
         declaration.known().unwrap().property_value().unwrap()
     else {
         panic!("interest")
     };
-    value.delay().clone()
+    value.value().clone()
 }
 fn time(number: &str, unit: CssTimeUnit) -> CssInterestDelayValue {
-    CssInterestDelayValue::Time(CssTimeValue::from_literal(
-        CssTimeLiteral::try_new(number, unit).unwrap(),
-    ))
+    CssInterestDelayValue::Time(
+        CssNumeric::<CssTime>::try_from_literal(
+            CssNumericLiteral::<CssTime>::try_new(number, unit).unwrap(),
+        )
+        .unwrap(),
+    )
 }
 #[test]
 fn checked_caret_preserves_roles_while_auto_projection_omits_initials() {
@@ -39,9 +67,15 @@ fn checked_caret_preserves_roles_while_auto_projection_omits_initials() {
     ] {
         let value = caret(text);
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let reparsed = caret(expected);
-        assert_eq!(reparsed.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            reparsed.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, before);
     }
     let value = CssCaret::try_new(
@@ -51,7 +85,7 @@ fn checked_caret_preserves_roles_while_auto_projection_omits_initials() {
     )
     .unwrap();
     assert_node_limits("manual block", 4, |limits| {
-        value.serialize_specified_with_limits(limits)
+        value.serialize_specified(limits)
     });
     assert!(matches!(value.color(), Some(CssCaretColor::Auto)));
     assert_eq!(value.animation(), Some(CssCaretAnimation::Manual));
@@ -62,9 +96,7 @@ fn checked_caret_preserves_roles_while_auto_projection_omits_initials() {
         Some(CssCaretShape::Auto),
     )
     .unwrap();
-    assert_node_limits("auto", 4, |limits| {
-        all.serialize_specified_with_limits(limits)
-    });
+    assert_node_limits("auto", 4, |limits| all.serialize_specified(limits));
 }
 #[test]
 fn typed_keyword_providers_reparse_each_distinct_ui_identity() {
@@ -76,14 +108,14 @@ fn typed_keyword_providers_reparse_each_distinct_ui_identity() {
         (CssCaretAnimation::Auto, "auto"),
         (CssCaretAnimation::Manual, "manual"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), text);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
         let d = declaration(CssKnownProperty::CaretAnimation, text);
         let CssKnownPropertyValueRef::CaretAnimation(v) =
             d.known().unwrap().property_value().unwrap()
         else {
             panic!("animation")
         };
-        assert_eq!(*v.animation(), value);
+        assert_eq!(*v.value(), value);
     }
     for (value, text) in [
         (CssCaretShape::Auto, "auto"),
@@ -91,28 +123,26 @@ fn typed_keyword_providers_reparse_each_distinct_ui_identity() {
         (CssCaretShape::Block, "block"),
         (CssCaretShape::Underscore, "underscore"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), text);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
         let d = declaration(CssKnownProperty::CaretShape, text);
         let CssKnownPropertyValueRef::CaretShape(v) = d.known().unwrap().property_value().unwrap()
         else {
             panic!("shape")
         };
-        assert_eq!(*v.shape(), value);
+        assert_eq!(*v.value(), value);
     }
     for (value, text) in [
         (CssInteractivity::Auto, "auto"),
         (CssInteractivity::Inert, "inert"),
     ] {
-        assert_node_limits(text, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        assert_node_limits(text, 1, |limits| value.serialize_specified(limits));
         let d = declaration(CssKnownProperty::Interactivity, text);
         let CssKnownPropertyValueRef::Interactivity(v) =
             d.known().unwrap().property_value().unwrap()
         else {
             panic!("interactivity")
         };
-        assert_eq!(*v.interactivity(), value);
+        assert_eq!(*v.value(), value);
     }
     for (value, text) in [
         (CssAppearance::None, "none"),
@@ -131,21 +161,19 @@ fn typed_keyword_providers_reparse_each_distinct_ui_identity() {
         (CssAppearance::Textfield, "textfield"),
         (CssAppearance::MenulistButton, "menulist-button"),
     ] {
-        assert_node_limits(text, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        assert_node_limits(text, 1, |limits| value.serialize_specified(limits));
         let d = declaration(CssKnownProperty::Appearance, text);
         let CssKnownPropertyValueRef::Appearance(v) = d.known().unwrap().property_value().unwrap()
         else {
             panic!("appearance")
         };
-        assert_eq!(*v.appearance(), value);
+        assert_eq!(*v.value(), value);
     }
     assert!(matches!(CssAccentColor::default(), CssAccentColor::Auto));
     let accent = CssAccentColor::Color(Box::new(CssColor::transparent()));
     assert!(accent.color().is_some());
     assert_node_limits("transparent", 1, |limits| {
-        accent.serialize_specified_with_limits(limits)
+        accent.serialize_specified(limits)
     });
 }
 #[test]
@@ -161,36 +189,42 @@ fn interest_omission_uses_exact_signed_time_proof_and_preserves_second_presence(
     ] {
         let value = interest(text);
         let before = value.clone();
-        assert!(value.authored_end().is_some());
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert!(value.authored_second().is_some());
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         if text != "0.0000001s 0.0000002s" {
-            assert_eq!(interest(expected).serialize_specified().unwrap(), expected);
+            assert_eq!(
+                interest(expected)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                expected
+            );
         } else {
             // Rounded text cannot reconstitute the original distinction; omission proof
             // is made before formatting, so both retained original inputs are emitted.
-            assert!(interest(expected).authored_end().is_some());
+            assert!(interest(expected).authored_second().is_some());
         }
         assert_eq!(value, before);
     }
-    let value = CssInterestDelay::try_new(
+    let value = CssSidePair::<CssInterestDelayValue>::try_new(
         time("-1", CssTimeUnit::Seconds),
         Some(time("-1000", CssTimeUnit::Milliseconds)),
     )
     .unwrap();
-    assert_node_limits("-1s", 3, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
-    assert!(value.authored_end().is_some());
-    let repeated = CssInterestDelay::try_new(time("-1", CssTimeUnit::Seconds), None).unwrap();
-    assert!(repeated.authored_end().is_none());
-    assert_eq!(repeated.start(), repeated.end());
-    assert_node_limits("-1s", 2, |limits| {
-        repeated.serialize_specified_with_limits(limits)
-    });
+    assert_node_limits("-1s", 3, |limits| value.serialize_specified(limits));
+    assert!(value.authored_second().is_some());
+    let repeated =
+        CssSidePair::<CssInterestDelayValue>::try_new(time("-1", CssTimeUnit::Seconds), None)
+            .unwrap();
+    assert!(repeated.authored_second().is_none());
+    assert_eq!(repeated.first(), repeated.second());
+    assert_node_limits("-1s", 2, |limits| repeated.serialize_specified(limits));
     assert!(
-        CssDuration::try_new(CssTimeValue::from_literal(
-            CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap()
-        ))
+        CssNumeric::<CssTime, CssNonNegative>::try_from_literal(
+            CssNumericLiteral::<CssTime>::try_new("-1", CssTimeUnit::Seconds).unwrap()
+        )
         .is_err()
     );
 }
@@ -201,7 +235,10 @@ fn navigation_checked_models_preserve_original_ids_strings_and_exclude_legacy_ta
             assert!(CssNavigationId::try_from_component(component).is_err());
         }
     }
-    let component = parse_component_values(r"#N\65 xt").unwrap().items()[0].clone();
+    let component = CssComponentValues::parse(&CssParser::default(), r"#N\65 xt")
+        .unwrap()
+        .items()[0]
+        .clone();
     let original = component.origin().clone();
     let id = CssNavigationId::try_from_component(component.clone()).unwrap();
     assert_eq!(id.as_str(), "Next");
@@ -218,14 +255,14 @@ fn navigation_checked_models_preserve_original_ids_strings_and_exclude_legacy_ta
             CssNavigationReference::try_new(id.clone(), Some(CssNavigationTarget::Name(target)))
                 .unwrap(),
         ));
-        let text = navigation.serialize_specified().unwrap();
+        let text = navigation.serialize_specified(Default::default()).unwrap();
         let d = declaration(CssKnownProperty::NavUp, &text);
         let CssKnownPropertyValueRef::NavUp(v) = d.known().unwrap().property_value().unwrap()
         else {
             panic!("nav")
         };
-        assert_eq!(v.navigation().reference().unwrap().id().as_str(), "Next");
-        let Some(CssNavigationTarget::Name(target)) = v.navigation().reference().unwrap().target()
+        assert_eq!(v.value().reference().unwrap().id().as_str(), "Next");
+        let Some(CssNavigationTarget::Name(target)) = v.value().reference().unwrap().target()
         else {
             panic!("name")
         };
@@ -237,13 +274,17 @@ fn legacy_navigation_has_typed_diagnostic_original_string_and_reusable_report_pa
     let value = r#"#N\65 xt "\5f ROOT""#;
     let property = CssKnownProperty::NavUp;
     for report in [
-        parse_property_value_text(
+        CssParser::default().parse_property_value(
             value,
-            CssPropertyNameRef::Known(property),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property)),
             CssImportance::Normal,
         ),
-        parse_property_value_text_for_grammar(value, property.grammar(), CssImportance::Normal),
-        parse_declaration(&format!("nav-up:{value}")),
+        CssParser::default().parse_property_value(
+            value,
+            CssPropertyTextTarget::Grammar(property.grammar()),
+            CssImportance::Normal,
+        ),
+        CssDeclaration::parse(&CssParser::default(), format!("nav-up:{value}")),
     ] {
         assert!(!report.is_clean());
         let diagnostic = &report.diagnostics()[0];
@@ -255,17 +296,20 @@ fn legacy_navigation_has_typed_diagnostic_original_string_and_reusable_report_pa
             diagnostic.error().code(),
             CssErrorCode::LegacyNavigationTarget
         );
-        let ErrorKind::LegacyNavigationTarget(detail) = diagnostic.error().kind() else {
-            panic!("typed diagnostic")
-        };
-        assert_eq!(detail.target(), "_ROOT");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::LegacyNavigationTarget,
+            "typed diagnostic"
+        );
+        assert_eq!(detail.navigation_target().unwrap(), "_ROOT");
         let declaration = report.syntax().as_ref().unwrap();
         let CssKnownPropertyValueRef::NavUp(v) =
             declaration.known().unwrap().property_value().unwrap()
         else {
             panic!("nav")
         };
-        let reference = v.navigation().reference().unwrap();
+        let reference = v.value().reference().unwrap();
         let Some(CssNavigationTarget::LegacyName(target)) = reference.target() else {
             panic!("legacy")
         };
@@ -278,9 +322,14 @@ fn legacy_navigation_has_typed_diagnostic_original_string_and_reusable_report_pa
         assert!(CssNavigationTargetName::try_from_component(target.component().clone()).is_err());
     }
     let source = format!("@keyframes a{{from{{nav-up:{value};nav-up:#Other root}}}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let before = report.clone();
-    assert!(validate_sheet(&source).is_err());
+    assert!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .is_err()
+    );
     let diagnostic = report
         .diagnostics()
         .iter()
@@ -306,7 +355,7 @@ fn legacy_navigation_has_typed_diagnostic_original_string_and_reusable_report_pa
             panic!("keyframe nav")
         };
         assert_eq!(v.as_css(), expected);
-        let id = v.navigation().reference().unwrap().id();
+        let id = v.value().reference().unwrap().id();
         let CssValueOrigin::Parsed(origin) = id.origin() else {
             panic!("parsed ID")
         };
@@ -315,23 +364,31 @@ fn legacy_navigation_has_typed_diagnostic_original_string_and_reusable_report_pa
     assert!(
         report
             .syntax()
-            .to_specified_css()
+            .serialize_specified(Default::default())
             .unwrap()
             .contains(r#"nav-up: #Next "_ROOT";"#)
     );
     assert_eq!(report, before);
-    assert!(validate_sheet("@keyframes a{from{nav-up:#Next root;nav-up:#Other current}}").is_ok());
-    let valid = parse_style_attribute("nav-up:#Next root;nav-down:#Next \"\"");
+    assert!(
+        CssParser::default()
+            .parse_sheet("@keyframes a{from{nav-up:#Next root;nav-up:#Other current}}")
+            .into_validation_result()
+            .is_ok()
+    );
+    let valid = CssParser::default().parse_block_contents("nav-up:#Next root;nav-down:#Next \"\"");
     assert!(valid.is_clean());
     assert!(conformance_exclusion("excluded.X-UI4.property.ime-mode").is_some());
     assert!(CssKnownProperty::from_name("ime-mode").is_none());
 }
 #[test]
 fn stripes_checked_construction_preserves_optional_thickness_and_exact_origins() {
-    let color = parse_component_values("ReD").unwrap().items()[0].clone();
+    let color = CssComponentValues::parse(&CssParser::default(), "ReD")
+        .unwrap()
+        .items()[0]
+        .clone();
     let origin = color.origin().clone();
     let thickness = CssStripeThickness::Flex(
-        CssSpecifiedFlex::try_from_component(
+        CssNumeric::<CssFlex>::try_from_component(
             CssComponentValue::try_dimension("1.0", "FR").unwrap(),
         )
         .unwrap(),
@@ -343,20 +400,21 @@ fn stripes_checked_construction_preserves_optional_thickness_and_exact_origins()
     let stripes = CssStripes::try_new(vec![stripe]).unwrap();
     let before = stripes.clone();
     assert_node_limits("stripes(red)", 4, |limits| {
-        stripes.serialize_specified_with_limits(limits)
+        stripes.serialize_specified(limits)
     });
     assert_eq!(stripes, before);
     assert!(stripes.original_component().is_none());
-    assert!(matches!(
-        CssStripes::try_new(vec![]),
-        Err(CssImage1DConstructionError::EmptyStripes)
-    ));
+    assert!(
+        CssStripes::try_new(vec![])
+            .as_ref()
+            .is_err_and(|error| error.is_empty_stripes())
+    );
     let image = CssImage1D::try_from_components(
-        parse_component_values("stripes(2px ReD, blue 100%)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "stripes(2px ReD, blue 100%)").unwrap(),
     )
     .unwrap();
     assert_eq!(
-        image.serialize_specified().unwrap(),
+        image.serialize_specified(Default::default()).unwrap(),
         "stripes(red 2px, blue 100%)"
     );
     assert_eq!(image.stripes().stripes().len(), 2);
@@ -365,8 +423,8 @@ fn stripes_checked_construction_preserves_optional_thickness_and_exact_origins()
     assert!(outline.color().is_none());
     assert_eq!(outline.image_1d(), Some(&image));
     assert_eq!(
-        outline.serialize_specified().unwrap(),
-        image.serialize_specified().unwrap()
+        outline.serialize_specified(Default::default()).unwrap(),
+        image.serialize_specified(Default::default()).unwrap()
     );
 }
 #[test]
@@ -390,17 +448,17 @@ fn stripe_thickness_uses_exact_ranges_signed_flex_and_grid_boundary() {
             CssComponentValue::try_token(text).unwrap(),
         )
         .unwrap();
-        assert!(value.serialize_specified().is_ok());
+        assert!(value.serialize_specified(Default::default()).is_ok());
     }
     let negative = CssComponentValue::try_dimension("-1", "fr").unwrap();
     assert_eq!(
-        CssSpecifiedFlex::try_from_component(negative.clone())
+        CssNumeric::<CssFlex>::try_from_component(negative.clone())
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "-1fr"
     );
-    assert!(CssSpecifiedNonNegativeFlex::try_from_component(negative).is_err());
+    assert!(CssNumeric::<CssFlex, CssNonNegative>::try_from_component(negative).is_err());
     for (source, expected) in [
         ("stripes(red -1fr)", "stripes(red -1fr)"),
         ("stripes(red calc(2fr - 3fr))", "stripes(red calc(-1fr))"),
@@ -409,21 +467,29 @@ fn stripe_thickness_uses_exact_ranges_signed_flex_and_grid_boundary() {
             "stripes(red calc(1em + 1px))",
         ),
     ] {
-        let image =
-            CssImage1D::try_from_components(parse_component_values(source).unwrap()).unwrap();
-        assert_eq!(image.serialize_specified().unwrap(), expected);
+        let image = CssImage1D::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
-            CssImage1D::try_from_components(parse_component_values(expected).unwrap())
-                .unwrap()
-                .serialize_specified()
-                .unwrap(),
+            image.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            CssImage1D::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), expected).unwrap()
+            )
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
             expected
         );
     }
 }
 #[test]
 fn recovered_stripe_closure_is_retained_only_by_browser_and_checked_reentry_rejects_it() {
-    let report = parse_style_attribute("outline-color:stripes(red calc(1fr + 2fr)");
+    let report =
+        CssParser::default().parse_block_contents("outline-color:stripes(red calc(1fr + 2fr)");
     assert!(!report.is_clean());
     let declaration = &report.syntax()[0];
     let CssKnownPropertyValueRef::OutlineColor(value) =
@@ -433,14 +499,17 @@ fn recovered_stripe_closure_is_retained_only_by_browser_and_checked_reentry_reje
     };
     let image = value.value().image_1d().unwrap();
     let original = image.stripes().original_component().unwrap();
-    let components = CssComponentValues::try_new(vec![original.clone()]).unwrap();
-    assert!(matches!(
-        CssImage1D::try_from_components(components.clone()),
-        Err(CssImage1DConstructionError::RecoveredComponent(_))
-    ));
+    let components =
+        CssComponentValues::try_new(vec![original.clone()], Default::default()).unwrap();
     assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::OutlineColor),
+        CssImage1D::try_from_components(components.clone())
+            .as_ref()
+            .is_err_and(|error| error.recovered_origin().is_some())
+    );
+    assert!(
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::OutlineColor)),
             components,
             CssImportance::Normal
         )
@@ -451,9 +520,11 @@ fn recovered_stripe_closure_is_retained_only_by_browser_and_checked_reentry_reje
 #[test]
 fn typed_stripe_errors_use_original_component_origins_and_aggregate_depth() {
     let source = "/*lead*/stripes(red 101%)";
-    let error =
-        CssImage1D::try_from_components(parse_component_values(source).unwrap()).unwrap_err();
-    let CssImage1DConstructionError::Grammar(error) = error else {
+    let error = CssImage1D::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+    )
+    .unwrap_err();
+    let Some(error) = error.property_value_error() else {
         panic!("grammar error")
     };
     let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
@@ -471,33 +542,50 @@ fn typed_stripe_errors_use_original_component_origins_and_aggregate_depth() {
             ")".repeat(depth)
         )
     };
-    let color = parse_component_values(&nested(255)).unwrap().items()[0].clone();
+    let color = CssComponentValues::parse(&CssParser::default(), nested(255))
+        .unwrap()
+        .items()[0]
+        .clone();
     let stripe = CssStripe::try_new(color, None).unwrap();
     assert!(CssStripes::try_new(vec![stripe]).is_ok());
     let source = format!("stripes({})", nested(255));
-    let image = CssImage1D::try_from_components(parse_component_values(&source).unwrap()).unwrap();
+    let image = CssImage1D::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
+    )
+    .unwrap();
     assert_eq!(image.stripes().stripes().len(), 1);
     let CssValueOrigin::Parsed(origin) = image.stripes().origin() else {
         panic!("original stripes origin")
     };
     assert_eq!(origin.source().as_str(), source);
-    let color = parse_component_values(&nested(256)).unwrap().items()[0].clone();
-    assert!(matches!(
-        CssStripe::try_new(color, None),
-        Err(CssImage1DConstructionError::NestingLimit)
-    ));
+    let color = CssComponentValues::parse(&CssParser::default(), nested(256))
+        .unwrap()
+        .items()[0]
+        .clone();
+    assert!(
+        CssStripe::try_new(color, None)
+            .as_ref()
+            .is_err_and(|error| error.is_nesting_limit())
+    );
 }
 #[test]
 fn signed_flex_checked_calculation_reuses_numeric_owner_and_rejects_recovered_graph() {
-    let calculation =
-        CssFlexCalculation::try_from_components(parse_component_values("calc(2fr - 3fr)").unwrap())
-            .unwrap();
-    let value = CssSpecifiedFlex::try_from_calculation(calculation).unwrap();
+    let calculation = CssCalculation::<CssFlex>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(2fr - 3fr)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    let value = CssNumeric::<CssFlex>::try_from_calculation(calculation).unwrap();
     assert!(value.calculation().is_some());
-    assert_eq!(value.serialize_specified().unwrap(), "calc(-1fr)");
-    let other = CssSpecifiedFlex::try_from_calculation(
-        CssFlexCalculation::try_from_components(
-            parse_component_values("/*other origin*/calc(2fr - 3fr)").unwrap(),
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "calc(-1fr)"
+    );
+    let other = CssNumeric::<CssFlex>::try_from_calculation(
+        CssCalculation::<CssFlex>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "/*other origin*/calc(2fr - 3fr)")
+                .unwrap(),
+            Default::default(),
         )
         .unwrap(),
     )
@@ -507,7 +595,8 @@ fn signed_flex_checked_calculation_reuses_numeric_owner_and_rejects_recovered_gr
         CssStripeThickness::Flex(value),
         CssStripeThickness::Flex(other)
     );
-    let report = parse_style_attribute("outline-color:stripes(red calc(2fr - 3fr");
+    let report =
+        CssParser::default().parse_block_contents("outline-color:stripes(red calc(2fr - 3fr");
     assert!(!report.is_clean());
     let CssKnownPropertyValueRef::OutlineColor(value) = report.syntax()[0]
         .known()
@@ -522,17 +611,14 @@ fn signed_flex_checked_calculation_reuses_numeric_owner_and_rejects_recovered_gr
     else {
         panic!("flex")
     };
-    let error =
-        CssSpecifiedFlex::try_from_calculation(flex.calculation().unwrap().clone()).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
-    );
+    let error = CssNumeric::<CssFlex>::try_from_calculation(flex.calculation().unwrap().clone())
+        .unwrap_err();
+    assert!(error.is_recovered_component(), "{error:?}");
     assert!(error.origin().is_some());
 }
 #[test]
 fn interest_checked_construction_rejects_recovered_time_from_either_slot() {
-    let report = parse_style_attribute("interest-delay-start:calc(1s + 2s");
+    let report = CssParser::default().parse_block_contents("interest-delay-start:calc(1s + 2s");
     assert!(!report.is_clean());
     let CssKnownPropertyValueRef::InterestDelayStart(value) = report.syntax()[0]
         .known()
@@ -542,14 +628,15 @@ fn interest_checked_construction_rejects_recovered_time_from_either_slot() {
     else {
         panic!("delay")
     };
-    let recovered = value.delay().clone();
+    let recovered = value.value().clone();
     for (start, end) in [
         (recovered.clone(), None),
         (CssInterestDelayValue::Normal, Some(recovered)),
     ] {
-        assert_eq!(
-            CssInterestDelay::try_new(start, end).unwrap_err().kind(),
-            &CssNumericConstructionErrorKind::RecoveredComponent
+        assert!(
+            CssSidePair::<CssInterestDelayValue>::try_new(start, end)
+                .unwrap_err()
+                .is_recovered_component()
         );
     }
 }

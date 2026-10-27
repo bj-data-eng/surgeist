@@ -3,10 +3,27 @@
 //! independently by Masking 1 §5.1, the adopted Shapes 1 ellipse/polygon decisions,
 //! and the authored resource contract. No used geometry or defaults are inferred.
 
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::normal_declaration;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::serialization_limits::assert_limits as budget;
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{CssLength, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::border::CssBorderRadiusShorthand;
+use surgeist_css::values::common::{CssBoxEdgeKeyword, CssUrl};
+use surgeist_css::values::effects::{CssClipPath, CssClipPathShape};
+use surgeist_css::values::image::CssRadialExtent;
+use surgeist_css::values::position::{
+    CssCartesianPosition, CssHorizontalPosition, CssPosition, CssVerticalPosition,
+};
+use surgeist_css::values::shape::{
+    CssBasicShape, CssCircleRadius, CssCircleShape, CssEllipseRadii, CssEllipseRadius,
+    CssEllipseShape, CssFillRule, CssInsetShape, CssInsetShapeOffsets, CssPolygonPoint,
+    CssPolygonPointList, CssPolygonShape,
+};
 
 fn clip_path(css: &str) -> CssClipPath {
     let declaration = normal_declaration("clip-path", css);
@@ -25,20 +42,22 @@ fn shape(css: &str) -> CssBasicShape {
     value.shape().clone()
 }
 
-fn lp(css: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(css).unwrap())
-        .unwrap()
-}
-
-fn radius(css: &str) -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+fn lp(css: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
         CssComponentValue::try_token(css).unwrap(),
     )
     .unwrap()
 }
 
-fn length(css: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_component(CssComponentValue::try_token(css).unwrap()).unwrap()
+fn radius(css: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+        CssComponentValue::try_token(css).unwrap(),
+    )
+    .unwrap()
+}
+
+fn length(css: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(css).unwrap()).unwrap()
 }
 
 #[test]
@@ -65,17 +84,17 @@ fn shape_composition_keeps_box_identity_and_omission_separate_from_border_box() 
         assert_eq!(clip_path(&format!("{text} circle()")), expected);
         assert_eq!(clip_path(&format!("circle() {text}")), expected);
         budget(&format!("circle() {text}"), 3, 3, |limits| {
-            composition.serialize_specified_with_limits(limits)
+            composition.serialize_specified(limits)
         });
         budget(&format!("circle() {text}"), 3, 3, |limits| {
-            expected.serialize_specified_with_limits(limits)
+            expected.serialize_specified(limits)
         });
     }
     budget("circle()", 2, 2, |limits| {
-        omitted.serialize_specified_with_limits(limits)
+        omitted.serialize_specified(limits)
     });
     budget("circle()", 2, 2, |limits| {
-        CssClipPath::BasicShape(omitted.clone()).serialize_specified_with_limits(limits)
+        CssClipPath::BasicShape(omitted.clone()).serialize_specified(limits)
     });
 }
 
@@ -124,17 +143,17 @@ fn ellipse_pairs_preserve_independent_components_order_and_omission() {
         assert_eq!(pair.vertical(), &CssEllipseRadius::Extent(second));
     }
     budget("ellipse(10px closest-side)", 4, 4, |limits| {
-        mixed.serialize_specified_with_limits(limits)
+        mixed.serialize_specified(limits)
     });
     budget("ellipse()", 1, 1, |limits| {
-        omitted.serialize_specified_with_limits(limits)
+        omitted.serialize_specified(limits)
     });
-    assert_ne!(
+    assert_eq!(
         CssEllipseRadius::LengthPercentage(radius("0")),
         CssEllipseRadius::LengthPercentage(radius("0px"))
     );
-    // Existing scalar structural equality preserves numeric token representation.
-    assert_ne!(
+    // Numeric value equality ignores the numeric token representation.
+    assert_eq!(
         CssEllipseRadius::LengthPercentage(radius("1.0px")),
         CssEllipseRadius::LengthPercentage(radius("1px"))
     );
@@ -163,14 +182,20 @@ fn checked_shapes_retain_signed_rounding_offsets_point_lists_and_radius_arity() 
         1
     );
     budget("inset(-1px 2% 3em round 4px 5% / 6px)", 9, 9, |limits| {
-        inset.serialize_specified_with_limits(limits)
+        inset.serialize_specified(limits)
     });
     assert!(CssInsetShapeOffsets::try_new(vec![]).is_none());
     assert!(CssInsetShapeOffsets::try_new(vec![lp("0"); 5]).is_none());
     assert!(CssPolygonPointList::try_new(vec![]).is_none());
     let point = CssPolygonPoint::new(lp("-1px"), lp("25%"));
-    assert_eq!(point.x().serialize_specified().unwrap(), "-1px");
-    assert_eq!(point.y().serialize_specified().unwrap(), "25%");
+    assert_eq!(
+        point.x().serialize_specified(Default::default()).unwrap(),
+        "-1px"
+    );
+    assert_eq!(
+        point.y().serialize_specified(Default::default()).unwrap(),
+        "25%"
+    );
     let points = CssPolygonPointList::try_new(vec![point.clone()]).unwrap();
     let signed = length("-1px");
     let polygon = CssPolygonShape::new(
@@ -190,22 +215,22 @@ fn checked_shapes_retain_signed_rounding_offsets_point_lists_and_radius_arity() 
         CssPolygonShape::new(None, Some(length("0")), points)
     );
     budget("polygon(nonzero round -1px, -1px 25%)", 7, 7, |limits| {
-        polygon.serialize_specified_with_limits(limits)
+        polygon.serialize_specified(limits)
     });
     for (invalid, kind) in [
-        ("10%", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
+        ("10%", NumericFailure::RootDomainMismatch),
+        ("1", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            CssSpecifiedLength::try_from_component,
+            CssNumeric::<CssLength>::try_from_component,
             CssComponentValue::try_token(invalid).unwrap(),
             kind,
         );
     }
     assert_component_rejected(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component,
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component,
         CssComponentValue::try_token("-1e-999px").unwrap(),
-        CssNumericConstructionErrorKind::OutOfRange,
+        NumericFailure::OutOfRange,
     );
 }
 
@@ -244,36 +269,51 @@ fn each_function_and_transparent_basic_shape_branch_has_the_declared_literal_bud
         let value = shape(css);
         let before = value.clone();
         budget(expected, nodes, nodes, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
         match &value {
             CssBasicShape::Circle(value) => {
                 budget(expected, nodes, nodes, |limits| {
-                    value.serialize_specified_with_limits(limits)
+                    value.serialize_specified(limits)
                 });
-                assert_eq!(value.serialize_specified().unwrap(), expected);
+                assert_eq!(
+                    value.serialize_specified(Default::default()).unwrap(),
+                    expected
+                );
             }
             CssBasicShape::Ellipse(value) => {
                 budget(expected, nodes, nodes, |limits| {
-                    value.serialize_specified_with_limits(limits)
+                    value.serialize_specified(limits)
                 });
-                assert_eq!(value.serialize_specified().unwrap(), expected);
+                assert_eq!(
+                    value.serialize_specified(Default::default()).unwrap(),
+                    expected
+                );
             }
             CssBasicShape::Inset(value) => {
                 budget(expected, nodes, nodes, |limits| {
-                    value.serialize_specified_with_limits(limits)
+                    value.serialize_specified(limits)
                 });
-                assert_eq!(value.serialize_specified().unwrap(), expected);
+                assert_eq!(
+                    value.serialize_specified(Default::default()).unwrap(),
+                    expected
+                );
             }
             CssBasicShape::Polygon(value) => {
                 budget(expected, nodes, nodes, |limits| {
-                    value.serialize_specified_with_limits(limits)
+                    value.serialize_specified(limits)
                 });
-                assert_eq!(value.serialize_specified().unwrap(), expected);
+                assert_eq!(
+                    value.serialize_specified(Default::default()).unwrap(),
+                    expected
+                );
             }
             _ => panic!("selected shape"),
         }
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, before);
     }
 }
@@ -291,9 +331,12 @@ fn standalone_none_geometry_and_url_delegate_without_synthetic_nodes() {
     ] {
         let before = value.clone();
         budget(expected, nodes, nodes, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, before);
     }
 }
@@ -308,7 +351,10 @@ fn parsed_and_programmatic_literals_retain_units_exact_magnitudes_and_origins() 
         ),
         ("ellipse(10em 20vh)", "ellipse(10em 20vh)"),
     ] {
-        assert_eq!(shape(css).serialize_specified().unwrap(), expected);
+        assert_eq!(
+            shape(css).serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     for (css, expected, coefficient) in [
         ("circle(1e-999px)", "circle(0px)", "1e-999"),
@@ -321,18 +367,27 @@ fn parsed_and_programmatic_literals_retain_units_exact_magnitudes_and_origins() 
     ] {
         let value = shape(css);
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let component = match &value {
             CssBasicShape::Circle(circle) => {
                 let CssCircleRadius::LengthPercentage(radius) = circle.radius() else {
                     panic!("numeric circle radius")
                 };
-                radius.literal_component().unwrap()
+                radius.literal().map(|literal| literal.component()).unwrap()
             }
-            CssBasicShape::Polygon(polygon) => {
-                polygon.round().unwrap().literal_component().unwrap()
-            }
-            CssBasicShape::Inset(inset) => inset.offsets().values()[0].literal_component().unwrap(),
+            CssBasicShape::Polygon(polygon) => polygon
+                .round()
+                .unwrap()
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap(),
+            CssBasicShape::Inset(inset) => inset.offsets().values()[0]
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap(),
             _ => panic!("numeric shape"),
         };
         assert!(matches!(
@@ -368,7 +423,7 @@ fn parsed_and_programmatic_literals_retain_units_exact_magnitudes_and_origins() 
     };
     assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
     budget("ellipse(10px closest-side)", 4, 4, |limits| {
-        parsed.serialize_specified_with_limits(limits)
+        parsed.serialize_specified(limits)
     });
     let CssBasicShape::Ellipse(ellipse) = &parsed else {
         panic!("ellipse")
@@ -386,9 +441,7 @@ fn sibling_math_arenas_share_cumulative_input_projection_and_byte_limits() {
     let value = shape("ellipse(calc(1px + 2%) calc(3em + 4%))");
     let before = value.clone();
     let expected = "ellipse(calc(2% + 1px) calc(4% + 3em))";
-    budget(expected, 10, 12, |limits| {
-        value.serialize_specified_with_limits(limits)
-    });
+    budget(expected, 10, 12, |limits| value.serialize_specified(limits));
     // Inset function + offsets list + round shorthand are three aggregates;
     // three independent mixed LP calculations contribute twelve/fifteen nodes.
     let inset = shape("inset(calc(1px + 2%) round calc(3em + 4%) / calc(5px + 6%))");
@@ -397,7 +450,7 @@ fn sibling_math_arenas_share_cumulative_input_projection_and_byte_limits() {
         "inset(calc(2% + 1px) round calc(4% + 3em) / calc(6% + 5px))",
         15,
         18,
-        |limits| inset.serialize_specified_with_limits(limits),
+        |limits| inset.serialize_specified(limits),
     );
     assert_eq!(value, before);
     assert_eq!(inset, inset_before);
@@ -443,12 +496,12 @@ fn shared_position_and_border_radius_standalone_costs_are_preserved() {
         .unwrap(),
     );
     budget("right 5% bottom 2px", 5, 5, |limits| {
-        position.serialize_specified_with_limits(limits)
+        position.serialize_specified(limits)
     });
     let circle = CssCircleShape::new(CssCircleRadius::Default, Some(position.clone()));
     assert_eq!(circle.position(), Some(&position));
     budget("circle(at right 5% bottom 2px)", 6, 6, |limits| {
-        circle.serialize_specified_with_limits(limits)
+        circle.serialize_specified(limits)
     });
     let round = CssBorderRadiusShorthand::try_new(
         vec![radius("1px"), radius("2px")],
@@ -456,6 +509,6 @@ fn shared_position_and_border_radius_standalone_costs_are_preserved() {
     )
     .unwrap();
     budget("1px 2px / 3%", 4, 4, |limits| {
-        round.serialize_specified_with_limits(limits)
+        round.serialize_specified(limits)
     });
 }

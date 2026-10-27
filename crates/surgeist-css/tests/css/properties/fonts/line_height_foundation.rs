@@ -6,12 +6,20 @@ use crate::css::support::important_declaration as declaration;
 use crate::css::support::known_property;
 use crate::css::support::named_property::assert_checked_value_rejected_at;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::values::text::CssLineHeight;
 
 fn rejected_locally<'a>(name: &str, value: &str, rest: impl Into<Option<&'a str>>) {
     let rest = rest.into();
     let source = format!("color:red;{name}:{value};color:blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid declaration diagnostic: {source}");
     };
@@ -21,7 +29,12 @@ fn rejected_locally<'a>(name: &str, value: &str, rest: impl Into<Option<&'a str>
         CssErrorCode::InvalidPropertyValue
     );
     assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
-    assert!(validate_style_attribute(&source).is_err());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_err()
+    );
     assert_checked_value_rejected_at(known_property(name), value, rest);
 }
 
@@ -80,7 +93,7 @@ fn established_number_length_percentage_and_font_slash_forms_remain_valid() {
     else {
         panic!("unitless zero is line-height");
     };
-    assert!(matches!(value.line_height(), CssLineHeight::Number(_)));
+    assert!(matches!(value.value(), CssLineHeight::Number(_)));
 }
 
 #[test]
@@ -166,7 +179,7 @@ fn inherited_normal_has_one_contribution_and_strict_pending_reentry() {
     };
     let normal = declaration("line-height", "normal");
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(&normal).expect("line-height intrinsic expansion")
+        normal.expand().expect("line-height intrinsic expansion")
     else {
         panic!("one line-height contribution");
     };
@@ -187,7 +200,7 @@ fn inherited_normal_has_one_contribution_and_strict_pending_reentry() {
     ] {
         let source = declaration("line-height", spelling);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("one global contribution")
         };
@@ -200,26 +213,26 @@ fn inherited_normal_has_one_contribution_and_strict_pending_reentry() {
     }
 
     let source = declaration("line-height", "var(--leading)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("unresolved line-height remains pending");
     };
     assert!(pending.source().same_occurrence(&source));
-    assert_eq!(
+    assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
-    assert!(matches!(
+    assert!(
         pending
-            .reenter(parse_component_values("-1e-999").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "-1e-999").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+            .replacement_error()
+            .is_some()
+    );
     for replacement_text in ["normal", "0", "1.2", "120%", "1em", "calc(-1)"] {
-        let replacement = parse_component_values(replacement_text).unwrap();
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), replacement_text).unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("strict replacement contributes a longhand");
@@ -232,7 +245,7 @@ fn inherited_normal_has_one_contribution_and_strict_pending_reentry() {
         assert_eq!(item.replacement_components(), Some(&replacement));
     }
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&declaration("all", "initial")).unwrap()
+        declaration("all", "initial").expand().unwrap()
     else {
         panic!("all contributes a universal reset")
     };

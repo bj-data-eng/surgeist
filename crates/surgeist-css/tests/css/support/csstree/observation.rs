@@ -12,12 +12,15 @@ use super::{
     raw_extractor, resolve_case_registry,
 };
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use surgeist_css::{
-    CssErrorCode, CssImportance, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
-    CssPropertyNameRef, CssRecoveryAction, CssRecoveryDiagnostic, parse_declaration,
-    parse_font_face_descriptor_value, parse_media_query, parse_media_query_list,
-    parse_property_value_text, parse_rule, parse_selector, parse_selector_list, parse_sheet,
-    parse_style_attribute, parse_style_block, validate_sheet, validate_style_attribute,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::property::{CssPropertyNameRef, CssPropertyTextTarget};
+use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue;
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule, CssStyleBlock};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssSelector, CssStyleSelectorContext,
 };
 
 pub(super) fn observe_csstree_oracle(
@@ -109,11 +112,13 @@ pub(super) fn observe_csstree_record(
         }
     ) {
         let parsed = catch_unwind(AssertUnwindSafe(|| {
-            let _report = parse_style_attribute(complete.source());
+            let _report = CssParser::default().parse_block_contents(complete.source());
             validate_strict_parity(
                 _report.is_clean(),
                 _report.diagnostics(),
-                validate_style_attribute(complete.source()),
+                CssParser::default()
+                    .parse_block_contents(complete.source())
+                    .into_validation_result(),
             )?;
             Ok::<(), String>(())
         }));
@@ -122,7 +127,7 @@ pub(super) fn observe_csstree_record(
                 return Err(BaselineFailure::new(
                     case,
                     BaselineFailureKind::ParserPanicked,
-                    "public parse_style_attribute unwound for adapterless panic-freedom probe",
+                    "public parse_block_contents unwound for adapterless panic-freedom probe",
                 ));
             }
             Ok(Err(error)) => {
@@ -272,7 +277,7 @@ pub(super) fn observe_public_parser(
 ) -> Result<Observation, BaselineFailure> {
     let observed = catch_unwind(AssertUnwindSafe(|| match registry.entry_point() {
         EntryPoint::Sheet => {
-            let report = parse_sheet(complete.source());
+            let report = CssParser::default().parse_sheet(complete.source());
             let count = registry
                 .extractor()
                 .extract_sheet(report.syntax())
@@ -287,12 +292,18 @@ pub(super) fn observe_public_parser(
             validate_strict_parity(
                 report.is_clean(),
                 report.diagnostics(),
-                validate_sheet(complete.source()),
+                CssParser::default()
+                    .parse_sheet(complete.source())
+                    .into_validation_result(),
             )?;
             Ok::<Observation, String>(observation)
         }
         EntryPoint::StyleBlock => {
-            let report = parse_style_block(complete.source(), &corpus_namespace_context());
+            let report = CssStyleBlock::parse(
+                &CssParser::default(),
+                complete.source(),
+                &corpus_namespace_context(),
+            );
             fragment_observation(
                 report,
                 registry,
@@ -302,7 +313,11 @@ pub(super) fn observe_public_parser(
             )
         }
         EntryPoint::Rule => {
-            let report = parse_rule(complete.source(), &corpus_namespace_context());
+            let report = CssRule::parse(
+                &CssParser::default(),
+                complete.source(),
+                &corpus_namespace_context(),
+            );
             match registry.adapter() {
                 Adapter::TopLevelAtRule => {
                     let count = registry
@@ -326,7 +341,7 @@ pub(super) fn observe_public_parser(
             }
         }
         EntryPoint::Declaration => {
-            let report = parse_declaration(complete.source());
+            let report = CssDeclaration::parse(&CssParser::default(), complete.source());
             fragment_observation(
                 report,
                 registry,
@@ -340,9 +355,9 @@ pub(super) fn observe_public_parser(
             else {
                 return Err("raw property value entry requires property context".into());
             };
-            let report = parse_property_value_text(
+            let report = CssParser::default().parse_property_value(
                 complete.source(),
-                CssPropertyNameRef::Known(property),
+                CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property)),
                 CssImportance::Normal,
             );
             if report
@@ -361,7 +376,11 @@ pub(super) fn observe_public_parser(
             )
         }
         EntryPoint::Selector => {
-            let report = parse_selector(complete.source(), &corpus_namespace_context());
+            let report = CssSelector::parse(
+                &CssParser::default(),
+                complete.source(),
+                &corpus_namespace_context(),
+            );
             fragment_observation(
                 report,
                 registry,
@@ -371,17 +390,26 @@ pub(super) fn observe_public_parser(
             )
         }
         EntryPoint::SelectorList => {
-            let report = parse_selector_list(complete.source(), &corpus_namespace_context());
+            let report = CssParsedStyleSelectors::parse(
+                &CssParser::default(),
+                complete.source(),
+                &corpus_namespace_context(),
+                CssStyleSelectorContext::Ordinary,
+            );
             fragment_observation(
                 report,
                 registry,
                 RegistryExtractor::SelectorList,
                 complete,
-                |syntax| syntax.as_ref().map_or(0, |list| list.selectors().len()),
+                |syntax| {
+                    syntax
+                        .as_ref()
+                        .map_or(0, |list| list.selectors().selectors().len())
+                },
             )
         }
         EntryPoint::MediaQuery => {
-            let report = parse_media_query(complete.source());
+            let report = CssMediaQuery::parse(&CssParser::default(), complete.source());
             fragment_observation(
                 report,
                 registry,
@@ -391,7 +419,7 @@ pub(super) fn observe_public_parser(
             )
         }
         EntryPoint::MediaQueryList => {
-            let report = parse_media_query_list(complete.source());
+            let report = CssMediaQueryList::parse(&CssParser::default(), complete.source());
             fragment_observation(
                 report,
                 registry,
@@ -406,7 +434,11 @@ pub(super) fn observe_public_parser(
             else {
                 return Err("font-face value entry point requires descriptor context".into());
             };
-            let report = parse_font_face_descriptor_value(complete.source(), kind.css_kind());
+            let report = CssAuthoredFontFaceDescriptorValue::parse(
+                &CssParser::default(),
+                complete.source(),
+                kind.css_kind(),
+            );
             if report
                 .syntax()
                 .as_ref()
@@ -423,7 +455,7 @@ pub(super) fn observe_public_parser(
             )
         }
         EntryPoint::StyleAttribute => {
-            let report = parse_style_attribute(complete.source());
+            let report = CssParser::default().parse_block_contents(complete.source());
             let count = registry
                 .extractor()
                 .extract_declaration_list(report.syntax())
@@ -440,7 +472,9 @@ pub(super) fn observe_public_parser(
             validate_strict_parity(
                 report.is_clean(),
                 report.diagnostics(),
-                validate_style_attribute(complete.source()),
+                CssParser::default()
+                    .parse_block_contents(complete.source())
+                    .into_validation_result(),
             )?;
             Ok::<Observation, String>(observation)
         }

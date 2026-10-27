@@ -6,24 +6,28 @@ use cssparser::{
 
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
 use super::values::{
-    CalculationRoot, checked_percentage_value, parse_custom_ident_from_str_at_source,
-    parse_numeric_function,
+    checked_percentage_value, parse_custom_ident_from_str_at_source, parse_numeric_function,
 };
 use super::{
     DeclarationMode, consume_failed_rule_block, is_declaration_recovery_unit,
     parse_declaration_core, structural_recovery_production, structural_rule_diagnostic,
 };
-use crate::error::{
-    CssFeatureId, Error, basic, invalid_at_rule_placement, invalid_syntax, unexpected_at,
+use crate::diagnostic::error::{basic, invalid_at_rule_placement, invalid_syntax, unexpected_at};
+use crate::diagnostic::{CssError, CssFeatureId};
+use crate::numeric::expression::CalculationRoot;
+use crate::numeric::{CssCalculation, CssPercentage};
+use crate::rule::keyframes::{
+    CssKeyframeBlock, CssKeyframeDeclaration, CssKeyframeDeclarationList, CssKeyframePercent,
+    CssKeyframeSelector, CssKeyframeSelectorList, CssKeyframesIdent, CssKeyframesName,
+    CssKeyframesRule, CssKeyframesString,
 };
-use crate::syntax::*;
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
     &[CssFeatureId::new("baseline.rule.keyframes")];
 
-pub(super) fn parse_keyframes_name<'i, 't>(
+pub(crate) fn parse_keyframes_name<'i, 't>(
     input: &mut Parser<'i, 't>,
-) -> std::result::Result<CssKeyframesName, ParseError<'i, Error>> {
+) -> std::result::Result<CssKeyframesName, ParseError<'i, CssError>> {
     let location = input.current_source_location();
     if let Ok(name) = input.try_parse(Parser::expect_ident_cloned) {
         return parse_custom_ident_from_str_at_source(name.as_ref(), location)
@@ -39,14 +43,14 @@ pub(super) fn parse_keyframes_name<'i, 't>(
     )))
 }
 
-pub(super) fn parse_keyframes_rule<'i, 't>(
+pub(crate) fn parse_keyframes_rule<'i, 't>(
     source: &'i str,
     name: CssKeyframesName,
     input: &mut Parser<'i, 't>,
     start: &ParserState,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> std::result::Result<CssKeyframesRule, ParseError<'i, Error>> {
+) -> std::result::Result<CssKeyframesRule, ParseError<'i, CssError>> {
     let blocks = parse_body(source, input, diagnostics, recovery)?;
     Ok(CssKeyframesRule::new(
         name,
@@ -61,9 +65,9 @@ pub(super) fn parse_keyframes_rule<'i, 't>(
 pub(super) fn parse_body<'i>(
     source: &'i str,
     input: &mut Parser<'i, '_>,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<Vec<CssKeyframeBlock>, ParseError<'i, Error>> {
+) -> Result<Vec<CssKeyframeBlock>, ParseError<'i, CssError>> {
     let mut parser = KeyframeBlockParser {
         source,
         diagnostics: Vec::new(),
@@ -77,7 +81,7 @@ pub(super) fn parse_body<'i>(
         crate::syntax_consumption::RuleListSyntax::BlockContents,
     )
     .map_err(|error| {
-        crate::error::invalid_component_value(input.current_source_location(), error)
+        crate::diagnostic::error::invalid_component_value(input.current_source_location(), error)
     })?;
     for selected in &selected {
         let progress = RecoveryProgress::record(input);
@@ -112,7 +116,7 @@ pub(super) fn parse_body<'i>(
                     failed_unit,
                     unit_start,
                     unit_end,
-                    crate::CssRecoveryAction::DropKeyframeBlock,
+                    crate::diagnostic::CssRecoveryAction::DropKeyframeBlock,
                 ) {
                     parser.diagnostics.push(diagnostic);
                 }
@@ -131,9 +135,9 @@ pub(super) fn parse_body<'i>(
 pub(super) fn parse_declarations<'i>(
     source: &'i str,
     input: &mut Parser<'i, '_>,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<CssKeyframeDeclarationList, ParseError<'i, Error>> {
+) -> Result<CssKeyframeDeclarationList, ParseError<'i, CssError>> {
     let mut declarations = Vec::new();
     let mut declaration_parser = KeyframeDeclarationParser { source, recovery };
     let mut items = RuleBodyParser::new(input, &mut declaration_parser);
@@ -165,11 +169,11 @@ pub(super) fn parse_declarations<'i>(
             // by one; the keyframe block itself survives.
             Err((error, failed_unit)) => {
                 let action = if is_declaration_recovery_unit(failed_unit) {
-                    crate::CssRecoveryAction::DropDeclaration
+                    crate::diagnostic::CssRecoveryAction::DropDeclaration
                 } else if failed_unit.trim_start().starts_with('@') {
-                    crate::CssRecoveryAction::DropAtRule
+                    crate::diagnostic::CssRecoveryAction::DropAtRule
                 } else {
-                    crate::CssRecoveryAction::DropQualifiedRule
+                    crate::diagnostic::CssRecoveryAction::DropQualifiedRule
                 };
                 if let Some(diagnostic) = structural_rule_diagnostic(
                     source,
@@ -194,7 +198,13 @@ pub(super) fn parse_detached_rule<'i>(
     source: &'i str,
     input: &mut Parser<'i, '_>,
     recovery: RecoveryState,
-) -> Result<(CssKeyframeBlock, Vec<crate::CssRecoveryDiagnostic>), ParseError<'i, Error>> {
+) -> Result<
+    (
+        CssKeyframeBlock,
+        Vec<crate::diagnostic::CssRecoveryDiagnostic>,
+    ),
+    ParseError<'i, CssError>,
+> {
     let mut parser = KeyframeBlockParser {
         source,
         diagnostics: Vec::new(),
@@ -206,20 +216,20 @@ pub(super) fn parse_detached_rule<'i>(
 
 struct KeyframeBlockParser<'s> {
     source: &'s str,
-    diagnostics: Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 }
 
 impl<'i> AtRuleParser<'i> for KeyframeBlockParser<'i> {
     type Prelude = ();
     type AtRule = CssKeyframeBlock;
-    type Error = Error;
+    type Error = CssError;
 }
 
 impl<'i> QualifiedRuleParser<'i> for KeyframeBlockParser<'i> {
     type Prelude = CssKeyframeSelectorList;
     type QualifiedRule = CssKeyframeBlock;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_prelude<'t>(
         &mut self,
@@ -227,7 +237,9 @@ impl<'i> QualifiedRuleParser<'i> for KeyframeBlockParser<'i> {
     ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
         parse_keyframe_selector_list(
             input,
-            &crate::numeric::NumericInputContext::parsed(self.recovery.source_snapshot()),
+            &crate::numeric::expression::NumericInputContext::parsed(
+                self.recovery.source_snapshot(),
+            ),
         )
     }
 
@@ -262,8 +274,8 @@ impl<'i> QualifiedRuleParser<'i> for KeyframeBlockParser<'i> {
 
 pub(super) fn parse_keyframe_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssKeyframeSelectorList, ParseError<'i, Error>> {
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+) -> std::result::Result<CssKeyframeSelectorList, ParseError<'i, CssError>> {
     let selectors = super::combinators::parse_native_comma_list(
         input,
         |input| parse_keyframe_selector(input, numeric),
@@ -275,8 +287,8 @@ pub(super) fn parse_keyframe_selector_list<'i, 't>(
 
 fn parse_keyframe_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssKeyframeSelector, ParseError<'i, Error>> {
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+) -> std::result::Result<CssKeyframeSelector, ParseError<'i, CssError>> {
     input.skip_whitespace();
     let location = input.current_source_location();
     let start = input.state();
@@ -294,7 +306,7 @@ fn parse_keyframe_selector<'i, 't>(
                 .ok_or_else(|| invalid_syntax(location))
         }
         Token::Number { .. } => Err(invalid_syntax(location)),
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
+        Token::Function(name) if crate::numeric::expression::is_math_function(name) => {
             input.reset(&start);
             let expression = super::property_input::adapt_native(
                 input,
@@ -305,13 +317,13 @@ fn parse_keyframe_selector<'i, 't>(
                     parse_numeric_function(input, &start, numeric, CalculationRoot::Percentage)
                 },
             )?;
-            CssKeyframePercent::from_parser_calculation(CssPercentageCalculation::from_expression(
-                expression,
-            ))
+            CssKeyframePercent::from_parser_calculation(
+                CssCalculation::<CssPercentage>::from_expression(expression),
+            )
             .map(CssKeyframeSelector::Percent)
             .ok_or_else(|| invalid_syntax(location))
         }
-        token => Err(location.new_unexpected_token_error::<Error>(token.clone())),
+        token => Err(location.new_unexpected_token_error::<CssError>(token.clone())),
     }
 }
 
@@ -323,7 +335,7 @@ struct KeyframeDeclarationParser<'s> {
 impl<'i> AtRuleParser<'i> for KeyframeDeclarationParser<'i> {
     type Prelude = ();
     type AtRule = CssKeyframeDeclaration;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_prelude<'t>(
         &mut self,
@@ -341,10 +353,12 @@ impl<'i> AtRuleParser<'i> for KeyframeDeclarationParser<'i> {
 impl<'i> QualifiedRuleParser<'i> for KeyframeDeclarationParser<'i> {
     type Prelude = ();
     type QualifiedRule = CssKeyframeDeclaration;
-    type Error = Error;
+    type Error = CssError;
 }
 
-impl<'i> RuleBodyItemParser<'i, CssKeyframeDeclaration, Error> for KeyframeDeclarationParser<'i> {
+impl<'i> RuleBodyItemParser<'i, CssKeyframeDeclaration, CssError>
+    for KeyframeDeclarationParser<'i>
+{
     fn parse_declarations(&self) -> bool {
         true
     }
@@ -358,7 +372,7 @@ impl<'i> RuleBodyItemParser<'i, CssKeyframeDeclaration, Error> for KeyframeDecla
 
 impl<'i> DeclarationParser<'i> for KeyframeDeclarationParser<'i> {
     type Declaration = CssKeyframeDeclaration;
-    type Error = Error;
+    type Error = CssError;
 
     fn parse_value<'t>(
         &mut self,

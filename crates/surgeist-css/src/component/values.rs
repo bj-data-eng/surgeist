@@ -1,0 +1,1979 @@
+//! Owned CSS component values and token-preserving serialization.
+//!
+//! This syntax layer does not interpret a property, substitute variables, or
+//! implement CSSOM property serialization. Original token representations and
+//! independently originating replacement tokens remain available to consumers.
+
+pub(crate) mod entries;
+pub(crate) mod parse;
+pub(crate) mod retained;
+pub(crate) mod serialize;
+#[cfg(test)]
+pub(crate) mod tokenizer_agreement_tests;
+
+use std::fmt;
+use std::ops::Range;
+
+use cssparser::{ToCss, Token, TokenSerializationType};
+
+use crate::source::{CssParsedOrigin, CssSourceSnapshot};
+
+use crate::STRUCTURAL_NESTING_LIMIT as MAX_COMPONENT_DEPTH;
+
+/// Charges each retained component exactly once, including omitted root trivia.
+/// A caller owning a lexical region charges its one aggregate separately.
+pub(crate) fn charge_specified_components(
+    context: &mut crate::serialization::specified_serialization::SpecifiedSerializationContext,
+    components: &[CssComponentValue],
+) -> Result<(), crate::serialization::CssSerializationError> {
+    let capacity_error = || {
+        crate::serialization::CssSerializationError::new(
+            crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind::CapacityOverflow,
+        )
+    };
+    let mut pending = Vec::new();
+    pending.try_reserve(1).map_err(|_| capacity_error())?;
+    pending.push(components);
+    while let Some(items) = pending.pop() {
+        if let Some((component, rest)) = items.split_first() {
+            context.charge_nodes(1)?;
+            pending.try_reserve(2).map_err(|_| capacity_error())?;
+            pending.push(rest);
+            if let Some(children) = component.child_values() {
+                pending.push(children.items());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Omits only root-edge whitespace; comments and enclosed trivia remain authored.
+pub(crate) fn specified_root_components(components: &[CssComponentValue]) -> &[CssComponentValue] {
+    let whitespace = |value: &CssComponentValue| {
+        matches!(
+            value.view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
+        )
+    };
+    let start = components
+        .iter()
+        .position(|value| !whitespace(value))
+        .unwrap_or(components.len());
+    let end = components
+        .iter()
+        .rposition(|value| !whitespace(value))
+        .map_or(start, |index| index + 1);
+    &components[start..end]
+}
+
+/// The one conversion from a component-value failure met while serializing
+/// retained components into a specified-serialization failure.
+///
+/// Resource failures keep their resource kind. Byte and node limits follow the
+/// serialization budget, so a larger budget may succeed; nesting and component
+/// limits are structural limits of the retained graph, which no serialization
+/// budget changes. Retained components were checked at construction and keep
+/// their lexical form, so any other failure is an unrepresentable boundary,
+/// never a resource exhaustion.
+/// The serialization classification of a lexical component failure.
+pub(crate) fn specified_component_kind(
+    error: &CssComponentValueError,
+) -> crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind {
+    use crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind as Kind;
+    use CssComponentValueErrorKind as Component;
+    match error.kind {
+        Component::ByteLimit => Kind::ByteLimit,
+        Component::NestingLimit
+        | Component::ParserUnavailable
+        | Component::ComponentLimit
+        | Component::CapacityOverflow => Kind::CapacityOverflow,
+        Component::UnserializableBoundary
+        | Component::BadString
+        | Component::BadUrl
+        | Component::UnmatchedClosingDelimiter
+        | Component::EmptyInput
+        | Component::TrailingInput
+        | Component::InvalidToken
+        | Component::InvalidIdentifier
+        | Component::InvalidNumber
+        | Component::InvalidDimension
+        | Component::InvalidFunction
+        | Component::InvalidString => Kind::UnserializableBoundary,
+    }
+}
+
+/// A component failure as a serialization failure of its kind, without the
+/// component itself; providers that keep the component use
+/// [`CssSerializationError::component`](crate::serialization::CssSerializationError).
+pub(crate) fn specified_component_error(
+    error: CssComponentValueError,
+) -> crate::serialization::CssSerializationError {
+    crate::serialization::CssSerializationError::new(specified_component_kind(&error))
+}
+
+/// Resource limits for one component-value construction or parse.
+///
+/// Components include whitespace and comment nodes; opening a function or block
+/// adds one node, and its closing delimiter does not add another. Depth zero
+/// admits leaf tokens. The byte limit applies to source input and serialized
+/// output, including inserted separators and implicit closing delimiters.
+/// These are syntax-length limits, not a global allocator or process-memory cap.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CssComponentValueLimits {
+    max_depth: u32,
+    max_components: usize,
+    max_css_bytes: usize,
+}
+
+impl CssComponentValueLimits {
+    /// Creates limits without allowing the parser's 256-level ceiling to rise.
+    #[must_use]
+    pub const fn try_new(
+        max_depth: u32,
+        max_components: usize,
+        max_css_bytes: usize,
+    ) -> Option<Self> {
+        if max_depth > MAX_COMPONENT_DEPTH {
+            None
+        } else {
+            Some(Self {
+                max_depth,
+                max_components,
+                max_css_bytes,
+            })
+        }
+    }
+
+    /// Returns the maximum number of enclosing component blocks or functions.
+    #[must_use]
+    pub const fn max_nesting_depth(self) -> u32 {
+        self.max_depth
+    }
+
+    /// Returns the maximum component count, including descendants and trivia.
+    #[must_use]
+    pub const fn max_components(self) -> usize {
+        self.max_components
+    }
+
+    /// Returns the maximum source or serialized UTF-8 length.
+    #[must_use]
+    pub const fn max_css_bytes(self) -> usize {
+        self.max_css_bytes
+    }
+
+    /// The default structural limits with an explicit byte limit, for internal
+    /// token serialization under a caller's remaining output budget.
+    pub(crate) const fn with_max_css_bytes(max_css_bytes: usize) -> Self {
+        Self {
+            max_depth: MAX_COMPONENT_DEPTH,
+            max_components: usize::MAX,
+            max_css_bytes,
+        }
+    }
+}
+
+impl Default for CssComponentValueLimits {
+    /// Keeps the structural ceiling while imposing no additional length policy.
+    fn default() -> Self {
+        Self {
+            max_depth: MAX_COMPONENT_DEPTH,
+            max_components: usize::MAX,
+            max_css_bytes: usize::MAX,
+        }
+    }
+}
+
+/// Provenance for a component token or delimiter, without fabricated positions.
+#[non_exhaustive]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CssValueOrigin {
+    /// Input rejected before tokenization, without copying its source bytes.
+    UnretainedInput {
+        /// The rejected input's UTF-8 byte length, without an authored span.
+        byte_length: usize,
+    },
+    /// The token or delimiter was consumed from this original source span.
+    Parsed(CssParsedOrigin),
+    /// Checked Rust construction supplied the syntax, without authored source.
+    Programmatic,
+    /// EOF supplied syntax that closes an opening token, block, or function.
+    ImplicitClosure {
+        /// The token or delimiter whose termination was implied.
+        opening: CssParsedOrigin,
+        /// The zero-width source position at EOF.
+        at: CssParsedOrigin,
+    },
+}
+
+/// A typed component-construction or serialization failure category, read through
+/// the predicates of [`CssComponentValueError`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CssComponentValueErrorKind {
+    /// A tokenizer-level bad string was encountered.
+    BadString,
+    /// A tokenizer-level bad URL was encountered.
+    BadUrl,
+    /// A closing delimiter had no matching opener in this component stream.
+    UnmatchedClosingDelimiter,
+    /// A single-component entry had no nontrivia component before EOF.
+    EmptyInput,
+    /// A single-component entry had an extra nontrivia component.
+    TrailingInput,
+    /// The spelling did not represent exactly the required token.
+    InvalidToken,
+    /// The decoded identifier cannot retain its identity through CSS tokenization.
+    InvalidIdentifier,
+    /// The spelling was not exactly one CSS number token.
+    InvalidNumber,
+    /// The numeric representation or unit cannot form the requested dimension.
+    InvalidDimension,
+    /// The requested function cannot be represented as a function with these children.
+    InvalidFunction,
+    /// A requested string or URL contains a code point tokenization would replace.
+    InvalidString,
+    /// A token boundary cannot be serialized without changing meaningful whitespace.
+    UnserializableBoundary,
+    /// A nested component exceeded the selected structural limit.
+    NestingLimit,
+    /// The selected maximum component count was exceeded.
+    ComponentLimit,
+    /// Source or serialized output exceeded the selected byte limit.
+    ByteLimit,
+    /// A size calculation could not be represented by the platform.
+    CapacityOverflow,
+    /// Components nested deeper than the caller's stack is trusted with were refused
+    /// because the bounded parser thread could not be started.
+    ParserUnavailable,
+}
+
+/// A typed failure located in original source or explicitly programmatic syntax.
+///
+/// The violated invariant is read through the `is_*` predicates; resource refusals,
+/// including a refused deep parse, are grouped by [`Self::is_resource_limit`].
+///
+/// ```
+/// use surgeist_css::component::CssComponentValues;
+/// use surgeist_css::CssParser;
+/// let error = CssComponentValues::parse(&CssParser::default(), ")").unwrap_err();
+/// assert!(error.is_unmatched_closing_delimiter());
+/// assert!(!error.is_resource_limit());
+/// ```
+///
+/// The kind behind the predicates is private, so it cannot be matched (CF27):
+///
+/// ```compile_fail,E0599
+/// use surgeist_css::component::CssComponentValues;
+/// use surgeist_css::CssParser;
+/// let error = CssComponentValues::parse(&CssParser::default(), ")").unwrap_err();
+/// let _ = error.kind();
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssComponentValueError {
+    pub(crate) kind: CssComponentValueErrorKind,
+    origin: CssValueOrigin,
+}
+
+impl CssComponentValueError {
+    /// The private classification, for in-crate tests.
+    #[cfg(test)]
+    pub(crate) const fn kind(&self) -> CssComponentValueErrorKind {
+        self.kind
+    }
+
+    /// Returns the responsible origin; programmatic errors have no parsed span.
+    #[must_use]
+    pub const fn origin(&self) -> &CssValueOrigin {
+        &self.origin
+    }
+
+    crate::diagnostic::error::kind_predicates! { kind;
+        /// Returns whether the tokenizer produced a bad string.
+        is_bad_string => CssComponentValueErrorKind::BadString,
+        /// Returns whether the tokenizer produced a bad URL.
+        is_bad_url => CssComponentValueErrorKind::BadUrl,
+        /// Returns whether a closing delimiter had no matching opener in the component stream.
+        is_unmatched_closing_delimiter => CssComponentValueErrorKind::UnmatchedClosingDelimiter,
+        /// Returns whether a single-component entry had no nontrivia component before EOF.
+        is_empty_input => CssComponentValueErrorKind::EmptyInput,
+        /// Returns whether a single-component entry had an extra nontrivia component.
+        is_trailing_input => CssComponentValueErrorKind::TrailingInput,
+        /// Returns whether the spelling did not represent exactly the required token.
+        is_invalid_token => CssComponentValueErrorKind::InvalidToken,
+        /// Returns whether the decoded identifier cannot keep its identity through tokenization.
+        is_invalid_identifier => CssComponentValueErrorKind::InvalidIdentifier,
+        /// Returns whether the spelling was not exactly one CSS number token.
+        is_invalid_number => CssComponentValueErrorKind::InvalidNumber,
+        /// Returns whether the numeric representation or unit cannot form the dimension.
+        is_invalid_dimension => CssComponentValueErrorKind::InvalidDimension,
+        /// Returns whether the function cannot be represented with these children.
+        is_invalid_function => CssComponentValueErrorKind::InvalidFunction,
+        /// Returns whether a string or URL contains a code point tokenization would replace.
+        is_invalid_string => CssComponentValueErrorKind::InvalidString,
+        /// Returns whether a token boundary cannot be serialized without changing whitespace.
+        is_unserializable_boundary => CssComponentValueErrorKind::UnserializableBoundary,
+        /// Returns whether a nested component exceeded the selected structural limit.
+        is_nesting_limit => CssComponentValueErrorKind::NestingLimit,
+        /// Returns whether the selected maximum component count was exceeded.
+        is_component_limit => CssComponentValueErrorKind::ComponentLimit,
+        /// Returns whether source or serialized output exceeded the selected byte limit.
+        is_byte_limit => CssComponentValueErrorKind::ByteLimit,
+        /// Returns whether a size calculation could not be represented by the platform.
+        is_capacity_overflow => CssComponentValueErrorKind::CapacityOverflow,
+        /// Returns whether deep components were refused because the bounded parser thread
+        /// could not be started.
+        is_parser_unavailable => CssComponentValueErrorKind::ParserUnavailable,
+        /// Returns whether a resource, rather than the syntax, refused the components: a
+        /// nesting, component-count or byte limit, a capacity overflow, or a refused deep parse.
+        is_resource_limit => CssComponentValueErrorKind::NestingLimit
+            | CssComponentValueErrorKind::ComponentLimit
+            | CssComponentValueErrorKind::ByteLimit
+            | CssComponentValueErrorKind::CapacityOverflow
+            | CssComponentValueErrorKind::ParserUnavailable,
+    }
+
+    pub(crate) fn new(kind: CssComponentValueErrorKind, origin: CssValueOrigin) -> Self {
+        Self { kind, origin }
+    }
+
+    fn programmatic(kind: CssComponentValueErrorKind) -> Self {
+        Self::new(kind, CssValueOrigin::Programmatic)
+    }
+
+    /// One summary phrase for the violated invariant, without a position.
+    pub(crate) fn describe(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use CssComponentValueErrorKind as Kind;
+        formatter.write_str(match self.kind {
+            Kind::BadString => "a bad string token",
+            Kind::BadUrl => "a bad URL token",
+            Kind::UnmatchedClosingDelimiter => "a closing delimiter without an opener",
+            Kind::EmptyInput => "no component before the end of input",
+            Kind::TrailingInput => "more than one component",
+            Kind::InvalidToken => "the spelling is not the required token",
+            Kind::InvalidIdentifier => "the identifier cannot keep its identity as a CSS token",
+            Kind::InvalidNumber => "the spelling is not one CSS number",
+            Kind::InvalidDimension => "the number and unit cannot form the dimension",
+            Kind::InvalidFunction => "the function cannot hold these components",
+            Kind::InvalidString => "the string contains a code point tokenization replaces",
+            Kind::UnserializableBoundary => {
+                "a token boundary cannot be serialized without changing whitespace"
+            }
+            Kind::NestingLimit => "components nest deeper than the selected limit",
+            Kind::ComponentLimit => "the components exceed the selected count limit",
+            Kind::ByteLimit => "the components exceed the selected byte limit",
+            Kind::CapacityOverflow => "a component size overflows the platform",
+            Kind::ParserUnavailable => {
+                "deep components were refused because the CSS parser thread is unavailable"
+            }
+        })
+    }
+}
+
+impl fmt::Display for CssComponentValueError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("invalid CSS component value: ")?;
+        self.describe(formatter)?;
+        if let CssValueOrigin::Parsed(origin) = &self.origin {
+            write!(formatter, " at {}", origin.span().start())?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for CssComponentValueError {}
+
+/// The lexical number-versus-integer distinction; this does not imply a range.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssNumericTokenKind {
+    /// The representation contains no decimal part or exponent.
+    Integer,
+    /// The representation contains a decimal part or exponent.
+    Number,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct NumericToken {
+    representation: Box<str>,
+    kind: CssNumericTokenKind,
+    has_sign: bool,
+}
+
+impl fmt::Debug for NumericToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NumericToken")
+            .field("representation", &self.representation)
+            .field("kind", &self.kind)
+            .field("has_sign", &self.has_sign)
+            .finish()
+    }
+}
+
+/// A borrowed lexical numeric token, preserving precision and sign spelling.
+#[derive(Clone, Copy, Debug)]
+pub struct CssNumericTokenRef<'a>(&'a NumericToken);
+
+impl<'a> CssNumericTokenRef<'a> {
+    pub(crate) fn same_original(self, other: Self) -> bool {
+        std::ptr::eq(self.0, other.0)
+    }
+    /// Returns the exact numeric representation, without any dimension unit or `%`.
+    #[must_use]
+    pub fn representation(self) -> &'a str {
+        &self.0.representation
+    }
+
+    /// Returns the token's lexical number type.
+    #[must_use]
+    pub const fn kind(self) -> CssNumericTokenKind {
+        self.0.kind
+    }
+
+    /// Returns whether an explicit `+` or `-` was present.
+    #[must_use]
+    pub const fn has_sign(self) -> bool {
+        self.0.has_sign
+    }
+}
+
+/// The CSS hash-token flag determined by identifier lookahead on authored input.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssHashFlag {
+    /// The authored name starts an identifier, including a valid leading escape.
+    /// Decoding may therefore produce a leading digit, as in `#\31`.
+    Id,
+    /// The token has the unrestricted hash type.
+    Unrestricted,
+}
+
+/// A borrowed semantic view of an owned token. Closing delimiters are structural.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug)]
+pub enum CssValueTokenRef<'a> {
+    /// A decoded identifier.
+    Ident(&'a str),
+    /// A decoded at-keyword without `@`.
+    AtKeyword(&'a str),
+    /// A decoded hash without `#`, retaining the type flag.
+    Hash {
+        /// The decoded name without `#`.
+        value: &'a str,
+        /// The hash type flag.
+        flag: CssHashFlag,
+    },
+    /// A decoded quoted string.
+    String(&'a str),
+    /// A decoded unquoted URL token; quoted URLs are functions.
+    Url(&'a str),
+    /// A delimiter character.
+    Delim(char),
+    /// A lexical number.
+    Number(CssNumericTokenRef<'a>),
+    /// A lexical percentage, with its numeric spelling before `%`.
+    Percentage(CssNumericTokenRef<'a>),
+    /// A lexical dimension and its decoded unit.
+    Dimension {
+        /// The numeric spelling before the unit.
+        number: CssNumericTokenRef<'a>,
+        /// The decoded unit.
+        unit: &'a str,
+    },
+    /// Actual CSS whitespace, distinct from comments.
+    Whitespace(&'a str),
+    /// A colon token.
+    Colon,
+    /// A semicolon token.
+    Semicolon,
+    /// A comma token.
+    Comma,
+    /// A CDO token.
+    Cdo,
+    /// A CDC token.
+    Cdc,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Lexeme {
+    text: Box<str>,
+    origin: CssValueOrigin,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ValueToken {
+    data: TokenData,
+    spelling: Lexeme,
+    implicit_end: Option<Lexeme>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum TokenData {
+    Ident(Box<str>),
+    AtKeyword(Box<str>),
+    Hash {
+        value: Box<str>,
+        flag: CssHashFlag,
+    },
+    String(Box<str>),
+    Url(Box<str>),
+    Delim(char),
+    Number(NumericToken),
+    Percentage(NumericToken),
+    Dimension {
+        number: NumericToken,
+        unit: Box<str>,
+    },
+    Whitespace,
+    Colon,
+    Semicolon,
+    Comma,
+    Cdo,
+    Cdc,
+}
+
+impl ValueToken {
+    fn structural_eq_ignoring_origin(&self, other: &Self) -> bool {
+        self.data == other.data
+            && self.spelling.text == other.spelling.text
+            && self.implicit_end.as_ref().map(|end| &end.text)
+                == other.implicit_end.as_ref().map(|end| &end.text)
+    }
+
+    fn view(&self) -> CssValueTokenRef<'_> {
+        match &self.data {
+            TokenData::Ident(value) => CssValueTokenRef::Ident(value),
+            TokenData::AtKeyword(value) => CssValueTokenRef::AtKeyword(value),
+            TokenData::Hash { value, flag } => CssValueTokenRef::Hash { value, flag: *flag },
+            TokenData::String(value) => CssValueTokenRef::String(value),
+            TokenData::Url(value) => CssValueTokenRef::Url(value),
+            TokenData::Delim(value) => CssValueTokenRef::Delim(*value),
+            TokenData::Number(value) => CssValueTokenRef::Number(CssNumericTokenRef(value)),
+            TokenData::Percentage(value) => CssValueTokenRef::Percentage(CssNumericTokenRef(value)),
+            TokenData::Dimension { number, unit } => CssValueTokenRef::Dimension {
+                number: CssNumericTokenRef(number),
+                unit,
+            },
+            TokenData::Whitespace => CssValueTokenRef::Whitespace(&self.spelling.text),
+            TokenData::Colon => CssValueTokenRef::Colon,
+            TokenData::Semicolon => CssValueTokenRef::Semicolon,
+            TokenData::Comma => CssValueTokenRef::Comma,
+            TokenData::Cdo => CssValueTokenRef::Cdo,
+            TokenData::Cdc => CssValueTokenRef::Cdc,
+        }
+    }
+
+    fn serialization_type(&self) -> TokenSerializationType {
+        use TokenSerializationType as Kind;
+        match &self.data {
+            TokenData::Ident(_) => Kind::Ident,
+            TokenData::AtKeyword(_) | TokenData::Hash { .. } => Kind::AtKeywordOrHash,
+            TokenData::String(_) => Kind::Other,
+            TokenData::Url(_) => Kind::UrlOrBadUrl,
+            TokenData::Delim(character) => Token::Delim(*character).serialization_type(),
+            TokenData::Number(_) => Kind::Number,
+            TokenData::Percentage(_) => Kind::Percentage,
+            TokenData::Dimension { .. } => Kind::Dimension,
+            TokenData::Whitespace => Kind::WhiteSpace,
+            TokenData::Cdc => Kind::CDC,
+            TokenData::Colon | TokenData::Semicolon | TokenData::Comma | TokenData::Cdo => {
+                Kind::Other
+            }
+        }
+    }
+}
+
+/// A simple block's matched delimiter kind.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CssBlockKind {
+    /// A parenthesis block.
+    Parenthesis,
+    /// A square-bracket block.
+    SquareBracket,
+    /// A curly-bracket block.
+    CurlyBracket,
+}
+
+impl CssBlockKind {
+    const fn delimiters(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Parenthesis => ("(", ")"),
+            Self::SquareBracket => ("[", "]"),
+            Self::CurlyBracket => ("{", "}"),
+        }
+    }
+}
+
+/// An immutable function, preserving its decoded name and component arguments.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssFunctionValue {
+    name: Box<str>,
+    opening: Lexeme,
+    values: CssComponentValues,
+    closing: Lexeme,
+}
+
+impl CssFunctionValue {
+    /// Returns the decoded, case-preserving function name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the immutable arguments, including whitespace and comments.
+    #[must_use]
+    pub const fn values(&self) -> &CssComponentValues {
+        &self.values
+    }
+
+    /// Returns the closing delimiter's authored, implicit, or programmatic origin.
+    #[must_use]
+    pub const fn closing_origin(&self) -> &CssValueOrigin {
+        &self.closing.origin
+    }
+}
+
+/// An immutable simple block with a matched or EOF-implied closing delimiter.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssSimpleBlock {
+    kind: CssBlockKind,
+    opening: Lexeme,
+    values: CssComponentValues,
+    closing: Lexeme,
+}
+
+impl CssSimpleBlock {
+    /// Returns the matched delimiter kind.
+    #[must_use]
+    pub const fn kind(&self) -> CssBlockKind {
+        self.kind
+    }
+
+    /// Returns the immutable block contents.
+    #[must_use]
+    pub const fn values(&self) -> &CssComponentValues {
+        &self.values
+    }
+
+    /// Returns the closing delimiter's origin.
+    #[must_use]
+    pub const fn closing_origin(&self) -> &CssValueOrigin {
+        &self.closing.origin
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ComponentData {
+    Token(ValueToken),
+    Function(CssFunctionValue),
+    Block(CssSimpleBlock),
+    Comment {
+        content: Box<str>,
+        spelling: Lexeme,
+        implicit_end: Option<Lexeme>,
+    },
+}
+
+/// One checked, owned component value. Private fields protect token identity.
+///
+/// Equality includes exact token spelling, child order, delimiter origins and
+/// the complete parsed span. Source text and span equality does not require
+/// snapshot identity; parsed and programmatic components remain distinct.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssComponentValue {
+    data: ComponentData,
+    parsed: Option<CssParsedOrigin>,
+}
+
+/// A borrowed view of one immutable component value.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug)]
+pub enum CssComponentValueRef<'a> {
+    /// A token that is not a structural opening or closing delimiter.
+    Token(CssValueTokenRef<'a>),
+    /// A function and its arguments.
+    Function(&'a CssFunctionValue),
+    /// A simple block and its contents.
+    Block(&'a CssSimpleBlock),
+    /// Preserved comment contents, without the comment delimiters.
+    Comment(&'a str),
+}
+
+impl CssComponentValue {
+    /// Moves the arguments of an owned function into their retaining consumer.
+    pub(crate) fn into_function_values(self) -> Option<CssComponentValues> {
+        match self.data {
+            ComponentData::Function(function) => Some(function.values),
+            _ => None,
+        }
+    }
+
+    /// Borrows the exact primitive-token relation without component graph work.
+    /// Checked numeric syntax and literal leaves are token-only consumers.
+    pub(crate) fn token_structural_eq_ignoring_origin(&self, other: &Self) -> Option<bool> {
+        match (&self.data, &other.data) {
+            (ComponentData::Token(left), ComponentData::Token(right)) => {
+                Some(left.structural_eq_ignoring_origin(right))
+            }
+            _ => None,
+        }
+    }
+
+    // Raw supplied or generated lexeme; decoded token identity is distinct.
+    pub(crate) fn token_representation(&self) -> Option<&str> {
+        match &self.data {
+            ComponentData::Token(token) => Some(&token.spelling.text),
+            _ => None,
+        }
+    }
+
+    // The private structural stream borrows actual lexemes; it never serializes
+    // a component to manufacture input bytes or native token identity.
+    pub(crate) fn structural_lexeme(&self, closing: bool) -> Option<(&str, &CssValueOrigin)> {
+        match &self.data {
+            ComponentData::Token(token) => {
+                (!closing).then_some((&*token.spelling.text, &token.spelling.origin))
+            }
+            ComponentData::Comment { spelling, .. } => {
+                (!closing).then_some((&*spelling.text, &spelling.origin))
+            }
+            ComponentData::Function(function) => {
+                let lexeme = if closing {
+                    &function.closing
+                } else {
+                    &function.opening
+                };
+                Some((&lexeme.text, &lexeme.origin))
+            }
+            ComponentData::Block(block) => {
+                let lexeme = if closing {
+                    &block.closing
+                } else {
+                    &block.opening
+                };
+                Some((&lexeme.text, &lexeme.origin))
+            }
+        }
+    }
+
+    /// Compares retained component structure and exact token spelling without
+    /// comparing where either component was obtained. Raw `PartialEq` retains
+    /// its provenance-sensitive contract.
+    pub(crate) fn structural_eq_ignoring_origin(&self, other: &Self) -> bool {
+        let mut pending = vec![(self, other)];
+        while let Some((left, right)) = pending.pop() {
+            let children = match (&left.data, &right.data) {
+                (ComponentData::Token(a), ComponentData::Token(b)) => {
+                    if !a.structural_eq_ignoring_origin(b) {
+                        return false;
+                    }
+                    None
+                }
+                (ComponentData::Function(a), ComponentData::Function(b)) => {
+                    if a.name != b.name
+                        || a.opening.text != b.opening.text
+                        || a.closing.text != b.closing.text
+                    {
+                        return false;
+                    }
+                    Some((a.values.items(), b.values.items()))
+                }
+                (ComponentData::Block(a), ComponentData::Block(b)) => {
+                    if a.kind != b.kind
+                        || a.opening.text != b.opening.text
+                        || a.closing.text != b.closing.text
+                    {
+                        return false;
+                    }
+                    Some((a.values.items(), b.values.items()))
+                }
+                (
+                    ComponentData::Comment {
+                        content: a,
+                        spelling: a_spelling,
+                        implicit_end: a_end,
+                    },
+                    ComponentData::Comment {
+                        content: b,
+                        spelling: b_spelling,
+                        implicit_end: b_end,
+                    },
+                ) => {
+                    if a != b
+                        || a_spelling.text != b_spelling.text
+                        || a_end.as_ref().map(|end| &end.text)
+                            != b_end.as_ref().map(|end| &end.text)
+                    {
+                        return false;
+                    }
+                    None
+                }
+                _ => return false,
+            };
+            if let Some((left, right)) = children {
+                if left.len() != right.len() {
+                    return false;
+                }
+                pending.extend(left.iter().zip(right).rev());
+            }
+        }
+        true
+    }
+
+    pub(crate) fn collect_from_parser(
+        input: &mut cssparser::Parser<'_, '_>,
+        source: &CssSourceSnapshot,
+    ) -> Result<Self, CssComponentValueError> {
+        parse::collect_one(input, source)
+    }
+
+    pub(crate) const fn parsed_origin(&self) -> Option<&CssParsedOrigin> {
+        self.parsed.as_ref()
+    }
+
+    /// Inspects the semantic token or component without permitting mutation.
+    #[must_use]
+    pub fn view(&self) -> CssComponentValueRef<'_> {
+        match &self.data {
+            ComponentData::Token(token) => CssComponentValueRef::Token(token.view()),
+            ComponentData::Function(function) => CssComponentValueRef::Function(function),
+            ComponentData::Block(block) => CssComponentValueRef::Block(block),
+            ComponentData::Comment { content, .. } => CssComponentValueRef::Comment(content),
+        }
+    }
+
+    /// Returns this token's or component opener's origin.
+    #[must_use]
+    pub const fn origin(&self) -> &CssValueOrigin {
+        match &self.data {
+            ComponentData::Token(token) => &token.spelling.origin,
+            ComponentData::Function(function) => &function.opening.origin,
+            ComponentData::Block(block) => &block.opening.origin,
+            ComponentData::Comment { spelling, .. } => &spelling.origin,
+        }
+    }
+
+    // Token recovery is deliberately owned here rather than inferred from its view.
+    pub(crate) fn implicit_termination_origin(&self) -> Option<&CssValueOrigin> {
+        let origin = match &self.data {
+            ComponentData::Token(token) => token.implicit_end.as_ref().map(|end| &end.origin),
+            ComponentData::Comment { implicit_end, .. } => {
+                implicit_end.as_ref().map(|end| &end.origin)
+            }
+            ComponentData::Function(function) => Some(&function.closing.origin),
+            ComponentData::Block(block) => Some(&block.closing.origin),
+        };
+        origin.filter(|origin| matches!(origin, CssValueOrigin::ImplicitClosure { .. }))
+    }
+
+    /// Constructs exactly one complete non-structural token from CSS spelling.
+    ///
+    /// This is programmatic input: it cannot create a parsed-source origin.
+    pub fn try_token(spelling: &str) -> Result<Self, CssComponentValueError> {
+        parse::programmatic_token(spelling, CssComponentValueErrorKind::InvalidToken)
+    }
+
+    /// Constructs an identifier from its decoded value, escaping it as needed.
+    pub fn try_ident(value: impl Into<String>) -> Result<Self, CssComponentValueError> {
+        let value = value.into();
+        if value.is_empty() || value.contains('\0') {
+            return Err(CssComponentValueError::programmatic(
+                CssComponentValueErrorKind::InvalidIdentifier,
+            ));
+        }
+        let token = Token::Ident(value.as_str().into()).to_css_string();
+        let result =
+            parse::programmatic_token(&token, CssComponentValueErrorKind::InvalidIdentifier)?;
+        if matches!(result.view(), CssComponentValueRef::Token(CssValueTokenRef::Ident(decoded)) if decoded == value)
+        {
+            Ok(result)
+        } else {
+            Err(CssComponentValueError::programmatic(
+                CssComponentValueErrorKind::InvalidIdentifier,
+            ))
+        }
+    }
+
+    /// Constructs a lexical number without rounding or imposing property ranges.
+    pub fn try_number(representation: &str) -> Result<Self, CssComponentValueError> {
+        let result =
+            parse::programmatic_token(representation, CssComponentValueErrorKind::InvalidNumber)?;
+        if matches!(
+            result.view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Number(_))
+        ) {
+            Ok(result)
+        } else {
+            Err(CssComponentValueError::programmatic(
+                CssComponentValueErrorKind::InvalidNumber,
+            ))
+        }
+    }
+
+    /// Constructs a dimension from an exact number representation and decoded unit.
+    pub fn try_dimension(
+        number: &str,
+        unit: impl Into<String>,
+    ) -> Result<Self, CssComponentValueError> {
+        let unit = unit.into();
+        Self::try_number(number).map_err(|_| {
+            CssComponentValueError::programmatic(CssComponentValueErrorKind::InvalidDimension)
+        })?;
+        Self::try_ident(unit.clone()).map_err(|_| {
+            CssComponentValueError::programmatic(CssComponentValueErrorKind::InvalidDimension)
+        })?;
+        let escaped_unit = if let Some(rest) = unit.strip_prefix('e') {
+            format!("\\65 {}", Token::Ident(rest.into()).to_css_string())
+        } else if let Some(rest) = unit.strip_prefix('E') {
+            format!("\\45 {}", Token::Ident(rest.into()).to_css_string())
+        } else {
+            Token::Ident(unit.as_str().into()).to_css_string()
+        };
+        let result = parse::programmatic_token(
+            &format!("{number}{escaped_unit}"),
+            CssComponentValueErrorKind::InvalidDimension,
+        )?;
+        if matches!(result.view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { number: actual, unit: actual_unit })
+            if actual.representation() == number && actual_unit == unit)
+        {
+            Ok(result)
+        } else {
+            Err(CssComponentValueError::programmatic(
+                CssComponentValueErrorKind::InvalidDimension,
+            ))
+        }
+    }
+
+    /// Constructs a decoded string without replacing NUL code points.
+    pub fn try_string(value: impl Into<String>) -> Result<Self, CssComponentValueError> {
+        Self::try_text_token(value.into(), false)
+    }
+
+    /// Constructs an unquoted URL token, escaping whitespace and delimiters.
+    pub fn try_url(value: impl Into<String>) -> Result<Self, CssComponentValueError> {
+        Self::try_text_token(value.into(), true)
+    }
+
+    fn try_text_token(value: String, url: bool) -> Result<Self, CssComponentValueError> {
+        if value.contains('\0') {
+            return Err(CssComponentValueError::programmatic(
+                CssComponentValueErrorKind::InvalidString,
+            ));
+        }
+        let spelling = if url {
+            Token::UnquotedUrl(value.as_str().into())
+        } else {
+            Token::QuotedString(value.as_str().into())
+        }
+        .to_css_string();
+        let result =
+            parse::programmatic_token(&spelling, CssComponentValueErrorKind::InvalidString)?;
+        let same = match result.view() {
+            CssComponentValueRef::Token(CssValueTokenRef::Url(decoded)) if url => decoded == value,
+            CssComponentValueRef::Token(CssValueTokenRef::String(decoded)) if !url => {
+                decoded == value
+            }
+            _ => false,
+        };
+        if same {
+            Ok(result)
+        } else {
+            Err(CssComponentValueError::programmatic(
+                CssComponentValueErrorKind::InvalidString,
+            ))
+        }
+    }
+
+    /// Constructs a function while preserving the origins of its argument tokens.
+    pub fn try_function(
+        name: impl Into<String>,
+        values: CssComponentValues,
+    ) -> Result<Self, CssComponentValueError> {
+        let name = name.into();
+        Self::try_ident(name.clone()).map_err(|_| {
+            CssComponentValueError::programmatic(CssComponentValueErrorKind::InvalidFunction)
+        })?;
+        check_child_depth(&values)?;
+        if name.eq_ignore_ascii_case("url") {
+            let first = values.items.iter().find(|value| {
+                !matches!(
+                    value.view(),
+                    CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
+                )
+            });
+            if !matches!(
+                first.map(Self::view),
+                Some(CssComponentValueRef::Token(CssValueTokenRef::String(_)))
+            ) {
+                return Err(CssComponentValueError::programmatic(
+                    CssComponentValueErrorKind::InvalidFunction,
+                ));
+            }
+        }
+        let opening = programmatic_lexeme(Token::Function(name.as_str().into()).to_css_string());
+        Ok(Self {
+            parsed: None,
+            data: ComponentData::Function(CssFunctionValue {
+                opening,
+                name: name.into_boxed_str(),
+                values,
+                closing: programmatic_lexeme(")"),
+            }),
+        })
+    }
+
+    /// Constructs a matched simple block, preserving child origins and depth bounds.
+    pub fn try_block(
+        kind: CssBlockKind,
+        values: CssComponentValues,
+    ) -> Result<Self, CssComponentValueError> {
+        check_child_depth(&values)?;
+        let (opening, closing) = kind.delimiters();
+        Ok(Self {
+            parsed: None,
+            data: ComponentData::Block(CssSimpleBlock {
+                kind,
+                opening: programmatic_lexeme(opening),
+                values,
+                closing: programmatic_lexeme(closing),
+            }),
+        })
+    }
+
+    pub(crate) fn child_values(&self) -> Option<&CssComponentValues> {
+        match &self.data {
+            ComponentData::Function(function) => Some(&function.values),
+            ComponentData::Block(block) => Some(&block.values),
+            ComponentData::Token(_) | ComponentData::Comment { .. } => None,
+        }
+    }
+}
+
+fn check_child_depth(values: &CssComponentValues) -> Result<(), CssComponentValueError> {
+    if values.depth >= MAX_COMPONENT_DEPTH {
+        Err(CssComponentValueError::programmatic(
+            CssComponentValueErrorKind::NestingLimit,
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn programmatic_lexeme(text: impl Into<Box<str>>) -> Lexeme {
+    Lexeme {
+        text: text.into(),
+        origin: CssValueOrigin::Programmatic,
+    }
+}
+
+/// A checked immutable sequence, including its whitespace and preserved comments.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssComponentValues {
+    items: Box<[CssComponentValue]>,
+    count: usize,
+    depth: u32,
+}
+
+impl CssComponentValues {
+    pub(crate) fn collect_from_parser(
+        input: &mut cssparser::Parser<'_, '_>,
+        source: &CssSourceSnapshot,
+    ) -> Result<Self, CssComponentValueError> {
+        parse::collect(input, source, CssComponentValueLimits::default())
+    }
+
+    /// Token-category detection for parser-proved complete forgiving members.
+    pub(crate) fn contains_delimiter(
+        &self,
+        delimiter: char,
+    ) -> Result<bool, CssComponentValueError> {
+        let mut pending = Vec::new();
+        pending.try_reserve(1).map_err(|_| {
+            CssComponentValueError::programmatic(CssComponentValueErrorKind::CapacityOverflow)
+        })?;
+        pending.push(self.items());
+        while let Some(items) = pending.pop() {
+            if let Some((component, rest)) = items.split_first() {
+                if matches!(component.view(), CssComponentValueRef::Token(CssValueTokenRef::Delim(value)) if value == delimiter)
+                {
+                    return Ok(true);
+                }
+                pending.try_reserve(2).map_err(|_| {
+                    CssComponentValueError::new(
+                        CssComponentValueErrorKind::CapacityOverflow,
+                        component.origin().clone(),
+                    )
+                })?;
+                pending.push(rest);
+                if let Some(children) = component.child_values() {
+                    pending.push(children.items());
+                }
+            }
+        }
+        Ok(false)
+    }
+
+    /// Emits original chunks with only owner-recorded implicit terminations.
+    /// Each component consumes one input/projection node; each closing or leaf
+    /// termination visit additionally consumes one projection node. The caller
+    /// charges the retained region carrier in the same live budget.
+    pub(crate) fn append_original_region(
+        &self,
+        origin: &CssParsedOrigin,
+        writer: &mut crate::serialization::specified_rule_serialization::SpecifiedRuleWriter,
+    ) -> Result<(), crate::serialization::CssSerializationError> {
+        enum Event<'a> {
+            Items(&'a [CssComponentValue]),
+            Closing(&'a Lexeme),
+        }
+        use crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind as Kind;
+        let error = |kind| crate::serialization::CssSerializationError::new(kind);
+        let mut pending = Vec::new();
+        // The caller has already charged the carrier before scratch admission.
+        pending
+            .try_reserve(1)
+            .map_err(|_| error(Kind::CapacityOverflow))?;
+        pending.push(Event::Items(self.items()));
+        let source = origin.source().as_str();
+        let mut cursor = origin.span().start().byte_offset().value();
+        let mut reverse_solidus = false;
+        while let Some(event) = pending.pop() {
+            let (spelling, ending, children, closing, is_reverse, newline) = match event {
+                Event::Closing(spelling) => {
+                    writer.context.charge_projection(1)?;
+                    (spelling, None, None, None, false, false)
+                }
+                Event::Items(items) => {
+                    let Some((component, rest)) = items.split_first() else {
+                        continue;
+                    };
+                    writer.node()?;
+                    pending
+                        .try_reserve(3)
+                        .map_err(|_| error(Kind::CapacityOverflow))?;
+                    pending.push(Event::Items(rest));
+                    match &component.data {
+                        ComponentData::Token(token) => (
+                            &token.spelling,
+                            token.implicit_end.as_ref(),
+                            None,
+                            None,
+                            matches!(token.data, TokenData::Delim('\\')),
+                            matches!(token.data, TokenData::Whitespace)
+                                && token.spelling.text.starts_with(['\n', '\r', '\u{000c}']),
+                        ),
+                        ComponentData::Comment {
+                            spelling,
+                            implicit_end,
+                            ..
+                        } => (spelling, implicit_end.as_ref(), None, None, false, false),
+                        ComponentData::Function(function) => (
+                            &function.opening,
+                            None,
+                            Some(function.values.items()),
+                            Some(&function.closing),
+                            false,
+                            false,
+                        ),
+                        ComponentData::Block(block) => (
+                            &block.opening,
+                            None,
+                            Some(block.values.items()),
+                            Some(&block.closing),
+                            false,
+                            false,
+                        ),
+                    }
+                }
+            };
+            if reverse_solidus && !newline {
+                return Err(error(Kind::UnserializableBoundary));
+            }
+            reverse_solidus = is_reverse;
+            match &spelling.origin {
+                CssValueOrigin::Parsed(parsed) => {
+                    let end = parsed.span().end().byte_offset().value();
+                    writer.append(
+                        source
+                            .get(cursor..end)
+                            .ok_or_else(|| error(Kind::UnrepresentableValue))?,
+                    )?;
+                    cursor = end;
+                }
+                CssValueOrigin::ImplicitClosure { at, .. } => {
+                    let end = at.span().start().byte_offset().value();
+                    writer.append(
+                        source
+                            .get(cursor..end)
+                            .ok_or_else(|| error(Kind::UnrepresentableValue))?,
+                    )?;
+                    cursor = end;
+                    writer.append(&spelling.text)?;
+                }
+                _ => return Err(error(Kind::UnrepresentableValue)),
+            }
+            if let Some(ending) = ending {
+                writer.context.charge_projection(1)?;
+                writer.append(&ending.text)?;
+            }
+            if let Some(closing) = closing {
+                pending.push(Event::Closing(closing));
+            }
+            if let Some(children) = children {
+                pending.push(Event::Items(children));
+            }
+        }
+        if reverse_solidus {
+            return Err(error(Kind::UnserializableBoundary));
+        }
+        writer.append(&source[cursor..origin.span().end().byte_offset().value()])
+    }
+
+    /// Joins components without merging tokens or changing their origins.
+    ///
+    /// Joins components under explicit resource limits, including output bytes.
+    pub fn try_new(
+        items: Vec<CssComponentValue>,
+        limits: CssComponentValueLimits,
+    ) -> Result<Self, CssComponentValueError> {
+        let values = Self::from_items(items, limits)?;
+        serialize::validate(&values, limits.max_css_bytes)?;
+        Ok(values)
+    }
+
+    fn from_items(
+        items: Vec<CssComponentValue>,
+        limits: CssComponentValueLimits,
+    ) -> Result<Self, CssComponentValueError> {
+        Self::from_items_controlled(items, limits, None)
+    }
+
+    fn from_items_controlled(
+        items: Vec<CssComponentValue>,
+        limits: CssComponentValueLimits,
+        control: Option<&crate::values::color_adjust::utf16_value::Control<'_>>,
+    ) -> Result<Self, CssComponentValueError> {
+        let mut count = items.len();
+        let mut depth = 0;
+        for item in &items {
+            if let Some(control) = control {
+                control.step().map_err(|()| {
+                    CssComponentValueError::new(
+                        CssComponentValueErrorKind::CapacityOverflow,
+                        item.origin().clone(),
+                    )
+                })?;
+            }
+            if let Some(children) = item.child_values() {
+                count = count.checked_add(children.count).ok_or_else(|| {
+                    CssComponentValueError::new(
+                        CssComponentValueErrorKind::CapacityOverflow,
+                        item.origin().clone(),
+                    )
+                })?;
+                depth = depth.max(children.depth + 1);
+            }
+            if count > limits.max_components {
+                return Err(CssComponentValueError::new(
+                    CssComponentValueErrorKind::ComponentLimit,
+                    item.origin().clone(),
+                ));
+            }
+            if depth > limits.max_depth {
+                return Err(CssComponentValueError::new(
+                    CssComponentValueErrorKind::NestingLimit,
+                    item.origin().clone(),
+                ));
+            }
+        }
+        let previous = items.capacity() * std::mem::size_of::<CssComponentValue>();
+        let retained = items.len() * std::mem::size_of::<CssComponentValue>();
+        if let Some(control) = control
+            && previous != retained
+        {
+            control.add(retained).map_err(|()| {
+                CssComponentValueError::programmatic(CssComponentValueErrorKind::CapacityOverflow)
+            })?;
+        }
+        let items = items.into_boxed_slice();
+        if let Some(control) = control
+            && previous != retained
+        {
+            control.released(previous);
+        }
+        Ok(Self {
+            items,
+            count,
+            depth,
+        })
+    }
+
+    /// Returns the complete immutable sequence, including trivia nodes.
+    #[must_use]
+    pub fn items(&self) -> &[CssComponentValue] {
+        &self.items
+    }
+
+    /// Moves the sole original component without cloning its subtree.
+    pub(crate) fn into_single(self) -> Option<CssComponentValue> {
+        if self.items.len() != 1 {
+            return None;
+        }
+        self.items.into_vec().pop()
+    }
+
+    pub(crate) fn component_at_path(&self, path: &[usize]) -> Option<&CssComponentValue> {
+        let (first, rest) = path.split_first()?;
+        let mut component = self.items.get(*first)?;
+        for index in rest {
+            component = component.child_values()?.items.get(*index)?;
+        }
+        Some(component)
+    }
+
+    pub(crate) fn validate_with_limits(
+        &self,
+        limits: CssComponentValueLimits,
+    ) -> Result<(), CssComponentValueError> {
+        Self::validate_items_with_limits(self.items(), limits)
+    }
+
+    pub(crate) fn validate_items_with_limits(
+        items: &[CssComponentValue],
+        limits: CssComponentValueLimits,
+    ) -> Result<(), CssComponentValueError> {
+        let mut context = ComponentAdmission::new(limits);
+        context.visit(items, 0)?;
+        serialize::validate_items(items, limits.max_css_bytes)
+    }
+
+    /// Retains an immutable slice after its caller completed component and grammar admission.
+    pub(crate) fn retain_admitted(
+        items: &[CssComponentValue],
+        limits: CssComponentValueLimits,
+    ) -> Result<Self, CssComponentValueError> {
+        Self::from_items(items.to_vec(), limits)
+    }
+
+    pub(crate) fn first_implicit_origin(&self) -> Option<&CssValueOrigin> {
+        let mut pending: Vec<_> = self.items.iter().rev().collect();
+        while let Some(component) = pending.pop() {
+            let implicit = component.implicit_termination_origin();
+            if let Some(origin @ CssValueOrigin::ImplicitClosure { .. }) = implicit {
+                return Some(origin);
+            }
+            if let Some(children) = component.child_values() {
+                pending.extend(children.items.iter().rev());
+            }
+        }
+        None
+    }
+
+    pub(crate) fn implicit_opening_offsets(&self) -> Vec<usize> {
+        let mut openings = Vec::new();
+        let mut pending: Vec<_> = self.items.iter().rev().collect();
+        while let Some(component) = pending.pop() {
+            let closure = match &component.data {
+                ComponentData::Token(token) => {
+                    token.implicit_end.as_ref().map(|lexeme| &lexeme.origin)
+                }
+                ComponentData::Comment { implicit_end, .. } => {
+                    implicit_end.as_ref().map(|lexeme| &lexeme.origin)
+                }
+                ComponentData::Function(function) => Some(&function.closing.origin),
+                ComponentData::Block(block) => Some(&block.closing.origin),
+            };
+            if let Some(CssValueOrigin::ImplicitClosure { opening, .. }) = closure {
+                openings.push(opening.span().start().byte_offset().value());
+            }
+            if let Some(children) = component.child_values() {
+                pending.extend(children.items.iter().rev());
+            }
+        }
+        openings
+    }
+
+    /// Returns the total component count including descendants and trivia.
+    #[must_use]
+    pub const fn component_count(&self) -> usize {
+        self.count
+    }
+
+    /// Returns the maximum number of enclosing functions and blocks.
+    #[must_use]
+    pub const fn nesting_depth(&self) -> u32 {
+        self.depth
+    }
+
+    /// Serializes complete token representations with only required boundary comments.
+    ///
+    /// Actual whitespace and comments remain intact. Syntax implied at EOF is
+    /// emitted explicitly with its own origin. This is not canonical CSSOM
+    /// property serialization and does not validate any property grammar.
+    ///
+    /// Serializes while bounding generated UTF-8 bytes, including separators.
+    ///
+    /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
+    /// limits do not apply.
+    pub fn serialize_tokens(
+        &self,
+        limits: crate::component::CssComponentValueLimits,
+    ) -> Result<CssSerializedValue, CssComponentValueError> {
+        let max_css_bytes = limits.max_css_bytes();
+        serialize::serialize(self, max_css_bytes)
+    }
+}
+
+/// The origin of a generated token, inserted separator, or end-of-input cursor.
+#[non_exhaustive]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CssSerializedOrigin {
+    /// Bytes emitted from one token or delimiter.
+    Token(CssValueOrigin),
+    /// A generated comment separating the two adjacent token origins.
+    Separator {
+        /// Origin of the token before the inserted separator.
+        before: CssValueOrigin,
+        /// Origin of the token after the inserted separator.
+        after: CssValueOrigin,
+    },
+    /// The generated EOF cursor, anchored to the last emitted origin when any.
+    End(Option<CssValueOrigin>),
+}
+
+/// One generated UTF-8 byte range and its original provenance.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CssSerializedOriginSegment {
+    range: Range<usize>,
+    origin: CssSerializedOrigin,
+}
+
+impl CssSerializedOriginSegment {
+    /// Returns generated byte offsets, not positions in authored source.
+    #[must_use]
+    pub fn byte_range(&self) -> Range<usize> {
+        self.range.clone()
+    }
+
+    /// Returns the source or generated-boundary origin of this range.
+    #[must_use]
+    pub const fn origin(&self) -> &CssSerializedOrigin {
+        &self.origin
+    }
+}
+
+/// Token-preserving CSS text and a complete map back to originating syntax.
+#[derive(Clone, Debug)]
+pub struct CssSerializedValue {
+    css: String,
+    segments: Box<[CssSerializedOriginSegment]>,
+    end: CssSerializedOrigin,
+    component_paths: Box<[(Range<usize>, Vec<usize>)]>,
+}
+
+impl CssSerializedValue {
+    /// Transfers the retained serialized spelling to its actual owning consumer.
+    pub(crate) fn into_css(self) -> String {
+        self.css
+    }
+
+    pub(crate) fn from_numeric_tokens(
+        tokens: Vec<(String, CssValueOrigin)>,
+    ) -> Result<Self, CssComponentValueError> {
+        let mut css = String::new();
+        let mut segments = Vec::new();
+        let mut last = None;
+        for (text, origin) in tokens {
+            let start = css.len();
+            let end = start.checked_add(text.len()).ok_or_else(|| {
+                CssComponentValueError::new(
+                    CssComponentValueErrorKind::CapacityOverflow,
+                    origin.clone(),
+                )
+            })?;
+            css.push_str(&text);
+            if start != end {
+                segments.push(CssSerializedOriginSegment {
+                    range: start..end,
+                    origin: CssSerializedOrigin::Token(origin.clone()),
+                });
+            }
+            last = Some(origin);
+        }
+        Ok(Self {
+            css,
+            segments: segments.into_boxed_slice(),
+            end: CssSerializedOrigin::End(last),
+            component_paths: Box::new([]),
+        })
+    }
+    pub(crate) fn component_path_at(&self, byte: usize) -> Option<&[usize]> {
+        self.component_paths
+            .iter()
+            .find(|(range, _)| range.start == byte)
+            .map(|(_, path)| path.as_slice())
+    }
+    pub(crate) fn component_offset_for_path(&self, path: &[usize]) -> Option<usize> {
+        self.component_paths
+            .iter()
+            .find(|(_, candidate)| candidate.as_slice() == path)
+            .map(|(range, _)| range.start)
+    }
+    pub(crate) fn component_end_for_path(&self, path: &[usize]) -> Option<usize> {
+        self.component_paths
+            .iter()
+            .find(|(_, candidate)| candidate.as_slice() == path)
+            .map(|(range, _)| range.end)
+    }
+    /// Finds complete sibling components, never a token fragment or a reconstructed graph.
+    pub(crate) fn component_paths_in_range(&self, range: Range<usize>) -> Option<Vec<&[usize]>> {
+        if range.start > range.end || range.end > self.css.len() {
+            return None;
+        }
+        let mut candidates: Vec<_> = self
+            .component_paths
+            .iter()
+            .filter(|(candidate, _)| candidate.start >= range.start && candidate.end <= range.end)
+            .collect();
+        candidates
+            .sort_by_key(|(candidate, _)| (candidate.start, std::cmp::Reverse(candidate.end)));
+        let mut selected: Vec<&(Range<usize>, Vec<usize>)> = Vec::new();
+        for candidate in candidates {
+            if selected
+                .last()
+                .is_some_and(|previous| candidate.0.end <= previous.0.end)
+            {
+                continue;
+            }
+            selected.push(candidate);
+        }
+        if let Some(first) = selected.first() {
+            let parent = &first.1[..first.1.len() - 1];
+            for (index, candidate) in selected.iter().enumerate() {
+                if candidate.1.len() != first.1.len()
+                    || &candidate.1[..candidate.1.len() - 1] != parent
+                    || candidate.1.last().copied()?
+                        != first.1.last().copied()?.checked_add(index)?
+                {
+                    return None;
+                }
+            }
+        }
+        let mut selected_index = 0;
+        for segment in self
+            .segments
+            .iter()
+            .filter(|segment| segment.range.start < range.end && segment.range.end > range.start)
+        {
+            if matches!(segment.origin, CssSerializedOrigin::Separator { .. }) {
+                continue;
+            }
+            while selected
+                .get(selected_index)
+                .is_some_and(|(candidate, _)| candidate.end <= segment.range.start)
+            {
+                selected_index += 1;
+            }
+            let (candidate, _) = selected.get(selected_index)?;
+            if candidate.start > segment.range.start || candidate.end < segment.range.end {
+                return None;
+            }
+        }
+        Some(
+            selected
+                .into_iter()
+                .map(|(_, path)| path.as_slice())
+                .collect(),
+        )
+    }
+
+    pub(crate) fn value_origin_at(&self, byte: usize) -> Option<&CssValueOrigin> {
+        match self.origin_at(byte)? {
+            CssSerializedOrigin::Token(origin)
+            | CssSerializedOrigin::Separator { after: origin, .. } => Some(origin),
+            CssSerializedOrigin::End(origin) => origin.as_ref(),
+        }
+    }
+
+    /// Returns the generated token-preserving CSS.
+    #[must_use]
+    pub fn as_css(&self) -> &str {
+        &self.css
+    }
+
+    /// Returns contiguous generated byte ranges with their original provenance.
+    #[must_use]
+    pub fn segments(&self) -> &[CssSerializedOriginSegment] {
+        &self.segments
+    }
+
+    /// Maps a generated byte offset, including EOF, to its responsible origin.
+    #[must_use]
+    pub fn origin_at(&self, byte_offset: usize) -> Option<&CssSerializedOrigin> {
+        if byte_offset == self.css.len() {
+            return Some(&self.end);
+        }
+        let index = self
+            .segments
+            .partition_point(|segment| segment.range.end <= byte_offset);
+        self.segments
+            .get(index)
+            .filter(|segment| segment.range.contains(&byte_offset))
+            .map(|segment| &segment.origin)
+    }
+}
+
+pub(crate) fn parse_component_values(
+    source: &str,
+) -> Result<CssComponentValues, CssComponentValueError> {
+    parse_component_values_with_limits(source, CssComponentValueLimits::default())
+}
+
+pub(crate) fn parse_component_values_with_limits(
+    source: &str,
+    limits: CssComponentValueLimits,
+) -> Result<CssComponentValues, CssComponentValueError> {
+    parse::parse(source, limits)
+}
+
+impl CssComponentValue {
+    /// Parses exactly one authored component, ignoring outer whitespace and comments.
+    ///
+    /// Empty input, extra nontrivia components, and checked lexical failures return
+    /// `None` with original-source diagnostics. Functions and blocks closed by EOF
+    /// remain available with implicit closure origins and recovery diagnostics;
+    /// such reports fail clean-report validation. This entry selects no value grammar.
+    ///
+    /// The parser supplies the whole-input component limits.
+    #[must_use]
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> crate::CssParseReport<Option<CssComponentValue>> {
+        entries::parse_component_value_with_limits(source.as_ref(), parser.component_limits())
+    }
+}
+
+impl CssComponentValues {
+    /// Parses CSS component values, retaining trivia and closing blocks at EOF.
+    ///
+    /// Bad string/URL tokens and unmatched closing delimiters return typed failures.
+    /// This does not apply declaration-value or property-specific restrictions.
+    ///
+    /// The parser supplies the structural, count and byte limits.
+    ///
+    /// # Errors
+    ///
+    /// Returns the typed failure of the first component the input cannot form.
+    pub fn parse(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> Result<CssComponentValues, CssComponentValueError> {
+        parse_component_values_with_limits(source.as_ref(), parser.component_limits())
+    }
+
+    /// Parses authored component lists separated by top-level comma tokens.
+    ///
+    /// Every raw segment has one slot. Empty segments are valid empty lists,
+    /// including empty input and the final segment after a trailing comma. Segment
+    /// whitespace and comments are retained; nested commas do not split groups.
+    /// A checked lexical failure produces `None` only for its segment, with a
+    /// diagnostic spanning that segment. Implicit EOF closures retain syntax and
+    /// diagnostics, so clean-report validation fails. No caller grammar is selected.
+    ///
+    /// The parser supplies the whole-input component limits.
+    #[must_use]
+    pub fn parse_comma_separated(
+        parser: &crate::CssParser,
+        source: impl AsRef<str>,
+    ) -> crate::CssParseReport<Vec<Option<CssComponentValues>>> {
+        entries::parse_comma_separated_component_values_with_limits(
+            source.as_ref(),
+            parser.component_limits(),
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Publishing consumers abort on a resource refusal but keep recovering
+    /// from a syntax or representation failure.
+    #[test]
+    fn resource_limits_are_exactly_the_resource_refusals() {
+        use CssComponentValueErrorKind::*;
+        for kind in [
+            NestingLimit,
+            ComponentLimit,
+            ByteLimit,
+            CapacityOverflow,
+            ParserUnavailable,
+        ] {
+            assert!(
+                CssComponentValueError::programmatic(kind).is_resource_limit(),
+                "{kind:?}"
+            );
+        }
+        for kind in [
+            BadString,
+            BadUrl,
+            UnmatchedClosingDelimiter,
+            EmptyInput,
+            TrailingInput,
+            InvalidToken,
+            InvalidIdentifier,
+            InvalidNumber,
+            InvalidDimension,
+            InvalidFunction,
+            InvalidString,
+            UnserializableBoundary,
+        ] {
+            assert!(
+                !CssComponentValueError::programmatic(kind).is_resource_limit(),
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn oversized_input_reports_its_byte_length_without_a_parsed_origin() {
+        let limits = CssComponentValueLimits::try_new(1, 3, 3).expect("valid limits");
+        let error = parse_component_values_with_limits("😀", limits).expect_err("four UTF-8 bytes");
+        assert_eq!(error.kind(), CssComponentValueErrorKind::ByteLimit);
+        assert_eq!(
+            error.origin(),
+            &CssValueOrigin::UnretainedInput { byte_length: 4 }
+        );
+    }
+
+    #[test]
+    fn three_adjacent_components_do_not_form_a_cdo_token() {
+        let items = ["<", "!", "--"]
+            .into_iter()
+            .map(|css| CssComponentValue::try_token(css).expect("individual token"))
+            .collect();
+        let css = CssComponentValues::try_new(items, Default::default())
+            .expect("three tokens")
+            .serialize_tokens(Default::default())
+            .expect("token-preserving output");
+        assert_eq!(css.as_css(), "<!/**/--");
+        let parsed = parse_component_values(css.as_css()).expect("three separate tokens");
+        assert!(matches!(
+            parsed.items()[0].view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Delim('<'))
+        ));
+        assert!(matches!(
+            parsed.items()[1].view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Delim('!'))
+        ));
+        assert!(matches!(
+            parsed.items()[3].view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Ident("--"))
+        ));
+    }
+
+    #[test]
+    fn escaped_eof_string_can_be_followed_by_another_component() {
+        let mut items = parse_component_values("\"abc\\")
+            .expect("EOF-terminated string")
+            .items()
+            .to_vec();
+        items.push(CssComponentValue::try_ident("x").expect("following identifier"));
+        let css = CssComponentValues::try_new(items, Default::default())
+            .expect("joined components")
+            .serialize_tokens(Default::default())
+            .expect("close string without escaping its new quote");
+        assert_eq!(css.as_css(), "\"abc\\\n\"x");
+        let parsed = parse_component_values(css.as_css()).expect("closed string and identifier");
+        assert!(matches!(
+            parsed.items()[0].view(),
+            CssComponentValueRef::Token(CssValueTokenRef::String("abc"))
+        ));
+        assert!(matches!(
+            parsed.items()[1].view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Ident("x"))
+        ));
+        assert!(
+            matches!(css.origin_at(5), Some(CssSerializedOrigin::Token(CssValueOrigin::ImplicitClosure { at, .. }))
+            if at.span().start().byte_offset().value() == 5)
+        );
+    }
+
+    #[test]
+    fn escaped_eof_identifier_and_url_keep_the_replacement_code_point() {
+        for (source, expected) in [("a\\", "a\\fffd "), ("url(a\\", "url(a\\fffd )")] {
+            let css = parse_component_values(source)
+                .expect("EOF escape")
+                .serialize_tokens(Default::default())
+                .expect("explicit escape termination");
+            assert_eq!(css.as_css(), expected);
+            let parsed = parse_component_values(css.as_css()).expect("terminated token");
+            assert!(matches!(
+                parsed.items()[0].view(),
+                CssComponentValueRef::Token(
+                    CssValueTokenRef::Ident("a\u{fffd}") | CssValueTokenRef::Url("a\u{fffd}")
+                )
+            ));
+        }
+    }
+
+    #[test]
+    fn eof_comment_closure_preserves_its_last_asterisk() {
+        let css = parse_component_values("/*a*")
+            .expect("EOF-terminated comment")
+            .serialize_tokens(Default::default())
+            .expect("closed comment");
+        assert_eq!(css.as_css(), "/*a**/");
+        let parsed = parse_component_values(css.as_css()).expect("complete comment");
+        assert!(matches!(
+            parsed.items()[0].view(),
+            CssComponentValueRef::Comment("a*")
+        ));
+        assert!(
+            matches!(css.origin_at(4), Some(CssSerializedOrigin::Token(CssValueOrigin::ImplicitClosure { at, .. }))
+            if at.span().start().byte_offset().value() == 4)
+        );
+    }
+
+    #[test]
+    fn source_equality_compares_text_while_snapshot_identity_remains_explicit() {
+        let first = parse_component_values("a").expect("first parse");
+        let second = parse_component_values("a").expect("independent second parse");
+        let CssValueOrigin::Parsed(first) = first.items()[0].origin() else {
+            panic!("parsed origin")
+        };
+        let CssValueOrigin::Parsed(second) = second.items()[0].origin() else {
+            panic!("parsed origin")
+        };
+        assert_eq!(first.source(), second.source());
+        assert_eq!(first, second);
+        assert!(!first.source().same_snapshot(second.source()));
+        assert!(first.source().same_snapshot(&first.source().clone()));
+    }
+
+    #[test]
+    fn private_structural_comparison_retains_exact_numeric_spelling_without_origins() {
+        for (spelling, different) in [
+            ("2px", "02px"),
+            ("+01", "01"),
+            ("1e50", "1E50"),
+            ("-0.0%", "0.0%"),
+            ("1e-50PX", "1e-50px"),
+        ] {
+            let parsed = parse_component_values(spelling).unwrap();
+            let parsed = &parsed.items()[0];
+            let programmatic = CssComponentValue::try_token(spelling).unwrap();
+            assert_ne!(parsed, &programmatic);
+            assert!(parsed.structural_eq_ignoring_origin(&programmatic));
+            assert!(
+                !parsed.structural_eq_ignoring_origin(
+                    &CssComponentValue::try_token(different).unwrap()
+                )
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod original_region_tests {
+    use super::*;
+
+    #[test]
+    fn bounded_bare_reverse_solidus_region_cannot_escape_into_outer_grammar() {
+        // The actual parsed delimiter requires a following newline. A deliberately
+        // truncated owner region proves output rejects losing that lexical guard.
+        // Parser-owned invalid items capture the newline and cannot publicly
+        // construct this shortened region.
+        let values = parse_component_values("\\\n").unwrap();
+        assert!(matches!(
+            values.items()[0].view(),
+            CssComponentValueRef::Token(CssValueTokenRef::Delim('\\'))
+        ));
+        let CssValueOrigin::Parsed(delimiter) = values.items()[0].origin() else {
+            panic!("parsed delimiter")
+        };
+        let origin = CssParsedOrigin::from_range(delimiter.source(), 0..1).unwrap();
+        let shortened = CssComponentValues::from_items(
+            vec![values.items()[0].clone()],
+            CssComponentValueLimits::default(),
+        )
+        .unwrap();
+        let mut writer =
+            crate::serialization::specified_rule_serialization::SpecifiedRuleWriter::new(
+                crate::serialization::CssSerializationLimits::new(1, 1, 10),
+            );
+        assert_eq!(
+            shortened
+                .append_original_region(&origin, &mut writer)
+                .unwrap_err()
+                .kind(),
+            crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind::UnserializableBoundary
+        );
+    }
+}
+
+/// The native validator's component/depth work shared across borrowed slices.
+pub(crate) struct ComponentAdmission {
+    limits: CssComponentValueLimits,
+    count: usize,
+}
+impl ComponentAdmission {
+    pub(crate) fn new(limits: CssComponentValueLimits) -> Self {
+        Self { limits, count: 0 }
+    }
+    pub(crate) fn grammar(
+        &mut self,
+        origin: &CssValueOrigin,
+    ) -> Result<(), CssComponentValueError> {
+        self.count = self.count.checked_add(1).ok_or_else(|| {
+            CssComponentValueError::new(
+                CssComponentValueErrorKind::CapacityOverflow,
+                origin.clone(),
+            )
+        })?;
+        if self.count > self.limits.max_components {
+            return Err(CssComponentValueError::new(
+                CssComponentValueErrorKind::ComponentLimit,
+                origin.clone(),
+            ));
+        }
+        Ok(())
+    }
+    pub(crate) fn visit(
+        &mut self,
+        values: &[CssComponentValue],
+        depth: usize,
+    ) -> Result<(), CssComponentValueError> {
+        let mut pending: Vec<_> = values
+            .iter()
+            .rev()
+            .map(|component| (component, depth))
+            .collect();
+
+        while let Some((component, depth)) = pending.pop() {
+            self.count = self.count.checked_add(1).ok_or_else(|| {
+                CssComponentValueError::new(
+                    CssComponentValueErrorKind::CapacityOverflow,
+                    component.origin().clone(),
+                )
+            })?;
+            if self.count > self.limits.max_components {
+                return Err(CssComponentValueError::new(
+                    CssComponentValueErrorKind::ComponentLimit,
+                    component.origin().clone(),
+                ));
+            }
+            if let Some(children) = component.child_values() {
+                if depth >= self.limits.max_depth as usize {
+                    return Err(CssComponentValueError::new(
+                        CssComponentValueErrorKind::NestingLimit,
+                        component.origin().clone(),
+                    ));
+                }
+                pending.extend(children.items.iter().rev().map(|child| (child, depth + 1)));
+            }
+        }
+        Ok(())
+    }
+}

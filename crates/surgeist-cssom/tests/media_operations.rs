@@ -1,11 +1,15 @@
 #![forbid(unsafe_code)]
 //! Public consumer expectations from selected CSSOM §4.4 MediaList algorithms.
 //! The CSS writer's historical modern-value lexical policy remains selected.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
 use surgeist_cssom::*;
 
-fn limits() -> CssSpecifiedValueSerializationLimits {
-    CssSpecifiedValueSerializationLimits::default()
+fn limits() -> CssSerializationLimits {
+    CssSerializationLimits::default()
 }
 fn batch(store: &CssomStore) -> CssomBatch {
     store
@@ -108,7 +112,7 @@ fn current_associations_share_stable_media_ids_without_sheet_guards() {
 fn exact_empty_setter_clears_before_any_parser_or_serialization_work() {
     let mut store = CssomStore::new(
         CssomLimits {
-            css: CssSpecifiedValueSerializationLimits::new(0, 0, 0),
+            css: CssSerializationLimits::new(0, 0, 0),
             max_input_bytes: 0,
             ..CssomLimits::default()
         },
@@ -116,7 +120,9 @@ fn exact_empty_setter_clears_before_any_parser_or_serialization_work() {
     )
     .unwrap();
     let mut inputs = input();
-    inputs.media = parse_media_query_list("screen").into_parts().0;
+    inputs.media = CssMediaQueryList::parse(&CssParser::default(), "screen")
+        .into_parts()
+        .0;
     let sheet = create(&mut store, "", inputs);
     let id = store.snapshot().sheet(&sheet).unwrap().media().clone();
     let before = store.snapshot();
@@ -178,7 +184,7 @@ fn recovered_setter_keeps_owned_origins_and_item_null_then_empty_clears() {
     }
     assert_eq!(
         captured_media(&store, &after, &id)
-            .item(3, CssSpecifiedValueSerializationLimits::new(0, 0, 0))
+            .item(3, CssSerializationLimits::new(0, 0, 0))
             .unwrap(),
         None
     );
@@ -313,20 +319,22 @@ fn delete_removes_all_serialized_matches_and_not_found_aborts_then_retry_succeed
 
 #[test]
 fn complete_scan_budget_fails_atomically_including_later_members_and_retries() {
-    for (css, expected) in [
+    type Case = (CssSerializationLimits, fn(&CssSerializationError) -> bool);
+    let cases: [Case; 3] = [
         (
-            CssSpecifiedValueSerializationLimits::new(6, 7, 17),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(6, 7, 17),
+            CssSerializationError::is_input_node_limit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(7, 6, 17),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(7, 6, 17),
+            CssSerializationError::is_projection_node_limit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(7, 7, 16),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(7, 7, 16),
+            CssSerializationError::is_byte_limit,
         ),
-    ] {
+    ];
+    for (css, expected) in cases {
         let mut store = CssomStore::new(
             CssomLimits {
                 css,
@@ -336,17 +344,17 @@ fn complete_scan_budget_fails_atomically_including_later_members_and_retries() {
         )
         .unwrap();
         let mut inputs = input();
-        inputs.media = parse_media_query_list("screen, print").into_parts().0;
+        inputs.media = CssMediaQueryList::parse(&CssParser::default(), "screen, print")
+            .into_parts()
+            .0;
         let sheet = create(&mut store, "", inputs);
         let id = store.snapshot().sheet(&sheet).unwrap().media().clone();
         let before = store.snapshot();
         let mut edit = batch(&store);
-        let Err(CssomError::Media(CssMediaCssomSerializationError::Resource { error, .. })) =
-            edit.append_medium(&id, "SCREEN")
-        else {
-            panic!("whole scan must exhaust {expected:?}");
+        let Err(CssomError::Media(error)) = edit.append_medium(&id, "SCREEN") else {
+            panic!("whole scan must exhaust {css:?}");
         };
-        assert_eq!(error.kind(), expected);
+        assert!(expected(&error), "{css:?}: {error:?}");
         assert!(matches!(store.commit(edit), Err(CssomError::BatchAborted)));
         assert_eq!(store.snapshot().revision(), before.revision());
         assert_eq!(text(&store, &store.snapshot(), &id), "screen, print");
@@ -415,15 +423,12 @@ fn snapshot_output_errors_are_typed_and_do_not_change_the_owner() {
     store.commit(edit).unwrap();
     let snapshot = store.snapshot();
     for result in [
+        captured_media(&store, &snapshot, &id).media_text(CssSerializationLimits::new(2, 2, 5)),
         captured_media(&store, &snapshot, &id)
-            .media_text(CssSpecifiedValueSerializationLimits::new(2, 2, 5)),
-        captured_media(&store, &snapshot, &id)
-            .item(0, CssSpecifiedValueSerializationLimits::new(2, 2, 5))
+            .item(0, CssSerializationLimits::new(2, 2, 5))
             .map(|v| v.unwrap()),
     ] {
-        assert!(
-            matches!(result, Err(CssomError::Media(CssMediaCssomSerializationError::Resource { error, .. })) if error.kind() == CssSpecifiedValueSerializationErrorKind::ByteLimit)
-        );
+        assert!(matches!(result, Err(CssomError::Media(error)) if error.is_byte_limit()));
     }
     assert_eq!(text(&store, &snapshot, &id), "screen");
     assert_eq!(store.snapshot().revision(), snapshot.revision());

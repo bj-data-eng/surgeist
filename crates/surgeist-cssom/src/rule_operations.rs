@@ -1,8 +1,28 @@
 //! Source rule algorithms over the current retained graph. CSS owns all parsing.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::{model::State, *};
-use surgeist_css::CssRule;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues};
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::query::container::{CssContainerPrelude, CssContainerQueryEntry};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::{
+    CssKeyframeSelectorMatcher, CssKeyframesName, CssKeyframesString, CssParsedKeyframeRule,
+    CssParsedKeyframeSelectors,
+};
+use surgeist_css::rule::page::CssPageSelectorList;
+use surgeist_css::rule::{
+    CssImportLayer, CssImportTarget, CssNamespacePrefix, CssRuleAdmissionContext, CssRuleSyntax,
+    CssScopeNestingContext, CssStyleAncestor,
+};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssScopeSelectorCssomContext,
+    CssStyleSelectorContext,
+};
+use surgeist_css::serialization::{
+    CssSerializationLimits, serialize_css_comma_separated_list, serialize_css_identifier,
+    serialize_css_whitespace_separated_list,
+};
+use surgeist_css::{CssParser, CssParserContext};
 
 /// A newly owned dictionary for one authored container entry. Reads retain
 /// entry order/duplicates; modifying this transport cannot modify the rule.
@@ -11,8 +31,8 @@ pub struct CssomContainerCondition {
     pub name: String,
     pub query: String,
 }
-fn text_limits(max_bytes: usize) -> CssSpecifiedValueSerializationLimits {
-    CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, max_bytes)
+fn text_limits(max_bytes: usize) -> CssSerializationLimits {
+    CssSerializationLimits::new(usize::MAX, usize::MAX, max_bytes)
 }
 fn container_name_text(
     entry: &CssContainerQueryEntry,
@@ -21,7 +41,7 @@ fn container_name_text(
     entry
         .name()
         .map(|name| {
-            serialize_css_identifier_with_limits(name.as_str(), text_limits(max_bytes))
+            serialize_css_identifier(name.as_str(), text_limits(max_bytes))
                 .map_err(CssomError::Serialization)
         })
         .unwrap_or_else(|| Ok(String::new()))
@@ -34,7 +54,7 @@ fn container_query_text(
         .query()
         .map(|query| {
             query
-                .serialize_with_limit(max_bytes)
+                .serialize_tokens(crate::css_adapter::token_byte_limits(max_bytes))
                 .map(|text| text.as_css().to_owned())
                 .map_err(CssomError::Component)
         })
@@ -119,12 +139,12 @@ impl CssomSnapshot {
                 (true, _) => &[&condition.query],
             };
             items.push(
-                serialize_css_whitespace_separated_list_with_limits(fields, text_limits(max_bytes))
+                serialize_css_whitespace_separated_list(fields, text_limits(max_bytes))
                     .map_err(CssomError::Serialization)?,
             );
         }
         let items: Vec<&str> = items.iter().map(String::as_str).collect();
-        serialize_css_comma_separated_list_with_limits(&items, text_limits(max_bytes))
+        serialize_css_comma_separated_list(&items, text_limits(max_bytes))
             .map_err(CssomError::Serialization)
     }
     /// Readonly decoded name under Surgeist's inert named-support grouping policy.
@@ -175,19 +195,12 @@ pub(crate) fn component_limits(limits: &CssomLimits) -> CssComponentValueLimits 
     .expect("depth bounded by CSS provider maximum")
 }
 fn preflight_components(source: &str, limits: &CssomLimits) -> Result<(), CssomError> {
-    match parse_component_values_with_limits(source, component_limits(limits)) {
+    match CssComponentValues::parse(
+        &CssParser::new(CssParserContext::default(), component_limits(limits)),
+        source,
+    ) {
         Ok(_) => Ok(()),
-        Err(error)
-            if matches!(
-                error.kind(),
-                CssComponentValueErrorKind::NestingLimit
-                    | CssComponentValueErrorKind::ComponentLimit
-                    | CssComponentValueErrorKind::ByteLimit
-                    | CssComponentValueErrorKind::CapacityOverflow
-            ) =>
-        {
-            Err(CssomError::Component(error))
-        }
+        Err(error) if error.is_resource_limit() => Err(CssomError::Component(error)),
         // Feature grammar owns syntax rejection and inner declaration recovery;
         // a whole-input component error is not itself its retention decision.
         Err(_) => Ok(()),
@@ -267,9 +280,11 @@ impl CssomBatch {
         self.apply(|this| {
             let sheet = this.staged.editable_sheet_rules(id)?;
             let constructed = sheet.inputs.constructed;
-            let (candidate, diagnostics) =
-                classify_rule_syntax_with_limits(source, component_limits(&this.limits))
-                    .into_parts();
+            let (candidate, diagnostics) = CssRuleSyntax::classify(
+                &CssParser::new(CssParserContext::default(), component_limits(&this.limits)),
+                source,
+            )
+            .into_parts();
             check_resource_diagnostics(&diagnostics)?;
             let candidate = candidate.ok_or_else(syntax)?;
             if constructed
@@ -311,9 +326,11 @@ impl CssomBatch {
             if index > this.staged.lists[list].len() {
                 return Err(CssomError::Source(CssomException::IndexSize));
             }
-            let (candidate, diagnostics) =
-                classify_rule_syntax_with_limits(source, component_limits(&this.limits))
-                    .into_parts();
+            let (candidate, diagnostics) = CssRuleSyntax::classify(
+                &CssParser::new(CssParserContext::default(), component_limits(&this.limits)),
+                source,
+            )
+            .into_parts();
             check_resource_diagnostics(&diagnostics)?;
             this.insert_prepared_rule(
                 RuleDestination::Group(id.clone()),
@@ -393,10 +410,7 @@ impl CssomBatch {
                         .into_parts();
                     check_resource_diagnostics(&diagnostics)?;
                     retained_diagnostics = diagnostics;
-                    admitted = value.map(|value| match value {
-                        CssAdmittedRule::Ordinary(rule) => CssomAuthoredRule::Ordinary(rule),
-                        CssAdmittedRule::Scoped(rule) => CssomAuthoredRule::Scoped(rule),
-                    });
+                    admitted = value.map(CssomAuthoredRule::Rule);
                 }
             } else {
                 let (value, diagnostics) = candidate
@@ -412,21 +426,16 @@ impl CssomBatch {
                     .into_parts();
                 check_resource_diagnostics(&diagnostics)?;
                 retained_diagnostics = diagnostics;
-                admitted = value.map(|value| match value {
-                    CssAdmittedRule::Ordinary(rule) => CssomAuthoredRule::Ordinary(rule),
-                    CssAdmittedRule::Scoped(rule) => CssomAuthoredRule::Scoped(rule),
-                });
+                admitted = value.map(CssomAuthoredRule::Rule);
             }
         }
         let authored = match admitted {
             Some(rule) => rule,
             None if nested => {
-                let (declarations, diagnostics) = parser
-                    .parse_declaration_block_contents_with_limits(
-                        source,
-                        component_limits(&self.limits),
-                    )
-                    .into_parts();
+                let (declarations, diagnostics) =
+                    CssParser::new(parser, component_limits(&self.limits))
+                        .parse_block_contents(source)
+                        .into_parts();
                 check_resource_diagnostics(&diagnostics)?;
                 if declarations.is_empty() {
                     return Err(syntax());
@@ -507,8 +516,8 @@ impl CssomBatch {
 }
 fn phase(rule: &CssomAuthoredRule) -> u8 {
     match rule {
-        CssomAuthoredRule::Ordinary(CssRule::Import(_)) => 0,
-        CssomAuthoredRule::Ordinary(CssRule::Namespace(_)) => 1,
+        CssomAuthoredRule::Rule(CssRule::Import(_)) => 0,
+        CssomAuthoredRule::Rule(CssRule::Namespace(_)) => 1,
         _ => 2,
     }
 }
@@ -519,18 +528,10 @@ fn ordered_phase(
 ) -> Result<(), CssomError> {
     // Conditional5 §8 permits these before imports/namespaces, including
     // interleaved prefix members. Preserve an existing namespace/body phase.
-    if matches!(
-        rule,
-        CssomAuthoredRule::Ordinary(CssRule::SupportsCondition(_))
-    ) {
+    if matches!(rule, CssomAuthoredRule::Rule(CssRule::SupportsCondition(_))) {
         return Ok(());
     }
-    if !*seen_prefix
-        && matches!(
-            rule,
-            CssomAuthoredRule::Ordinary(CssRule::LayerStatement(_))
-        )
-    {
+    if !*seen_prefix && matches!(rule, CssomAuthoredRule::Rule(CssRule::LayerStatement(_))) {
         return Ok(());
     }
     let value = phase(rule);
@@ -571,7 +572,7 @@ impl CssomSnapshot {
             CssomRuleData::Keyframe { .. } => 8,
             CssomRuleData::Margin { .. } => 9,
             CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Ordinary(CssRule::Namespace(_)),
+                current: CssomAuthoredRule::Rule(CssRule::Namespace(_)),
             } => 10,
             CssomRuleData::CounterStyle { .. } => 11,
             CssomRuleData::Group {
@@ -585,19 +586,14 @@ impl CssomSnapshot {
     pub(crate) fn style_selector_text(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         let namespaces = self.state.rule_namespaces(id)?;
         let context = self.state.selector_context(id)?;
         match self.rule(id)?.data() {
-            CssomRuleData::Style {
-                selectors: CssomSelectors::Ordinary(list),
-                ..
-            } => list.serialize_cssom_with_limits(&namespaces, context, limits),
-            CssomRuleData::Style {
-                selectors: CssomSelectors::Scoped(list),
-                ..
-            } => list.serialize_cssom_with_limits(&namespaces, context, limits),
+            CssomRuleData::Style { selectors, .. } => {
+                selectors.serialize_cssom(&namespaces, context, limits)
+            }
             _ => return Err(CssomError::WrongKind),
         }
         .map_err(CssomError::Serialization)
@@ -605,11 +601,11 @@ impl CssomSnapshot {
     pub(crate) fn page_selector_text(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         match self.rule(id)?.data() {
             CssomRuleData::Page { selectors, .. } => selectors
-                .serialize_cssom_with_limits(limits)
+                .serialize_cssom(limits)
                 .map_err(CssomError::Serialization),
             _ => Err(CssomError::WrongKind),
         }
@@ -617,11 +613,11 @@ impl CssomSnapshot {
     pub(crate) fn keyframe_key_text(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         match self.rule(id)?.data() {
             CssomRuleData::Keyframe { selectors, .. } => selectors
-                .serialize_key_text_with_limits(limits)
+                .serialize_key_text(limits)
                 .map_err(CssomError::Serialization),
             _ => Err(CssomError::WrongKind),
         }
@@ -648,11 +644,11 @@ impl CssomBatch {
             }
             let namespaces = this.staged.rule_namespaces(id)?;
             let context = this.staged.selector_context(id)?;
-            let (parsed, diagnostics) = parse_style_selector_list_with_limits(
+            let (parsed, diagnostics) = CssParsedStyleSelectors::parse(
+                &CssParser::new(CssParserContext::default(), component_limits(&this.limits)),
                 source,
                 &namespaces,
                 context,
-                component_limits(&this.limits),
             )
             .into_parts();
             check_resource_diagnostics(&diagnostics)?;
@@ -664,12 +660,7 @@ impl CssomBatch {
             let CssomRuleData::Style { selectors, .. } = rule.data_mut() else {
                 unreachable!()
             };
-            *selectors = match parsed.selectors() {
-                CssAdmittedStyleSelectors::Ordinary(value) => {
-                    CssomSelectors::Ordinary(value.clone())
-                }
-                CssAdmittedStyleSelectors::Scoped(value) => CssomSelectors::Scoped(value.clone()),
-            };
+            *selectors = parsed.selectors().clone();
             rule.admission_diagnostics = copy_rule_diagnostics(&diagnostics)?.into();
             rule.selector_input = Some(parsed.origin().clone());
             rule.selector_inputs = Some(inputs);
@@ -701,7 +692,8 @@ impl CssomBatch {
             }
             // The component owner preflights the whole raw input under product quotas.
             preflight_components(source, &this.limits)?;
-            let (parsed, diagnostics) = parse_page_selector_list(source).into_parts();
+            let (parsed, diagnostics) =
+                CssPageSelectorList::parse(&CssParser::default(), source).into_parts();
             check_resource_diagnostics(&diagnostics)?;
             let Some(parsed) = parsed else {
                 return Ok((false, diagnostics));
@@ -733,7 +725,8 @@ impl CssomBatch {
                 return Err(CssomError::WrongKind);
             }
             preflight_components(source, &this.limits)?;
-            let (parsed, diagnostics) = parse_keyframe_selector_list(source).into_parts();
+            let (parsed, diagnostics) =
+                CssParsedKeyframeSelectors::parse(&CssParser::default(), source).into_parts();
             check_resource_diagnostics(&diagnostics)?;
             let parsed = parsed.ok_or_else(syntax)?;
             let inputs = this.staged.context.clone();
@@ -844,12 +837,11 @@ impl CssomBatch {
             };
             let list = children.clone();
             preflight_components(source, &this.limits)?;
-            let (parsed, diagnostics) = this
-                .staged
-                .context
-                .parser_context()
-                .parse_keyframe_rule(source)
-                .into_parts();
+            let (parsed, diagnostics) = CssParsedKeyframeRule::parse(
+                &CssParser::new(this.staged.context.parser_context(), Default::default()),
+                source,
+            )
+            .into_parts();
             check_resource_diagnostics(&diagnostics)?;
             let Some(parsed) = parsed else {
                 return Ok((None, diagnostics));
@@ -923,7 +915,7 @@ impl CssomSnapshot {
                 .map(|supports| {
                     supports
                         .condition()
-                        .serialize_with_limit(max_bytes)
+                        .serialize_tokens(crate::css_adapter::token_byte_limits(max_bytes))
                         .map(|value| value.as_css().to_owned())
                         .map_err(CssomError::Component)
                 })
@@ -934,7 +926,7 @@ impl CssomSnapshot {
     pub(crate) fn namespace_uri(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
         match self.rule(id)?.data() {
             CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Ordinary(CssRule::Namespace(rule)),
+                current: CssomAuthoredRule::Rule(CssRule::Namespace(rule)),
             } => Ok(rule.name().as_str()),
             _ => Err(CssomError::WrongKind),
         }
@@ -942,14 +934,14 @@ impl CssomSnapshot {
     pub(crate) fn namespace_prefix(&self, id: &CssomRuleId) -> Result<&str, CssomError> {
         match self.rule(id)?.data() {
             CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Ordinary(CssRule::Namespace(rule)),
+                current: CssomAuthoredRule::Rule(CssRule::Namespace(rule)),
             } => Ok(rule.prefix().map_or("", CssNamespacePrefix::as_str)),
             _ => Err(CssomError::WrongKind),
         }
     }
     pub(crate) fn margin_name(&self, id: &CssomRuleId) -> Result<&'static str, CssomError> {
         match self.rule(id)?.data() {
-            CssomRuleData::Margin { name, .. } => Ok(name.css_name()),
+            CssomRuleData::Margin { name, .. } => Ok(name.as_str()),
             _ => Err(CssomError::WrongKind),
         }
     }
@@ -971,10 +963,10 @@ impl CssomSnapshot {
             CssomRuleData::Group {
                 prelude: CssomGroupPrelude::Supports(condition),
                 ..
-            } => condition
-                .serialize_with_limit(max_bytes)
-                .map(|value| value.as_css().to_owned())
-                .map_err(CssomError::Component),
+            } => Ok(condition
+                .serialize_tokens(crate::css_adapter::token_byte_limits(max_bytes))?
+                .as_css()
+                .to_owned()),
             _ => Err(CssomError::WrongKind),
         }
     }
@@ -982,7 +974,7 @@ impl CssomSnapshot {
     pub(crate) fn scope_start(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Option<String>, CssomError> {
         let CssomRuleData::Group {
             prelude: CssomGroupPrelude::Scope { start, .. },
@@ -1004,7 +996,7 @@ impl CssomSnapshot {
             .as_ref()
             .map(|value| {
                 value
-                    .serialize_cssom_with_limits(
+                    .serialize_cssom(
                         &namespaces,
                         CssScopeSelectorCssomContext::Start(nesting),
                         limits,
@@ -1016,7 +1008,7 @@ impl CssomSnapshot {
     pub(crate) fn scope_end(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<Option<String>, CssomError> {
         let CssomRuleData::Group {
             prelude: CssomGroupPrelude::Scope { end, .. },
@@ -1029,11 +1021,7 @@ impl CssomSnapshot {
         end.as_ref()
             .map(|value| {
                 value
-                    .serialize_cssom_with_limits(
-                        &namespaces,
-                        CssScopeSelectorCssomContext::End,
-                        limits,
-                    )
+                    .serialize_cssom(&namespaces, CssScopeSelectorCssomContext::End, limits)
                     .map_err(CssomError::Serialization)
             })
             .transpose()
@@ -1060,7 +1048,7 @@ impl CssomSnapshot {
     pub(crate) fn condition_text(
         &self,
         id: &CssomRuleId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         match self.rule(id)?.data() {
             CssomRuleData::Group {
@@ -1068,7 +1056,7 @@ impl CssomSnapshot {
                 ..
             } => self
                 .media(media)?
-                .serialize_cssom_with_limits(limits)
+                .serialize_cssom(limits)
                 .map(|value| value.as_css().to_owned())
                 .map_err(CssomError::Media),
             CssomRuleData::Group {
@@ -1096,7 +1084,7 @@ impl CssomSnapshot {
                 None => Ok(None),
                 Some(CssImportLayer::Anonymous) => Ok(Some(String::new())),
                 Some(CssImportLayer::Named(name)) => name
-                    .serialize_specified_with_limits(text_limits(max_bytes))
+                    .serialize_specified(text_limits(max_bytes))
                     .map(Some)
                     .map_err(CssomError::Serialization),
                 _ => Err(CssomError::WrongKind),
@@ -1117,7 +1105,7 @@ impl CssomSnapshot {
             } => name
                 .as_ref()
                 .map(|name| {
-                    name.serialize_specified_with_limits(text_limits(max_bytes))
+                    name.serialize_specified(text_limits(max_bytes))
                         .map_err(CssomError::Serialization)
                 })
                 .unwrap_or_else(|| Ok(String::new())),
@@ -1133,10 +1121,7 @@ impl CssomSnapshot {
     ) -> Result<Vec<String>, CssomError> {
         let names = match self.rule(id)?.data() {
             CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Ordinary(CssRule::LayerStatement(rule)),
-            } => rule.names(),
-            CssomRuleData::Leaf {
-                current: CssomAuthoredRule::Scoped(CssScopedRule::LayerStatement(rule)),
+                current: CssomAuthoredRule::Rule(CssRule::LayerStatement(rule)),
             } => rule.names(),
             _ => return Err(CssomError::WrongKind),
         };
@@ -1150,7 +1135,7 @@ impl CssomSnapshot {
         let mut remaining = max_bytes;
         for name in names.names() {
             let text = name
-                .serialize_specified_with_limits(text_limits(remaining))
+                .serialize_specified(text_limits(remaining))
                 .map_err(CssomError::Serialization)?;
             remaining -= text.len();
             result.push(text);
@@ -1171,16 +1156,15 @@ impl State {
             _ => return Err(CssomError::WrongKind),
         };
         preflight_components(source, limits)?;
-        let (query, diagnostics) = parse_keyframe_selector_list(source).into_parts();
+        let (query, diagnostics) =
+            CssParsedKeyframeSelectors::parse(&CssParser::default(), source).into_parts();
         check_resource_diagnostics(&diagnostics)?;
         let Some(query) = query else {
             return Ok(None);
         };
         // One query and one monotonic native normalization/comparison budget for
         // the complete reverse-last search. No authored equality or text keys.
-        let mut matcher =
-            CssKeyframeSelectorMatcher::try_new_with_limits(query.selectors(), limits.css)
-                .map_err(CssomError::KeyframeComparison)?;
+        let mut matcher = CssKeyframeSelectorMatcher::try_new(query.selectors(), limits.css)?;
         let children = self.lists.get(list).expect("owned Keyframes list");
         for (visited, (index, child)) in children.iter().enumerate().rev().enumerate() {
             if visited >= limits.max_entries {
@@ -1192,10 +1176,7 @@ impl State {
             let CssomRuleData::Keyframe { selectors, .. } = self.rule(child)?.data() else {
                 return Err(CssomError::WrongKind);
             };
-            if matcher
-                .matches(selectors)
-                .map_err(CssomError::KeyframeComparison)?
-            {
+            if matcher.matches(selectors)? {
                 return Ok(Some(index));
             }
         }

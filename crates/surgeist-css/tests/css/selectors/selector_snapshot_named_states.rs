@@ -4,8 +4,25 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_strict_validation_rejects,
 };
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::validated_selector as parsed;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssComplexSelector, CssComplexSelectorPart, CssCompoundSelector, CssCompoundSelectorArgument,
+    CssNamespaceContext, CssNthChildPattern, CssNthPattern, CssParsedStyleSelectors,
+    CssPseudoClass, CssPseudoElement, CssPseudoElementSegment, CssPseudoElementSequence,
+    CssPseudoSelectorList, CssRelativeSelector, CssRelativeSelectorList, CssSelector,
+    CssSelectorCombinator, CssSelectorList, CssSimpleSelector, CssStyleSelector,
+    CssStyleSelectorContext,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssIdent;
 
 const NAMES: [&str; 14] = [
     "defined",
@@ -27,7 +44,11 @@ const NAMES: [&str; 14] = [
 fn exact(source: &str, expected: &str) -> CssSelector {
     let selector = parsed(source);
     let before = selector.clone();
-    assert_eq!(selector.to_specified_css().unwrap(), expected, "{source:?}");
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        expected,
+        "{source:?}"
+    );
     assert_eq!(
         selector, before,
         "specified output preserves authored identity"
@@ -49,7 +70,11 @@ fn named(source: &str) -> CssPseudoClass {
 }
 
 fn reject(source: &str) {
-    let report = parse_selector(source, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        source,
+        &CssNamespaceContext::default(),
+    );
     assert!(
         report.syntax().is_none(),
         "no rejected graph: {source}: {report:?}"
@@ -105,16 +130,21 @@ fn decoded_named_contract(name: &str, escaped: &str) {
             "{canonical} remains distinct from {control}"
         );
     }
-    let checked = CssCompoundSelector::try_new(vec![
-        CssSimpleSelector::Class(CssIdent::try_new("MiXeD").unwrap()),
-        CssSimpleSelector::PseudoClass(identity.clone()),
-        CssSimpleSelector::PseudoClass(identity.clone()),
-    ])
+    let checked = CssCompoundSelector::try_new(
+        vec![
+            CssSimpleSelector::Class(CssIdent::try_new("MiXeD").unwrap()),
+            CssSimpleSelector::PseudoClass(identity.clone()),
+            CssSimpleSelector::PseudoClass(identity.clone()),
+        ],
+        Default::default(),
+    )
     .unwrap();
     assert_eq!(checked.classes(), ["MiXeD"]);
     assert_eq!(checked.pseudo_classes(), [identity.clone(), identity]);
     assert_eq!(
-        CssSelector::Compound(checked).to_specified_css().unwrap(),
+        CssSelector::Compound(checked)
+            .serialize_specified(Default::default())
+            .unwrap(),
         format!(".MiXeD{canonical}{canonical}")
     );
 }
@@ -280,24 +310,37 @@ fn every_named_state_composes_with_ordinary_function_and_shadow_arguments() {
             exact(&source, &expected);
         }
         let source = format!(":{name},.Other");
-        let report = parse_selector_list(&source, &CssNamespaceContext::default());
+        let report = CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+            CssStyleSelectorContext::Ordinary,
+        );
         assert!(report.is_clean(), "{source}: {report:?}");
         let list = report.into_validation_result().unwrap().unwrap();
-        assert_eq!(list.selectors()[0].selector(), &parsed(&format!(":{name}")));
         assert_eq!(
-            list.selectors()[1].selector(),
+            list.selectors().selectors()[0].selector(),
+            &parsed(&format!(":{name}"))
+        );
+        assert_eq!(
+            list.selectors().selectors()[1].selector(),
             &CssSelector::Class("Other".into())
         );
         let source = format!("> :{name},+ .Other");
-        let report = parse_relative_selector_list(&source, &CssNamespaceContext::default());
+        let report = CssRelativeSelectorList::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.is_clean(), "{source}: {report:?}");
         let list = report.into_validation_result().unwrap().unwrap();
         assert_eq!(
-            list.to_specified_css().unwrap(),
+            list.serialize_specified(Default::default()).unwrap(),
             format!("> :{name}, + .Other")
         );
         assert_eq!(
-            CssRelativeSelectorList::try_new(list.selectors().to_vec()).unwrap(),
+            CssRelativeSelectorList::try_new(list.selectors().to_vec(), Default::default())
+                .unwrap(),
             list
         );
     }
@@ -314,19 +357,28 @@ fn every_named_state_preserves_strict_atomic_and_forgiving_member_recovery() {
         ] {
             assert_selector_input_rejected(
                 &source,
-                parse_selector_list(&source, &CssNamespaceContext::default()),
+                CssParsedStyleSelectors::parse(
+                    &CssParser::default(),
+                    &source,
+                    &CssNamespaceContext::default(),
+                    CssStyleSelectorContext::Ordinary,
+                ),
             );
         }
         for function in ["is", "where"] {
             let source = format!("/*😀*/\r\n:{function}(:{name},:future,.After)");
-            let report = parse_selector(&source, &CssNamespaceContext::default());
+            let report = CssSelector::parse(
+                &CssParser::default(),
+                &source,
+                &CssNamespaceContext::default(),
+            );
             assert!(!report.is_clean());
             let selector = report
                 .syntax()
                 .as_ref()
                 .expect("retained forgiving selector");
             assert_eq!(
-                selector.to_specified_css().unwrap(),
+                selector.serialize_specified(Default::default()).unwrap(),
                 format!(":{function}(:{name}, .After)")
             );
             let [diagnostic] = report.diagnostics() else {
@@ -354,9 +406,12 @@ fn every_named_state_preserves_strict_atomic_and_forgiving_member_recovery() {
                 )
                 .unwrap()
             );
-            let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-                panic!("typed selector error");
-            };
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidSelector,
+                "typed selector error"
+            );
             assert_eq!(detail.encountered().unwrap().authored(), "future");
             let diagnostics = report.diagnostics().to_vec();
             assert_eq!(
@@ -394,13 +449,17 @@ fn every_named_state_obeys_element_backed_and_restricted_suffix_admission() {
             reject(&format!("{receiver}:{name}"));
             reject(&format!("{receiver}:not(:{name})"));
             let source = format!("{receiver}:is(:{name},:hover)");
-            let report = parse_selector(&source, &CssNamespaceContext::default());
+            let report = CssSelector::parse(
+                &CssParser::default(),
+                &source,
+                &CssNamespaceContext::default(),
+            );
             assert_eq!(
                 report
                     .syntax()
                     .as_ref()
                     .unwrap()
-                    .to_specified_css()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 format!("{receiver}:is(:hover)")
             );
@@ -438,9 +497,15 @@ fn every_named_state_obeys_element_backed_and_restricted_suffix_admission() {
 fn every_named_state_reuses_rules_nesting_scope_supports_and_original_positions() {
     for name in NAMES {
         let source = format!("/*😀*/\r\n:{name}{{color:red; > :{name}{{color:blue}}}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
-        assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+        assert_eq!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap(),
+            *report.syntax()
+        );
         let [CssRule::Style(rule)] = report.syntax().rules() else {
             panic!("named style rule");
         };
@@ -463,21 +528,33 @@ fn every_named_state_reuses_rules_nesting_scope_supports_and_original_positions(
         assert_eq!(relative.combinator(), CssSelectorCombinator::Child);
         assert_eq!(relative.selector(), &parsed(&format!(":{name}")));
         let source = format!("selector(:{})", name.to_ascii_uppercase());
-        let components = parse_component_values(&source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), &source).unwrap();
         let original = components.clone();
-        let condition =
-            CssSupportsCondition::try_from_components(components, &CssNamespaceContext::default())
-                .unwrap();
-        let CssSupportsConditionKind::Selector(selector) = condition.kind() else {
+        let condition = CssCondition::<CssSupportsLeaf>::try_from_components(
+            components,
+            &CssNamespaceContext::default(),
+            Default::default(),
+        )
+        .unwrap();
+        let CssConditionKind::Leaf(CssSupportsLeaf::Selector(selector)) = condition.kind() else {
             panic!("typed Supports selector: {condition:?}");
         };
-        assert_eq!(selector.to_specified_css().unwrap(), format!(":{name}"));
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            format!(":{name}")
+        );
         assert_eq!(condition.components(), original.items());
-        assert_eq!(condition.serialize().unwrap().as_css(), source);
+        assert_eq!(
+            condition
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
         let source = format!(
             "@scope (:{name}) to (:{name}) {{ :{name}{{}} }} @supports selector(:{name}) {{ :{name}{{}} }}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {report:?}");
         assert!(matches!(
             report.syntax().rules(),
@@ -488,7 +565,7 @@ fn every_named_state_reuses_rules_nesting_scope_supports_and_original_positions(
         };
         assert!(matches!(
             supports.condition().kind(),
-            CssSupportsConditionKind::Selector(_)
+            CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
         ));
     }
 }
@@ -498,7 +575,7 @@ fn named_rule_rejection_drops_only_its_complete_recovery_unit() {
     for name in NAMES {
         let rejected = format!(":{name}(){{color:red; .Child{{}}}}");
         let source = format!(".Before{{}}{rejected}.After{{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Style(before), CssRule::Style(after)] = report.syntax().rules() else {
             panic!("only neighboring rules retained: {report:?}");
         };
@@ -522,7 +599,12 @@ fn named_rule_rejection_drops_only_its_complete_recovery_unit() {
             diagnostic.span().end().byte_offset().value(),
             ".Before{}".len() + rejected.len()
         );
-        assert!(validate_sheet(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .is_err()
+        );
     }
 }
 
@@ -534,73 +616,73 @@ fn named_identity_and_lists_charge_cumulative_nodes_bytes_and_atomic_retry() {
         let before = selector.clone();
         assert_eq!(
             selector
-                .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    literal.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, literal.len()))
                 .unwrap(),
             literal
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, literal.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, literal.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, literal.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, literal.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, literal.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, literal.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                selector
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&selector.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(selector, before);
         }
         let members = vec![selector.clone(), selector];
         let output = format!("{literal}, {literal}");
-        let list = CssSelectorList::try_new_with_limits(
+        let list = CssSelectorList::try_new(
             members.clone(),
-            CssSpecifiedValueSerializationLimits::new(3, 3, output.len()),
+            CssSerializationLimits::new(3, 3, output.len()),
         )
         .unwrap();
-        assert_eq!(list.to_specified_css().unwrap(), output);
+        assert_eq!(
+            list.serialize_specified(Default::default()).unwrap(),
+            output
+        );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(2, 3, output.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(2, 3, output.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(3, 2, output.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(3, 2, output.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(3, 3, output.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(3, 3, output.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            let error = CssSelectorList::try_new_with_limits(members.clone(), limits).unwrap_err();
-            let CssSelectorConstructionErrorKind::Specified(cause) = error.kind() else {
+            let error = CssSelectorList::try_new(members.clone(), limits).unwrap_err();
+            let Some(cause) = error.serialization_error() else {
                 panic!("typed resource error");
             };
-            assert_eq!(cause.kind(), kind);
+            assert_eq!(serialization_failure(cause), kind);
             assert_eq!(
-                list.to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&list.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
-        assert_eq!(CssSelectorList::try_new(members).unwrap(), list);
-        assert_eq!(list.to_specified_css().unwrap(), output);
+        assert_eq!(
+            CssSelectorList::try_new(members, Default::default()).unwrap(),
+            list
+        );
+        assert_eq!(
+            list.serialize_specified(Default::default()).unwrap(),
+            output
+        );
     }
 }
 
@@ -608,7 +690,8 @@ fn named_identity_and_lists_charge_cumulative_nodes_bytes_and_atomic_retry() {
 fn checked_named_graphs_preserve_each_function_attachment_and_complex_relation() {
     for name in NAMES {
         let selector = parsed(&format!(":{name}"));
-        let list = CssPseudoSelectorList::try_new(vec![selector.clone()]).unwrap();
+        let list =
+            CssPseudoSelectorList::try_new(vec![selector.clone()], Default::default()).unwrap();
         let argument = CssCompoundSelectorArgument::try_new(selector.clone()).unwrap();
         for (pseudo, function) in [
             (CssPseudoClass::Not(list.clone()), "not"),
@@ -619,24 +702,30 @@ fn checked_named_graphs_preserve_each_function_attachment_and_complex_relation()
         ] {
             let graph = CssSelector::PseudoClass(pseudo);
             let expected = format!(":{function}(:{name})");
-            assert_eq!(graph.to_specified_css().unwrap(), expected);
+            assert_eq!(
+                graph.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(parsed(&expected), graph);
             assert_eq!(
-                CssSelectorList::try_new(vec![graph])
+                CssSelectorList::try_new(vec![graph], Default::default())
                     .unwrap()
-                    .to_specified_css()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 expected
             );
         }
-        let relative = CssRelativeSelectorList::try_new(vec![CssRelativeSelector::new(
-            CssSelectorCombinator::Child,
-            selector.clone(),
-        )])
+        let relative = CssRelativeSelectorList::try_new(
+            vec![CssRelativeSelector::new(
+                CssSelectorCombinator::Child,
+                selector.clone(),
+            )],
+            Default::default(),
+        )
         .unwrap();
         let graph = CssSelector::PseudoClass(CssPseudoClass::Has(relative));
         assert_eq!(
-            graph.to_specified_css().unwrap(),
+            graph.serialize_specified(Default::default()).unwrap(),
             format!(":has(> :{name})")
         );
         let graph = CssSelector::PseudoClass(CssPseudoClass::NthChild(CssNthChildPattern::new(
@@ -644,22 +733,35 @@ fn checked_named_graphs_preserve_each_function_attachment_and_complex_relation()
             Some(list),
         )));
         assert_eq!(
-            graph.to_specified_css().unwrap(),
+            graph.serialize_specified(Default::default()).unwrap(),
             format!(":nth-child(2n of :{name})")
         );
         let CssSelector::PseudoClass(pseudo) = selector else {
             unreachable!()
         };
-        let first = CssCompoundSelector::try_new(vec![CssSimpleSelector::Class(
-            CssIdent::try_new("Parent").unwrap(),
-        )])
+        let first = CssCompoundSelector::try_new(
+            vec![CssSimpleSelector::Class(
+                CssIdent::try_new("Parent").unwrap(),
+            )],
+            Default::default(),
+        )
         .unwrap();
-        let child =
-            CssCompoundSelector::try_new(vec![CssSimpleSelector::PseudoClass(pseudo)]).unwrap();
-        let part = CssComplexSelectorPart::try_new(CssSelectorCombinator::Child, child).unwrap();
-        let graph = CssSelector::Complex(CssComplexSelector::try_new(first, vec![part]).unwrap());
+        let child = CssCompoundSelector::try_new(
+            vec![CssSimpleSelector::PseudoClass(pseudo)],
+            Default::default(),
+        )
+        .unwrap();
+        let part = CssComplexSelectorPart::try_new(
+            CssSelectorCombinator::Child,
+            child,
+            Default::default(),
+        )
+        .unwrap();
+        let graph = CssSelector::Complex(
+            CssComplexSelector::try_new(first, vec![part], Default::default()).unwrap(),
+        );
         assert_eq!(
-            graph.to_specified_css().unwrap(),
+            graph.serialize_specified(Default::default()).unwrap(),
             format!(".Parent > :{name}")
         );
         assert_eq!(parsed(&format!(".Parent > :{name}")), graph);
@@ -670,13 +772,17 @@ fn checked_named_graphs_preserve_each_function_attachment_and_complex_relation()
 fn named_leaves_preserve_eof_recovery_and_the_function_depth_boundary() {
     for name in NAMES {
         let source = format!(":is(:{name}");
-        let report = parse_selector(&source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert_eq!(
             report
                 .syntax()
                 .as_ref()
                 .unwrap()
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap(),
             format!(":is(:{name})")
         );
@@ -700,7 +806,11 @@ fn named_leaves_preserve_eof_recovery_and_the_function_depth_boundary() {
         let source = format!("{}:{name}{}", ":is(".repeat(256), ")".repeat(256));
         exact(&source, &source);
         let source = format!("{}:{name}{}", ":is(".repeat(257), ")".repeat(257));
-        let report = parse_selector(&source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.syntax().is_none());
         let [diagnostic] = report.diagnostics() else {
             panic!("one nesting stop");

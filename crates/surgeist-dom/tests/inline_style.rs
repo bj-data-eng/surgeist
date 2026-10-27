@@ -1,6 +1,8 @@
 //! Same-object inline foundation and precise context-free publication barriers.
 use std::{cell::Cell, sync::atomic::AtomicBool};
-use surgeist_css::*;
+use surgeist_css::property::CssPropertyGrammar;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParserContext, CssParserMode};
 use surgeist_cssom::*;
 use surgeist_dom::*;
 

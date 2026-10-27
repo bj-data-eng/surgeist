@@ -1,14 +1,26 @@
 //! Selectors 4 pseudo-classes, pseudo-elements, combinators, attribute and
 //! `:nth-*()` selectors through the public stylesheet parser and constructors.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::declaration::CssCustomPropertyName;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::selector::{
+    CssAttributeCaseSensitivity, CssAttributeMatcher, CssAttributeName, CssNamespaceConstraint,
+    CssNamespaceContext, CssNthAnPlusB, CssNthChildPattern, CssNthPattern, CssPseudoClass,
+    CssPseudoElement, CssPseudoElementSequence, CssPseudoSelectorList, CssPseudoSelectorListItem,
+    CssQualifiedSelectorName, CssRelativeSelector, CssRelativeSelectorList, CssSelector,
+    CssSelectorCombinator, CssSelectorList,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
 
 #[test]
 fn parses_root_selector_for_custom_property_declarations() {
-    let sheet = parse_sheet(":root { --space: 8px; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(":root { --space: 8px; }")
+        .expect("clean parse report");
 
     assert_eq!(sheet.rules().len(), 1);
     assert_eq!(style_rule(&sheet.rules()[0]).declarations().len(), 1);
@@ -22,7 +34,9 @@ fn parses_root_selector_for_custom_property_declarations() {
 
 #[test]
 fn root_selector_carries_root_pseudo_class_structurally() {
-    let sheet = parse_sheet(":root { --space: 8px; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(":root { --space: 8px; }")
+        .expect("clean parse report");
 
     assert_eq!(
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
@@ -32,7 +46,9 @@ fn root_selector_carries_root_pseudo_class_structurally() {
 
 #[test]
 fn compound_root_selector_carries_root_pseudo_class_structurally() {
-    let sheet = parse_sheet("html:root { --space: 8px; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet("html:root { --space: 8px; }")
+        .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
     else {
@@ -76,7 +92,9 @@ fn parses_tier_1_state_pseudo_classes_as_authored_selectors() {
     ];
 
     for (css, expected) in cases {
-        let sheet = parse_sheet(css).expect("clean parse report");
+        let sheet = CssParser::default()
+            .parse_sheet(css)
+            .expect("clean parse report");
         assert_eq!(
             style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
             &CssSelector::PseudoClass(expected)
@@ -86,7 +104,9 @@ fn parses_tier_1_state_pseudo_classes_as_authored_selectors() {
 
 #[test]
 fn parses_compound_tier_1_state_pseudo_classes() {
-    let sheet = parse_sheet(".button:hover { color: black; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(".button:hover { color: black; }")
+        .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
     else {
@@ -130,7 +150,9 @@ fn parses_tier_2_structural_simple_pseudo_classes() {
     ];
 
     for (css, expected) in cases {
-        let sheet = parse_sheet(css).expect("clean parse report");
+        let sheet = CssParser::default()
+            .parse_sheet(css)
+            .expect("clean parse report");
         assert_eq!(
             style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
             &CssSelector::PseudoClass(expected)
@@ -140,7 +162,9 @@ fn parses_tier_2_structural_simple_pseudo_classes() {
 
 #[test]
 fn parses_compound_structural_simple_pseudo_classes() {
-    let sheet = parse_sheet("button:first-child { color: black; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet("button:first-child { color: black; }")
+        .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
     else {
@@ -178,7 +202,9 @@ fn parses_requested_double_colon_pseudo_elements() {
     ];
 
     for (css, expected) in cases {
-        let sheet = parse_sheet(css).unwrap_or_else(|error| panic!("{css}: {error:?}"));
+        let sheet = CssParser::default()
+            .parse_sheet(css)
+            .unwrap_or_else(|error| panic!("{css}: {error:?}"));
         let CssSelector::Compound(selector) =
             style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
         else {
@@ -190,14 +216,15 @@ fn parses_requested_double_colon_pseudo_elements() {
 
 #[test]
 fn parses_compound_and_complex_terminal_pseudo_element_selectors() {
-    let sheet = parse_sheet(
-        r#"
+    let sheet = CssParser::default()
+        .parse_sheet(
+            r#"
             .button.primary:hover::before { color: black; }
             li[data-kind="task"]::marker { color: red; }
             .card > dialog::backdrop { color: blue; }
         "#,
-    )
-    .expect("clean parse report");
+        )
+        .expect("clean parse report");
 
     let CssSelector::Compound(button) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
@@ -252,7 +279,9 @@ fn parses_supported_generated_marker_pseudo_element_chains() {
         ".item::before::marker { color: black; }",
         ".item::after::marker { color: black; }",
     ] {
-        let sheet = parse_sheet(css).unwrap_or_else(|error| panic!("{css}: {error:?}"));
+        let sheet = CssParser::default()
+            .parse_sheet(css)
+            .unwrap_or_else(|error| panic!("{css}: {error:?}"));
         let CssSelector::Compound(selector) =
             style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
         else {
@@ -323,7 +352,7 @@ fn part_and_user_action_pseudo_element_suffixes_are_retained() {
         "::part(foo) { color: black; }",
         ".button::before:hover { color: black; }",
     ] {
-        let report = parse_sheet(css);
+        let report = CssParser::default().parse_sheet(css);
         assert!(report.is_clean(), "{css}: {report:?}");
         assert_eq!(report.syntax().rules().len(), 1);
     }
@@ -331,8 +360,12 @@ fn part_and_user_action_pseudo_element_suffixes_are_retained() {
 
 #[test]
 fn selector_list_constructor_rejects_empty_lists() {
-    assert!(CssSelectorList::try_new(Vec::new()).is_err());
-    let list = CssSelectorList::try_new(vec![CssSelector::Class("button".to_owned())]).unwrap();
+    assert!(CssSelectorList::try_new(Vec::new(), Default::default()).is_err());
+    let list = CssSelectorList::try_new(
+        vec![CssSelector::Class("button".to_owned())],
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(list.selectors(), &[CssSelector::Class("button".to_owned())]);
 }
 
@@ -364,7 +397,7 @@ fn pseudo_element_sequence_constructor_guards_supported_terminal_shapes() {
 
 #[test]
 fn relative_selector_list_constructor_requires_selectors() {
-    assert!(CssRelativeSelectorList::try_new(Vec::new()).is_err());
+    assert!(CssRelativeSelectorList::try_new(Vec::new(), Default::default()).is_err());
 }
 
 #[test]
@@ -380,8 +413,11 @@ fn relative_selector_preserves_combinator_and_selector() {
 
 #[test]
 fn nth_child_pattern_preserves_optional_selector_list() {
-    let list =
-        CssPseudoSelectorList::try_new(vec![CssSelector::Class("important".to_owned())]).unwrap();
+    let list = CssPseudoSelectorList::try_new(
+        vec![CssSelector::Class("important".to_owned())],
+        Default::default(),
+    )
+    .unwrap();
     let pattern =
         CssNthChildPattern::new(CssNthPattern::AnPlusB(CssNthAnPlusB::new(2, 1)), Some(list));
 
@@ -451,7 +487,9 @@ fn parses_nth_child_patterns() {
     ];
 
     for (css, expected) in cases {
-        let sheet = parse_sheet(css).unwrap_or_else(|error| panic!("{css}: {error:?}"));
+        let sheet = CssParser::default()
+            .parse_sheet(css)
+            .unwrap_or_else(|error| panic!("{css}: {error:?}"));
         let CssSelector::PseudoClass(CssPseudoClass::NthChild(pattern)) =
             style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
         else {
@@ -490,7 +528,9 @@ fn parses_all_nth_structural_pseudo_classes() {
     ];
 
     for (css, expected) in cases {
-        let sheet = parse_sheet(css).expect("clean parse report");
+        let sheet = CssParser::default()
+            .parse_sheet(css)
+            .expect("clean parse report");
         assert_eq!(
             style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
             &CssSelector::PseudoClass(expected)
@@ -506,7 +546,8 @@ fn parses_all_nth_structural_pseudo_classes() {
 
 #[test]
 fn nth_child_accepts_strict_of_selector_lists() {
-    let sheet = parse_sheet("li:nth-child(2n+1 of li.important, .row[hidden]) { color: black; }")
+    let sheet = CssParser::default()
+        .parse_sheet("li:nth-child(2n+1 of li.important, .row[hidden]) { color: black; }")
         .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
@@ -530,7 +571,8 @@ fn nth_child_accepts_strict_of_selector_lists() {
         CssPseudoSelectorListItem::Selector(CssSelector::Compound(_))
     ));
 
-    let sheet = parse_sheet(".item:nth-last-child(even of .selected ~ .tail) { color: black; }")
+    let sheet = CssParser::default()
+        .parse_sheet(".item:nth-last-child(even of .selected ~ .tail) { color: black; }")
         .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
@@ -613,7 +655,9 @@ fn rejects_trailing_tokens_in_nth_functions() {
 
 #[test]
 fn nth_pseudo_class_arguments_are_publicly_inspectable() {
-    let sheet = parse_sheet(":nth-child(2n+1) { color: black; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(":nth-child(2n+1) { color: black; }")
+        .expect("clean parse report");
     let CssSelector::PseudoClass(CssPseudoClass::NthChild(pattern)) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
     else {
@@ -629,7 +673,8 @@ fn nth_pseudo_class_arguments_are_publicly_inspectable() {
 
 #[test]
 fn parses_selector_list_functional_pseudo_classes() {
-    let sheet = parse_sheet(".button:not(.disabled, .loading) { color: black; }")
+    let sheet = CssParser::default()
+        .parse_sheet(".button:not(.disabled, .loading) { color: black; }")
         .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
@@ -647,20 +692,25 @@ fn parses_selector_list_functional_pseudo_classes() {
         ]
     );
 
-    let sheet =
-        parse_sheet(":is(.primary, .secondary) { color: black; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(":is(.primary, .secondary) { color: black; }")
+        .expect("clean parse report");
     assert!(matches!(
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
         CssSelector::PseudoClass(CssPseudoClass::Is(_))
     ));
 
-    let sheet = parse_sheet(":where(button, .link) { color: black; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(":where(button, .link) { color: black; }")
+        .expect("clean parse report");
     assert!(matches!(
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
         CssSelector::PseudoClass(CssPseudoClass::Where(_))
     ));
 
-    let sheet = parse_sheet(".field:has(.error) { color: black; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(".field:has(.error) { color: black; }")
+        .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
     else {
@@ -674,8 +724,9 @@ fn parses_selector_list_functional_pseudo_classes() {
 
 #[test]
 fn parses_compound_selector_list_functional_pseudo_classes() {
-    let sheet =
-        parse_sheet(".field:not(:disabled, :focus) { color: black; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(".field:not(:disabled, :focus) { color: black; }")
+        .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
     else {
@@ -695,9 +746,7 @@ fn parses_compound_selector_list_functional_pseudo_classes() {
 
 #[test]
 fn functional_selector_lists_accept_supported_complex_selectors() {
-    let sheet = parse_sheet(
-        ".scope:is(.card > .title, button.primary:hover, [data-state=\"open\"].active) { color: black; }",
-    )
+    let sheet = CssParser::default().parse_sheet(".scope:is(.card > .title, button.primary:hover, [data-state=\"open\"].active) { color: black; }")
     .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
@@ -721,7 +770,8 @@ fn functional_selector_lists_accept_supported_complex_selectors() {
         CssPseudoSelectorListItem::Selector(CssSelector::Compound(_))
     ));
 
-    let sheet = parse_sheet(":not(.field .icon, button.primary:hover) { color: black; }")
+    let sheet = CssParser::default()
+        .parse_sheet(":not(.field .icon, button.primary:hover) { color: black; }")
         .expect("clean parse report");
     let CssSelector::PseudoClass(CssPseudoClass::Not(list)) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
@@ -738,7 +788,8 @@ fn functional_selector_lists_accept_supported_complex_selectors() {
         CssPseudoSelectorListItem::Selector(CssSelector::Compound(_))
     ));
 
-    let sheet = parse_sheet(":where(.toolbar + .panel, .stack ~ .item) { color: black; }")
+    let sheet = CssParser::default()
+        .parse_sheet(":where(.toolbar + .panel, .stack ~ .item) { color: black; }")
         .expect("clean parse report");
     let CssSelector::PseudoClass(CssPseudoClass::Where(list)) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
@@ -768,7 +819,11 @@ fn functional_selector_lists_reject_invalid_entries_strictly() {
     );
     // Selectors 4 "parse a list" splits with Syntax 3 (2026 CRD) §5.4.10, so a
     // final comma followed by no token adds no failing member; whitespace does.
-    assert!(parse_sheet(":is(.valid,) { color: black; }").is_clean());
+    assert!(
+        CssParser::default()
+            .parse_sheet(":is(.valid,) { color: black; }")
+            .is_clean()
+    );
     assert_rejection(
         ":is(.valid, ) { color: black; }",
         Rejection::selector(Some(")")),
@@ -810,7 +865,9 @@ fn selector_argument_surface_accepts_full_supported_strict_forms() {
         "li:nth-child(2n+1 of li.important, .row[hidden]) { color: black; }",
         "li:nth-last-child(even of .item.selected) { color: black; }",
     ] {
-        parse_sheet(css).unwrap_or_else(|error| panic!("{css} should parse: {error:?}"));
+        CssParser::default()
+            .parse_sheet(css)
+            .unwrap_or_else(|error| panic!("{css} should parse: {error:?}"));
     }
 }
 
@@ -872,8 +929,9 @@ fn selector_argument_surface_rejects_invalid_entries_without_recovery() {
 
 #[test]
 fn has_accepts_strict_relative_selector_lists() {
-    let sheet =
-        parse_sheet(".card:has(.field > .icon) { color: black; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(".card:has(.field > .icon) { color: black; }")
+        .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
     else {
@@ -892,7 +950,8 @@ fn has_accepts_strict_relative_selector_lists() {
         CssSelector::Complex(_)
     ));
 
-    let sheet = parse_sheet(".card:has(> .icon, + .error, ~ .warning) { color: black; }")
+    let sheet = CssParser::default()
+        .parse_sheet(".card:has(> .icon, + .error, ~ .warning) { color: black; }")
         .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
@@ -955,8 +1014,9 @@ fn has_rejects_invalid_relative_selector_entries_strictly() {
 
 #[test]
 fn functional_pseudo_class_arguments_are_publicly_inspectable() {
-    let sheet =
-        parse_sheet(".button:not(.disabled) { color: black; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(".button:not(.disabled) { color: black; }")
+        .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
     else {
@@ -1005,7 +1065,9 @@ fn parses_tier_4_runtime_state_pseudo_classes() {
     ];
 
     for (css, expected) in cases {
-        let sheet = parse_sheet(css).expect("clean parse report");
+        let sheet = CssParser::default()
+            .parse_sheet(css)
+            .expect("clean parse report");
         assert_eq!(
             style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
             &CssSelector::PseudoClass(expected)
@@ -1015,8 +1077,9 @@ fn parses_tier_4_runtime_state_pseudo_classes() {
 
 #[test]
 fn parses_compound_runtime_state_pseudo_classes() {
-    let sheet =
-        parse_sheet(".dialog:modal:fullscreen { color: black; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(".dialog:modal:fullscreen { color: black; }")
+        .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
     else {
@@ -1074,7 +1137,9 @@ fn parses_combinator_selectors() {
         "h2 ~ p { color: black; }",
         ".card[data-state=open] > .title:hover { color: black; }",
     ] {
-        let sheet = parse_sheet(css).unwrap_or_else(|error| panic!("{css}: {error:?}"));
+        let sheet = CssParser::default()
+            .parse_sheet(css)
+            .unwrap_or_else(|error| panic!("{css}: {error:?}"));
         assert!(matches!(
             style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector(),
             CssSelector::Complex(_)
@@ -1084,7 +1149,9 @@ fn parses_combinator_selectors() {
 
 #[test]
 fn combinator_selectors_are_structurally_inspectable() {
-    let sheet = parse_sheet(".toolbar > button { color: black; }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(".toolbar > button { color: black; }")
+        .expect("clean parse report");
     let rule = style_rule(&sheet.rules()[0]);
     let CssSelector::Complex(selector) = rule.selectors().selectors()[0].selector() else {
         panic!("expected complex selector");
@@ -1152,7 +1219,9 @@ fn parses_attribute_selector_matcher_forms() {
     ];
 
     for (css, expected) in cases {
-        let sheet = parse_sheet(css).expect("clean parse report");
+        let sheet = CssParser::default()
+            .parse_sheet(css)
+            .expect("clean parse report");
         let CssSelector::Compound(selector) =
             style_rule(&sheet.rules()[0]).selectors().selectors()[0].selector()
         else {
@@ -1171,8 +1240,9 @@ fn parses_attribute_selector_matcher_forms() {
 
 #[test]
 fn attribute_selectors_are_structurally_inspectable() {
-    let sheet =
-        parse_sheet(r#"[data-state="open" i] { color: black; }"#).expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(r#"[data-state="open" i] { color: black; }"#)
+        .expect("clean parse report");
     let rule = style_rule(&sheet.rules()[0]);
     let CssSelector::Compound(selector) = rule.selectors().selectors()[0].selector() else {
         panic!("expected compound selector");
@@ -1193,8 +1263,9 @@ fn attribute_selectors_are_structurally_inspectable() {
 
 #[test]
 fn parses_attribute_selector_case_modifiers_and_compound_position() {
-    let insensitive =
-        parse_sheet(r#"[data-state="OPEN" i] { color: black; }"#).expect("clean parse report");
+    let insensitive = CssParser::default()
+        .parse_sheet(r#"[data-state="OPEN" i] { color: black; }"#)
+        .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&insensitive.rules()[0]).selectors().selectors()[0].selector()
     else {
@@ -1205,8 +1276,9 @@ fn parses_attribute_selector_case_modifiers_and_compound_position() {
         CssAttributeCaseSensitivity::AsciiCaseInsensitive
     );
 
-    let sensitive =
-        parse_sheet(r#"[data-state="open" s] { color: black; }"#).expect("clean parse report");
+    let sensitive = CssParser::default()
+        .parse_sheet(r#"[data-state="open" s] { color: black; }"#)
+        .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&sensitive.rules()[0]).selectors().selectors()[0].selector()
     else {
@@ -1217,7 +1289,8 @@ fn parses_attribute_selector_case_modifiers_and_compound_position() {
         CssAttributeCaseSensitivity::ExplicitSensitive
     );
 
-    let mixed = parse_sheet("button.primary[aria-expanded=true]:hover { color: black; }")
+    let mixed = CssParser::default()
+        .parse_sheet("button.primary[aria-expanded=true]:hover { color: black; }")
         .expect("clean parse report");
     let CssSelector::Compound(selector) =
         style_rule(&mixed.rules()[0]).selectors().selectors()[0].selector()
@@ -1279,7 +1352,7 @@ fn attribute_name_constructor_matches_parser_identifier_invariants() {
         ("data-state;", r"data-state\;"),
     ] {
         // These are decoded IDENT values, not unescaped selector spelling.
-        let components = parse_component_values(spelling).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), spelling).unwrap();
         let [identifier] = components.items() else {
             panic!("one independently supplied identifier spelling: {spelling}");
         };
@@ -1293,7 +1366,11 @@ fn attribute_name_constructor_matches_parser_identifier_invariants() {
         );
 
         let source = format!("[{spelling}]");
-        let parsed = parse_selector(&source, &CssNamespaceContext::default());
+        let parsed = CssSelector::parse(
+            &CssParser::default(),
+            &source,
+            &CssNamespaceContext::default(),
+        );
         assert!(parsed.is_clean(), "{source}: {parsed:?}");
         let Some(CssSelector::Compound(compound)) = parsed.syntax() else {
             panic!("one attribute selector: {source}");
@@ -1304,7 +1381,11 @@ fn attribute_name_constructor_matches_parser_identifier_invariants() {
         assert_eq!(attribute.name().as_str(), decoded);
         assert_eq!(attribute.namespace(), &CssNamespaceConstraint::ExplicitNone);
 
-        let unescaped = parse_selector(&format!("[{decoded}]"), &CssNamespaceContext::default());
+        let unescaped = CssSelector::parse(
+            &CssParser::default(),
+            format!("[{decoded}]"),
+            &CssNamespaceContext::default(),
+        );
         assert!(!unescaped.is_clean());
         assert!(unescaped.syntax().is_none());
     }
@@ -1335,7 +1416,10 @@ fn practical_pseudo_class_matrix_accepts_supported_and_rejects_unsupported_forms
     ];
 
     for css in accepted {
-        assert!(parse_sheet(css).is_clean(), "{css} should parse");
+        assert!(
+            CssParser::default().parse_sheet(css).is_clean(),
+            "{css} should parse"
+        );
     }
 
     let rejected = [
@@ -1377,14 +1461,18 @@ fn practical_pseudo_class_matrix_accepts_supported_and_rejects_unsupported_forms
 
 #[test]
 fn selector_parse_failure_has_typed_error_kind() {
-    let error = parse_sheet("??? { width: 10px; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet("??? { width: 10px; }")
+        .expect_err("rejected parse report");
 
-    assert!(matches!(error.kind(), ErrorKind::InvalidSelector(_)));
+    assert!(error.code() == CssErrorCode::InvalidSelector);
 }
 
 #[test]
 fn selector_missing_class_name_has_typed_error_kind() {
-    let error = parse_sheet(". { width: 10px; }").expect_err("rejected parse report");
+    let error = CssParser::default()
+        .parse_sheet(". { width: 10px; }")
+        .expect_err("rejected parse report");
 
-    assert!(matches!(error.kind(), ErrorKind::InvalidSelector(_)));
+    assert!(error.code() == CssErrorCode::InvalidSelector);
 }

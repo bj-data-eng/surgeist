@@ -1,9 +1,13 @@
-use surgeist_css::{
-    CssErrorCode, CssFeatureKind, CssRecoveryAction, CssRule, CssSupportStatus, ErrorKind,
-    feature_metadata, parse_sheet, parse_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
 
-fn assert_span(source: &str, diagnostic: &surgeist_css::CssRecoveryDiagnostic, authored: &str) {
+fn assert_span(
+    source: &str,
+    diagnostic: &surgeist_css::diagnostic::CssRecoveryDiagnostic,
+    authored: &str,
+) {
     let start = source
         .find(authored)
         .unwrap_or_else(|| panic!("missing authored recovery unit `{authored}`"));
@@ -20,7 +24,7 @@ fn generic_rule_and_declaration_shells_retain_nested_structure_and_positions() {
         "@media screen { .inside { color: red; } } ",
         ".😀 { --tone: blue; width: 2px !important; }",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Media(media), CssRule::Style(non_bmp)] = report.syntax().rules() else {
         panic!("expected an at-rule and qualified-rule stylesheet");
@@ -96,19 +100,19 @@ fn generic_rule_and_declaration_shells_retain_nested_structure_and_positions() {
             "official.value.rule-list",
             CssFeatureKind::Value,
             "<rule-list>",
-            "#declaration-rule-list",
+            "#typedef-rule-list",
         ),
         (
             "official.value.declaration-list",
             CssFeatureKind::Value,
             "<declaration-list>",
-            "#declaration-rule-list",
+            "#typedef-declaration-list",
         ),
         (
             "official.value.style-block",
             CssFeatureKind::Value,
             "<style-block>",
-            "#declaration-rule-list",
+            "#typedef-block-contents",
         ),
     ] {
         let metadata = feature_metadata(id).unwrap_or_else(|| panic!("missing metadata for {id}"));
@@ -131,7 +135,7 @@ fn generic_consumers_drop_unknown_rules_and_retain_supported_font_rules() {
         "@font-feature-values Demo { @styleset { nice: 1; } } ",
         ".after { width: 2px; }",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(matches!(
         report.syntax().rules(),
         [
@@ -147,10 +151,13 @@ fn generic_consumers_drop_unknown_rules_and_retain_supported_font_rules() {
     assert_eq!(unknown.error().code(), CssErrorCode::UnknownAtRule);
     assert_eq!(unknown.action(), CssRecoveryAction::DropAtRule);
     assert_span(source, unknown, "@mystery fn({x; y});");
-    let ErrorKind::UnknownAtRule(detail) = unknown.error().kind() else {
-        panic!("expected unknown at-rule detail");
-    };
-    assert_eq!(detail.name().as_str(), "mystery");
+    let detail = unknown.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnknownAtRule,
+        "expected unknown at-rule detail"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "mystery");
 }
 
 #[test]
@@ -161,7 +168,7 @@ fn authored_lists_recover_repeated_failures_and_retain_valid_siblings() {
         "??? { height: 3px; } ",
         ".after { color: blue; }",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Style(before), CssRule::Style(after)] = report.syntax().rules() else {
         panic!("expected both valid qualified-rule siblings");
     };
@@ -185,7 +192,7 @@ fn authored_lists_recover_repeated_failures_and_retain_valid_siblings() {
     assert_span(source, qualified_rule, "??? { height: 3px; }");
 
     let style_source = "color: red; broken; width: 2px";
-    let style = parse_style_attribute(style_source);
+    let style = CssParser::default().parse_block_contents(style_source);
     assert_eq!(style.syntax().len(), 2);
     let [diagnostic] = style.diagnostics() else {
         panic!("expected one generic declaration recovery");
@@ -198,7 +205,7 @@ fn authored_lists_recover_repeated_failures_and_retain_valid_siblings() {
 #[test]
 fn generic_shell_eof_closure_preserves_non_bmp_coordinates() {
     let source = ".😀 { color: red;";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("expected implicitly closed style rule");
     };
@@ -230,8 +237,10 @@ fn generic_shell_strict_entry_points_match_ordinary_reports() {
         ".before { color: red; } @unknown x; ??? { width: 1px; } .after { color: blue; }",
         ".😀 { color: red;",
     ] {
-        let ordinary = parse_sheet(source);
-        let strict = surgeist_css::validate_sheet(source);
+        let ordinary = CssParser::default().parse_sheet(source);
+        let strict = surgeist_css::CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result();
         if ordinary.is_clean() {
             assert_eq!(strict, Ok(ordinary.syntax().clone()), "{source}");
         } else {
@@ -241,8 +250,10 @@ fn generic_shell_strict_entry_points_match_ordinary_reports() {
     }
 
     for source in ["color: red; width: 2px", "color: red; broken; width: 2px"] {
-        let ordinary = parse_style_attribute(source);
-        let strict = surgeist_css::validate_style_attribute(source);
+        let ordinary = CssParser::default().parse_block_contents(source);
+        let strict = surgeist_css::CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result();
         if ordinary.is_clean() {
             assert_eq!(strict, Ok(ordinary.syntax().clone()), "{source}");
         } else {

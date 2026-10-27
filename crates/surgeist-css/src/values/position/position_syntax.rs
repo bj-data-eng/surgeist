@@ -1,0 +1,596 @@
+//! Checked authored coordinate families and consumer-specific position restrictions.
+use crate::numeric::{CssLengthPercentage, CssNumeric};
+use std::{error::Error, fmt};
+/// An intrinsic failure to construct a checked authored position.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CssPositionConstructionError {
+    kind: PositionConstructionKind,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PositionConstructionKind {
+    /// An edge-relative offset needs a matching offset on the other axis.
+    UnpairedEdgeOffsets,
+    /// A physical-only consumer cannot accept an axis-relative keyword.
+    NonPhysicalKeyword,
+}
+impl From<PositionConstructionKind> for CssPositionConstructionError {
+    fn from(kind: PositionConstructionKind) -> Self {
+        Self { kind }
+    }
+}
+impl CssPositionConstructionError {
+    crate::diagnostic::error::kind_predicates! { kind;
+        /// Returns whether an edge-relative offset needs a matching offset on the other axis.
+        is_unpaired_edge_offsets => PositionConstructionKind::UnpairedEdgeOffsets,
+        /// Returns whether a physical-only consumer cannot accept an axis-relative keyword.
+        is_non_physical_keyword => PositionConstructionKind::NonPhysicalKeyword,
+    }
+}
+impl fmt::Display for CssPositionConstructionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match &self.kind {
+            PositionConstructionKind::UnpairedEdgeOffsets => "position edge offsets must be paired",
+            PositionConstructionKind::NonPhysicalKeyword => {
+                "physical position cannot contain axis-relative keywords"
+            }
+        })
+    }
+}
+impl Error for CssPositionConstructionError {}
+
+/// A keyword on the authored horizontal Cartesian axis.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssHorizontalPositionKeyword {
+    /// `left`: the left edge.
+    Left,
+    /// `center`: the horizontal center, a 50% offset.
+    Center,
+    /// `right`: the right edge.
+    Right,
+    /// `x-start`: the start edge of the horizontal axis in the element's writing mode.
+    XStart,
+    /// `x-end`: the end edge of the horizontal axis in the element's writing mode.
+    XEnd,
+}
+
+/// The exact authored horizontal Cartesian axis, retaining scalar origins.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum CssHorizontalPosition {
+    /// `left`: the left edge.
+    Left,
+    /// `center`: the horizontal center, a 50% offset.
+    Center,
+    /// `right`: the right edge.
+    Right,
+    /// `x-start`: the start edge of the horizontal axis in the element's writing mode.
+    XStart,
+    /// `x-end`: the end edge of the horizontal axis in the element's writing mode.
+    XEnd,
+    /// A free length-percentage from the axis start, without an edge keyword.
+    Offset(CssNumeric<CssLengthPercentage>),
+    /// `left <length-percentage>`: an offset from the left edge.
+    LeftOffset(CssNumeric<CssLengthPercentage>),
+    /// `right <length-percentage>`: an offset from the right edge.
+    RightOffset(CssNumeric<CssLengthPercentage>),
+    /// `x-start <length-percentage>`: an offset from the x-axis start edge.
+    XStartOffset(CssNumeric<CssLengthPercentage>),
+    /// `x-end <length-percentage>`: an offset from the x-axis end edge.
+    XEndOffset(CssNumeric<CssLengthPercentage>),
+}
+
+impl PartialEq for CssHorizontalPosition {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Offset(left), Self::Offset(right))
+            | (Self::LeftOffset(left), Self::LeftOffset(right))
+            | (Self::RightOffset(left), Self::RightOffset(right))
+            | (Self::XStartOffset(left), Self::XStartOffset(right))
+            | (Self::XEndOffset(left), Self::XEndOffset(right)) => left == right,
+            (Self::Left, Self::Left)
+            | (Self::Center, Self::Center)
+            | (Self::Right, Self::Right)
+            | (Self::XStart, Self::XStart)
+            | (Self::XEnd, Self::XEnd) => true,
+            _ => false,
+        }
+    }
+}
+impl CssHorizontalPosition {
+    pub(crate) fn is_edge_offset(&self) -> bool {
+        matches!(
+            self,
+            Self::LeftOffset(_)
+                | Self::RightOffset(_)
+                | Self::XStartOffset(_)
+                | Self::XEndOffset(_)
+        )
+    }
+    fn is_physical(&self) -> bool {
+        !matches!(
+            self,
+            Self::XStart | Self::XEnd | Self::XStartOffset(_) | Self::XEndOffset(_)
+        )
+    }
+}
+
+/// A keyword on the authored vertical Cartesian axis.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum CssVerticalPositionKeyword {
+    /// `top`: the top edge.
+    Top,
+    /// `center`: the vertical center, a 50% offset.
+    Center,
+    /// `bottom`: the bottom edge.
+    Bottom,
+    /// `y-start`: the start edge of the vertical axis in the element's writing mode.
+    YStart,
+    /// `y-end`: the end edge of the vertical axis in the element's writing mode.
+    YEnd,
+}
+
+/// The exact authored vertical Cartesian axis, retaining scalar origins.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum CssVerticalPosition {
+    /// `top`: the top edge.
+    Top,
+    /// `center`: the vertical center, a 50% offset.
+    Center,
+    /// `bottom`: the bottom edge.
+    Bottom,
+    /// `y-start`: the start edge of the vertical axis in the element's writing mode.
+    YStart,
+    /// `y-end`: the end edge of the vertical axis in the element's writing mode.
+    YEnd,
+    /// A free length-percentage from the axis start, without an edge keyword.
+    Offset(CssNumeric<CssLengthPercentage>),
+    /// `top <length-percentage>`: an offset from the top edge.
+    TopOffset(CssNumeric<CssLengthPercentage>),
+    /// `bottom <length-percentage>`: an offset from the bottom edge.
+    BottomOffset(CssNumeric<CssLengthPercentage>),
+    /// `y-start <length-percentage>`: an offset from the y-axis start edge.
+    YStartOffset(CssNumeric<CssLengthPercentage>),
+    /// `y-end <length-percentage>`: an offset from the y-axis end edge.
+    YEndOffset(CssNumeric<CssLengthPercentage>),
+}
+
+impl PartialEq for CssVerticalPosition {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Offset(left), Self::Offset(right))
+            | (Self::TopOffset(left), Self::TopOffset(right))
+            | (Self::BottomOffset(left), Self::BottomOffset(right))
+            | (Self::YStartOffset(left), Self::YStartOffset(right))
+            | (Self::YEndOffset(left), Self::YEndOffset(right)) => left == right,
+            (Self::Top, Self::Top)
+            | (Self::Center, Self::Center)
+            | (Self::Bottom, Self::Bottom)
+            | (Self::YStart, Self::YStart)
+            | (Self::YEnd, Self::YEnd) => true,
+            _ => false,
+        }
+    }
+}
+impl CssVerticalPosition {
+    pub(crate) fn is_edge_offset(&self) -> bool {
+        matches!(
+            self,
+            Self::TopOffset(_)
+                | Self::BottomOffset(_)
+                | Self::YStartOffset(_)
+                | Self::YEndOffset(_)
+        )
+    }
+    fn is_physical(&self) -> bool {
+        !matches!(
+            self,
+            Self::YStart | Self::YEnd | Self::YStartOffset(_) | Self::YEndOffset(_)
+        )
+    }
+}
+
+// Shared storage has no independent public construction or serialization cost.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PositionAxes {
+    pub(crate) horizontal: CssHorizontalPosition,
+    pub(crate) vertical: CssVerticalPosition,
+}
+impl PositionAxes {
+    pub(crate) fn is_physical(&self) -> bool {
+        self.horizontal.is_physical() && self.vertical.is_physical()
+    }
+}
+fn paired_offsets(block: bool, inline: bool) -> Result<(), CssPositionConstructionError> {
+    if block == inline {
+        Ok(())
+    } else {
+        Err(CssPositionConstructionError::from(
+            PositionConstructionKind::UnpairedEdgeOffsets,
+        ))
+    }
+}
+
+/// A checked Cartesian position with physical or x/y-relative axes.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssCartesianPosition {
+    axes: PositionAxes,
+}
+impl CssCartesianPosition {
+    /// Checks the generic one/two/four-component arity: edge offsets must be paired.
+    pub fn try_new(
+        horizontal: CssHorizontalPosition,
+        vertical: CssVerticalPosition,
+    ) -> Result<Self, CssPositionConstructionError> {
+        paired_offsets(horizontal.is_edge_offset(), vertical.is_edge_offset())?;
+        Ok(Self {
+            axes: PositionAxes {
+                horizontal,
+                vertical,
+            },
+        })
+    }
+    /// Returns the symbolic horizontal axis and its authored offset origin.
+    #[must_use]
+    pub const fn horizontal(&self) -> &CssHorizontalPosition {
+        &self.axes.horizontal
+    }
+    /// Returns the symbolic vertical axis and its authored offset origin.
+    #[must_use]
+    pub const fn vertical(&self) -> &CssVerticalPosition {
+        &self.axes.vertical
+    }
+}
+
+/// A checked physical-only generic position for older selected consumer grammars.
+///
+/// # Specified serialization
+///
+/// Serializes the checked physical position in horizontal-then-vertical order. Percentages and
+/// calculations retain their symbolic specified meaning.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssPhysicalPosition {
+    cartesian: CssCartesianPosition,
+}
+impl CssPhysicalPosition {
+    /// Checks generic arity and rejects every x/y-relative keyword or edge offset.
+    pub fn try_new(
+        horizontal: CssHorizontalPosition,
+        vertical: CssVerticalPosition,
+    ) -> Result<Self, CssPositionConstructionError> {
+        Self::try_from_cartesian(CssCartesianPosition::try_new(horizontal, vertical)?)
+    }
+    pub(crate) fn try_from_cartesian(
+        cartesian: CssCartesianPosition,
+    ) -> Result<Self, CssPositionConstructionError> {
+        if !cartesian.axes.is_physical() {
+            return Err(CssPositionConstructionError::from(
+                PositionConstructionKind::NonPhysicalKeyword,
+            ));
+        }
+        Ok(Self { cartesian })
+    }
+    /// Returns the authored physical horizontal axis.
+    #[must_use]
+    pub const fn horizontal(&self) -> &CssHorizontalPosition {
+        self.cartesian.horizontal()
+    }
+    /// Returns the authored physical vertical axis.
+    #[must_use]
+    pub const fn vertical(&self) -> &CssVerticalPosition {
+        self.cartesian.vertical()
+    }
+}
+
+/// One authored named block component; center cannot be an offset origin.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum CssBlockPosition {
+    /// `center`: the center of the block axis, a 50% offset.
+    Center,
+    /// `block-start`: the block-start edge.
+    Start,
+    /// `block-end`: the block-end edge.
+    End,
+    /// `block-start <length-percentage>`: an offset from the block-start edge.
+    StartOffset(CssNumeric<CssLengthPercentage>),
+    /// `block-end <length-percentage>`: an offset from the block-end edge.
+    EndOffset(CssNumeric<CssLengthPercentage>),
+}
+impl PartialEq for CssBlockPosition {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::StartOffset(left), Self::StartOffset(right))
+            | (Self::EndOffset(left), Self::EndOffset(right)) => left == right,
+            (Self::Center, Self::Center) | (Self::Start, Self::Start) | (Self::End, Self::End) => {
+                true
+            }
+            _ => false,
+        }
+    }
+}
+impl CssBlockPosition {
+    fn is_edge_offset(&self) -> bool {
+        matches!(self, Self::StartOffset(_) | Self::EndOffset(_))
+    }
+}
+
+/// One authored named inline component; center cannot be an offset origin.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum CssInlinePosition {
+    /// `center`: the center of the inline axis, a 50% offset.
+    Center,
+    /// `inline-start`: the inline-start edge.
+    Start,
+    /// `inline-end`: the inline-end edge.
+    End,
+    /// `inline-start <length-percentage>`: an offset from the inline-start edge.
+    StartOffset(CssNumeric<CssLengthPercentage>),
+    /// `inline-end <length-percentage>`: an offset from the inline-end edge.
+    EndOffset(CssNumeric<CssLengthPercentage>),
+}
+impl PartialEq for CssInlinePosition {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::StartOffset(left), Self::StartOffset(right))
+            | (Self::EndOffset(left), Self::EndOffset(right)) => left == right,
+            (Self::Center, Self::Center) | (Self::Start, Self::Start) | (Self::End, Self::End) => {
+                true
+            }
+            _ => false,
+        }
+    }
+}
+impl CssInlinePosition {
+    fn is_edge_offset(&self) -> bool {
+        matches!(self, Self::StartOffset(_) | Self::EndOffset(_))
+    }
+}
+
+/// One authored relative flow component; center cannot be an offset origin.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum CssRelativeAxisPosition {
+    /// `center`: the center of the axis, a 50% offset.
+    Center,
+    /// `start`: the start edge of the axis.
+    Start,
+    /// `end`: the end edge of the axis.
+    End,
+    /// `start <length-percentage>`: an offset from the start edge.
+    StartOffset(CssNumeric<CssLengthPercentage>),
+    /// `end <length-percentage>`: an offset from the end edge.
+    EndOffset(CssNumeric<CssLengthPercentage>),
+}
+impl PartialEq for CssRelativeAxisPosition {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::StartOffset(left), Self::StartOffset(right))
+            | (Self::EndOffset(left), Self::EndOffset(right)) => left == right,
+            (Self::Center, Self::Center) | (Self::Start, Self::Start) | (Self::End, Self::End) => {
+                true
+            }
+            _ => false,
+        }
+    }
+}
+impl CssRelativeAxisPosition {
+    fn is_edge_offset(&self) -> bool {
+        matches!(self, Self::StartOffset(_) | Self::EndOffset(_))
+    }
+}
+
+/// Checked symbolic flow axes, created only through the full position owner.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssNamedFlowPosition {
+    block: CssBlockPosition,
+    inline: CssInlinePosition,
+}
+impl CssNamedFlowPosition {
+    /// Returns the symbolic block axis and retained scalar origin.
+    #[must_use]
+    pub const fn block(&self) -> &CssBlockPosition {
+        &self.block
+    }
+    /// Returns the symbolic inline axis and retained scalar origin.
+    #[must_use]
+    pub const fn inline(&self) -> &CssInlinePosition {
+        &self.inline
+    }
+}
+
+/// Checked symbolic flow axes, created only through the full position owner.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssRelativeFlowPosition {
+    block: CssRelativeAxisPosition,
+    inline: CssRelativeAxisPosition,
+}
+impl CssRelativeFlowPosition {
+    /// Returns the symbolic block axis and retained scalar origin.
+    #[must_use]
+    pub const fn block(&self) -> &CssRelativeAxisPosition {
+        &self.block
+    }
+    /// Returns the symbolic inline axis and retained scalar origin.
+    #[must_use]
+    pub const fn inline(&self) -> &CssRelativeAxisPosition {
+        &self.inline
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum PositionFamily {
+    Cartesian(CssCartesianPosition),
+    NamedFlow(CssNamedFlowPosition),
+    RelativeFlow(CssRelativeFlowPosition),
+}
+
+/// The borrowed coordinate family of a checked authored position.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum CssPositionRef<'a> {
+    /// A Cartesian position with horizontal and vertical axes.
+    Cartesian(&'a CssCartesianPosition),
+    /// A position written with `block-start`/`block-end` and `inline-start`/`inline-end` keywords.
+    NamedFlow(&'a CssNamedFlowPosition),
+    /// A position written with generic `start`/`end` keywords; the first component is the block axis and the second is the inline axis.
+    RelativeFlow(&'a CssRelativeFlowPosition),
+}
+
+/// A checked Values 5 position, preserving unresolved coordinate families.
+///
+/// Every owning construction path normalizes all-center flow axes to Cartesian
+/// center/center. Noncentral flow families retain their authored meaning.
+///
+/// ```
+/// use surgeist_css::values::position::{CssBlockPosition, CssInlinePosition, CssPosition, CssPositionRef};
+/// let position = CssPosition::try_from_named_axes(
+///     CssBlockPosition::Start, CssInlinePosition::End,
+/// ).unwrap();
+/// let CssPositionRef::NamedFlow(axes) = position.view() else { panic!("named axes") };
+/// assert_eq!(axes.block(), &CssBlockPosition::Start);
+/// assert_eq!(axes.inline(), &CssInlinePosition::End);
+/// assert_eq!(position.serialize_specified(Default::default()).unwrap(), "block-start inline-end");
+/// ```
+///
+/// # Specified serialization
+///
+/// Serializes Cartesian axes in horizontal/vertical order and flow axes in block/inline order.
+/// Percentages and calculations retain their symbolic specified meaning.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssPosition {
+    family: PositionFamily,
+}
+impl CssPosition {
+    /// Shared intrinsic numeric depth for enclosing shape/image graph admission.
+    pub(crate) fn numeric_nesting_depth(&self) -> u32 {
+        fn depth(value: &CssNumeric<CssLengthPercentage>) -> u32 {
+            value
+                .calculation()
+                .map_or(0, |v| v.components().nesting_depth())
+        }
+        match self.view() {
+            CssPositionRef::Cartesian(value) => {
+                let horizontal = match value.horizontal() {
+                    CssHorizontalPosition::Offset(v)
+                    | CssHorizontalPosition::LeftOffset(v)
+                    | CssHorizontalPosition::RightOffset(v)
+                    | CssHorizontalPosition::XStartOffset(v)
+                    | CssHorizontalPosition::XEndOffset(v) => depth(v),
+                    _ => 0,
+                };
+                let vertical = match value.vertical() {
+                    CssVerticalPosition::Offset(v)
+                    | CssVerticalPosition::TopOffset(v)
+                    | CssVerticalPosition::BottomOffset(v)
+                    | CssVerticalPosition::YStartOffset(v)
+                    | CssVerticalPosition::YEndOffset(v) => depth(v),
+                    _ => 0,
+                };
+                horizontal.max(vertical)
+            }
+            CssPositionRef::NamedFlow(value) => {
+                let block = match value.block() {
+                    CssBlockPosition::StartOffset(v) | CssBlockPosition::EndOffset(v) => depth(v),
+                    _ => 0,
+                };
+                let inline = match value.inline() {
+                    CssInlinePosition::StartOffset(v) | CssInlinePosition::EndOffset(v) => depth(v),
+                    _ => 0,
+                };
+                block.max(inline)
+            }
+            CssPositionRef::RelativeFlow(value) => {
+                let axis = |v: &CssRelativeAxisPosition| match v {
+                    CssRelativeAxisPosition::StartOffset(v)
+                    | CssRelativeAxisPosition::EndOffset(v) => depth(v),
+                    _ => 0,
+                };
+                axis(value.block()).max(axis(value.inline()))
+            }
+        }
+    }
+    /// Lifts an already checked Cartesian position without changing its axes.
+    #[must_use]
+    pub const fn from_cartesian(position: CssCartesianPosition) -> Self {
+        Self {
+            family: PositionFamily::Cartesian(position),
+        }
+    }
+    /// Checks paired named-flow edge offsets and canonicalizes center/center.
+    pub fn try_from_named_axes(
+        block: CssBlockPosition,
+        inline: CssInlinePosition,
+    ) -> Result<Self, CssPositionConstructionError> {
+        paired_offsets(block.is_edge_offset(), inline.is_edge_offset())?;
+        if matches!(block, CssBlockPosition::Center) && matches!(inline, CssInlinePosition::Center)
+        {
+            return Ok(Self::center());
+        }
+        Ok(Self {
+            family: PositionFamily::NamedFlow(CssNamedFlowPosition { block, inline }),
+        })
+    }
+    /// Checks paired relative-flow edge offsets in block/inline order.
+    pub fn try_from_relative_axes(
+        block: CssRelativeAxisPosition,
+        inline: CssRelativeAxisPosition,
+    ) -> Result<Self, CssPositionConstructionError> {
+        paired_offsets(block.is_edge_offset(), inline.is_edge_offset())?;
+        if matches!(block, CssRelativeAxisPosition::Center)
+            && matches!(inline, CssRelativeAxisPosition::Center)
+        {
+            return Ok(Self::center());
+        }
+        Ok(Self {
+            family: PositionFamily::RelativeFlow(CssRelativeFlowPosition { block, inline }),
+        })
+    }
+    const fn center() -> Self {
+        Self::from_cartesian(CssCartesianPosition {
+            axes: PositionAxes {
+                horizontal: CssHorizontalPosition::Center,
+                vertical: CssVerticalPosition::Center,
+            },
+        })
+    }
+    /// Observes the checked coordinate family without exposing owning construction.
+    #[must_use]
+    pub const fn view(&self) -> CssPositionRef<'_> {
+        match &self.family {
+            PositionFamily::Cartesian(value) => CssPositionRef::Cartesian(value),
+            PositionFamily::NamedFlow(value) => CssPositionRef::NamedFlow(value),
+            PositionFamily::RelativeFlow(value) => CssPositionRef::RelativeFlow(value),
+        }
+    }
+}
+impl From<CssPhysicalPosition> for CssPosition {
+    fn from(position: CssPhysicalPosition) -> Self {
+        Self::from_cartesian(position.cartesian)
+    }
+}
+
+/// A nonempty authored comma list of Values 5 positions, as `mask-position` accepts.
+///
+/// # Specified serialization
+///
+/// Serializes the nonempty authored layers in comma order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssPositionList {
+    positions: Vec<CssPosition>,
+}
+impl CssPositionList {
+    /// Constructs a nonempty list of checked positions.
+    #[must_use]
+    pub fn try_new(positions: Vec<CssPosition>) -> Option<Self> {
+        (!positions.is_empty()).then_some(Self { positions })
+    }
+    /// Returns positions in authored comma order.
+    #[must_use]
+    pub fn positions(&self) -> &[CssPosition] {
+        &self.positions
+    }
+}

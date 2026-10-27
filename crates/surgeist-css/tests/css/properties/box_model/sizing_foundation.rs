@@ -7,7 +7,15 @@ use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssLonghandValue,
+    CssPropertyKindRef,
+};
 
 const PREFERRED: &[&str] = &["width", "height", "inline-size", "block-size"];
 const MINIMUM: &[&str] = &[
@@ -33,7 +41,11 @@ fn accepted(name: &str, value: &str) {
         assert_eq!(declaration.known().unwrap().property(), property);
         assert_eq!(declaration.importance(), CssImportance::Important);
         assert_eq!(
-            declaration.value_components().serialize().unwrap().as_css(),
+            declaration
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value
         );
     }
@@ -41,7 +53,7 @@ fn accepted(name: &str, value: &str) {
 
 fn one_contribution(declaration: &CssDeclaration) -> CssLonghandValue {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(declaration).unwrap()
+        declaration.expand().unwrap()
     else {
         panic!("one longhand contribution")
     };
@@ -253,7 +265,7 @@ fn css_wide_keywords_remain_whole_values_and_pending_reentry_is_strict() {
             let source = declaration(name, text);
             checked(name, text);
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("symbolic global for {name}")
             };
@@ -267,7 +279,7 @@ fn css_wide_keywords_remain_whole_values_and_pending_reentry_is_strict() {
         rejected(name, "initial 1px", Some("1px"));
 
         let source = declaration(name, "var(--size)");
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending substitution for {name}")
         };
         assert!(handle.source().same_occurrence(&source));
@@ -276,21 +288,20 @@ fn css_wide_keywords_remain_whole_values_and_pending_reentry_is_strict() {
         } else {
             "none"
         };
-        assert!(matches!(
+        assert!(
             handle
-                .reenter(parse_component_values(invalid_value).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid_value).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
-            handle
-                .reenter(parse_component_values("var(--again)").unwrap())
-                .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .replacement_error()
+                .is_some()
         );
-        let replacement = parse_component_values("1px").unwrap();
+        assert!(
+            handle
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
+                .unwrap_err()
+                .is_residual_substitution()
+        );
+        let replacement = CssComponentValues::parse(&CssParser::default(), "1px").unwrap();
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("one substituted longhand for {name}")
@@ -307,11 +318,11 @@ fn css_wide_keywords_remain_whole_values_and_pending_reentry_is_strict() {
 
 #[test]
 fn normalization_retains_order_and_distinct_logical_sizing_properties() {
-    let report = parse_sheet(
+    let report = CssParser::default().parse_sheet(
         ".a{width:1px;inline-size:2px;min-inline-size:auto;max-width:none;max-inline-size:3px}",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let properties = normalized
         .items()
         .iter()
@@ -334,9 +345,9 @@ fn normalization_retains_order_and_distinct_logical_sizing_properties() {
         .map(|name| grammar(name).target_property())
     );
 
-    let pending = parse_sheet(".a{inline-size:var(--size)}");
+    let pending = CssParser::default().parse_sheet(".a{inline-size:var(--size)}");
     assert!(pending.is_clean());
-    let normalized = normalize_sheet(pending.syntax()).unwrap();
+    let normalized = pending.syntax().normalize(Default::default()).unwrap();
     assert!(normalized.items().iter().any(|item| matches!(
         item,
         CssNormalizedItem::Declaration(value) if matches!(value.expansion(), CssExpansion::Pending(_))

@@ -1,4 +1,15 @@
-use surgeist_css::*;
+use surgeist_css::declaration::{
+    CssDeclarationList, CssImportance, CssSpecifiedDeclarationEntry,
+    CssSpecifiedDeclarationValueRef,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssPropertyGrammar, CssPropertyNameRef,
+    CssSvgGlyphOrientationVerticalDeclaration,
+};
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind;
+use surgeist_css::rule::page::CssPageDescriptorKind;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
 
 fn version(role: CssomInputRole, identity: &str, revision: u64) -> CssomInputVersion {
@@ -62,7 +73,10 @@ fn create(
     owner: bool,
 ) -> CssomBlockId {
     let mut edit = batch(store);
-    let values = parse_declaration_block_contents(text).into_parts().0;
+    let values = CssParser::default()
+        .parse_block_contents(text)
+        .into_parts()
+        .0;
     let ticket = edit
         .create_declarations(
             values,
@@ -464,14 +478,14 @@ fn replacement_candidate_resource_failure_aborts_staged_changes_and_fresh_retry_
             &id,
             text,
             CssomDeclarationRequestLimits {
-                provider: CssSpecifiedValueSerializationLimits::new(540, 10_000, 10_000),
+                provider: CssSerializationLimits::new(540, 10_000, 10_000),
                 ..Default::default()
             },
         )
         .unwrap();
     let error = edit.apply_declaration(prepared, &[]).unwrap_err();
     assert!(
-        matches!(error, CssomError::Declaration(ref cause) if matches!(cause.kind(), CssDeclarationBlockErrorKind::Serialization(error) if error.kind() == CssSpecifiedValueSerializationErrorKind::InputNodeLimit))
+        matches!(error, CssomError::Declaration(ref cause) if cause.serialization().is_some_and(|error| error.is_input_node_limit()))
     );
     let CssomError::Declaration(cause) = error else {
         panic!("checked candidate selection resource error");
@@ -1382,7 +1396,7 @@ fn inline_external_attribute_changes_bypass_readonly_without_echoing_owner() {
         .prepare_style_attribute_change(
             &id,
             &change,
-            surgeist_css::CssUtf16InputLimits::default(),
+            surgeist_css::source::CssUtf16InputLimits::default(),
             CssomDeclarationRequestLimits::default(),
             || Ok::<_, ()>(()),
         )
@@ -1404,7 +1418,7 @@ fn inline_external_attribute_changes_bypass_readonly_without_echoing_owner() {
         .prepare_style_attribute_change(
             &id,
             &null,
-            surgeist_css::CssUtf16InputLimits::default(),
+            surgeist_css::source::CssUtf16InputLimits::default(),
             CssomDeclarationRequestLimits::default(),
             || Ok::<_, ()>(()),
         )
@@ -1437,7 +1451,7 @@ fn nonqualifying_inline_notifications_do_not_parse_and_stale_owner_is_atomic() {
             edit.prepare_style_attribute_change(
                 &id,
                 &change,
-                surgeist_css::CssUtf16InputLimits::default(),
+                surgeist_css::source::CssUtf16InputLimits::default(),
                 CssomDeclarationRequestLimits {
                     max_input_bytes: 0,
                     ..Default::default()
@@ -1464,7 +1478,7 @@ fn nonqualifying_inline_notifications_do_not_parse_and_stale_owner_is_atomic() {
         edit.prepare_style_attribute_change(
             &id,
             &change,
-            surgeist_css::CssUtf16InputLimits::default(),
+            surgeist_css::source::CssUtf16InputLimits::default(),
             CssomDeclarationRequestLimits::default(),
             || Ok::<_, ()>(())
         ),
@@ -1639,8 +1653,8 @@ fn independent_svg_terminal_has_supplied_support_and_uses_existing_metadata_iden
     };
     let mut store = CssomStore::new(CssomLimits::default(), context).unwrap();
     let mut edit = batch(&store);
-    let declarations = parser
-        .parse_declaration_block_contents("glyph-orientation-vertical:45deg")
+    let declarations = CssParser::new(parser, Default::default())
+        .parse_block_contents("glyph-orientation-vertical:45deg")
         .into_parts()
         .0;
     let ticket = edit
@@ -2153,16 +2167,14 @@ fn descriptor_support_is_supplied_not_inferred_and_resource_failures_abort_whole
             "B",
             "",
             CssomDeclarationRequestLimits {
-                provider: CssSpecifiedValueSerializationLimits::new(1000, 1000, 0),
+                provider: CssSerializationLimits::new(1000, 1000, 0),
                 ..Default::default()
             },
         )
         .unwrap();
     assert!(matches!(
         edit.apply_declaration(prepared, &[]),
-        Err(CssomError::FontFace(
-            CssFontFaceDeclarationBlockError::Serialization(_)
-        ))
+        Err(CssomError::FontFace(ref error)) if error.serialization().is_some()
     ));
     assert!(matches!(
         supported.commit(edit),
@@ -2305,7 +2317,7 @@ fn complete_value_component_resource_failure_remains_atomic_error() {
             },
         );
         assert!(
-            matches!(result, Err(CssomError::Component(ref error)) if error.kind() == CssComponentValueErrorKind::ComponentLimit)
+            matches!(result, Err(CssomError::Component(ref error)) if error.is_component_limit())
         );
         assert!(matches!(live.commit(edit), Err(CssomError::BatchAborted)));
         assert_eq!(live.snapshot().revision(), before.revision());

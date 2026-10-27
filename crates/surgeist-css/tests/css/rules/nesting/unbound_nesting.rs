@@ -1,9 +1,12 @@
 //! Nesting 1 section 4: parentless & matches scope with zero anchor specificity.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nest-selector
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNormalizedItem, CssPseudoSelectorListItem, CssSelector,
-    CssSelectorBinding, normalize_sheet, parse_selector, parse_selector_list, parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{CssNormalizedItem, CssSelectorBinding};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssPseudoSelectorListItem, CssSelector,
+    CssStyleSelectorContext,
 };
 
 #[test]
@@ -16,7 +19,11 @@ fn ordinary_compounds_retain_unbound_anchors_without_scope_rewriting() {
         ("&&", 2),
         (".a&&", 2),
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.is_clean(), "{source}: {report:?}");
         let CssSelector::Compound(compound) = report.syntax().as_ref().unwrap() else {
             panic!("compound")
@@ -24,7 +31,15 @@ fn ordinary_compounds_retain_unbound_anchors_without_scope_rewriting() {
         assert_eq!(compound.nesting_selectors(), count);
         assert!(!compound.has_scope_anchor());
         assert!(compound.pseudo_classes().is_empty());
-        assert!(parse_selector_list(source, &CssNamespaceContext::default()).is_clean());
+        assert!(
+            CssParsedStyleSelectors::parse(
+                &CssParser::default(),
+                source,
+                &CssNamespaceContext::default(),
+                CssStyleSelectorContext::Ordinary
+            )
+            .is_clean()
+        );
     }
 }
 
@@ -34,9 +49,9 @@ fn normalized_anchor_context_distinguishes_missing_and_real_parents() {
         ("& {color:red}", false),
         (".parent { & {color:red} }", true),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{source}: {report:?}");
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let declarations: Vec<_> = normalized
             .items()
             .iter()
@@ -79,7 +94,11 @@ fn unbound_anchor_admission_does_not_enable_relative_roots_or_trailing_tokens() 
         ("&.a;", invalid.clone().at(";")),
         ("", invalid.clone().at_end()),
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         expected.assert_first(&report);
     }
@@ -87,13 +106,14 @@ fn unbound_anchor_admission_does_not_enable_relative_roots_or_trailing_tokens() 
 
 #[test]
 fn supports_selector_anchor_is_typed_instead_of_general_enclosed() {
-    let report = parse_sheet("@supports selector(&) { a { color:red } }");
+    let report = CssParser::default().parse_sheet("@supports selector(&) { a { color:red } }");
     assert!(report.is_clean(), "{report:?}");
-    let [surgeist_css::CssRule::Supports(rule)] = report.syntax().rules() else {
+    let [surgeist_css::rule::CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("supports")
     };
-    let surgeist_css::CssSupportsConditionKind::Selector(CssSelector::Compound(compound)) =
-        rule.condition().kind()
+    let surgeist_css::query::CssConditionKind::Leaf(
+        surgeist_css::query::supports::CssSupportsLeaf::Selector(CssSelector::Compound(compound)),
+    ) = rule.condition().kind()
     else {
         panic!("typed selector, not opaque fallback")
     };
@@ -102,7 +122,7 @@ fn supports_selector_anchor_is_typed_instead_of_general_enclosed() {
 
 #[test]
 fn functional_anchors_keep_their_function_structure_and_parentless_binding() {
-    use surgeist_css::CssPseudoClass;
+    use surgeist_css::selector::CssPseudoClass;
     for source in [
         ":is(&,.a)",
         ":where(&)",
@@ -110,21 +130,30 @@ fn functional_anchors_keep_their_function_structure_and_parentless_binding() {
         ":has(> &)",
         ":nth-child(2n of &)",
     ] {
-        let report = parse_selector(source, &CssNamespaceContext::default());
+        let report = CssSelector::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(
             report.clone().into_validation_result().unwrap(),
             *report.syntax()
         );
-        let list = parse_selector_list(source, &CssNamespaceContext::default());
+        let list = CssParsedStyleSelectors::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+            CssStyleSelectorContext::Ordinary,
+        );
         assert!(list.is_clean(), "{source}: {list:?}");
         assert_eq!(
             list.clone().into_validation_result().unwrap(),
             *list.syntax()
         );
-        let sheet = parse_sheet(&format!("{source} {{color:red}}"));
+        let sheet = CssParser::default().parse_sheet(format!("{source} {{color:red}}"));
         assert!(sheet.is_clean(), "{source}: {sheet:?}");
-        let normalized = normalize_sheet(sheet.syntax()).unwrap();
+        let normalized = sheet.syntax().normalize(Default::default()).unwrap();
         let declarations: Vec<_> = normalized
             .items()
             .iter()
@@ -172,7 +201,7 @@ fn functional_anchors_keep_their_function_structure_and_parentless_binding() {
                 assert_eq!(list.selectors().len(), 1);
                 assert_eq!(
                     list.selectors()[0].combinator(),
-                    surgeist_css::CssSelectorCombinator::Child
+                    surgeist_css::selector::CssSelectorCombinator::Child
                 );
                 list.selectors()[0].selector()
             }
@@ -197,9 +226,9 @@ fn functional_anchors_keep_their_function_structure_and_parentless_binding() {
 
 #[test]
 fn repeated_anchors_and_scope_pseudo_class_remain_distinct_after_normalization() {
-    let sheet = parse_sheet("&& {color:red} :scope {color:blue}");
+    let sheet = CssParser::default().parse_sheet("&& {color:red} :scope {color:blue}");
     assert!(sheet.is_clean(), "{sheet:?}");
-    let normalized = normalize_sheet(sheet.syntax()).unwrap();
+    let normalized = sheet.syntax().normalize(Default::default()).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -227,7 +256,7 @@ fn repeated_anchors_and_scope_pseudo_class_remain_distinct_after_normalization()
     assert_eq!(scope.selectors()[0].binding(), CssSelectorBinding::Absolute);
     assert!(matches!(
         scope.selectors()[0].selector(),
-        CssSelector::PseudoClass(surgeist_css::CssPseudoClass::Scope)
+        CssSelector::PseudoClass(surgeist_css::selector::CssPseudoClass::Scope)
     ));
     assert!(!scope.same_context(anchors));
 }
@@ -235,9 +264,9 @@ fn repeated_anchors_and_scope_pseudo_class_remain_distinct_after_normalization()
 #[test]
 fn anchors_preserve_original_rule_positions_and_error_spans() {
     let source = "/*😀*/\r\n& {color:red}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
-    let [surgeist_css::CssRule::Style(rule)] = report.syntax().rules() else {
+    let [surgeist_css::rule::CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("style rule")
     };
     assert_eq!(rule.position().byte_offset().value(), 10);
@@ -247,13 +276,17 @@ fn anchors_preserve_original_rule_positions_and_error_spans() {
     assert_eq!(name.source().as_str(), source);
     assert_eq!(name.span().start().byte_offset().value(), 13);
     let invalid = "/*😀*/\r\n&div";
-    let report = parse_selector(invalid, &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        invalid,
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_none());
     assert_eq!(report.diagnostics().len(), 1);
     let diagnostic = &report.diagnostics()[0];
     assert_eq!(
         diagnostic.action(),
-        surgeist_css::CssRecoveryAction::RejectInput
+        surgeist_css::diagnostic::CssRecoveryAction::RejectInput
     );
     assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
     assert_eq!(diagnostic.span().end().byte_offset().value(), 14);
@@ -261,14 +294,15 @@ fn anchors_preserve_original_rule_positions_and_error_spans() {
 
 #[test]
 fn anchors_do_not_invent_types_or_discard_authored_namespace_constraints() {
-    use surgeist_css::{CssNamespaceConstraint, CssNamespaceName, CssNamespacePrefix};
+    use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+    use surgeist_css::selector::CssNamespaceConstraint;
     let prefix = CssNamespacePrefix::try_new("svg").unwrap();
     let context = CssNamespaceContext::from_bindings([
         (None, CssNamespaceName::new("urn:default")),
         (Some(prefix.clone()), CssNamespaceName::new("urn:svg")),
     ]);
     for context in [&context, &CssNamespaceContext::default()] {
-        let report = parse_selector("&", context);
+        let report = CssSelector::parse(&CssParser::default(), "&", context);
         assert!(report.is_clean(), "{report:?}");
         let CssSelector::Compound(compound) = report.syntax().as_ref().unwrap() else {
             panic!("anchor")
@@ -281,7 +315,7 @@ fn anchors_do_not_invent_types_or_discard_authored_namespace_constraints() {
         ("|leaf&", CssNamespaceConstraint::ExplicitNone),
         ("*|leaf&", CssNamespaceConstraint::Any),
     ] {
-        let report = parse_selector(source, &context);
+        let report = CssSelector::parse(&CssParser::default(), source, &context);
         assert!(report.is_clean(), "{source}: {report:?}");
         let CssSelector::Compound(compound) = report.syntax().as_ref().unwrap() else {
             panic!("qualified anchor")
@@ -293,7 +327,11 @@ fn anchors_do_not_invent_types_or_discard_authored_namespace_constraints() {
     }
     // Namespaces 3 §3.3: the default context declares no `svg` prefix,
     // which is therefore responsible.
-    let report = parse_selector("svg|leaf&", &CssNamespaceContext::default());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        "svg|leaf&",
+        &CssNamespaceContext::default(),
+    );
     assert!(report.syntax().is_none());
     ExpectedRejection::new(CssErrorCode::InvalidSelector)
         .at("svg")

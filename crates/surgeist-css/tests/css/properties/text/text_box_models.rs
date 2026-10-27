@@ -3,8 +3,21 @@
 //! define finite roles, authored arity, metadata and expansion; corrected
 //! omitted trim follows CSSWG editorial commit 97441f74 / PR12765.
 
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_checked_declaration as checked;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{
+    CssSpecificationTier, CssSupportStatus, property_support_metadata, specification_source,
+};
+use surgeist_css::declaration::{CssDeclaration, CssSpecifiedDeclarationBlock};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::{
+    CssTextBox, CssTextBoxEdge, CssTextBoxTrim, CssTextBoxValues, CssTextEdge, CssTextEdgeMetric,
+    CssTextOverEdge, CssTextUnderEdge,
+};
 
 fn typed_edge(declaration: &CssDeclaration) -> CssTextBoxEdge {
     let CssKnownPropertyValueRef::TextBoxEdge(value) =
@@ -16,9 +29,10 @@ fn typed_edge(declaration: &CssDeclaration) -> CssTextBoxEdge {
 }
 
 fn block(css: &str) -> CssSpecifiedDeclarationBlock {
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax()).unwrap()
+    CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
+        .unwrap()
 }
 
 #[test]
@@ -46,12 +60,18 @@ fn all_single_and_ordered_pair_constructors_round_trip_typed_roles_without_arity
         let single = CssTextEdge::Single(metric);
         assert_eq!(single.over(), over);
         assert_eq!(single.under(), under);
-        assert_eq!(metric.serialize_specified().unwrap(), text);
-        assert_eq!(single.serialize_specified().unwrap(), text);
+        assert_eq!(
+            metric.serialize_specified(Default::default()).unwrap(),
+            text
+        );
+        assert_eq!(
+            single.serialize_specified(Default::default()).unwrap(),
+            text
+        );
         let pair = CssTextEdge::Pair { over, under };
         assert_ne!(single, pair);
         assert_eq!(
-            pair.serialize_specified().unwrap(),
+            pair.serialize_specified(Default::default()).unwrap(),
             format!("{text} {text}")
         );
         assert_eq!(
@@ -83,9 +103,18 @@ fn all_single_and_ordered_pair_constructors_round_trip_typed_roles_without_arity
             let expected = format!("{over_text} {under_text}");
             assert_eq!(edge.over(), over);
             assert_eq!(edge.under(), under);
-            assert_eq!(over.serialize_specified().unwrap(), over_text);
-            assert_eq!(under.serialize_specified().unwrap(), under_text);
-            assert_eq!(edge.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                over.serialize_specified(Default::default()).unwrap(),
+                over_text
+            );
+            assert_eq!(
+                under.serialize_specified(Default::default()).unwrap(),
+                under_text
+            );
+            assert_eq!(
+                edge.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             assert_eq!(
                 typed_edge(&checked(CssKnownProperty::TextBoxEdge, &expected)),
                 CssTextBoxEdge::Edge(edge)
@@ -96,7 +125,12 @@ fn all_single_and_ordered_pair_constructors_round_trip_typed_roles_without_arity
         typed_edge(&checked(CssKnownProperty::TextBoxEdge, "auto")),
         CssTextBoxEdge::Auto
     );
-    assert_eq!(CssTextBoxEdge::Auto.serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        CssTextBoxEdge::Auto
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "auto"
+    );
 }
 
 #[test]
@@ -118,9 +152,15 @@ fn empty_shorthand_construction_rejects_and_each_authored_slot_remains_observabl
         let values = CssTextBoxValues::try_new(trim, edge).unwrap();
         assert_eq!(values.trim(), trim);
         assert_eq!(values.edge(), edge);
-        assert_eq!(values.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            values.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let value = CssTextBox::Components(values);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let declaration = checked(CssKnownProperty::TextBox, expected);
         let CssKnownPropertyValueRef::TextBox(actual) =
             declaration.known().unwrap().property_value().unwrap()
@@ -129,7 +169,12 @@ fn empty_shorthand_construction_rejects_and_each_authored_slot_remains_observabl
         };
         assert_eq!(actual.value(), &value);
     }
-    assert_eq!(CssTextBox::Normal.serialize_specified().unwrap(), "normal");
+    assert_eq!(
+        CssTextBox::Normal
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "normal"
+    );
     assert_ne!(
         CssTextBox::Normal,
         CssTextBox::Components(
@@ -141,8 +186,8 @@ fn empty_shorthand_construction_rejects_and_each_authored_slot_remains_observabl
 
 #[test]
 fn primitive_providers_charge_exact_nodes_and_bytes_and_retry_without_mutation() {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
+    use CssSerializationLimits as Limits;
     for (value, expected, nodes) in [
         (CssTextBox::Normal, "normal", 1),
         (
@@ -183,10 +228,7 @@ fn primitive_providers_charge_exact_nodes_and_bytes_and_retry_without_mutation()
     ] {
         let before = value;
         let exact = Limits::new(nodes, nodes, expected.len());
-        assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(value.serialize_specified(exact).unwrap(), expected);
         for (limits, kind) in [
             (
                 Limits::new(nodes - 1, nodes, expected.len()),
@@ -203,19 +245,13 @@ fn primitive_providers_charge_exact_nodes_and_bytes_and_retry_without_mutation()
         ] {
             for _ in 0..2 {
                 assert_eq!(
-                    value
-                        .serialize_specified_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
+                    serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                     kind
                 );
                 assert_eq!(value, before);
             }
         }
-        assert_eq!(
-            value.serialize_specified_with_limits(exact).unwrap(),
-            expected
-        );
+        assert_eq!(value.serialize_specified(exact).unwrap(), expected);
     }
     for value in [
         CssTextBoxTrim::None,
@@ -223,7 +259,7 @@ fn primitive_providers_charge_exact_nodes_and_bytes_and_retry_without_mutation()
         CssTextBoxTrim::TrimEnd,
         CssTextBoxTrim::TrimBoth,
     ] {
-        let text = value.serialize_specified().unwrap();
+        let text = value.serialize_specified(Default::default()).unwrap();
         let declaration = checked(CssKnownProperty::TextBoxTrim, &text);
         let CssKnownPropertyValueRef::TextBoxTrim(actual) =
             declaration.known().unwrap().property_value().unwrap()
@@ -260,26 +296,29 @@ fn cssom_inverse_reconstructs_exact_longhand_roles_and_normal_and_preserves_pair
         let actual = block(css);
         assert_eq!(
             actual
-                .property_value(CssPropertyNameRef::Known(CssKnownProperty::TextBox))
+                .property_value(
+                    CssPropertyNameRef::Known(CssKnownProperty::TextBox),
+                    Default::default()
+                )
                 .unwrap()
                 .as_deref(),
             Some(expected)
         );
         let reparsed = checked(CssKnownProperty::TextBox, expected);
         let CssExpansion::Contributions(CssContributions::Longhands(reexpanded)) =
-            expand_declaration(&reparsed).unwrap()
+            reparsed.expand().unwrap()
         else {
             panic!("ordinary inverse projection")
         };
         assert_eq!(reexpanded.items().len(), 2);
         for name in [CssKnownProperty::TextBoxTrim, CssKnownProperty::TextBoxEdge] {
             let expected_longhand = actual
-                .property_value(CssPropertyNameRef::Known(name))
+                .property_value(CssPropertyNameRef::Known(name), Default::default())
                 .unwrap()
                 .unwrap();
             let expected_declaration = checked(name, &expected_longhand);
             let CssExpansion::Contributions(CssContributions::Longhands(expected_values)) =
-                expand_declaration(&expected_declaration).unwrap()
+                expected_declaration.expand().unwrap()
             else {
                 panic!("one terminal")
             };
@@ -301,7 +340,10 @@ fn cssom_inverse_reconstructs_exact_longhand_roles_and_normal_and_preserves_pair
     ] {
         assert!(
             block(css)
-                .property_value(CssPropertyNameRef::Known(CssKnownProperty::TextBox))
+                .property_value(
+                    CssPropertyNameRef::Known(CssKnownProperty::TextBox),
+                    Default::default()
+                )
                 .unwrap()
                 .is_none()
         );

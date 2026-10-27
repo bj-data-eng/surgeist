@@ -5,11 +5,22 @@
 //! URL emission remains authored and context-free; CSSOM's URL phase question
 //! and resource support do not change the stored model or select this output.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ordinary_font_face_descriptor;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFontFaceSource, CssFontFaceSourceList, CssFontFaceUrlSource, CssFontFormat,
+    CssFontFormatHint, CssFontFormatString, CssFontLocalName, CssFontTechHint,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::{CssIdent, CssUrl, CssUrlFunction, CssUrlModifier};
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 fn parsed(text: &str) -> CssFontFaceSourceList {
     let CssFontFaceDescriptorValue::Src(list) =
@@ -22,11 +33,17 @@ fn parsed(text: &str) -> CssFontFaceSourceList {
 
 fn assert_output(value: &CssFontFaceSourceList, expected: &str) {
     let before = value.clone();
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(value, &before);
     let reparsed = parsed(expected);
     assert_eq!(reparsed, before);
-    assert_eq!(reparsed.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        reparsed.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 #[test]
@@ -49,12 +66,18 @@ fn local_names_always_use_the_quoted_string_wrapper() {
             panic!("local source")
         };
         assert_eq!(value.as_str(), decoded);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let constructed = CssFontLocalName::try_new(decoded).unwrap();
-        assert_eq!(constructed.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            constructed.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             CssFontFaceSource::Local(constructed)
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             expected
         );
@@ -63,9 +86,13 @@ fn local_names_always_use_the_quoted_string_wrapper() {
     assert!(CssFontFaceSourceList::try_new(Vec::new()).is_none());
     for invalid in ["local(serif)", "local(inherit)", "local()"] {
         assert!(
-            parse_font_face_descriptor_value(invalid, CssFontFaceDescriptorKind::Src)
-                .syntax()
-                .is_none()
+            CssAuthoredFontFaceDescriptorValue::parse(
+                &CssParser::default(),
+                invalid,
+                CssFontFaceDescriptorKind::Src
+            )
+            .syntax()
+            .is_none()
         );
     }
 }
@@ -75,7 +102,10 @@ fn local_string_escaping_retains_decoded_case_controls_and_unicode() {
     let name = "é😀\"\\\n\u{1}\u{7f}'";
     let expected = "local(\"é😀\\\"\\\\\\a \\1 \\7f '\")";
     let value = CssFontLocalName::try_new(name).unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(value.as_str(), name);
     assert_output(
         &CssFontFaceSourceList::try_new(vec![CssFontFaceSource::Local(value)]).unwrap(),
@@ -101,7 +131,10 @@ fn every_format_keyword_uses_its_concrete_lowercase_component() {
         );
         let expected = format!("url(\"face\") format({spelling})");
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, before);
         let list = CssFontFaceSourceList::try_new(vec![CssFontFaceSource::Url(value)]).unwrap();
         assert_output(&list, &expected);
@@ -151,7 +184,7 @@ fn format_strings_preserve_empty_unknown_case_and_legacy_authored_identity() {
         Vec::new(),
     );
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "url(\"face\") format(\"a�b\")"
     );
     let Some(CssFontFormat::String(format)) = value.format() else {
@@ -179,7 +212,10 @@ fn technology_keywords_keep_authored_order_and_repetitions() {
     let value = CssFontFaceUrlSource::new(CssUrl::new("face"), None, technology.clone());
     let required = value.required_technologies().collect::<Vec<_>>();
     let expected = "url(\"face\") tech(variations, palettes, color-colrv0, color-colrv1, color-svg, color-sbix, color-cbdt, features-opentype, features-aat, features-graphite, incremental, palettes)";
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(value.tech(), technology);
     assert_eq!(value.required_technologies().collect::<Vec<_>>(), required);
     let list = CssFontFaceSourceList::try_new(vec![CssFontFaceSource::Url(value)]).unwrap();
@@ -204,7 +240,7 @@ fn mixed_source_order_and_url_function_modifiers_use_the_shared_provider() {
         panic!("function modifier")
     };
     let before = modifier.argument_components().clone();
-    url.serialize_specified().unwrap();
+    url.serialize_specified(Default::default()).unwrap();
     assert_eq!(modifier.argument_components(), &before);
     assert_output(&parsed("url('  ')"), "url(\"  \")");
 }
@@ -234,17 +270,15 @@ fn source_children_share_exact_input_projection_and_final_byte_limits() {
         (Limits::new(2, 2, local_text.len() - 1), Kind::ByteLimit),
     ] {
         assert_eq!(
-            local
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&local.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(
-            CssFontFaceSource::Local(local.clone())
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &CssFontFaceSource::Local(local.clone())
+                    .serialize_specified(limits)
+                    .unwrap_err()
+            ),
             kind
         );
     }
@@ -254,27 +288,26 @@ fn source_children_share_exact_input_projection_and_final_byte_limits() {
         (Limits::new(8, 8, url_text.len() - 1), Kind::ByteLimit),
     ] {
         assert_eq!(
-            url.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&url.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(
-            CssFontFaceSource::Url(url.clone())
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(
+                &CssFontFaceSource::Url(url.clone())
+                    .serialize_specified(limits)
+                    .unwrap_err()
+            ),
             kind
         );
     }
     assert_eq!(
         local
-            .serialize_specified_with_limits(Limits::new(2, 2, local_text.len()))
+            .serialize_specified(Limits::new(2, 2, local_text.len()))
             .unwrap(),
         local_text
     );
     assert_eq!(
-        url.serialize_specified_with_limits(Limits::new(8, 8, url_text.len()))
+        url.serialize_specified(Limits::new(8, 8, url_text.len()))
             .unwrap(),
         url_text
     );
@@ -294,17 +327,14 @@ fn source_children_share_exact_input_projection_and_final_byte_limits() {
         (Limits::new(11, 11, expected.len() - 1), Kind::ByteLimit),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(value, before);
     }
     assert_eq!(
         value
-            .serialize_specified_with_limits(Limits::new(11, 11, expected.len()))
+            .serialize_specified(Limits::new(11, 11, expected.len()))
             .unwrap(),
         expected
     );
@@ -314,7 +344,7 @@ fn source_children_share_exact_input_projection_and_final_byte_limits() {
 #[test]
 fn recovered_source_emission_preserves_the_original_report_and_diagnostic_spans() {
     let source = "/*😀*/\r\n@font-face{src:local(First),local(inherit),url(last);font-display:swap}.after{color:red}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let syntax = report.syntax().clone();
     let diagnostics = report.diagnostics().to_vec();
     let [diagnostic] = diagnostics.as_slice() else {
@@ -347,7 +377,11 @@ fn recovered_source_emission_preserves_the_original_report_and_diagnostic_spans(
     assert_eq!(report.syntax(), &syntax);
     assert_eq!(report.diagnostics(), diagnostics);
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         diagnostics
     );
 }

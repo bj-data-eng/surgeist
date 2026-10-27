@@ -5,15 +5,25 @@
 use crate::css::support::important_declaration;
 use crate::css::support::property_admission::Responsible;
 use crate::css::support::property_admission::assert_invalid_value;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssLonghandContribution,
+    CssPropertyKindRef,
+};
 
 fn parsed(value: &str) -> CssDeclaration {
     important_declaration("content", value)
 }
 
 fn ordinary(source: &CssDeclaration) -> CssLonghandContribution {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("content expands to one longhand")
     };
@@ -25,7 +35,7 @@ fn ordinary(source: &CssDeclaration) -> CssLonghandContribution {
 
 fn assert_recovered<'a>(invalid: &str, token: impl Into<Responsible<'a>>) {
     let source = format!("color:red;content:{invalid};height:2px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let properties = report
         .syntax()
         .iter()
@@ -43,9 +53,13 @@ fn assert_recovered<'a>(invalid: &str, token: impl Into<Responsible<'a>>) {
         )
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    assert_invalid_value(diagnostic.error().kind(), CssKnownProperty::Content, token);
+    assert_invalid_value(diagnostic.error(), CssKnownProperty::Content, token);
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -90,7 +104,10 @@ fn normal_none_strings_counters_and_attr_pending_are_admitted() {
     let attr = parsed("\"caption\" attr(data-label)");
     assert!(attr.known().unwrap().substitution_dependent().is_some());
     assert_eq!(
-        attr.value_components().serialize().unwrap().as_css(),
+        attr.value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "\"caption\" attr(data-label)"
     );
 }
@@ -114,7 +131,11 @@ fn generated_content_replacement_lists_and_alternatives_are_admitted() {
         assert_eq!(known.property(), CssKnownProperty::Content);
         assert!(known.property_value().is_some(), "{value}");
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             value,
             "retained authored form: {value}"
         );
@@ -204,32 +225,32 @@ fn invalid_combinations_and_function_arguments_recover_without_losing_neighbors(
 #[test]
 fn pending_content_reentry_is_strict_and_retains_replacement_provenance() {
     let source = parsed("var(--generated)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("content substitution is pending")
     };
     assert!(pending.source().same_occurrence(&source));
     for invalid in ["normal contents", "\"caption\" /", "leader()"] {
-        assert!(matches!(
+        assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for replacement_css in [
         "contents",
         "linear-gradient(red, blue) / \"spoken\"",
         "inherit",
     ] {
-        let replacement = parse_component_values(replacement_css).unwrap();
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), replacement_css).unwrap();
         let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("one reentered content terminal")
@@ -246,9 +267,9 @@ fn pending_content_reentry_is_strict_and_retains_replacement_provenance() {
 
 #[test]
 fn normalized_content_preserves_order_and_reports_atomic_limit_failure() {
-    let report = parse_sheet(".a{content:normal;color:red;content:contents}");
+    let report = CssParser::default().parse_sheet(".a{content:normal;color:red;content:contents}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -279,13 +300,10 @@ fn normalized_content_preserves_order_and_reports_atomic_limit_failure() {
         assert!(item.source().same_occurrence(declarations[order].source()));
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(

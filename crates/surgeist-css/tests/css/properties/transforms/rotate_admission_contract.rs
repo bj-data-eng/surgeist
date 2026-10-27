@@ -3,7 +3,14 @@
 //! Values3 2024-03-22 §6.1 (angle units; bare zero is not generally an angle),
 //! Values3 §8.1 (typed calc), and Values4 2024-03-12 mathematical typing.
 //! No assumptions about a future rotate payload, normalization or output API.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyNameRef,
+    CssPropertyTarget,
+};
 
 const KEYWORD_AXES: &[&str] = &[
     "x 30deg",
@@ -82,7 +89,7 @@ fn assert_rotate_occurrence(declaration: &CssDeclaration, value: &str) {
 
 fn parsed_accepts(value: &str) {
     let source = format!("color:red;rotate:{value}!important;width:1px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source:?}: {:?}", report.diagnostics());
     let [before, rotate, after] = report.syntax().as_slice() else {
         panic!(
@@ -96,14 +103,20 @@ fn parsed_accepts(value: &str) {
 }
 
 fn checked_accepts(value: &str) {
-    let components = parse_component_values(value).expect("well-formed component input");
-    let by_property = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Rotate),
+    let components = CssComponentValues::parse(&CssParser::default(), value)
+        .expect("well-formed component input");
+    let by_property = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Rotate)),
         components.clone(),
         CssImportance::Important,
     );
-    let by_grammar =
-        parse_property_value_for_grammar(grammar(), components.clone(), CssImportance::Important);
+    let by_grammar = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar()),
+        components.clone(),
+        CssImportance::Important,
+    );
     let by_property =
         by_property.unwrap_or_else(|error| panic!("property admission of {value:?}: {error:?}"));
     let by_grammar =
@@ -118,7 +131,7 @@ fn checked_accepts(value: &str) {
 
 fn parsed_rejects(value: &str) {
     let source = format!("color:red;rotate:{value}!important;width:1px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(
         !report.is_clean(),
         "invalid rotate must produce a diagnostic: {source}"
@@ -142,18 +155,26 @@ fn parsed_rejects(value: &str) {
 }
 
 fn checked_rejects(value: &str) {
-    let components = parse_component_values(value).expect("well-formed component input");
+    let components = CssComponentValues::parse(&CssParser::default(), value)
+        .expect("well-formed component input");
     assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Rotate),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Rotate)),
             components.clone(),
-            CssImportance::Important,
+            CssImportance::Important
         )
         .is_err(),
         "property admission must reject all of {value:?}"
     );
     assert!(
-        parse_property_value_for_grammar(grammar(), components, CssImportance::Important,).is_err(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(grammar()),
+            components,
+            CssImportance::Important
+        )
+        .is_err(),
         "owned grammar reentry must reject all of {value:?}"
     );
 }

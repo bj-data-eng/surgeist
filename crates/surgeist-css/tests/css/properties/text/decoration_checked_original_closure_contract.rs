@@ -1,9 +1,12 @@
 //! Existing checked aggregate fronts must not certify browser-recovered children.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::text::{CssTextDecoration, CssTextDecorationThickness};
 
 fn color(text: &str, clean: bool) -> CssColor {
     let source = format!("text-decoration-color:{text}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         report.is_clean(),
         clean,
@@ -29,7 +32,7 @@ fn color(text: &str, clean: bool) -> CssColor {
 
 fn thickness(text: &str, clean: bool) -> CssTextDecorationThickness {
     let source = format!("text-decoration-thickness:{text}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(
         report.is_clean(),
         clean,
@@ -98,16 +101,19 @@ fn complete_and_programmatic_decoration_children_keep_their_checked_output() {
         let value = color(text, true);
         let aggregate = CssTextDecoration::try_new(None, Some(value.clone()), None, None).unwrap();
         assert_eq!(aggregate.color(), Some(&value));
-        assert!(aggregate.serialize_specified().is_ok());
+        assert!(aggregate.serialize_specified(Default::default()).is_ok());
     }
     for text in ["-1px", "calc(-1px)", "calc(1px + calc(2em))"] {
         let value = thickness(text, true);
         let aggregate = CssTextDecoration::try_new(None, None, None, Some(value.clone())).unwrap();
         assert_eq!(aggregate.thickness(), Some(&value));
-        assert!(aggregate.serialize_specified().is_ok());
+        assert!(aggregate.serialize_specified(Default::default()).is_ok());
     }
     let value = CssColor::transparent();
     let aggregate = CssTextDecoration::try_new(None, Some(value.clone()), None, None).unwrap();
     assert_eq!(aggregate.color(), Some(&value));
-    assert_eq!(aggregate.serialize_specified().unwrap(), "transparent");
+    assert_eq!(
+        aggregate.serialize_specified(Default::default()).unwrap(),
+        "transparent"
+    );
 }

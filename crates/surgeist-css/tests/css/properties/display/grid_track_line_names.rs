@@ -6,11 +6,12 @@
 //! Empty `[]` is still a valid single `<line-names>` block.
 
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
-use surgeist_css::{
-    CssErrorCode, CssImportance, CssKnownProperty as Property, CssPropertyNameRef,
-    CssRecoveryAction, parse_component_values, parse_property_value, parse_style_attribute,
-    validate_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty as Property;
+use surgeist_css::property::{CssPropertyNameRef, CssPropertyTarget};
 
 #[test]
 fn adjacent_line_name_blocks_do_not_form_general_track_lists() {
@@ -51,15 +52,24 @@ fn one_empty_line_name_block_remains_valid_at_each_boundary() {
         "[] 10px [] repeat(auto-fill, [] 10px []) []",
     ] {
         let source = format!("grid-template-columns:{value};color:red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 2, "{source}");
-        assert!(validate_style_attribute(&source).is_ok(), "{source}");
         assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(Property::GridTemplateColumns),
-                parse_component_values(value).unwrap(),
-                CssImportance::Normal,
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_ok(),
+            "{source}"
+        );
+        assert!(
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                    Property::GridTemplateColumns
+                )),
+                CssComponentValues::parse(&CssParser::default(), value).unwrap(),
+                CssImportance::Normal
             )
             .is_ok(),
             "checked construction: {value}"
@@ -69,7 +79,7 @@ fn one_empty_line_name_block_remains_valid_at_each_boundary() {
 
 fn rejected(value: &str) {
     let source = format!("grid-template-columns:{value};color:red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.syntax().len(), 1, "{source}");
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),
@@ -84,7 +94,11 @@ fn rejected(value: &str) {
     );
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics(),
         "{source}"
     );

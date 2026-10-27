@@ -1249,7 +1249,7 @@ mod tests {
     }
     fn request() -> DomInlineStyleRequestLimits {
         DomInlineStyleRequestLimits {
-            input: surgeist_css::CssUtf16InputLimits::default(),
+            input: surgeist_css::source::CssUtf16InputLimits::default(),
             declaration: surgeist_cssom::CssomDeclarationRequestLimits::default(),
         }
     }
@@ -1518,13 +1518,13 @@ mod tests {
         let before = dom.custody_registry.ledger().total();
         let mut first_row = row(first, a);
         first_row.support = surgeist_cssom::CssomDeclarationSupport::try_new(vec![(
-            surgeist_css::CssPropertyGrammar::from_name("width").unwrap(),
+            surgeist_css::property::CssPropertyGrammar::from_name("width").unwrap(),
             surgeist_cssom::CssomUsabilityRequirement::AllCheckedValues,
         )])
         .unwrap();
         let mut second_row = row(second, a);
         second_row.support = surgeist_cssom::CssomDeclarationSupport::try_new(
-            surgeist_css::CssKnownProperty::all()
+            surgeist_css::property::CssKnownProperty::all()
                 .iter()
                 .take(100)
                 .map(|p| {

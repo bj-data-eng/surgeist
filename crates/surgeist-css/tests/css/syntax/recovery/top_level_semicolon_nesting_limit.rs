@@ -7,12 +7,13 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-at-rule
-use surgeist_css::{CssErrorCode, CssRecoveryAction, parse_sheet};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
 
 const LIMIT: usize = 256;
 
 fn assert_limit_unit(source: &str, unit_start: usize, parens_start: usize, retained: usize) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.syntax().rules().len(), retained, "{report:?}");
     let limits = report
         .diagnostics()
@@ -62,7 +63,7 @@ fn an_at_rule_ends_at_its_own_semicolon_before_the_limited_unit() {
     let parens = "(".repeat(LIMIT + 4);
     let source = format!("@x; b{parens}");
     assert_limit_unit(&source, 4, 5, 0);
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     let at_rules = report
         .diagnostics()
         .iter()

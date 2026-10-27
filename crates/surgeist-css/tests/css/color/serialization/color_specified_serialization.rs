@@ -1,8 +1,10 @@
 //! Independent expectations for Unit E canonical specified colors.
 
 use crate::css::support::checked_color as color;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use surgeist_color::{Color, SerializationRequest};
-use surgeist_css::*;
+use surgeist_css::serialization::CssSerializationLimits;
 
 #[test]
 fn standalone_color4_branches_have_source_derived_canonical_text() {
@@ -45,7 +47,7 @@ fn standalone_color4_branches_have_source_derived_canonical_text() {
     ] {
         assert_eq!(
             color(source)
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap_or_else(|error| panic!("{source}: {error:?}")),
             expected,
             "{source}"
@@ -58,15 +60,20 @@ fn admitted_huge_finite_exponents_fail_atomically_instead_of_panicking() {
     // Exact RGB clipping cannot compare an exponent at the i128 limit.
     let value = color("rgb(12345678901234567891e170141183460469231731687303715884105727 0 0)");
     let before = value.clone();
-    assert_eq!(
-        value.to_specified_css().unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::CapacityOverflow
+    assert!(
+        value
+            .serialize_specified(Default::default())
+            .unwrap_err()
+            .is_capacity_overflow()
     );
     assert_eq!(value, before);
     // Converted HSL reads the binary64 value, which is the closest finite
     // value (Values 4 §10.12), as used resolution reads it.
     let value = color("hsl(0 12345678901234567891e170141183460469231731687303715884105727% 50%)");
-    assert_eq!(value.to_specified_css().unwrap(), "rgb(255, 0, 0)");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "rgb(255, 0, 0)"
+    );
 }
 
 #[test]
@@ -99,7 +106,7 @@ fn origins_relative_alpha_and_custom_profiles_keep_declared_identity() {
     ] {
         assert_eq!(
             color(source)
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap_or_else(|error| panic!("{source}: {error:?}")),
             expected,
             "{source}"
@@ -141,7 +148,7 @@ fn mix_serialization_preserves_declared_weights_and_fills_only_known_omissions()
     ] {
         assert_eq!(
             color(source)
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap_or_else(|error| panic!("{source}: {error:?}")),
             expected,
             "{source}"
@@ -187,7 +194,7 @@ fn deferred_hsl_hwb_radian_and_alpha_order_follow_adopted_policies() {
     ] {
         assert_eq!(
             color(source)
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap_or_else(|error| panic!("{source}: {error:?}")),
             expected,
             "{source}"
@@ -213,7 +220,7 @@ fn exact_scales_and_legacy_byte_alpha_follow_the_selected_numeric_phases() {
     ] {
         assert_eq!(
             color(source)
-                .to_specified_css()
+                .serialize_specified(Default::default())
                 .unwrap_or_else(|error| panic!("{source}: {error:?}")),
             expected,
             "{source}"
@@ -249,7 +256,9 @@ fn every_byte_alpha_has_recoverable_specified_and_used_serialization() {
         };
         let source = format!("#000000{alpha:02x}");
         assert_eq!(
-            color(&source).to_specified_css().unwrap(),
+            color(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "specified {alpha}"
         );
@@ -276,29 +285,26 @@ fn simple_keyword_limits_have_exact_resource_boundaries() {
     let value = color("purple");
     assert_eq!(
         value
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 6))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 6))
             .unwrap(),
         "purple"
     );
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, 6),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, 1, 6),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, 6),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(1, 0, 6),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 5),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(1, 1, 5),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             expected
         );
     }
@@ -306,24 +312,15 @@ fn simple_keyword_limits_have_exact_resource_boundaries() {
     let explicit_default = color("color-mix(in oklab, red, blue)");
     assert_eq!(
         explicit_default
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                4,
-                usize::MAX,
-                usize::MAX,
-            ))
+            .serialize_specified(CssSerializationLimits::new(4, usize::MAX, usize::MAX,))
             .unwrap(),
         "color-mix(red, blue)"
     );
-    assert_eq!(
+    assert!(
         explicit_default
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                3,
-                usize::MAX,
-                usize::MAX,
-            ))
+            .serialize_specified(CssSerializationLimits::new(3, usize::MAX, usize::MAX,))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            .is_input_node_limit()
     );
 }
 
@@ -333,23 +330,20 @@ fn limits_fail_atomically_without_mutating_the_authored_graph() {
     let before = value.clone();
     for (limits, expected) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, usize::MAX, usize::MAX),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, usize::MAX, usize::MAX),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(usize::MAX, 0, usize::MAX),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(usize::MAX, 0, usize::MAX),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(usize::MAX, usize::MAX, 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(usize::MAX, usize::MAX, 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             expected
         );
         assert_eq!(value, before);
@@ -366,22 +360,24 @@ fn canonical_outputs_reenter_the_color_grammar_without_mutating_successful_input
     ] {
         let value = color(source);
         let before = value.clone();
-        let first = value.to_specified_css().unwrap();
+        let first = value.serialize_specified(Default::default()).unwrap();
         assert_eq!(value, before, "successful serialization changed {source}");
         let reparsed = color(&first);
         assert_eq!(
-            reparsed.to_specified_css().unwrap(),
+            reparsed.serialize_specified(Default::default()).unwrap(),
             first,
             "stable canonical output for {source}"
         );
     }
 
     let rounded = color("color(srgb 1 0 0 / 0.9999996)")
-        .to_specified_css()
+        .serialize_specified(Default::default())
         .unwrap();
     assert_eq!(rounded, "color(srgb 1 0 0 / 1)");
     assert_eq!(
-        color(&rounded).to_specified_css().unwrap(),
+        color(&rounded)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "color(srgb 1 0 0)"
     );
 }
@@ -390,16 +386,15 @@ fn canonical_outputs_reenter_the_color_grammar_without_mutating_successful_input
 fn wide_and_deep_graphs_share_one_cumulative_resource_context() {
     let wide_source = format!("color-mix({})", vec!["red"; 64].join(", "));
     let wide = color(&wide_source);
-    assert!(wide.to_specified_css().unwrap().starts_with("color-mix("));
-    assert_eq!(
-        wide.to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-            32,
-            usize::MAX,
-            usize::MAX,
-        ))
-        .unwrap_err()
-        .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+    assert!(
+        wide.serialize_specified(Default::default())
+            .unwrap()
+            .starts_with("color-mix(")
+    );
+    assert!(
+        wide.serialize_specified(CssSerializationLimits::new(32, usize::MAX, usize::MAX,))
+            .unwrap_err()
+            .is_input_node_limit()
     );
 
     let mut deep_source = "red".to_owned();
@@ -408,6 +403,10 @@ fn wide_and_deep_graphs_share_one_cumulative_resource_context() {
     }
     let deep = color(&deep_source);
     let before = deep.clone();
-    assert!(deep.to_specified_css().unwrap().starts_with("color-mix("));
+    assert!(
+        deep.serialize_specified(Default::default())
+            .unwrap()
+            .starts_with("color-mix(")
+    );
     assert_eq!(deep, before);
 }

@@ -5,14 +5,15 @@
 //! `none` (the initial style) is shorter than `medium` or `currentcolor`.
 //! The family therefore keeps the one fallback token `none`.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
 
 fn cssom(source: &str) -> String {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax())
+    CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
         .unwrap()
-        .serialize_cssom()
+        .serialize_cssom(Default::default())
         .unwrap()
 }
 

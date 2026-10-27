@@ -8,13 +8,14 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#block-contents
 use crate::css::support::authored_syntax::assert_strict_rejection;
-use surgeist_css::{
-    CssFontFaceDescriptorKind as Kind, CssFontFeatureValuesItem, CssRecoveryAction, CssRule,
-    CssSheet, parse_sheet, validate_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesItem;
+use surgeist_css::rule::{CssRule, CssSheet};
 
 fn sheet(source: &str, actions: &[CssRecoveryAction]) -> CssSheet {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(
         report
             .diagnostics()
@@ -24,7 +25,12 @@ fn sheet(source: &str, actions: &[CssRecoveryAction]) -> CssSheet {
         actions,
         "{source}: {report:?}"
     );
-    assert_strict_rejection(validate_sheet(source), report.diagnostics());
+    assert_strict_rejection(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result(),
+        report.diagnostics(),
+    );
     report.syntax().clone()
 }
 
@@ -79,7 +85,7 @@ fn keyframe_blocks_drop_nested_rules_and_keep_surrounding_declarations() {
             &[("opacity", "0"), ("color", "red")][..],
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [diagnostic] = report.diagnostics() else {
             panic!("{source}: {report:?}")
         };
@@ -95,7 +101,12 @@ fn keyframe_blocks_drop_nested_rules_and_keep_surrounding_declarations() {
             start + unit.len(),
             "{source}"
         );
-        assert_strict_rejection(validate_sheet(source), report.diagnostics());
+        assert_strict_rejection(
+            CssParser::default()
+                .parse_sheet(source)
+                .into_validation_result(),
+            report.diagnostics(),
+        );
         let [CssRule::Keyframes(keyframes)] = report.syntax().rules() else {
             panic!("{source}: {report:?}")
         };
@@ -111,7 +122,7 @@ fn keyframe_blocks_drop_nested_rules_and_keep_surrounding_declarations() {
                     declaration
                         .source()
                         .value_components()
-                        .serialize()
+                        .serialize_tokens(Default::default())
                         .unwrap()
                         .as_css()
                         .to_owned(),

@@ -23,7 +23,7 @@ fn limits() -> DomSessionLimits {
             reports: 8,
             storage_bytes: 16_000_000,
             work: 4_000_000,
-            css_input: surgeist_css::CssUtf16InputLimits::default(),
+            css_input: surgeist_css::source::CssUtf16InputLimits::default(),
         },
         element_tasks: DomElementTaskRuntimeLimits {
             tasks: 8,
@@ -436,7 +436,8 @@ fn inline_fixture(
     surgeist_cssom::CssStyleProperties,
     surgeist_dom::DomInlineStyleSourceContext,
 ) {
-    use surgeist_css::{CssParserContext, CssParserMode, CssUtf16InputLimits};
+    use surgeist_css::source::CssUtf16InputLimits;
+    use surgeist_css::{CssParserContext, CssParserMode};
     use surgeist_cssom::{
         CssomDeclarationRequestLimits, CssomDeclarationSupport, CssomInputRole, CssomInputVersion,
         CssomLimits,
@@ -524,7 +525,7 @@ fn inline_fixture(
 
 fn inline_requests() -> surgeist_dom::DomInlineStyleRequestLimits {
     surgeist_dom::DomInlineStyleRequestLimits {
-        input: surgeist_css::CssUtf16InputLimits::default(),
+        input: surgeist_css::source::CssUtf16InputLimits::default(),
         declaration: surgeist_cssom::CssomDeclarationRequestLimits::default(),
     }
 }

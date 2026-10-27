@@ -3,20 +3,30 @@
 //! Halfway away from zero is the adopted operational policy on binary64 bits.
 
 use crate::css::support::color_and_selector_fixtures::assert_color_limits;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
 };
-use surgeist_css::*;
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssAlphaColor, CssColor, CssColorComponent, CssColorSyntax, CssRgbColor,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::numeric::{CssCalculation, CssCalculationType, CssNumber, CssPercentage};
+use surgeist_css::property::{CssExpansion, CssKnownProperty};
+use surgeist_css::serialization::CssSerializationLimits;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 fn assert_text(source: &str, expected: &str) {
     let d = declaration(source);
     let before = d.clone();
     assert_eq!(d.value_components(), &components(source));
     let c = declaration_color(&d);
-    let first = c.to_specified_css();
-    assert_eq!(first, c.to_specified_css());
+    let first = c.serialize_specified(Default::default());
+    assert_eq!(first, c.serialize_specified(Default::default()));
     assert_eq!(d, before);
     assert_eq!(first.unwrap(), expected, "{source}");
 }
@@ -404,7 +414,7 @@ macro_rules! error_case {
             let c = color("alpha(from rgb(calc(1 / 128) none none))");
             let before = c.clone();
             assert_eq!(
-                c.to_specified_css_with_limits($limits).unwrap_err().kind(),
+                serialization_failure(&c.serialize_specified($limits).unwrap_err()),
                 $kind
             );
             assert_eq!(c, before);
@@ -449,36 +459,33 @@ fn rounded_origin_scratch_reaches_sibling_input_error() {
     // Four outer root/reference visits; origin root/divide bring totals to 9/9.
     // After 'rgb(from ', 14 bytes remain. Rounded calc needs exactly 14;
     // the old 15-byte capture fails before visiting either none sibling.
-    assert_eq!(
-        c.to_specified_css_with_limits(Limits::new(9, usize::MAX, 23))
+    assert!(
+        c.serialize_specified(Limits::new(9, usize::MAX, 23))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
     assert_eq!(c, before);
 }
 #[test]
 fn rounded_origin_scratch_reaches_sibling_projection_error() {
     let c = color("rgb(from color(srgb calc(1 / 128) none none) r g b)");
-    assert_eq!(
-        c.to_specified_css_with_limits(Limits::new(usize::MAX, 9, 23))
+    assert!(
+        c.serialize_specified(Limits::new(usize::MAX, 9, 23))
             .unwrap_err()
-            .kind(),
-        Kind::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
 }
 #[test]
 fn standalone_discarded_capture_control() {
     let c = color("rgb(calc(10000000000) 0 0)");
     let before = c.clone();
-    assert_eq!(
-        c.to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, 16))
+    assert!(
+        c.serialize_specified(Limits::new(usize::MAX, usize::MAX, 16))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(
-        c.to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, 17))
+        c.serialize_specified(Limits::new(usize::MAX, usize::MAX, 17))
             .unwrap(),
         "rgb(255, 0, 0)"
     );
@@ -487,7 +494,8 @@ fn standalone_discarded_capture_control() {
 #[test]
 fn checked_graph_retains_calculation_components_and_parsed_provenance() {
     let raw = components("calc(1 / 128)");
-    let calc = CssNumberCalculation::try_from_components(raw.clone()).unwrap();
+    let calc =
+        CssCalculation::<CssNumber>::try_from_components(raw.clone(), Default::default()).unwrap();
     assert_eq!(calc.components(), &raw);
     assert_eq!(calc.result_type(), CssCalculationType::Number);
     assert_eq!(calc.expression().origin(), raw.items()[0].origin());
@@ -512,8 +520,8 @@ fn checked_graph_retains_calculation_components_and_parsed_provenance() {
     );
     let c = CssColor::from_alpha(CssAlphaColor::try_new(source, None).unwrap());
     let before = c.clone();
-    let first = c.to_specified_css();
-    assert_eq!(first, c.to_specified_css());
+    let first = c.serialize_specified(Default::default());
+    assert_eq!(first, c.serialize_specified(Default::default()));
     assert_eq!(c, before);
     assert_eq!(raw, components("calc(1 / 128)"));
     assert_eq!(first.unwrap(), "alpha(from rgb(calc(0.007813) none none))");
@@ -521,24 +529,34 @@ fn checked_graph_retains_calculation_components_and_parsed_provenance() {
 #[test]
 fn clean_validation_preserves_raw_graph_and_siblings() {
     let source = "color: alpha(from rgb(calc(1 / 128) none none)) !important; opacity: .5";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert_eq!(&validate_style_attribute(source).unwrap(), report.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_block_contents(source)
+            .into_validation_result()
+            .unwrap(),
+        report.syntax()
+    );
     assert_eq!(report.syntax().len(), 2);
     let before = report.syntax().clone();
     let d = &report.syntax()[0];
     assert_eq!(d.importance(), CssImportance::Important);
     assert_eq!(
-        d.value_components().serialize().unwrap().as_css(),
+        d.value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         " alpha(from rgb(calc(1 / 128) none none)) "
     );
-    let text = declaration_color(d).to_specified_css();
+    let text = declaration_color(d).serialize_specified(Default::default());
     assert_eq!(report.syntax(), &before);
     assert_eq!(text.unwrap(), "alpha(from rgb(calc(0.007813) none none))");
 }
 #[test]
 fn invalid_origin_recovery_retains_sibling_control() {
-    let report = parse_style_attribute("color: alpha(from rgb(calc(1px) none none)); opacity: .5");
+    let report = CssParser::default()
+        .parse_block_contents("color: alpha(from rgb(calc(1px) none none)); opacity: .5");
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(report.syntax().len(), 1);
     assert_eq!(
@@ -553,16 +571,13 @@ fn origin_substitution_stays_pending_control() {
     let known = d.known().unwrap();
     assert!(known.property_value().is_none());
     assert_eq!(known.substitution_dependent().unwrap().as_css(), src);
-    assert!(matches!(
-        expand_declaration(&d).unwrap(),
-        CssExpansion::Pending(_)
-    ));
-    let error =
-        CssNumberCalculation::try_from_components(components("calc(var(--n))")).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::SubstitutionRequired
-    );
+    assert!(matches!(d.expand().unwrap(), CssExpansion::Pending(_)));
+    let error = CssCalculation::<CssNumber>::try_from_components(
+        components("calc(var(--n))"),
+        Default::default(),
+    )
+    .unwrap_err();
+    assert!(error.is_substitution_required(), "{error:?}");
     assert!(error.origin().is_some());
 }
 
@@ -653,7 +668,9 @@ text_case!(
 #[test]
 fn checked_percentage_origin_preserves_identity_dimension_and_provenance() {
     let raw = components("calc(1% / 128)");
-    let calc = CssPercentageCalculation::try_from_components(raw.clone()).unwrap();
+    let calc =
+        CssCalculation::<CssPercentage>::try_from_components(raw.clone(), Default::default())
+            .unwrap();
     assert_eq!(calc.result_type(), CssCalculationType::Percentage);
     assert_eq!(calc.components(), &raw);
     assert_eq!(calc.expression().origin(), raw.items()[0].origin());
@@ -674,8 +691,8 @@ fn checked_percentage_origin_preserves_identity_dimension_and_provenance() {
     );
     let value = CssColor::from_alpha(CssAlphaColor::try_new(source, None).unwrap());
     let before = value.clone();
-    let first = value.to_specified_css();
-    assert_eq!(first, value.to_specified_css());
+    let first = value.serialize_specified(Default::default());
+    assert_eq!(first, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     assert_eq!(raw, components("calc(1% / 128)"));
     assert_eq!(first.unwrap(), "alpha(from rgb(calc(0.007813%) none none))");
@@ -804,17 +821,21 @@ fn programmatic_calculation_preserves_exact_leaf_spelling_and_origins() {
     assert_eq!(leaf.origin(), &CssValueOrigin::Programmatic);
     let function = CssComponentValue::try_function(
         "calc",
-        CssComponentValues::try_new(vec![leaf.clone()]).unwrap(),
+        CssComponentValues::try_new(vec![leaf.clone()], Default::default()).unwrap(),
     )
     .unwrap();
-    let raw = CssComponentValues::try_new(vec![function]).unwrap();
-    let calculation = CssNumberCalculation::try_from_components(raw.clone()).unwrap();
+    let raw = CssComponentValues::try_new(vec![function], Default::default()).unwrap();
+    let calculation =
+        CssCalculation::<CssNumber>::try_from_components(raw.clone(), Default::default()).unwrap();
     assert_eq!(calculation.components(), &raw);
     assert_eq!(
         calculation.expression().origin(),
         &CssValueOrigin::Programmatic
     );
-    assert_eq!(raw.serialize().unwrap().as_css(), "calc(.0078125)");
+    assert_eq!(
+        raw.serialize_tokens(Default::default()).unwrap().as_css(),
+        "calc(.0078125)"
+    );
     let source = CssColor::from_rgb(
         CssRgbColor::try_new(
             CssColorSyntax::Modern,
@@ -833,10 +854,13 @@ fn programmatic_calculation_preserves_exact_leaf_spelling_and_origins() {
     );
     let value = CssColor::from_alpha(CssAlphaColor::try_new(source, None).unwrap());
     let before = value.clone();
-    let first = value.to_specified_css();
-    assert_eq!(first, value.to_specified_css());
+    let first = value.serialize_specified(Default::default());
+    assert_eq!(first, value.serialize_specified(Default::default()));
     assert_eq!(value, before);
     assert_eq!(leaf.origin(), &CssValueOrigin::Programmatic);
-    assert_eq!(raw.serialize().unwrap().as_css(), "calc(.0078125)");
+    assert_eq!(
+        raw.serialize_tokens(Default::default()).unwrap().as_css(),
+        "calc(.0078125)"
+    );
     assert_eq!(first.unwrap(), "alpha(from rgb(calc(0.007813) none none))");
 }

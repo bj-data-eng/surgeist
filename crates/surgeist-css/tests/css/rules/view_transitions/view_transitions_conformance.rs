@@ -1,4 +1,7 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{
+    CssFeatureKind, CssSpecificationTier, CssSupportStatus, feature_metadata,
+};
 
 // The selected VT1 CRD20240328 and CSS Snapshot 2026 stable-module
 // classification are the independent provenance authority for these records.
@@ -56,7 +59,7 @@ fn name_and_pseudo_catalog_records_bind_clean_admission_to_the_selected_stable_s
             metadata.source().url(),
             Some("https://www.w3.org/TR/2024/CRD-css-view-transitions-1-20240328/")
         );
-        let report = parse_sheet(css);
+        let report = CssParser::default().parse_sheet(css);
         assert!(report.is_clean(), "{id}: {report:?}");
         assert_eq!(report.syntax().rules().len(), 1);
     }

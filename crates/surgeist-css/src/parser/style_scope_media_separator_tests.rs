@@ -1,9 +1,14 @@
 #![forbid(unsafe_code)]
 // New cfg(test) parser child; do not change the existing boundary draft/module.
-use super::{
-    BoundedParseContext, StyleContextCaptures, conditional_chains, parse_sheet_bounded, recovery,
-};
-use crate::*;
+use super::{conditional_chains, recovery};
+use crate::declaration::CssDeclaration;
+use crate::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use crate::parser::reconstruction::{BoundedParseContext, parse_sheet_bounded};
+use crate::parser::recovery::StyleContextCaptures;
+use crate::rule::{CssNamespacePrefix, CssRule, CssSheet};
+use crate::selector::{CssNamespaceConstraint, CssSelector, CssStyleSelector};
+use crate::source::{CssSourcePosition, CssSourceSnapshot};
+use crate::{CssParseReport, CssParserContext};
 
 const PREFIX: &str = "/*😀*/\r\n@namespace svg 'urn:original';";
 const AFTER: &str = ".after{color:black}";
@@ -26,7 +31,11 @@ fn color(declaration: &CssDeclaration, source: &str, expected: &str) {
     let offset = source.find(&format!("color:{expected}")).unwrap();
     original(declaration.position().unwrap(), source, offset);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         expected
     );
     let name = declaration.parsed_name().unwrap();
@@ -102,16 +111,16 @@ fn check_styled(depth: usize) {
     );
     let mut children = scope.rules().rules();
     for (offset, _) in source.match_indices("@media all{") {
-        let [CssScopedRule::Media(media)] = children else {
+        let [CssRule::Media(media)] = children else {
             panic!("every Media survives")
         };
         original(media.position().unwrap(), &source, offset);
-        children = media.rules().rules();
+        children = media.rules();
     }
     let [
-        CssScopedRule::NestedDeclarations(red),
-        CssScopedRule::Style(leaf),
-        CssScopedRule::NestedDeclarations(green),
+        CssRule::NestedDeclarations(red),
+        CssRule::Style(leaf),
+        CssRule::NestedDeclarations(green),
     ] = children
     else {
         panic!(
@@ -142,7 +151,7 @@ fn check_styled(depth: usize) {
         &source,
         source.find("svg|leaf.child{").unwrap(),
     );
-    let [CssScopedStyleSelector::Selector(CssSelector::Compound(compound))] =
+    let [CssStyleSelector::Selector(CssSelector::Compound(compound))] =
         leaf.selectors().selectors()
     else {
         panic!("namespaced scoped leaf")
@@ -151,7 +160,7 @@ fn check_styled(depth: usize) {
         compound.type_selector().unwrap().namespace(),
         &CssNamespaceConstraint::Named(CssNamespacePrefix::try_new("svg").unwrap())
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -273,17 +282,13 @@ fn unstyled_scoped_media_discards_block_semicolon_before_supports() {
             };
             let mut children = scope.rules().rules();
             for (offset, _) in source.match_indices("@media all{") {
-                let [CssScopedRule::Media(media)] = children else {
+                let [CssRule::Media(media)] = children else {
                     panic!("ordinary scoped Media chain")
                 };
                 original(media.position().unwrap(), &source, offset);
-                children = media.rules().rules();
+                children = media.rules();
             }
-            let [
-                CssScopedRule::Supports(supports),
-                CssScopedRule::Style(kept),
-            ] = children
-            else {
+            let [CssRule::Supports(supports), CssRule::Style(kept)] = children else {
                 panic!("depth {depth}: Supports and later child after a discarded semicolon")
             };
             original(
@@ -291,7 +296,7 @@ fn unstyled_scoped_media_discards_block_semicolon_before_supports() {
                 &source,
                 source.find("@supports").unwrap(),
             );
-            let [CssScopedRule::Style(hidden)] = supports.rules().rules() else {
+            let [CssRule::Style(hidden)] = supports.rules() else {
                 panic!("Supports child")
             };
             let [hidden_color] = hidden.declarations().as_slice() else {
@@ -312,7 +317,7 @@ fn unstyled_scoped_media_discards_block_semicolon_before_supports() {
             assert_eq!(
                 hidden_color
                     .value_components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 "red"

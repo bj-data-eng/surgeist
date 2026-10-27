@@ -1,15 +1,31 @@
 //! Authored Transforms2 §5 angle/axis construction, identity and provenance.
 //! These tests deliberately exercise no canonical rotate output or matrix execution.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssCalculation, CssNumber, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::transform::{CssRotate, CssRotateAxis, CssRotateValues};
 
-fn angle(text: &str) -> CssAngleValue {
-    CssAngleValue::from_literal(CssAngleLiteral::try_new(text, CssAngleUnit::Degrees).unwrap())
+fn angle(text: &str) -> CssNumeric<CssAngle> {
+    CssNumeric::<CssAngle>::try_from_literal(
+        CssNumericLiteral::<CssAngle>::try_new(text, CssAngleUnit::Degrees).unwrap(),
+    )
+    .unwrap()
 }
-fn number(text: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_component(CssComponentValue::try_number(text).unwrap()).unwrap()
+fn number(text: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_number(text).unwrap())
+        .unwrap()
 }
 fn parsed(source: &str) -> CssRotate {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let declaration = &report.syntax()[0];
     let CssKnownPropertyValueRef::Rotate(value) =
@@ -72,7 +88,7 @@ fn vector_construction_preserves_exact_signed_zero_and_extreme_operands() {
         };
         assert!(value.keyword_axis_origin().is_none());
         for (actual, expected) in actual.iter().zip(components) {
-            let component = actual.literal_component().unwrap();
+            let component = actual.literal().map(|literal| literal.component()).unwrap();
             let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = component.view()
             else {
                 panic!("number");
@@ -85,15 +101,19 @@ fn vector_construction_preserves_exact_signed_zero_and_extreme_operands() {
 
 #[test]
 fn typed_math_construction_keeps_angle_and_number_domains_symbolic() {
-    let angle_calculation = CssAngleCalculation::try_from_components(
-        parse_component_values("calc(15deg + 15deg)").unwrap(),
+    let angle_calculation = CssCalculation::<CssAngle>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(15deg + 15deg)").unwrap(),
+        Default::default(),
     )
     .unwrap();
-    let angle_value = CssAngleValue::try_from_calculation(angle_calculation.clone()).unwrap();
-    let axis_calculation =
-        CssNumberCalculation::try_from_components(parse_component_values("calc(1 + 1)").unwrap())
-            .unwrap();
-    let x = CssSpecifiedNumber::try_from_calculation(axis_calculation.clone()).unwrap();
+    let angle_value =
+        CssNumeric::<CssAngle>::try_from_calculation(angle_calculation.clone()).unwrap();
+    let axis_calculation = CssCalculation::<CssNumber>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(1 + 1)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    let x = CssNumeric::<CssNumber>::try_from_calculation(axis_calculation.clone()).unwrap();
     let value = CssRotateValues::new(
         angle_value,
         Some(CssRotateAxis::Vector([x, number("0"), number("0")])),
@@ -104,7 +124,12 @@ fn typed_math_construction_keeps_angle_and_number_domains_symbolic() {
     };
     assert_eq!(axis[0].calculation(), Some(&axis_calculation));
     assert!(value.angle().literal().is_none());
-    assert!(axis[0].literal_component().is_none());
+    assert!(
+        axis[0]
+            .literal()
+            .map(|literal| literal.component())
+            .is_none()
+    );
 }
 
 #[test]
@@ -151,9 +176,11 @@ fn parsed_keyword_and_numeric_operands_keep_original_utf8_spans() {
 
 #[test]
 fn checked_property_reentry_preserves_each_supplied_operand_origin() {
-    let components = parse_component_values("1 2 3 calc(15deg + 15deg)").unwrap();
-    let constructed = parse_property_value_for_grammar(
-        CssKnownProperty::Rotate.grammar(),
+    let components =
+        CssComponentValues::parse(&CssParser::default(), "1 2 3 calc(15deg + 15deg)").unwrap();
+    let constructed = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(CssKnownProperty::Rotate.grammar()),
         components.clone(),
         CssImportance::Important,
     )
@@ -187,7 +214,7 @@ fn checked_property_reentry_preserves_each_supplied_operand_origin() {
 #[test]
 fn recovered_angle_closure_is_reported_and_cannot_enter_checked_property_admission() {
     let source = "rotate:x calc(15deg + 15deg";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(!report.is_clean(), "implicit closing delimiter is recovery");
     let CssKnownPropertyValueRef::Rotate(wrapper) = report.syntax()[0]
         .known()
@@ -198,25 +225,29 @@ fn recovered_angle_closure_is_reported_and_cannot_enter_checked_property_admissi
         panic!("recovered authored rotation");
     };
     assert!(values(wrapper.value()).angle().calculation().is_some());
-    let components = parse_component_values("x calc(15deg + 15deg").unwrap();
+    let components =
+        CssComponentValues::parse(&CssParser::default(), "x calc(15deg + 15deg").unwrap();
     assert!(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Rotate),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Rotate)),
             components.clone(),
             CssImportance::Normal
         )
         .is_err()
     );
     assert!(
-        parse_property_value_for_grammar(
-            CssKnownProperty::Rotate.grammar(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssKnownProperty::Rotate.grammar()),
             components,
             CssImportance::Normal
         )
         .is_err()
     );
-    let recovered = CssAngleCalculation::try_from_components(
-        parse_component_values("calc(15deg + 15deg").unwrap(),
+    let recovered = CssCalculation::<CssAngle>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(15deg + 15deg").unwrap(),
+        Default::default(),
     );
     assert!(
         recovered.is_err(),
@@ -226,7 +257,7 @@ fn recovered_angle_closure_is_reported_and_cannot_enter_checked_property_admissi
 
 fn assert_incompatible_angle_diagnostic(value: &str) {
     let source = format!("/*😀*/rotate:{value};color:red");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(
         !report.is_clean(),
         "incompatible angle/length sum: {source}"
@@ -248,13 +279,14 @@ fn assert_incompatible_angle_diagnostic(value: &str) {
         );
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-        panic!(
-            "typed rotate grammar rejection: {source}: {:?}",
-            diagnostic.error()
-        );
-    };
-    assert_eq!(detail.property(), CssKnownProperty::Rotate);
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidPropertyValue,
+        "typed rotate grammar rejection: {source}: {:?}",
+        diagnostic.error()
+    );
+    assert_eq!(detail.known_property().unwrap(), CssKnownProperty::Rotate);
     let encountered = detail
         .encountered()
         .expect("the incompatible right-hand numeric operand");
@@ -280,12 +312,12 @@ fn checked_angle_type_error_identifies_the_incompatible_right_hand_dimension() {
     // numeric boundary establishes the specific operand origin to preserve,
     // independently of the rotate parser's speculative alternatives.
     let source = "/*😀*/calc(15deg + 1px)";
-    let error = CssAngleCalculation::try_from_components(parse_component_values(source).unwrap())
-        .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::IncompatibleTypes
-    );
+    let error = CssCalculation::<CssAngle>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+        Default::default(),
+    )
+    .unwrap_err();
+    assert!(error.is_incompatible_types(), "{error:?}");
     let start = source.find("1px").unwrap();
     assert_origin(
         error.origin().expect("incompatible operand origin"),

@@ -1,12 +1,16 @@
 //! Property grammar admissions derive from original CSS inputs and their mapped
 //! Width, Color and BackgroundImage grammars, independently of captured output.
 //! Literal expectations use numeric/color/URL semantics rather than serialization.
-use surgeist_css::{
-    CssBoxSize, CssCalculationType, CssComponentValueRef, CssErrorCode, CssImageValue,
-    CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
-    CssRecoveryAction, CssSizeValue, CssTokenKind, CssValueOrigin, CssValueTokenRef, ErrorKind,
-    parse_property_value_text,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::numeric::CssCalculationType;
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTextTarget,
 };
+use surgeist_css::values::box_model::{CssBoxSize, CssSizeValue};
+use surgeist_css::values::image::CssImageValue;
 
 #[derive(Clone, Copy)]
 enum Expected {
@@ -530,9 +534,9 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
         let matching: Vec<_> = cases.iter().filter(|case| case["id"] == id).collect();
         assert_eq!(matching.len(), 1, "one original input for {id}");
         let input = matching[0]["input"].as_str().unwrap();
-        let report = parse_property_value_text(
+        let report = CssParser::default().parse_property_value(
             input,
-            CssPropertyNameRef::Known(property),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property)),
             CssImportance::Normal,
         );
         let clean = !matches!(expected, Reject(..));
@@ -585,13 +589,20 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
                 input.len(),
                 "{id}"
             );
-            let encountered = match diagnostic.error().kind() {
-                ErrorKind::InvalidPropertyValue(error) => {
-                    assert_eq!(error.property(), property, "{id}");
+            let encountered = match diagnostic.error().code() {
+                CssErrorCode::InvalidPropertyValue => {
+                    let error = diagnostic.error();
+                    assert_eq!(error.known_property().unwrap(), property, "{id}");
                     error.encountered()
                 }
-                ErrorKind::InvalidColorSyntax(error) => error.encountered(),
-                ErrorKind::UnexpectedToken(error) => Some(error.encountered()),
+                CssErrorCode::InvalidColorSyntax => {
+                    let error = diagnostic.error();
+                    error.encountered()
+                }
+                CssErrorCode::UnexpectedToken => {
+                    let error = diagnostic.error();
+                    Some(error.encountered().unwrap())
+                }
                 _ => panic!("expected property, color or boundary diagnostic: {id}"),
             };
             assert_eq!(encountered.unwrap().kind(), token_kind, "{id}");
@@ -640,7 +651,11 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
                     panic!("expected literal width: {id}")
                 };
                 let actual = match (
-                    length.literal_component().unwrap().view(),
+                    length
+                        .literal()
+                        .map(|literal| literal.component())
+                        .unwrap()
+                        .view(),
                     matches!(expected, Percent(_)),
                 ) {
                     (
@@ -706,7 +721,7 @@ fn raw_property_corpus_obeys_selected_grammar_and_original_coordinates() {
                 else {
                     panic!("expected background image: {id}");
                 };
-                let [CssImageValue::Url(url)] = value.images().images() else {
+                let [CssImageValue::Url(url)] = value.value().images() else {
                     panic!("expected one URL layer: {id}");
                 };
                 assert_eq!(url.as_str(), expected, "{id}");

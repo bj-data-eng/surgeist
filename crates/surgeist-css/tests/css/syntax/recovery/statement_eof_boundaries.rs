@@ -1,11 +1,11 @@
 //! Existing-callable Syntax 3 §5.5.2 EOF/semicolon boundaries, with the adopted
 //! UnexpectedEnd + RetainNonconformingRule diagnostic contract.
 use crate::css::support::authored_syntax::assert_unclean_sheet as assert_nonclean_validation;
-use surgeist_css::{
-    CssCustomMediaBody, CssErrorCode, CssImportTarget, CssNamespaceContext, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, CssScopedRule, ErrorKind, parse_rule, parse_sheet,
-    validate_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::query::media::CssCustomMediaBody;
+use surgeist_css::rule::{CssImportTarget, CssRule};
+use surgeist_css::selector::CssNamespaceContext;
 
 fn assert_eof(diagnostic: &CssRecoveryDiagnostic, source: &str, start: usize, end: usize) {
     assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedEnd);
@@ -13,11 +13,10 @@ fn assert_eof(diagnostic: &CssRecoveryDiagnostic, source: &str, start: usize, en
         diagnostic.action(),
         CssRecoveryAction::RetainNonconformingRule
     );
-    let ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-        panic!("at-rule EOF")
-    };
+    let detail = diagnostic.error();
+    assert_eq!(detail.code(), CssErrorCode::UnexpectedEnd, "at-rule EOF");
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(diagnostic.error().position().byte_offset().value(), end);
@@ -62,15 +61,15 @@ fn assert_ordinary_statement(rule: &CssRule, kind: &str) {
     }
 }
 
-fn assert_scoped_statement(rule: &CssScopedRule, kind: &str) {
+fn assert_scoped_statement(rule: &CssRule, kind: &str) {
     match (rule, kind) {
-        (CssScopedRule::LayerStatement(layer), "layer") => {
+        (CssRule::LayerStatement(layer), "layer") => {
             let [name] = layer.names().names() else {
                 panic!("one scoped layer")
             };
             assert_eq!(name.components(), &["café".to_owned()]);
         }
-        (CssScopedRule::CustomMedia(custom), "custom-media") => {
+        (CssRule::CustomMedia(custom), "custom-media") => {
             assert_eq!(custom.name().as_str(), "--n");
             assert!(matches!(custom.body(), CssCustomMediaBody::True));
         }
@@ -91,10 +90,10 @@ fn all_admitted_root_statement_owners_report_eof_but_semicolon_and_trailing_comm
     .map(|(statement, kind)| {
         let eof = format!("/*😀*/\r\n{statement} /*tail;{{}}*/ \t");
         let terminated = format!("/*😀*/\r\n{statement}; /*tail;{{}}*/ \t");
-        let eof_sheet = parse_sheet(&eof);
-        let eof_fragment = parse_rule(&eof, &context);
-        let terminated_sheet = parse_sheet(&terminated);
-        let terminated_fragment = parse_rule(&terminated, &context);
+        let eof_sheet = CssParser::default().parse_sheet(&eof);
+        let eof_fragment = CssRule::parse(&CssParser::default(), &eof, &context);
+        let terminated_sheet = CssParser::default().parse_sheet(&terminated);
+        let terminated_fragment = CssRule::parse(&CssParser::default(), &terminated, &context);
         (
             eof,
             terminated,
@@ -127,7 +126,13 @@ fn all_admitted_root_statement_owners_report_eof_but_semicolon_and_trailing_comm
         };
         assert_ordinary_statement(rule, kind);
         assert_eq!(fragment_control.syntax().as_ref().unwrap(), rule);
-        assert_eq!(validate_sheet(&terminated).unwrap(), *control.syntax());
+        assert_eq!(
+            CssParser::default()
+                .parse_sheet(&terminated)
+                .into_validation_result()
+                .unwrap(),
+            *control.syntax()
+        );
     }
 }
 
@@ -145,8 +150,8 @@ fn nested_statement_eof_is_the_parent_input_bound_not_the_complete_source_end() 
         let source = format!("/*😀*/\r\n{parent}{{{statement} /*tail;{{}}*/ }}.after{{color:red}}");
         let terminated =
             format!("/*😀*/\r\n{parent}{{{statement}; /*tail;{{}}*/ }}.after{{color:red}}");
-        let report = parse_sheet(&source);
-        let control = parse_sheet(&terminated);
+        let report = CssParser::default().parse_sheet(&source);
+        let control = CssParser::default().parse_sheet(&terminated);
         (source, terminated, kind, report, control)
     })
     .collect();
@@ -202,7 +207,13 @@ fn nested_statement_eof_is_the_parent_input_bound_not_the_complete_source_end() 
         assert_eof(diagnostic, &source, start, end);
         assert_nonclean_validation(&source, &report);
         assert!(control.is_clean(), "{control:?}");
-        assert_eq!(validate_sheet(&terminated).unwrap(), *control.syntax());
+        assert_eq!(
+            CssParser::default()
+                .parse_sheet(&terminated)
+                .into_validation_result()
+                .unwrap(),
+            *control.syntax()
+        );
     }
 }
 
@@ -211,8 +222,8 @@ fn inner_function_block_and_string_terminators_do_not_become_statement_eof() {
     let statement = "@custom-media --n future(\";{}\" [a;b] {c;d} (@hidden;))";
     let eof_source = format!("/*😀*/\r\n{statement}");
     let control_source = format!("/*😀*/\r\n{statement}; /*after;{{}}*/");
-    let eof = parse_sheet(&eof_source);
-    let control = parse_sheet(&control_source);
+    let eof = CssParser::default().parse_sheet(&eof_source);
+    let control = CssParser::default().parse_sheet(&control_source);
     for report in [&eof, &control] {
         let [CssRule::CustomMedia(custom)] = report.syntax().rules() else {
             panic!("one complete function-bearing definition")
@@ -222,8 +233,8 @@ fn inner_function_block_and_string_terminators_do_not_become_statement_eof() {
             panic!("symbolic query body")
         };
         assert!(
-            matches!(media.queries(), [surgeist_css::CssMediaQuery::Condition(condition)]
-            if matches!(condition.kind(), surgeist_css::CssMediaConditionKind::GeneralEnclosed(_)))
+            matches!(media.queries(), [surgeist_css::query::media::CssMediaQuery::Condition(condition)]
+            if matches!(condition.kind(), surgeist_css::query::CssConditionKind::Leaf(surgeist_css::query::media::CssMediaLeaf::GeneralEnclosed(_))))
         );
     }
     let [diagnostic] = eof.diagnostics() else {
@@ -237,7 +248,13 @@ fn inner_function_block_and_string_terminators_do_not_become_statement_eof() {
     );
     assert_nonclean_validation(&eof_source, &eof);
     assert!(control.is_clean(), "{control:?}");
-    assert_eq!(validate_sheet(&control_source).unwrap(), *control.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(&control_source)
+            .into_validation_result()
+            .unwrap(),
+        *control.syntax()
+    );
 }
 
 #[test]
@@ -269,7 +286,7 @@ fn discarded_candidates_keep_their_outer_failure_without_retained_statement_or_c
         } else {
             format!("/*😀*/\r\n{candidate}")
         };
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         (source, candidate, parent, code, report)
     })
     .collect();
@@ -307,8 +324,8 @@ fn discarded_candidates_keep_their_outer_failure_without_retained_statement_or_c
 fn real_implicit_closures_and_admitted_statement_eof_have_distinct_owners() {
     let function_source = "/*😀*/\r\n@custom-media --n (color";
     let block_source = "/*😀*/\r\n@layer café{.kept{color:red";
-    let function = parse_sheet(function_source);
-    let block = parse_sheet(block_source);
+    let function = CssParser::default().parse_sheet(function_source);
+    let block = CssParser::default().parse_sheet(block_source);
     assert!(matches!(
         function.syntax().rules(),
         [CssRule::CustomMedia(_)]

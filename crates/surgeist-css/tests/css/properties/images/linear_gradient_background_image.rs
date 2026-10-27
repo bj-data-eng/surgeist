@@ -2,13 +2,14 @@
 //! Images 3 (CRD 2023-12-18) §3.1 defines linear-gradient(), whose omitted
 //! direction defaults to `to bottom`.
 
-use surgeist_css::{
-    CssGradient, CssImageValue, CssKnownProperty, CssKnownPropertyValueRef, parse_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::image::{CssGradient, CssImageValue};
 
 #[test]
 fn valid_authored_linear_gradient_is_retained_as_background_image() {
-    let report = parse_style_attribute("background-image: linear-gradient(red, blue)");
+    let report =
+        CssParser::default().parse_block_contents("background-image: linear-gradient(red, blue)");
 
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
@@ -19,15 +20,15 @@ fn valid_authored_linear_gradient_is_retained_as_background_image() {
     let Some(CssKnownPropertyValueRef::BackgroundImage(value)) = known.property_value() else {
         panic!("typed background-image value");
     };
-    let [CssImageValue::Gradient(gradient @ CssGradient::Linear(_))] = value.images().images()
+    let [CssImageValue::Gradient(gradient @ CssGradient::Linear(_))] = value.value().images()
     else {
-        panic!("one linear gradient: {:?}", value.images().images());
+        panic!("one linear gradient: {:?}", value.value().images());
     };
     // CSSOM 1 (WD 2021-08-26) §6.7.2 omits a component that does not change
     // the meaning, so the default direction stays omitted; both stops keep
     // their named-color keywords in order.
     assert_eq!(
-        gradient.serialize_specified().unwrap(),
+        gradient.serialize_specified(Default::default()).unwrap(),
         "linear-gradient(red, blue)"
     );
 }

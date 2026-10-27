@@ -1,6 +1,10 @@
 //! Scope-boundary parentheses participate in the documented shared 256-level
 //! structural ceiling, independently of ampersand admission or its new getter.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssPseudoClass, CssSelector};
 
 #[test]
 fn anchor_free_scope_boundary_parenthesis_counts_toward_structural_limit() {
@@ -15,13 +19,14 @@ fn anchor_free_scope_boundary_parenthesis_counts_toward_structural_limit() {
             ":is(".repeat(255),
             ")".repeat(255)
         );
-        let report = parse_sheet(&accepted);
+        let report = CssParser::default().parse_sheet(&accepted);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let [CssRule::Scope(scope), CssRule::Style(after)] = report.syntax().rules() else {
             panic!("scope and following neighbor")
         };
         let boundary = if limit { scope.limit() } else { scope.root() }.unwrap();
-        let [surgeist_css::CssScopeSelector::Selector(selector)] = boundary.selectors() else {
+        let [surgeist_css::selector::CssStyleSelector::Selector(selector)] = boundary.selectors()
+        else {
             panic!("one selector")
         };
         let mut selector = selector;
@@ -29,7 +34,9 @@ fn anchor_free_scope_boundary_parenthesis_counts_toward_structural_limit() {
             let CssSelector::PseudoClass(CssPseudoClass::Is(list)) = selector else {
                 panic!("retained function")
             };
-            let [surgeist_css::CssPseudoSelectorListItem::Selector(member)] = list.items() else {
+            let [surgeist_css::selector::CssPseudoSelectorListItem::Selector(member)] =
+                list.items()
+            else {
                 panic!("one retained member")
             };
             selector = member;
@@ -44,7 +51,7 @@ fn anchor_free_scope_boundary_parenthesis_counts_toward_structural_limit() {
             ":is(".repeat(256),
             ")".repeat(256)
         );
-        let report = parse_sheet(&exceeded);
+        let report = CssParser::default().parse_sheet(&exceeded);
         let [diagnostic] = report.diagnostics() else {
             panic!("one excess scope diagnostic: {:?}", report.diagnostics())
         };

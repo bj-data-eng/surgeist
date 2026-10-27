@@ -5,11 +5,12 @@
 //! The reserved default identifier is excluded in every ASCII case permutation.
 //! Quoted strings and decoded names retain their distinct construction semantics.
 
-use surgeist_css::{
-    CssErrorCode, CssFontFaceFamily, CssFontFaceSource, CssFontFamilyName, CssFontFamilyNameKind,
-    CssFontLocalName, CssFontValue, CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction,
-    CssRule, parse_sheet, parse_style_attribute, validate_sheet, validate_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{CssFontFaceFamily, CssFontFaceSource, CssFontLocalName};
+use surgeist_css::values::font::{CssFontFamilyName, CssFontFamilyNameKind, CssFontValue};
 
 // These are authored identifier sequences. Escapes are decoded by the real
 // parser before the reserved-token check; whitespace terminating a hex escape
@@ -31,7 +32,7 @@ fn font_family_property_and_shorthand_reject_reserved_default_tokens() {
     for name in RESERVED_NAME_SYNTAX {
         for declaration in [format!("font-family:{name}"), format!("font:16px {name}")] {
             let source = format!("{declaration};color:red");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(
                 report.syntax().len(),
                 1,
@@ -50,7 +51,9 @@ fn font_family_property_and_shorthand_reject_reserved_default_tokens() {
             );
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
             assert_eq!(
-                validate_style_attribute(&source)
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
                     .expect_err("validation must reject the recovered declaration")
                     .diagnostics(),
                 report.diagnostics()
@@ -63,7 +66,7 @@ fn font_family_property_and_shorthand_reject_reserved_default_tokens() {
 fn font_face_family_descriptor_rejects_reserved_default_tokens() {
     for name in RESERVED_NAME_SYNTAX {
         let source = format!("@font-face{{font-family:{name};src:url(fallback.woff2)}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("family rejection must retain its outer rule: {source}; {report:?}");
         };
@@ -86,7 +89,9 @@ fn font_face_family_descriptor_rejects_reserved_default_tokens() {
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDescriptor);
         assert_eq!(
-            validate_sheet(&source)
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
                 .expect_err("validation must reject the recovered family descriptor")
                 .diagnostics(),
             report.diagnostics()
@@ -98,7 +103,7 @@ fn font_face_family_descriptor_rejects_reserved_default_tokens() {
 fn local_font_source_rejects_reserved_default_tokens() {
     for name in RESERVED_NAME_SYNTAX {
         let source = format!("@font-face{{font-family:Demo;src:local({name})}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("source rejection must retain its outer rule: {source}; {report:?}");
         };
@@ -121,7 +126,9 @@ fn local_font_source_rejects_reserved_default_tokens() {
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDescriptor);
         assert_eq!(
-            validate_sheet(&source)
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
                 .expect_err("validation must reject the recovered source descriptor")
                 .diagnostics(),
             report.diagnostics()
@@ -146,14 +153,14 @@ fn quoted_reserved_names_and_nonreserved_identifiers_preserve_decoded_names() {
         ("A\u{a0}default", "A\u{a0}default", IdentSequence),
     ] {
         let style = format!("font-family:{authored};font:16px {authored}");
-        let report = parse_style_attribute(&style);
+        let report = CssParser::default().parse_block_contents(&style);
         assert!(report.is_clean(), "{style}; {report:?}");
         assert_eq!(report.syntax().len(), 2);
         for declaration in report.syntax().iter() {
             let families = match declaration.known().unwrap().property_value().unwrap() {
-                CssKnownPropertyValueRef::FontFamily(value) => value.families(),
+                CssKnownPropertyValueRef::FontFamily(value) => value.value(),
                 CssKnownPropertyValueRef::Font(value) => {
-                    let CssFontValue::Explicit(value) = value.font() else {
+                    let CssFontValue::Explicit(value) = value.value() else {
                         panic!("expected explicit font shorthand: {style}");
                     };
                     value.families()
@@ -168,7 +175,7 @@ fn quoted_reserved_names_and_nonreserved_identifiers_preserve_decoded_names() {
         }
 
         let sheet = format!("@font-face{{font-family:{authored};src:local({authored})}}");
-        let report = parse_sheet(&sheet);
+        let report = CssParser::default().parse_sheet(&sheet);
         assert!(report.is_clean(), "{sheet}; {report:?}");
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("expected font-face: {sheet}");

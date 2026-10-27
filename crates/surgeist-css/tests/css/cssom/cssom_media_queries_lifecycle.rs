@@ -5,25 +5,26 @@
 //! nullable result and ignored-query projection need their own functional APIs;
 //! a missing symbol or a changed authored recovery contract is not RED evidence.
 
-use surgeist_css::{parse_media_query, parse_media_query_list};
+use surgeist_css::CssParser;
+use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
 
 fn query_text(source: &str) -> String {
-    let report = parse_media_query(source);
+    let report = CssMediaQuery::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report
         .syntax()
-        .serialize()
+        .serialize_tokens(Default::default())
         .expect("a clean query can be serialized")
         .as_css()
         .to_owned()
 }
 
 fn list_text(source: &str) -> String {
-    let report = parse_media_query_list(source);
+    let report = CssMediaQueryList::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     report
         .syntax()
-        .serialize()
+        .serialize_tokens(Default::default())
         .expect("a clean list can be serialized")
         .as_css()
         .to_owned()

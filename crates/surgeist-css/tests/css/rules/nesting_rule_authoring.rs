@@ -1,14 +1,21 @@
 //! CSS Nesting 1 style rules, nested group rules and their source order through
 //! the public stylesheet parser.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssAttributeMatcher, CssPseudoClass, CssPseudoElement, CssSelector, CssSelectorCombinator,
+    CssStyleSelector,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
 
 #[test]
 fn nesting_retains_descendant_and_parent_selectors_in_source_order() {
-    let sheet = parse_sheet(".card { color: black; .title { color: white; } background-color: white; &:hover { opacity: 0.8; } }").expect("clean parse report");
+    let sheet = CssParser::default().parse_sheet(".card { color: black; .title { color: white; } background-color: white; &:hover { opacity: 0.8; } }").expect("clean parse report");
     let [parent] = sheet.rules() else {
         panic!("expected one authored parent");
     };
@@ -47,9 +54,7 @@ fn nesting_retains_descendant_and_parent_selectors_in_source_order() {
 
 #[test]
 fn nesting_retains_selector_lists_and_relative_combinators() {
-    let sheet = parse_sheet(
-        ".button, .link { &.active[aria-current=true] { color: black; } > .icon { opacity: 1; } }",
-    )
+    let sheet = CssParser::default().parse_sheet(".button, .link { &.active[aria-current=true] { color: black; } > .icon { opacity: 1; } }")
     .expect("clean parse report");
     let [parent] = sheet.rules() else {
         panic!("expected one authored parent");
@@ -90,7 +95,7 @@ fn nesting_retains_selector_lists_and_relative_combinators() {
 
 #[test]
 fn nesting_retains_ampersand_combinator_chain_and_suffixes() {
-    let sheet = parse_sheet(".tabs { & > .tab { color: black; } } .button { &.active[aria-current=true]:hover { opacity: 1; } }").expect("clean parse report");
+    let sheet = CssParser::default().parse_sheet(".tabs { & > .tab { color: black; } } .button { &.active[aria-current=true]:hover { opacity: 1; } }").expect("clean parse report");
     let [tabs, button] = sheet.rules() else {
         panic!("expected two authored parents");
     };
@@ -125,7 +130,7 @@ fn nesting_retains_ampersand_combinator_chain_and_suffixes() {
 
 #[test]
 fn nesting_retains_style_rules_inside_conditional_groups() {
-    let sheet = parse_sheet("@media screen { .card { .title { color: white; } } } @container sidebar (inline-size > 30rem) { .tabs { & > .tab { color: black; } } }").expect("clean parse report");
+    let sheet = CssParser::default().parse_sheet("@media screen { .card { .title { color: white; } } } @container sidebar (inline-size > 30rem) { .tabs { & > .tab { color: black; } } }").expect("clean parse report");
     let [media, container] = sheet.rules() else {
         panic!("expected media and container");
     };
@@ -162,7 +167,7 @@ fn nesting_retains_style_rules_inside_conditional_groups() {
 
 #[test]
 fn nesting_retains_media_and_container_inside_style_rules() {
-    let sheet = parse_sheet(".card { color: black; @media (min-width: 600px) { background-color: white; > .title { color: black; } } @container sidebar (inline-size > 30rem) { &:hover { opacity: 0.9; } } }").expect("clean parse report");
+    let sheet = CssParser::default().parse_sheet(".card { color: black; @media (min-width: 600px) { background-color: white; > .title { color: black; } } @container sidebar (inline-size > 30rem) { &:hover { opacity: 0.9; } } }").expect("clean parse report");
     let [card] = sheet.rules() else {
         panic!("expected authored card");
     };
@@ -200,7 +205,9 @@ fn nesting_retains_media_and_container_inside_style_rules() {
 
 #[test]
 fn nesting_preserves_terminal_pseudo_elements_on_anchored_selectors() {
-    let sheet = parse_sheet(".card { &::before { color: red; } }").expect("clean parse report");
+    let sheet = CssParser::default()
+        .parse_sheet(".card { &::before { color: red; } }")
+        .expect("clean parse report");
     let [card] = sheet.rules() else {
         panic!("expected authored parent");
     };
@@ -221,7 +228,11 @@ fn nesting_preserves_terminal_pseudo_elements_on_anchored_selectors() {
 
 #[test]
 fn nesting_validates_each_authored_selector_without_combining_pseudo_elements() {
-    assert!(parse_sheet(".card::before { .icon { color: red; } }").is_clean());
+    assert!(
+        CssParser::default()
+            .parse_sheet(".card::before { .icon { color: red; } }")
+            .is_clean()
+    );
     assert_rejection(
         ".card { &::before .icon { color: red; } }",
         Rejection::selector(Some(".")),
@@ -230,7 +241,7 @@ fn nesting_validates_each_authored_selector_without_combining_pseudo_elements() 
 
 #[test]
 fn nesting_retains_media_before_later_declaration_run_in_source_order() {
-    let sheet = parse_sheet(".card { color: black; @media (min-width: 600px) { opacity: 0.8; } background-color: white; }").expect("clean parse report");
+    let sheet = CssParser::default().parse_sheet(".card { color: black; @media (min-width: 600px) { opacity: 0.8; } background-color: white; }").expect("clean parse report");
     let [card] = sheet.rules() else {
         panic!("expected authored parent");
     };
@@ -261,7 +272,7 @@ fn nesting_retains_media_before_later_declaration_run_in_source_order() {
 
 #[test]
 fn nesting_inside_media_and_container_stays_inside_group() {
-    let sheet = parse_sheet("@media (prefers-color-scheme: dark) { .card { .title { color: white; } } } @container sidebar (inline-size > 30rem) { .card { &:hover { opacity: 0.9; } } }").expect("clean parse report");
+    let sheet = CssParser::default().parse_sheet("@media (prefers-color-scheme: dark) { .card { .title { color: white; } } } @container sidebar (inline-size > 30rem) { .card { &:hover { opacity: 0.9; } } }").expect("clean parse report");
     let [media, container] = sheet.rules() else {
         panic!("expected media and container");
     };
@@ -316,9 +327,9 @@ fn nesting_rejects_unsupported_nested_selector_forms() {
         ".card { [svg|href] { color: black; } }",
         ".card { .col || { color: black; } }",
     ] {
-        let error = parse_sheet(css).expect_err(css);
+        let error = CssParser::default().parse_sheet(css).expect_err(css);
         assert!(
-            matches!(error.kind(), ErrorKind::InvalidSelector { .. }),
+            error.code() == CssErrorCode::InvalidSelector,
             "{css} should reject as an invalid selector, got {error:?}"
         );
     }
@@ -387,6 +398,9 @@ fn keyframes_and_nesting_accept_practical_surface_matrix() {
     ];
 
     for css in accepted {
-        assert!(parse_sheet(css).is_clean(), "{css} should parse");
+        assert!(
+            CssParser::default().parse_sheet(css).is_clean(),
+            "{css} should parse"
+        );
     }
 }

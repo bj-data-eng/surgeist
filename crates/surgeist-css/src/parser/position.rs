@@ -1,10 +1,17 @@
 use super::property_input::{Parser, ParserState};
 use super::values::{parse_length, parse_length_percentage};
-use crate::error::property::{Error, ParseError, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
 use super::values::{next_is_comma, next_is_delim};
-use crate::syntax::*;
+use crate::numeric::{CssLengthPercentage, CssNumeric};
+use crate::values::background::{CssBackgroundPosition, CssBackgroundPositionList};
+use crate::values::position::{
+    CssBlockPosition, CssCartesianPosition, CssHorizontalPosition, CssHorizontalPositionKeyword,
+    CssInlinePosition, CssPhysicalPosition, CssPosition, CssPositionList, CssRelativeAxisPosition,
+    CssVerticalPosition, CssVerticalPositionKeyword,
+};
+use crate::values::transform::CssTransformOrigin;
 
 pub(super) fn next_starts_background_position<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
     next_starts_position(input, PositionGrammar::Physical)
@@ -35,7 +42,7 @@ fn next_starts_position<'i, 't>(input: &mut Parser<'i, 't>, grammar: PositionGra
         }
         Ok(Token::Dimension { .. } | Token::Percentage { .. }) => true,
         Ok(Token::Number { value, .. }) => *value == 0.0,
-        Ok(Token::Function(name)) => crate::numeric::is_math_function(name),
+        Ok(Token::Function(name)) => crate::numeric::expression::is_math_function(name),
         Ok(_) | Err(_) => false,
     };
     input.reset(&state);
@@ -44,7 +51,7 @@ fn next_starts_position<'i, 't>(input: &mut Parser<'i, 't>, grammar: PositionGra
 
 pub(super) fn parse_background_position_prefix<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundPosition, ParseError<'i, Error>> {
     let (atoms, states) =
         collect_position_atoms(input, numeric, PositionGrammar::Physical, &[], true)?;
@@ -53,18 +60,18 @@ pub(super) fn parse_background_position_prefix<'i, 't>(
     })
 }
 
-pub(super) fn parse_mask_position_list<'i, 't>(
+pub(crate) fn parse_mask_position_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssPhysicalPositionList, ParseError<'i, Error>> {
-    let positions = input.parse_comma_separated(|input| parse_physical_position(input, numeric))?;
-    CssPhysicalPositionList::try_new(positions)
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+) -> std::result::Result<CssPositionList, ParseError<'i, Error>> {
+    let positions = input.parse_comma_separated(|input| parse_position_prefix(input, numeric))?;
+    CssPositionList::try_new(positions)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_background_position_list<'i, 't>(
+pub(crate) fn parse_background_position_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundPositionList, ParseError<'i, Error>> {
     let positions =
         input.parse_comma_separated(|input| parse_background_position(input, numeric))?;
@@ -72,16 +79,16 @@ pub(super) fn parse_background_position_list<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_object_position<'i, 't>(
+pub(crate) fn parse_object_position<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssPhysicalPosition, ParseError<'i, Error>> {
-    parse_physical_position(input, numeric)
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
+    parse_position_prefix(input, numeric)
 }
 
-pub(super) fn parse_transform_origin<'i, 't>(
+pub(crate) fn parse_transform_origin<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssTransformOrigin, ParseError<'i, Error>> {
     let (atoms, states) = parse_position_atoms(input, numeric, PositionGrammar::Physical)?;
 
@@ -115,7 +122,7 @@ pub(super) fn parse_transform_origin<'i, 't>(
 // Shapes and directly imported Motion consumers select the full Values 5 grammar.
 pub(super) fn parse_full_position<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
     let (atoms, states) = parse_position_atoms(input, numeric, PositionGrammar::Full)?;
     build_full_position(&atoms)
@@ -125,7 +132,7 @@ pub(super) fn parse_full_position<'i, 't>(
 /// Parses the entire position region, leaving caller-owned boundary keywords unconsumed.
 pub(super) fn parse_full_position_bounded<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     boundaries: &[&str],
 ) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
     let (atoms, states) =
@@ -154,20 +161,19 @@ enum GenericPositionAtom {
     Block(FlowEdge),
     Inline(FlowEdge),
     Relative(FlowEdge),
-    Offset(CssSpecifiedLengthPercentage),
+    Offset(CssNumeric<CssLengthPercentage>),
 }
 
-/// Parses physical atoms while leaving the next component unconsumed for the
+/// Parses a Values 5 `<position>` while leaving the next component unconsumed for the
 /// caller's boundary (list comma, shorthand group or end of value).
-/// The physical builder retains its one-, two- and four-component grammar;
-/// Background's distinct three-component model is not used for Mask layers.
-pub(super) fn parse_physical_position<'i, 't>(
+/// The generic builder retains its one-, two- and four-component grammar;
+/// Background's distinct three-component model is not used by these consumers.
+pub(super) fn parse_position_prefix<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssPhysicalPosition, ParseError<'i, Error>> {
-    let (atoms, states) =
-        collect_position_atoms(input, numeric, PositionGrammar::Physical, &[], true)?;
-    build_physical_position(&atoms)
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
+    let (atoms, states) = collect_position_atoms(input, numeric, PositionGrammar::Full, &[], true)?;
+    build_full_position(&atoms)
         .ok_or_else(|| invalid_generic_position_atom(input, &states[invalid_atom_index(&atoms)]))
 }
 
@@ -175,7 +181,7 @@ pub(super) fn parse_physical_position<'i, 't>(
 /// angle or another non-position constituent to its enclosing ray/shorthand.
 pub(super) fn parse_full_position_before_angle<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssPosition, ParseError<'i, Error>> {
     let mut atoms = Vec::new();
     let mut states = Vec::new();
@@ -187,7 +193,7 @@ pub(super) fn parse_full_position_before_angle<'i, 't>(
             break;
         }
         if let Err(error) = angle
-            && crate::error::property::is_resource_parse_error(&error)
+            && crate::diagnostic::error::property::is_resource_parse_error(&error)
         {
             return Err(error);
         }
@@ -208,14 +214,14 @@ pub(super) fn parse_full_position_before_angle<'i, 't>(
 
 fn parse_position_atoms<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     grammar: PositionGrammar,
 ) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState<'i>>), ParseError<'i, Error>> {
     parse_position_atoms_bounded(input, numeric, grammar, &[])
 }
 fn parse_position_atoms_bounded<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     grammar: PositionGrammar,
     boundaries: &[&str],
 ) -> std::result::Result<(Vec<GenericPositionAtom>, Vec<ParserState<'i>>), ParseError<'i, Error>> {
@@ -224,7 +230,7 @@ fn parse_position_atoms_bounded<'i, 't>(
 
 fn collect_position_atoms<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     grammar: PositionGrammar,
     boundaries: &[&str],
     prefix_only: bool,
@@ -237,7 +243,7 @@ fn collect_position_atoms<'i, 't>(
         && !boundaries
             .iter()
             .any(|word| super::values::next_is_ident(input, word))
-        && (!prefix_only || (atoms.len() < 4 && next_starts_background_position(input)))
+        && (!prefix_only || (atoms.len() < 4 && next_starts_position(input, grammar)))
     {
         states.push(input.state());
         atoms.push(parse_generic_position_atom(input, numeric, grammar)?);
@@ -253,7 +259,7 @@ fn collect_position_atoms<'i, 't>(
 
 fn parse_background_position<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundPosition, ParseError<'i, Error>> {
     let (atoms, states) = parse_position_atoms(input, numeric, PositionGrammar::Physical)?;
     build_background_position(&atoms).ok_or_else(|| {
@@ -263,7 +269,7 @@ fn parse_background_position<'i, 't>(
 
 fn parse_generic_position_atom<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     grammar: PositionGrammar,
 ) -> std::result::Result<GenericPositionAtom, ParseError<'i, Error>> {
     let state = input.state();
@@ -534,7 +540,7 @@ const fn is_vertical_edge(keyword: CssVerticalPositionKeyword) -> bool {
 
 fn horizontal_edge_offset(
     keyword: CssHorizontalPositionKeyword,
-    offset: CssSpecifiedLengthPercentage,
+    offset: CssNumeric<CssLengthPercentage>,
 ) -> CssHorizontalPosition {
     match keyword {
         CssHorizontalPositionKeyword::Left => CssHorizontalPosition::LeftOffset(offset),
@@ -547,7 +553,7 @@ fn horizontal_edge_offset(
 
 fn vertical_edge_offset(
     keyword: CssVerticalPositionKeyword,
-    offset: CssSpecifiedLengthPercentage,
+    offset: CssNumeric<CssLengthPercentage>,
 ) -> CssVerticalPosition {
     match keyword {
         CssVerticalPositionKeyword::Top => CssVerticalPosition::TopOffset(offset),
@@ -576,7 +582,7 @@ fn build_full_position(atoms: &[GenericPositionAtom]) -> Option<CssPosition> {
             Center => Some(CssRelativeAxisPosition::Center),
             _ => None,
         };
-        let offset = |edge: FlowEdge, value: &CssSpecifiedLengthPercentage| {
+        let offset = |edge: FlowEdge, value: &CssNumeric<CssLengthPercentage>| {
             if matches!(edge, FlowEdge::Start) {
                 CssRelativeAxisPosition::StartOffset(value.clone())
             } else {

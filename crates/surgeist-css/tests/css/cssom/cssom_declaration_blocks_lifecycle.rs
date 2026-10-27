@@ -9,7 +9,15 @@
 //! explicit case-flag API. New APIs need functional tests with implementation.
 //! Authored component serialization is lexical, not CSSOM canonical value text.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
 
 fn authored_value(declaration: &CssDeclaration) -> &str {
     let origin = declaration.parsed_value().unwrap();
@@ -23,7 +31,7 @@ fn declaration_block_drops_invalid_units_and_retains_valid_source_order() {
     // discard invalid declarations without discarding following valid ones.
     let source =
         "width:1px; unknown:ignored; width:red; broken; --Case:{a:b;c:d}; height:2px!important";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     let declarations = report.syntax().as_slice();
     assert_eq!(declarations.len(), 3, "{report:?}");
     assert_eq!(
@@ -61,7 +69,8 @@ fn declaration_block_drops_invalid_units_and_retains_valid_source_order() {
 fn parsing_preserves_duplicate_occurrences_before_cssom_serialization() {
     // Parsing (§6.6) retains source order. The separate serialization algorithm
     // accounts for already-serialized names; parsing must not erase history.
-    let report = parse_style_attribute("width:1px!important; width:2px; width:3px!important");
+    let report = CssParser::default()
+        .parse_block_contents("width:1px!important; width:2px; width:3px!important");
     assert!(report.is_clean(), "{report:?}");
     let declarations = report.syntax().as_slice();
     assert_eq!(declarations.len(), 3);
@@ -94,7 +103,8 @@ fn parsing_preserves_duplicate_occurrences_before_cssom_serialization() {
 fn known_names_are_insensitive_and_custom_names_retain_case_and_components() {
     // CSSOM §6.5 derives name sensitivity from the owning specification;
     // Variables 1 §2 sets the custom-property case-sensitive flag.
-    let report = parse_style_attribute("WiDtH:1px; --Case:Mixed; --case:other; --Empty:!IMPORTANT");
+    let report = CssParser::default()
+        .parse_block_contents("WiDtH:1px; --Case:Mixed; --case:other; --Empty:!IMPORTANT");
     assert!(report.is_clean(), "{report:?}");
     let declarations = report.syntax().as_slice();
     assert_eq!(declarations.len(), 4);
@@ -111,7 +121,7 @@ fn known_names_are_insensitive_and_custom_names_retain_case_and_components() {
     assert_eq!(
         declarations[1]
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css(),
         "Mixed"
@@ -124,10 +134,10 @@ fn known_names_are_insensitive_and_custom_names_retain_case_and_components() {
 fn empty_and_wholly_invalid_blocks_have_no_retained_declarations() {
     // CSSOM §6.6 returns an empty list when no declaration survives.
     for source in ["", " /**/ ; ; "] {
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert!(report.syntax().is_empty(), "{source:?}: {report:?}");
     }
-    let report = parse_style_attribute("unknown:x; width:red; height:");
+    let report = CssParser::default().parse_block_contents("unknown:x; width:red; height:");
     assert!(report.syntax().is_empty(), "{report:?}");
     assert!(!report.is_clean());
     assert!(
@@ -151,9 +161,9 @@ fn property_value_reentry_matches_the_entire_grammar_and_excludes_priority() {
         "inherit extra",
         "var(foo)",
     ] {
-        let report = parse_property_value_text(
+        let report = CssParser::default().parse_property_value(
             source,
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
             CssImportance::Normal,
         );
         assert!(report.syntax().is_none(), "{source:?}: {report:?}");
@@ -164,9 +174,10 @@ fn property_value_reentry_matches_the_entire_grammar_and_excludes_priority() {
                 .all(|diagnostic| diagnostic.action() == CssRecoveryAction::RejectInput)
         );
         assert!(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Width),
-                parse_component_values(source).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
+                CssComponentValues::parse(&CssParser::default(), source).unwrap(),
                 CssImportance::Normal
             )
             .is_err(),
@@ -174,9 +185,9 @@ fn property_value_reentry_matches_the_entire_grammar_and_excludes_priority() {
         );
     }
     for source in ["1px", " /**/ 1px ", "inherit", "var(--width)"] {
-        let report = parse_property_value_text(
+        let report = CssParser::default().parse_property_value(
             source,
-            CssPropertyNameRef::Known(CssKnownProperty::Width),
+            CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
             CssImportance::Important,
         );
         assert!(report.is_clean(), "{source:?}: {report:?}");
@@ -195,7 +206,7 @@ fn owning_pair_serializer_shortens_redundancy_and_reenters_its_grammar() {
     // CSSOM §6.7.2 omits redundant optional components. The owning Speech
     // grammar gives one value both sides; its model retains explicit omission
     // identity, so compare expanded semantic sides rather than authored trees.
-    let report = parse_style_attribute("pause:1s 1000ms!important");
+    let report = CssParser::default().parse_block_contents("pause:1s 1000ms!important");
     assert!(report.is_clean(), "{report:?}");
     let declaration = &report.syntax()[0];
     let CssKnownPropertyValueRef::Pause(value) =
@@ -204,19 +215,19 @@ fn owning_pair_serializer_shortens_redundancy_and_reenters_its_grammar() {
         panic!("pause owner")
     };
     let retained = value.value().clone();
-    assert!(retained.authored_after().is_some());
-    let canonical = retained.serialize_specified().unwrap();
+    assert!(retained.authored_second().is_some());
+    let canonical = retained.serialize_specified(Default::default()).unwrap();
     assert_eq!(canonical, "1s");
     assert_eq!(value.value(), &retained);
-    let reparsed = parse_property_value_text(
+    let reparsed = CssParser::default().parse_property_value(
         &canonical,
-        CssPropertyNameRef::Known(CssKnownProperty::Pause),
+        CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Pause)),
         CssImportance::Important,
     );
     assert!(reparsed.is_clean(), "{reparsed:?}");
     for source in [declaration, reparsed.syntax().as_ref().unwrap()] {
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("complete pause expansion")
         };
@@ -232,10 +243,10 @@ fn owning_pair_serializer_shortens_redundancy_and_reenters_its_grammar() {
             assert_eq!(contribution.source().importance(), CssImportance::Important);
             match contribution.ordinary_value().unwrap().view() {
                 CssLonghandValueRef::PauseBefore(value) => {
-                    assert_eq!(value.serialize_specified().unwrap(), "1s")
+                    assert_eq!(value.serialize_specified(Default::default()).unwrap(), "1s")
                 }
                 CssLonghandValueRef::PauseAfter(value) => {
-                    assert_eq!(value.serialize_specified().unwrap(), "1s")
+                    assert_eq!(value.serialize_specified(Default::default()).unwrap(), "1s")
                 }
                 _ => panic!("pause longhand owner"),
             }

@@ -9,18 +9,19 @@
 //! no-rule outcomes do not. An empty run never creates a placeholder.
 
 use crate::css::support::authored_syntax::assert_diagnostics;
-use surgeist_css::{
-    CssDeclaration, CssErrorCode, CssKnownProperty, CssNormalizedItem, CssParseReport,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssScopedRule, CssSheet, normalize_sheet,
-    parse_sheet,
-};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn assert_declaration(value: &CssDeclaration, property: CssKnownProperty, css: &str) {
     assert_eq!(value.known().unwrap().property(), property);
     assert_eq!(
         value
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css()
             .trim(),
@@ -67,7 +68,7 @@ fn recovery(
 }
 
 fn split(source: &str, failed: &str, action: CssRecoveryAction, closures: usize) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     recovery(source, &report, Some((failed, action)), closures);
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("parent")
@@ -83,7 +84,7 @@ fn split(source: &str, failed: &str, action: CssRecoveryAction, closures: usize)
         run.position().byte_offset().value(),
         source.find("color:green").unwrap()
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -176,7 +177,7 @@ fn rejected_first_rule_without_pending_declarations_leaves_leading_slot_availabl
             ),
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert_diagnostics(report.diagnostics(), &[expected]);
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("parent")
@@ -184,7 +185,7 @@ fn rejected_first_rule_without_pending_declarations_leaves_leading_slot_availabl
         assert_eq!(parent.declarations().len(), 1);
         color(&parent.declarations()[0], "green");
         assert!(parent.rules().is_empty());
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let values: Vec<_> = normalized
             .items()
             .iter()
@@ -235,7 +236,7 @@ fn no_rule_semicolon_and_custom_property_lookalike_preserve_one_run() {
             ),
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let mut expected = vec![expected];
         if !source.ends_with('}') {
             expected.push((
@@ -252,7 +253,7 @@ fn no_rule_semicolon_and_custom_property_lookalike_preserve_one_run() {
         color(&parent.declarations()[0], "red");
         color(&parent.declarations()[1], "green");
         assert!(parent.rules().is_empty(), "{source}");
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let values: Vec<_> = normalized
             .items()
             .iter()
@@ -278,7 +279,7 @@ fn no_rule_semicolon_and_custom_property_lookalike_preserve_one_run() {
 #[test]
 fn rejected_rule_preserves_distinct_adjacent_declaration_runs() {
     let source = ".p{.ok{}color:red;.bad,{}color:green}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("parent")
@@ -307,7 +308,7 @@ fn rejected_rule_preserves_distinct_adjacent_declaration_runs() {
         green.position().byte_offset().value(),
         source.find("color:green").unwrap()
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -340,7 +341,7 @@ fn rejected_rule_preserves_distinct_adjacent_declaration_runs() {
 fn malformed_neighbor_preserves_exact_original_parse_payload_and_partition() {
     // Exact existing structured_rules input; corrected partition, no deleted coverage.
     let source = ".card { color: red; .bad, { color: blue; } color: green; .child { opacity: 1; } color: black; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("parent")
@@ -372,7 +373,7 @@ fn malformed_neighbor_preserves_exact_original_parse_payload_and_partition() {
 fn malformed_neighbor_keeps_original_declarations_in_distinct_normalized_contexts() {
     // Independent color-child fixture stays within existing intrinsic expansion coverage.
     let source = ".card { color: red; .bad, { color: blue; } color: green; .child { color: white; } color: black; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     let [CssRule::Style(parent)] = report.syntax().rules() else {
         panic!("parent")
@@ -398,7 +399,7 @@ fn malformed_neighbor_keeps_original_declarations_in_distinct_normalized_context
     color(&green.declarations()[0], "green");
     color(&child.declarations()[0], "white");
     color(&black.declarations()[0], "black");
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -463,7 +464,7 @@ fn nested_media_partitions_rejected_children_and_retains_terminal_run() {
         ".p{@media all{color:red;.bad,{}color:green}}",
         ".p{@media all{color:red;.bad,{}color:green",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         recovery(
             source,
             &report,
@@ -490,7 +491,7 @@ fn nested_media_partitions_rejected_children_and_retains_terminal_run() {
         );
         color(&red.declarations()[0], "red");
         color(&green.declarations()[0], "green");
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let values: Vec<_> = normalized
             .items()
             .iter()
@@ -521,19 +522,19 @@ fn scoped_style_partition_survives_structural_chunk_boundary() {
             "@scope{".repeat(depth),
             "}".repeat(depth)
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(report.diagnostics().len(), 1);
         let [CssRule::Scope(scope)] = report.syntax().rules() else {
             panic!("outer scope")
         };
         let mut rules = scope.rules().rules();
         for _ in 1..depth {
-            let [CssScopedRule::Scope(scope)] = rules else {
+            let [CssRule::Scope(scope)] = rules else {
                 panic!("scope chain")
             };
             rules = scope.rules().rules();
         }
-        let [CssScopedRule::Style(parent)] = rules else {
+        let [CssRule::Style(parent)] = rules else {
             panic!("scoped style")
         };
         assert_eq!(parent.declarations().len(), 1);
@@ -543,7 +544,7 @@ fn scoped_style_partition_survives_structural_chunk_boundary() {
         };
         assert_eq!(green.declarations().len(), 1);
         color(&green.declarations()[0], "green");
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let values: Vec<_> = normalized
             .items()
             .iter()
@@ -575,7 +576,7 @@ fn scoped_style_partition_survives_structural_chunk_boundary() {
 #[test]
 fn declaration_only_and_valid_child_terminal_controls_do_not_duplicate_runs() {
     for source in [".p{color:red}", ".p{color:red", ".p{color:red;"] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         recovery(
             source,
             &report,
@@ -594,7 +595,7 @@ fn declaration_only_and_valid_child_terminal_controls_do_not_duplicate_runs() {
         ".p{.ok{}color:green",
         ".p{.ok{}color:green;",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         recovery(
             source,
             &report,

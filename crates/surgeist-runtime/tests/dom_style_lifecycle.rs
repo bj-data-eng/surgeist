@@ -1,7 +1,8 @@
 //! Public native Style lifecycle, using actual CSS processing and shared events.
 //! HTML877d raw12138–12219 and CSSOM add/remove rules supply literal outcomes.
 use std::sync::atomic::AtomicBool;
-use surgeist_css::{CssRule, CssUtf16InputLimits};
+use surgeist_css::rule::CssRule;
+use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_cssom::{CssomEditGuard, CssomSnapshot, CssomStore};
 use surgeist_dom::*;
 use surgeist_runtime::*;

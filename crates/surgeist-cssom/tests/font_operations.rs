@@ -22,7 +22,14 @@ fn font_style(
         .capture(snapshot)
         .unwrap()
 }
-use surgeist_css::*;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceFamily,
+};
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureValueKind, CssFontFeatureValueRef, CssFontFeatureValuesFamilyList,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::CssFontFaceDescriptors;
 use surgeist_cssom::*;
 
@@ -387,7 +394,7 @@ fn readonly_palette_attributes_use_effective_checked_descriptors_and_honest_empt
         "0 red, 1 blue"
     );
     assert!(matches!(
-        view.base_palette(CssSpecifiedValueSerializationLimits::new(100, 100, 0)),
+        view.base_palette(CssSerializationLimits::new(100, 100, 0)),
         Err(CssomError::Value(_))
     ));
     let empty = store
@@ -397,7 +404,7 @@ fn readonly_palette_attributes_use_effective_checked_descriptors_and_honest_empt
         .unwrap();
     assert_eq!(
         empty
-            .base_palette(CssSpecifiedValueSerializationLimits::new(0, 0, 0))
+            .base_palette(CssSerializationLimits::new(0, 0, 0))
             .unwrap(),
         ""
     );

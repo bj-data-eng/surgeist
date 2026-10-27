@@ -63,7 +63,7 @@ fn headless_top() -> (DomSession, DomHostedTopLevel) {
                 reports: 32,
                 storage_bytes: 32_000_000,
                 work: 4_000_000,
-                css_input: surgeist_css::CssUtf16InputLimits::default(),
+                css_input: surgeist_css::source::CssUtf16InputLimits::default(),
             },
             element_tasks: DomElementTaskRuntimeLimits {
                 tasks: 32,

@@ -1,12 +1,14 @@
-use surgeist_css::{
-    CssErrorCode, CssFlexDirection, CssFlexWrap, CssGlobalKeyword, CssKnownDeclaredValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssRecoveryAction, ErrorKind,
-    parse_style_attribute,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
 };
+use surgeist_css::values::layout::{CssFlexDirection, CssFlexWrap};
 
 #[test]
 fn flex_flow_retains_typed_structure() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "flex-flow: wrap-reverse column; ",
         "flex-flow: row-reverse wrap; ",
         "flex-flow: column; ",
@@ -34,14 +36,14 @@ fn flex_flow_retains_typed_structure() {
         else {
             panic!("expected flex-flow wrapper");
         };
-        assert_eq!(value.flow().direction(), direction);
-        assert_eq!(value.flow().wrap(), wrap);
+        assert_eq!(value.value().direction(), direction);
+        assert_eq!(value.value().wrap(), wrap);
     }
 }
 
 #[test]
 fn flex_flow_preserves_authored_text_and_symbolic_branches() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "flex-flow:  ROW   wrap-reverse ; ",
         "flex-flow: inherit; ",
         "flex-flow: var(--flow, column wrap)",
@@ -54,8 +56,8 @@ fn flex_flow_preserves_authored_text_and_symbolic_branches() {
         panic!("expected ordinary flex-flow");
     };
     assert_eq!(value.as_css(), "ROW   wrap-reverse");
-    assert_eq!(value.flow().direction(), CssFlexDirection::Row);
-    assert_eq!(value.flow().wrap(), CssFlexWrap::WrapReverse);
+    assert_eq!(value.value().direction(), CssFlexDirection::Row);
+    assert_eq!(value.value().wrap(), CssFlexWrap::WrapReverse);
     assert!(matches!(
         report.syntax()[1].known().unwrap().declared_value(),
         CssKnownDeclaredValueRef::Global(CssGlobalKeyword::Inherit)
@@ -80,7 +82,7 @@ fn flex_flow_mutations_drop_exact_declaration_and_retain_siblings() {
     ] {
         let declaration = format!("flex-flow: {invalid};");
         let source = format!("color: red; {declaration} width: 1px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2, "{source}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -125,14 +127,15 @@ fn flex_flow_mutations_drop_exact_declaration_and_retain_siblings() {
             source[..responsible].encode_utf16().count(),
             "{source}",
         );
-        assert!(matches!(
-            diagnostic.error().kind(),
-            ErrorKind::InvalidPropertyValue(detail)
-                if detail.property() == CssKnownProperty::FlexFlow
-        ));
+        assert!(
+            (diagnostic.error().code() == CssErrorCode::InvalidPropertyValue
+                && diagnostic.error().known_property().unwrap() == CssKnownProperty::FlexFlow)
+        );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict validation rejects invalid flex-flow")
                 .diagnostics(),
             report.diagnostics(),

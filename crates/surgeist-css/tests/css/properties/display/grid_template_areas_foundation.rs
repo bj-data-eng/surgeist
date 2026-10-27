@@ -3,7 +3,21 @@
 //! https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#grid-template-areas-property
 //! This RED uses only the existing public parsing and expansion interfaces.
 
-use surgeist_css::*;
+use crate::css::support::property_admission::assert_same_grammar_facts;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssPropertyGrammar, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::layout::{CssGridTemplateAreaCell, CssGridTemplateAreas};
 
 const PROPERTY: CssKnownProperty = CssKnownProperty::GridTemplateAreas;
 
@@ -13,9 +27,15 @@ fn grammar() -> CssPropertyGrammar {
 
 fn parsed(value: &str) -> CssDeclaration {
     let source = format!("grid-template-areas:{value}!important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&source).is_ok(), "{source}");
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok(),
+        "{source}"
+    );
     let [declaration] = report.syntax().as_slice() else {
         panic!("one declaration: {source}")
     };
@@ -23,9 +43,10 @@ fn parsed(value: &str) -> CssDeclaration {
 }
 
 fn checked(value: &str) -> CssDeclaration {
-    parse_property_value_for_grammar(
-        grammar(),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(grammar()),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Important,
     )
     .unwrap_or_else(|error| panic!("checked grid-template-areas {value}: {error:?}"))
@@ -33,7 +54,7 @@ fn checked(value: &str) -> CssDeclaration {
 
 fn terminal(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("intrinsic area expansion")
+        source.expand().expect("intrinsic area expansion")
     else {
         panic!("one completed area longhand")
     };
@@ -72,7 +93,7 @@ fn authored_rows(source: &CssDeclaration) -> Vec<Vec<String>> {
 
 fn invalid(value: &str) {
     let source = format!("color:red;grid-template-areas:{value};color:blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [diagnostic] = report.diagnostics() else {
         panic!(
             "one invalid area diagnostic: {source}: {:?}",
@@ -86,19 +107,23 @@ fn invalid(value: &str) {
         "valid neighbors survive: {source}"
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
-    assert_eq!(
-        parse_property_value_for_grammar(
-            grammar(),
-            parse_component_values(value).unwrap(),
-            CssImportance::Normal
+    assert_same_grammar_facts(
+        &CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(grammar()),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
+            CssImportance::Normal,
         )
-        .unwrap_err()
-        .kind(),
-        &CssPropertyValueErrorKind::Grammar(diagnostic.error().kind().clone()),
-        "checked construction accepted invalid area: {value}"
+        .unwrap_err(),
+        diagnostic.error(),
+        "checked construction accepted invalid area: {value}",
     );
 }
 
@@ -166,7 +191,10 @@ fn area_names_accept_reserved_spellings() {
             panic!("typed area value")
         };
         assert_eq!(
-            value.value().serialize_specified().unwrap(),
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
             "\"auto span inherit revert-layer\""
         );
         terminal(&source);
@@ -225,40 +253,37 @@ fn global_values_pending_reentry_and_initial_metadata_use_one_terminal() {
         panic!("all reset metadata")
     };
     assert!(!all.excludes(CssPropertyNameRef::Known(PROPERTY)));
-    let all_source = parse_style_attribute("all:initial!important");
+    let all_source = CssParser::default().parse_block_contents("all:initial!important");
     assert!(all_source.is_clean());
     let CssExpansion::Contributions(CssContributions::UniversalReset(reset)) =
-        expand_declaration(&all_source.syntax()[0]).unwrap()
+        all_source.syntax()[0].expand().unwrap()
     else {
         panic!("symbolic all reset")
     };
     assert!(!reset.excludes(CssPropertyNameRef::Known(PROPERTY)));
 
     let source = parsed("var(--areas)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("area substitution remains pending")
     };
     assert!(pending.source().same_occurrence(&source));
     for invalid_value in ["\"a#b\"", "\"a a\" \"a .\""] {
         assert!(
-            matches!(
-                pending
-                    .reenter(parse_component_values(invalid_value).unwrap())
-                    .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ),
+            pending
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid_value).unwrap())
+                .unwrap_err()
+                .replacement_error()
+                .is_some(),
             "strict reentry rejects {invalid_value}"
         );
     }
-    assert_eq!(
+    assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
-    let replacement = parse_component_values("\"a.b\"").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "\"a.b\"").unwrap();
     for _ in 0..2 {
         let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
         else {
@@ -278,13 +303,13 @@ fn global_values_pending_reentry_and_initial_metadata_use_one_terminal() {
 fn normalization_preserves_declaration_order_and_area_occurrences() {
     let source =
         ".p{color:red;grid-template-areas:\"a.b\"!important;grid-template-areas:none;opacity:1}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssRule::Style(rule) = &report.syntax().rules()[0] else {
         panic!("one style rule")
     };
     let originals = rule.declarations();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let values: Vec<_> = normalized
         .items()
         .iter()
@@ -310,14 +335,11 @@ fn normalization_preserves_declaration_order_and_area_occurrences() {
         assert!(items.items()[0].source().same_occurrence(&originals[index]));
     }
     let limits = CssNormalizationLimits::try_new(1, 1, 1, 0).unwrap();
-    let one = parse_sheet(".p{grid-template-areas:none}");
+    let one = CssParser::default().parse_sheet(".p{grid-template-areas:none}");
     assert!(one.is_clean());
-    let error = normalize_sheet_with_limits(one.syntax(), limits).unwrap_err();
+    let error = one.syntax().normalize(limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 0,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 0))
     );
 }

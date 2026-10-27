@@ -9,7 +9,15 @@
 use crate::css::support::color_and_selector_fixtures::assert_color_grammar_failure;
 use crate::css::support::declaration_color as color;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColorConstructionError, CssColorInterpolation, CssColorInterpolationMethod,
+    CssColorProfileName,
+};
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
 
 const RECTANGULAR: [(ColorSpace, &str); 11] = [
     (ColorSpace::Predefined(PredefinedColorSpace::Srgb), "srgb"),
@@ -61,40 +69,41 @@ const HUES: [(HueInterpolation, &str); 4] = [
     (HueInterpolation::Decreasing, "decreasing"),
 ];
 
-const OMITTED_POLAR: CssColorInterpolationMethod =
-    match CssColorInterpolationMethod::try_new(ColorSpace::Hsl, None) {
-        Ok(value) => value,
-        Err(_) => panic!("polar omitted hue is valid"),
-    };
-const EXPLICIT_POLAR: CssColorInterpolationMethod =
-    match CssColorInterpolationMethod::try_new(ColorSpace::Hsl, Some(HueInterpolation::Shorter)) {
-        Ok(value) => value,
-        Err(_) => panic!("polar shorter hue is valid"),
-    };
-const REJECTED_RECTANGULAR: Result<
-    CssColorInterpolationMethod,
-    CssColorInterpolationMethodConstructionError,
-> = CssColorInterpolationMethod::try_new(ColorSpace::Lab, Some(HueInterpolation::Longer));
-const CONST_WRAPPER: CssColorInterpolation = CssColorInterpolation::from_predefined(OMITTED_POLAR);
-const CONST_DEFAULT_HUE: Option<HueInterpolation> = OMITTED_POLAR.effective_hue();
-const CONST_SPACE: ColorSpace = OMITTED_POLAR.space();
-const CONST_AUTHORED_HUE: Option<HueInterpolation> = OMITTED_POLAR.hue();
+// Checked construction is const. Its error carries retained origins, so a
+// constant can hold the checked result but cannot discard the error to
+// unwrap it; the polar methods are unwrapped at run time.
+const OMITTED_POLAR: Result<CssColorInterpolationMethod, CssColorConstructionError> =
+    CssColorInterpolationMethod::try_new(ColorSpace::Hsl, None);
+const EXPLICIT_POLAR: Result<CssColorInterpolationMethod, CssColorConstructionError> =
+    CssColorInterpolationMethod::try_new(ColorSpace::Hsl, Some(HueInterpolation::Shorter));
+const REJECTED_RECTANGULAR: Result<CssColorInterpolationMethod, CssColorConstructionError> =
+    CssColorInterpolationMethod::try_new(ColorSpace::Lab, Some(HueInterpolation::Longer));
 
 #[test]
 fn const_checked_methods_preserve_authored_omission_and_supply_the_baseline_default() {
-    assert_eq!(CONST_SPACE, ColorSpace::Hsl);
-    assert_eq!(CONST_AUTHORED_HUE, None);
-    assert_eq!(CONST_DEFAULT_HUE, Some(HueInterpolation::Shorter));
-    assert_eq!(CONST_WRAPPER.predefined(), Some(OMITTED_POLAR));
-    assert_ne!(OMITTED_POLAR, EXPLICIT_POLAR);
-    assert_eq!(EXPLICIT_POLAR.hue(), Some(HueInterpolation::Shorter));
+    let omitted_polar = OMITTED_POLAR.expect("polar omitted hue is valid");
+    let explicit_polar = EXPLICIT_POLAR.expect("polar shorter hue is valid");
+    assert_eq!(omitted_polar.space(), ColorSpace::Hsl);
+    assert_eq!(omitted_polar.hue(), None);
     assert_eq!(
-        EXPLICIT_POLAR.effective_hue(),
-        OMITTED_POLAR.effective_hue()
+        omitted_polar.effective_hue(),
+        Some(HueInterpolation::Shorter)
     );
     assert_eq!(
-        REJECTED_RECTANGULAR,
-        Err(CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace)
+        CssColorInterpolation::from_predefined(omitted_polar).predefined(),
+        Some(omitted_polar)
+    );
+    assert_ne!(omitted_polar, explicit_polar);
+    assert_eq!(explicit_polar.hue(), Some(HueInterpolation::Shorter));
+    assert_eq!(
+        explicit_polar.effective_hue(),
+        omitted_polar.effective_hue()
+    );
+    assert!(
+        REJECTED_RECTANGULAR
+            .as_ref()
+            .unwrap_err()
+            .is_hue_requires_polar_space()
     );
     for (space, _) in POLAR {
         let omitted = CssColorInterpolationMethod::try_new(space, None).unwrap();
@@ -110,10 +119,7 @@ fn rejected_hue_construction_has_a_typed_error_and_display_contract() {
     let error =
         CssColorInterpolationMethod::try_new(ColorSpace::Lab, Some(HueInterpolation::Longer))
             .unwrap_err();
-    assert_eq!(
-        error,
-        CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace
-    );
+    assert!(error.is_hue_requires_polar_space());
     assert_eq!(
         error.to_string(),
         "hue interpolation requires a polar color space"
@@ -121,32 +127,36 @@ fn rejected_hue_construction_has_a_typed_error_and_display_contract() {
     let public_error: &dyn std::error::Error = &error;
     assert!(public_error.source().is_none());
     // Downstream matches include a wildcard because construction errors can grow.
-    match error {
-        CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace => {
-            assert_eq!(public_error.to_string(), error.to_string());
-        }
-        _ => panic!("unexpected interpolation construction error"),
-    }
+    assert!(
+        error.is_hue_requires_polar_space(),
+        "unexpected interpolation construction error"
+    );
+    assert_eq!(public_error.to_string(), error.to_string());
 }
 
 fn admitted(source: &str) -> [CssDeclaration; 2] {
     let style = format!("color:{source}!important");
-    let report = parse_style_attribute(&style);
+    let report = CssParser::default().parse_block_contents(&style);
     assert!(report.is_clean(), "{style}: {:?}", report.diagnostics());
     let [parsed] = report.syntax().as_slice() else {
         panic!("one declaration")
     };
     assert_eq!(parsed.importance(), CssImportance::Important);
-    let components = parse_component_values(source).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Color),
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
         components.clone(),
         CssImportance::Important,
     )
     .unwrap();
     assert_eq!(checked.value_components(), &components);
     assert_eq!(
-        parsed.value_components().serialize().unwrap().as_css(),
+        parsed
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         source
     );
     [parsed.clone(), checked]
@@ -156,7 +166,7 @@ fn rejected_with_recovery(value: &str, rectangular_hue: Option<(&str, &str)>) {
     // Include a multibyte identifier before the invalid declaration, so spans
     // exercise original byte coordinates rather than detached value offsets.
     let source = format!("--😀:kept;\ncolor:{value};opacity:.5");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejection for {value}: {:?}", report.diagnostics())
     };
@@ -178,11 +188,14 @@ fn rejected_with_recovery(value: &str, rectangular_hue: Option<(&str, &str)>) {
             diagnostic.error().position().column().value() as usize,
             responsible - line_start
         );
-        let ErrorKind::InvalidColorSyntax(detail) = diagnostic.error().kind() else {
-            panic!("structured hue-method rejection")
-        };
+        let detail = diagnostic.error();
         assert_eq!(
-            detail.component().map(|component| component.as_str()),
+            detail.code(),
+            CssErrorCode::InvalidColorSyntax,
+            "structured hue-method rejection"
+        );
+        assert_eq!(
+            detail.color_component().map(|component| component.as_str()),
             Some("hue interpolation")
         );
         let encountered = detail.encountered().expect("responsible hue strategy");
@@ -199,13 +212,18 @@ fn rejected_with_recovery(value: &str, rectangular_hue: Option<(&str, &str)>) {
         CssKnownProperty::Opacity
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_color_grammar_failure(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
-            parse_component_values(value).unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
             CssImportance::Normal,
         ),
         value,
@@ -229,9 +247,11 @@ fn rectangular_methods_without_hue_are_accepted_by_the_checked_wrapper() {
 fn every_explicit_hue_strategy_is_rejected_for_every_rectangular_space() {
     for (space, keyword) in RECTANGULAR {
         for (hue, strategy) in HUES {
-            assert_eq!(
-                CssColorInterpolationMethod::try_new(space, Some(hue)),
-                Err(CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace)
+            assert!(
+                CssColorInterpolationMethod::try_new(space, Some(hue))
+                    .as_ref()
+                    .unwrap_err()
+                    .is_hue_requires_polar_space()
             );
             rejected_with_recovery(
                 &format!("color-mix(in {keyword} {strategy} hue, red, blue)"),
@@ -285,7 +305,10 @@ fn polar_methods_preserve_omitted_and_all_explicit_hue_strategies() {
                         .predefined(),
                     Some(method)
                 );
-                assert_eq!(value.to_specified_css().unwrap(), expected);
+                assert_eq!(
+                    value.serialize_specified(Default::default()).unwrap(),
+                    expected
+                );
                 // Omitting the default shorter spelling does not erase authored identity.
                 assert_eq!(
                     value
@@ -330,9 +353,17 @@ fn every_predefined_keyword_case_and_escape_preserves_space_and_canonical_output
                     .unwrap();
                 assert_eq!(method.space(), space);
                 assert_eq!(method.hue(), None);
-                assert_eq!(value.to_specified_css().unwrap(), expected);
+                assert_eq!(
+                    value.serialize_specified(Default::default()).unwrap(),
+                    expected
+                );
                 for round_trip in admitted(&expected) {
-                    assert_eq!(color(&round_trip).to_specified_css().unwrap(), expected);
+                    assert_eq!(
+                        color(&round_trip)
+                            .serialize_specified(Default::default())
+                            .unwrap(),
+                        expected
+                    );
                 }
             }
         }
@@ -357,7 +388,7 @@ fn custom_interpolation_profiles_preserve_decoded_case_sensitive_identity() {
             let interpolation = value.color_mix_value().unwrap().interpolation().unwrap();
             assert_eq!(interpolation, &constructed);
             assert_eq!(
-                value.to_specified_css().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
                 format!("color-mix(in {canonical}, red, blue)")
             );
         }

@@ -1,10 +1,12 @@
 //! Finite whole-color CSS action servicing shared by parser-owned consumers.
 //! Consumers retain their own source policy, fallback, transformation and output.
 use super::*;
-use surgeist_css::{
-    CssColorActionDescription as Action, CssColorActionLayout, CssColorBank, CssColorFacts,
-    CssColorGrammarRequest, CssColorInputKind, CssColorOperation, CssColorOperationError,
-    CssColorOperationOwner, CssColorParseOutcome, CssColorSlot,
+use surgeist_css::color::controlled::{
+    CssColorActionLayout, CssColorBank, CssColorOperationOwner, CssColorParse, CssColorParseAction,
+    CssColorParseOutcome, CssColorParseStep, CssColorSlot,
+};
+use surgeist_css::color::{
+    CssColorError, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
 };
 
 pub(super) enum Failure {
@@ -21,12 +23,12 @@ impl From<ParseStop> for Failure {
         Self::Session(value.into())
     }
 }
-/// This whole-color request resolves only source input. Broader CSS authored
-/// sites are not part of this adapter and retain their owning invariant error.
-pub(super) fn source_processing(c: &mut ParseControl, error: CssColorOperationError) -> Failure {
+/// This whole-color request resolves only source input. Its UTF-16 input
+/// admits every unit, so a malformed-input report is an adapter invariant.
+pub(super) fn source_processing(c: &mut ParseControl, error: CssColorError) -> Failure {
     match crate::parser::control::HtmlColorProcessingError::from_source(error) {
-        Ok(error) => Failure::Processing(error),
-        Err(error) => Failure::Session(c.fail_invariant(error).into()),
+        Some(error) => Failure::Processing(error),
+        None => Failure::Session(integrity(c)),
     }
 }
 fn integrity(c: &mut ParseControl) -> SessionError {
@@ -114,16 +116,31 @@ pub(super) fn action_layout(
     c.checkpoint()?;
     Ok(())
 }
-pub(super) fn parse<'owner, 'facts, E: From<SessionError> + From<ParseStop>>(
+/// Charges one Color serialization action's digit-record and output payload,
+/// with the same categories as the numerical part of a CSS action layout.
+pub(super) fn numerical_layout(
+    c: &mut ParseControl,
+    layout: surgeist_color::ActionLayout,
+) -> Result<(), SessionError> {
+    c.charge(WorkCategory::InspectByte, layout.read_bytes as u64)?;
+    c.charge(WorkCategory::CopyByte, layout.write_bytes as u64)?;
+    if layout.write_bytes != 0 {
+        c.charge(WorkCategory::RecordWrite, 1)?;
+    }
+    c.charge(WorkCategory::CopyByte, layout.output_bytes as u64)?;
+    c.checkpoint()?;
+    Ok(())
+}
+pub(super) fn parse<'facts, E: From<SessionError> + From<ParseStop>>(
     c: &mut ParseControl,
     input: &[u16],
-    owner: &'owner mut CssColorOperationOwner,
+    owner: &mut CssColorOperationOwner,
     facts: &'facts CssColorFacts<'facts>,
-    on_processing: fn(&mut ParseControl, CssColorOperationError) -> E,
+    on_processing: fn(&mut ParseControl, CssColorError) -> E,
     consumer_layout: usize,
     #[cfg(test)] mut slot_commit: impl FnMut(),
-) -> Result<CssColorParseOutcome<'owner, 'facts>, E> {
-    let layout = CssColorOperation::initialization_layout();
+) -> Result<CssColorParseOutcome<'facts>, E> {
+    let layout = CssColorParse::initialization_layout();
     frame(
         c,
         layout.register_bytes,
@@ -134,95 +151,82 @@ pub(super) fn parse<'owner, 'facts, E: From<SessionError> + From<ParseStop>>(
             + mem::size_of_val(&on_processing)
             + consumer_layout,
     )?;
-    let mut operation = Some(
-        CssColorOperation::parse_used(
-            owner,
-            CssColorInputKind::Utf16,
-            input.len(),
-            CssColorGrammarRequest::WholeColor,
-            facts,
-            facts.identity(),
-        )
-        .map_err(|error| on_processing(c, error))?,
-    );
+    let parse = CssColorParse::start(
+        owner,
+        CssColorInputKind::Utf16,
+        input.len(),
+        CssColorGrammarRequest::WholeColor,
+        facts,
+        facts.identity(),
+    )
+    .map_err(|error| on_processing(c, error))?;
     let mut banks = banks()?;
+    // A refusal drops the pending parse or action, which abandons the parse;
+    // the banks stay caller-owned until their release below.
     let result = (|| {
+        let mut parse = parse;
         loop {
             frame(
                 c,
-                CssColorOperation::register_bytes(),
-                CssColorOperation::action_bytes(),
+                CssColorParse::register_bytes(),
+                CssColorParse::action_bytes(),
             )?;
-            let operation = operation.as_mut().ok_or_else(|| integrity(c))?;
-            if matches!(
-                operation.action(),
-                Action::UsedReady | Action::StandardFailed
-            ) {
-                break;
-            }
-            let mut action = operation.next_action();
+            let action = match parse.step() {
+                CssColorParseStep::Complete(outcome) => break Ok(outcome),
+                CssColorParseStep::Pending(action) => action,
+            };
             action_layout(c, action.layout())?;
-            match action.description() {
-                Action::ReadInput { offset } => {
+            parse = match action {
+                CssColorParseAction::ReadInput(read) => {
                     // All inspection/work/poll admission above precedes the
                     // actual original unit dereference, including UTF16.
-                    let unit = *input.get(offset).ok_or_else(|| integrity(c))?;
-                    action
-                        .read_input(offset, unit)
-                        .map_err(|error| on_processing(c, error))?;
+                    let unit = *input.get(read.offset()).ok_or_else(|| integrity(c))?;
+                    read.read(unit).map_err(|error| on_processing(c, error))?
                 }
-                Action::ReadSlot { bank: kind, index } => {
-                    let bank = bank(&mut banks, kind, c)?;
+                CssColorParseAction::ReadSlot(read) => {
+                    let bank = bank(&mut banks, read.bank(), c)?;
                     bank.require_owner(c)?;
-                    let slot = bank.as_slice().get(index).ok_or_else(|| integrity(c))?;
-                    action
-                        .read_slot(kind, index, slot)
-                        .map_err(|error| on_processing(c, error))?;
+                    let slot = bank
+                        .as_slice()
+                        .get(read.index())
+                        .ok_or_else(|| integrity(c))?;
+                    read.read(slot).map_err(|error| on_processing(c, error))?
                 }
-                Action::AppendSlot { bank: kind, index } => {
-                    let bank = bank(&mut banks, kind, c)?;
+                CssColorParseAction::AppendSlot(write) => {
+                    let index = write.index();
+                    let bank = bank(&mut banks, write.bank(), c)?;
                     if bank.len() != index {
                         return Err(integrity(c).into());
                     }
                     bank.reserve_geometric(c, 1)?;
                     c.check_acquire_many(&[(HtmlParseResource::AuxiliaryEntries, 1)])?;
-                    let record = action.record().map_err(|error| on_processing(c, error))?;
+                    let (record, receipt) = write.record();
                     if let Err((error, _uncommitted)) = bank.try_push_recover(c, record) {
                         return Err(error.into());
                     }
                     let slot = bank.as_slice().get(index).ok_or_else(|| integrity(c))?;
-                    action
-                        .written(kind, index, slot)
-                        .map_err(|error| on_processing(c, error))?;
+                    let next = receipt.stored(slot);
                     #[cfg(test)]
                     slot_commit();
+                    next
                 }
-                Action::UpdateSlot { bank: kind, index } => {
-                    let bank = bank(&mut banks, kind, c)?;
+                CssColorParseAction::UpdateSlot(write) => {
+                    let index = write.index();
+                    let bank = bank(&mut banks, write.bank(), c)?;
                     let slot = bank.get_mut(index, c)?.ok_or_else(|| integrity(c))?;
-                    *slot = action.record().map_err(|error| on_processing(c, error))?;
-                    action
-                        .written(kind, index, slot)
-                        .map_err(|error| on_processing(c, error))?;
+                    let (record, receipt) = write.record();
+                    *slot = record;
+                    receipt.stored(slot)
                 }
-                Action::Compute(_) | Action::ReadFact(_) => {
-                    action.compute().map_err(|error| on_processing(c, error))?
+                CssColorParseAction::ReadFact(read) => {
+                    read.read().map_err(|error| on_processing(c, error))?
                 }
-                _ => return Err(integrity(c).into()),
-            }
+                CssColorParseAction::Compute(compute) => {
+                    compute.compute().map_err(|error| on_processing(c, error))?
+                }
+            };
         }
-        frame(
-            c,
-            CssColorOperation::register_bytes(),
-            mem::size_of::<CssColorParseOutcome<'_, '_>>(),
-        )?;
-        CssColorOperation::take(&mut operation).map_err(|error| on_processing(c, error.into()))
     })();
-    if result.is_err()
-        && let Some(operation) = operation.as_mut()
-    {
-        operation.abandon();
-    }
     let disposal = release_banks(&mut banks, c);
     disposal?;
     result

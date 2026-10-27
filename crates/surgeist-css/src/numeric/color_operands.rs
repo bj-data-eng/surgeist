@@ -5,7 +5,13 @@
 //! only lends a pointer: its header and any literal component are separate
 //! observations. None of these views classifies a unit name or visits text.
 
-use super::*;
+use crate::color::CssRelativeColorChannel;
+use crate::component::{CssComponentValue, CssValueOrigin};
+use crate::numeric::expression::{CssCalculationExpression, NodeKind};
+use crate::numeric::{
+    CssCalculationProductOperator, CssCalculationSumOperator, CssMathFunction, CssNumericConstant,
+    CssNumericLiteralRef, CssNumericType, CssRoundingStrategy,
+};
 use std::mem::size_of;
 
 #[derive(Clone, Copy)]
@@ -41,7 +47,7 @@ pub(crate) enum Kind<'a> {
     Size,
     TreeCounting,
     Variable(CssRelativeColorChannel),
-    ProfileChannel(&'a crate::CssColorProfileComponentName),
+    ProfileChannel(&'a crate::color::CssColorProfileComponentName),
     Group,
     Sum {
         len: usize,

@@ -2,14 +2,16 @@
 //! CSS Values 4 specifies simplification without resolving an unknown percentage basis:
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification
 
-use surgeist_css::{
-    CssLengthPercentageCalculation, CssNumericDimension, CssSpecifiedNonNegativeLengthPercentage,
-    parse_component_values,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{
+    CssCalculation, CssLengthPercentage, CssNonNegative, CssNumeric, CssNumericDimension,
 };
 
 fn specified(source: &str) -> String {
-    let calculation = CssLengthPercentageCalculation::try_from_components(
-        parse_component_values(source).unwrap(),
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(
@@ -17,9 +19,9 @@ fn specified(source: &str) -> String {
         Some(CssNumericDimension::Length),
         "{source} must retain its percentage basis"
     );
-    CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation)
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(calculation)
         .unwrap()
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap()
 }
 
@@ -50,14 +52,15 @@ fn comparisons_preserve_the_unknown_percentage_basis() {
 
 #[test]
 fn same_unit_length_sum_can_collapse_before_scalar_multiplication() {
-    let calculation = CssLengthPercentageCalculation::try_from_components(
-        parse_component_values("calc((1px + 2px) * 3)").unwrap(),
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc((1px + 2px) * 3)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation)
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(calculation)
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "calc(9px)"
     );
@@ -65,14 +68,15 @@ fn same_unit_length_sum_can_collapse_before_scalar_multiplication() {
 
 #[test]
 fn compatible_absolute_units_can_collapse_before_scalar_multiplication() {
-    let calculation = CssLengthPercentageCalculation::try_from_components(
-        parse_component_values("calc((1in + 2px) * 3)").unwrap(),
+    let calculation = CssCalculation::<CssLengthPercentage>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc((1in + 2px) * 3)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     assert_eq!(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(calculation)
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(calculation)
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "calc(294px)"
     );

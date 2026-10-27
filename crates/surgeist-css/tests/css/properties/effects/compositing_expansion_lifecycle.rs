@@ -4,12 +4,31 @@
 //! CSS-wide values to reset-only members. Provenance, typed borrowed payloads
 //! and cumulative atomic limits are Surgeist authored-layer contracts.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::eof_closure_origin;
 use crate::css::support::{
     checked_property_grammar_declaration as checked, sole_declaration as parsed,
 };
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandContributions,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::background::{CssBlendMode, CssBlendModeList};
+use surgeist_css::values::effects::CssIsolation;
 
 const FAMILY: [(P, &str); 3] = [
     (P::BackgroundBlendMode, "hue, normal, hue"),
@@ -82,8 +101,7 @@ fn context(
     }
 }
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("completed longhands")
     };
@@ -105,12 +123,12 @@ fn one(values: &CssLonghandContributions, property: P) -> CssLonghandValueRef<'_
 }
 fn output(
     value: CssLonghandValueRef<'_>,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
     match value {
-        CssLonghandValueRef::BackgroundBlendMode(v) => v.serialize_specified_with_limits(limits),
-        CssLonghandValueRef::Isolation(v) => v.serialize_specified_with_limits(limits),
-        CssLonghandValueRef::MixBlendMode(v) => v.serialize_specified_with_limits(limits),
+        CssLonghandValueRef::BackgroundBlendMode(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::Isolation(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::MixBlendMode(v) => v.serialize_specified(limits),
         other => panic!("compositing payload: {other:?}"),
     }
 }
@@ -160,11 +178,7 @@ fn three_borrowed_initial_views_have_noninherited_exact_scalar_contents() {
             "normal"
         };
         assert_eq!(
-            output(
-                initial.view(),
-                CssSpecifiedValueSerializationLimits::default()
-            )
-            .unwrap(),
+            output(initial.view(), CssSerializationLimits::default()).unwrap(),
             css
         );
         let explicit = completed(&checked(property, css));
@@ -192,9 +206,10 @@ fn all_selected_blend_and_isolation_keywords_reach_typed_views_through_three_fro
                 css.to_ascii_uppercase()
             ));
             let grammar = checked(property, css);
-            let named = parse_property_value(
-                CssPropertyNameRef::Known(property),
-                parse_component_values(css).unwrap(),
+            let named = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
                 CssImportance::Important,
             )
             .unwrap();
@@ -224,7 +239,7 @@ fn all_selected_blend_and_isolation_keywords_reach_typed_views_through_three_fro
                     other => panic!("family payload: {other:?}"),
                 }
                 assert_eq!(
-                    output(view, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+                    output(view, CssSerializationLimits::default()).unwrap(),
                     css
                 );
             }
@@ -252,9 +267,10 @@ fn sixty_four_authored_blend_entries_keep_every_index_duplicate_and_decoded_orde
     for source in [
         parsed(&format!("background-blend-mode:{css}!important")),
         checked(P::BackgroundBlendMode, &css),
-        parse_property_value(
-            CssPropertyNameRef::Known(P::BackgroundBlendMode),
-            parse_component_values(&css).unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(P::BackgroundBlendMode)),
+            CssComponentValues::parse(&CssParser::default(), &css).unwrap(),
             CssImportance::Important,
         )
         .unwrap(),
@@ -269,33 +285,27 @@ fn sixty_four_authored_blend_entries_keep_every_index_duplicate_and_decoded_orde
             assert_eq!(*mode, expected_modes[index]);
         }
         assert_eq!(value.modes(), expected_modes);
-        assert_eq!(value.serialize_specified().unwrap(), expected_css);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected_css
+        );
         let CssKnownPropertyValueRef::BackgroundBlendMode(original) =
             source.known().unwrap().property_value().unwrap()
         else {
             panic!("original list")
         };
-        assert_eq!(value, original.modes());
+        assert_eq!(value, original.value());
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    65,
-                    65,
-                    expected_css.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(65, 65, expected_css.len()))
                 .unwrap(),
             expected_css
         );
-        assert_eq!(
+        assert!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    64,
-                    65,
-                    expected_css.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(64, 65, expected_css.len()))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                .is_input_node_limit()
         );
         assert_eq!(value.modes(), expected_modes);
     }
@@ -304,7 +314,7 @@ fn sixty_four_authored_blend_entries_keep_every_index_duplicate_and_decoded_orde
 #[test]
 fn checked_programmatic_keywords_preserve_component_origins_and_original_grammar() {
     for (property, css) in FAMILY {
-        let parsed_components = parse_component_values(css).unwrap();
+        let parsed_components = CssComponentValues::parse(&CssParser::default(), css).unwrap();
         let mut items = parsed_components.items().to_vec();
         let last = items
             .iter()
@@ -324,16 +334,18 @@ fn checked_programmatic_keywords_preserve_component_origins_and_original_grammar
         };
         let programmatic = CssComponentValue::try_ident(keyword).unwrap();
         items[last] = programmatic.clone();
-        let components = CssComponentValues::try_new(items).unwrap();
+        let components = CssComponentValues::try_new(items, Default::default()).unwrap();
         for source in [
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Important,
             )
             .unwrap(),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Important,
             )
@@ -348,11 +360,7 @@ fn checked_programmatic_keywords_preserve_component_origins_and_original_grammar
             );
             let values = completed(&source);
             assert_eq!(
-                output(
-                    one(&values, property),
-                    CssSpecifiedValueSerializationLimits::default()
-                )
-                .unwrap(),
+                output(one(&values, property), CssSerializationLimits::default()).unwrap(),
                 css
             );
             if property == P::BackgroundBlendMode {
@@ -368,76 +376,82 @@ fn checked_programmatic_keywords_preserve_component_origins_and_original_grammar
 #[test]
 fn pending_family_handles_retry_strict_original_eof_grammar_residual_and_provider_failures() {
     for (property, good) in FAMILY {
-        let programmatic = CssComponentValues::try_new(vec![
-            CssComponentValue::try_function(
-                "var",
-                CssComponentValues::try_new(vec![CssComponentValue::try_ident("--mode").unwrap()])
+        let programmatic = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_function(
+                    "var",
+                    CssComponentValues::try_new(
+                        vec![CssComponentValue::try_ident("--mode").unwrap()],
+                        Default::default(),
+                    )
                     .unwrap(),
-            )
-            .unwrap(),
-        ])
+                )
+                .unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
         for source in [
             parsed(&format!(
                 "/*😀*/{}:var(--mode)!important",
                 property.canonical_name()
             )),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 programmatic.clone(),
                 CssImportance::Important,
             )
             .unwrap(),
         ] {
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending")
             };
             let recovered_text = format!("{good}/*");
-            let recovered = parse_component_values(&recovered_text).unwrap();
+            let recovered =
+                CssComponentValues::parse(&CssParser::default(), &recovered_text).unwrap();
             let origin = eof_closure_origin(&recovered, &recovered_text);
             let before = recovered.clone();
             let error = handle.reenter(recovered.clone()).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("original grammar failure")
             };
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ));
-            assert_eq!(error.origin(), &CssSerializedOrigin::End(Some(origin)));
+            assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
+            assert_eq!(error.origin(), CssSerializedOrigin::End(Some(origin)));
             assert_eq!(recovered, before);
-            let invalid = parse_component_values("plus-lighter").unwrap();
-            let expected = parse_property_value_for_grammar(
-                property.grammar(),
+            let invalid = CssComponentValues::parse(&CssParser::default(), "plus-lighter").unwrap();
+            let expected = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 invalid.clone(),
                 CssImportance::Normal,
             )
             .unwrap_err();
             let error = handle.reenter(invalid).unwrap_err();
-            let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+            let Some(error) = error.replacement_error() else {
                 panic!("same invalid grammar")
             };
             assert_eq!(error, &expected);
-            assert_eq!(
+            assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
-            let replacement = parse_component_values(good).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), good).unwrap();
             let CssContributions::Longhands(first) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("completed replacement")
             };
-            assert_eq!(
+            assert!(
                 output(
                     one(&first, property),
-                    CssSpecifiedValueSerializationLimits::new(100, 100, 0)
+                    CssSerializationLimits::new(100, 100, 0)
                 )
                 .unwrap_err()
-                .kind(),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
             );
             let CssContributions::Longhands(retry) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -445,11 +459,7 @@ fn pending_family_handles_retry_strict_original_eof_grammar_residual_and_provide
             };
             assert_eq!(one(&first, property), one(&retry, property));
             assert_eq!(
-                output(
-                    one(&retry, property),
-                    CssSpecifiedValueSerializationLimits::default()
-                )
-                .unwrap(),
+                output(one(&retry, property), CssSerializationLimits::default()).unwrap(),
                 good
             );
             context(&retry.items()[0], &source, Some(&replacement));
@@ -489,23 +499,26 @@ fn projected_family_payloads_and_singleton_reset_keep_exact_provider_budgets() {
             "normal",
         ),
     ] {
-        let limits = CssSpecifiedValueSerializationLimits::new;
+        let limits = CssSerializationLimits::new;
         assert_eq!(output(view, limits(nodes, nodes, css.len())).unwrap(), css);
         for (budget, kind) in [
             (
                 limits(nodes - 1, nodes, css.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 limits(nodes, nodes - 1, css.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 limits(nodes, nodes, css.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(output(view, budget).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&output(view, budget).unwrap_err()),
+                kind
+            );
             assert_eq!(output(view, limits(nodes, nodes, css.len())).unwrap(), css);
         }
     }
@@ -549,14 +562,23 @@ fn ordinary_background_resets_to_one_normal_independently_of_layer_or_explicit_l
             else {
                 panic!("final color stays seventh index")
             };
-            assert_eq!(color.to_specified_css().unwrap(), "red");
+            assert_eq!(
+                color.serialize_specified(Default::default()).unwrap(),
+                "red"
+            );
             let CssKnownPropertyValueRef::Background(original) =
                 source.known().unwrap().property_value().unwrap()
             else {
                 panic!("original background")
             };
-            assert_eq!(original.background().layers().len(), count);
-            assert_eq!(original.background().serialize_specified().unwrap(), css);
+            assert_eq!(original.value().layers().len(), count);
+            assert_eq!(
+                original
+                    .value()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                css
+            );
         }
     }
     assert_eq!(
@@ -572,7 +594,7 @@ fn ordinary_background_resets_to_one_normal_independently_of_layer_or_explicit_l
 #[test]
 fn global_and_pending_backgrounds_keep_nine_terminals_and_reset_replacement_context() {
     let source = parsed("/*😀*/background:var(--layers)!important");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending background")
     };
     for (css, keyword) in GLOBALS {
@@ -589,7 +611,7 @@ fn global_and_pending_backgrounds_keep_nine_terminals_and_reset_replacement_cont
         for item in values.items() {
             assert_eq!(item.value(), CssContributionValueRef::Global(keyword));
         }
-        let replacement = parse_component_values(css).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), css).unwrap();
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("global replacement")
@@ -608,29 +630,36 @@ fn global_and_pending_backgrounds_keep_nine_terminals_and_reset_replacement_cont
         }
     }
     for bad in ["red, none", "none,", "/cover"] {
-        assert!(matches!(
+        assert!(
             handle
-                .reenter(parse_component_values(bad).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), bad).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         handle
-            .reenter(parse_component_values("env(layers)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "env(layers)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
-    let replacement =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("red").unwrap()]).unwrap();
+    let replacement = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("red").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     for _ in 0..2 {
         let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("ordinary replacement")
         };
-        assert_eq!(reset(&values).serialize_specified().unwrap(), "normal");
+        assert_eq!(
+            reset(&values)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "normal"
+        );
         for item in values.items() {
             context(item, &source, Some(&replacement));
         }
@@ -643,14 +672,12 @@ fn global_and_pending_backgrounds_keep_nine_terminals_and_reset_replacement_cont
 
 #[test]
 fn normalized_order_counts_the_singleton_reset_and_recovers_atomically_at_one_short() {
-    let report = parse_sheet(
-        ".a{background-blend-mode:screen,multiply!important;background:none, red!important}.b{isolation:var(--isolation)}",
-    );
+    let report = CssParser::default().parse_sheet(".a{background-blend-mode:screen,multiply!important;background:none, red!important}.b{isolation:var(--isolation)}");
     assert!(report.is_clean());
     let before = report.clone();
     // One explicit list, nine Background terminals, one pending occurrence.
     let exact = CssNormalizationLimits::try_new(0, 2, 3, 11).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -693,17 +720,13 @@ fn normalized_order_counts_the_singleton_reset_and_recovers_atomically_at_one_sh
         CssExpansion::Pending(_)
     ));
     for (budget, order) in [(9, 1), (10, 2)] {
-        let error = normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(0, 2, 3, budget).unwrap(),
-        )
-        .unwrap_err();
+        let error = report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(0, 2, 3, budget).unwrap())
+            .unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: budget
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, budget))
         );
         assert_eq!(error.declaration_order(), Some(order));
         assert!(
@@ -713,7 +736,7 @@ fn normalized_order_counts_the_singleton_reset_and_recovers_atomically_at_one_sh
                 .same_occurrence(declarations[order].source())
         );
         assert_eq!(report, before);
-        assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+        assert!(report.syntax().normalize(exact).is_ok());
     }
 }
 
@@ -721,11 +744,11 @@ fn normalized_order_counts_the_singleton_reset_and_recovers_atomically_at_one_sh
 fn browser_recovered_comments_preserve_typed_payloads_and_unclean_report_normalization() {
     for (property, css) in FAMILY {
         let source = format!(".a{{{}:{css}/*", property.canonical_name());
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(!report.is_clean());
         let before = report.clone();
         let exact = CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap();
-        let normalized = normalize_report_with_limits(&report, exact).unwrap();
+        let normalized = report.normalize(exact).unwrap();
         assert!(!normalized.is_clean());
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let declaration = normalized
@@ -746,44 +769,37 @@ fn browser_recovered_comments_preserve_typed_payloads_and_unclean_report_normali
             panic!("recovered ordinary payload")
         };
         assert_eq!(
-            output(
-                one(values, property),
-                CssSpecifiedValueSerializationLimits::default()
-            )
-            .unwrap(),
+            output(one(values, property), CssSerializationLimits::default()).unwrap(),
             css
         );
         context(&values.items()[0], declaration.source(), None);
         let components = declaration.source().value_components().clone();
         let origin = eof_closure_origin(&components, &source);
         for result in [
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Important,
             ),
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Important,
             ),
         ] {
             assert_eq!(
                 result.unwrap_err().origin(),
-                &CssSerializedOrigin::End(Some(origin.clone()))
+                CssSerializedOrigin::End(Some(origin.clone()))
             );
         }
-        let error = normalize_report_with_limits(
-            &report,
-            CssNormalizationLimits::try_new(0, 1, 1, 0).unwrap(),
-        )
-        .unwrap_err();
+        let error = report
+            .normalize(CssNormalizationLimits::try_new(0, 1, 1, 0).unwrap())
+            .unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 0
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 0))
         );
         assert!(
             error
@@ -792,6 +808,6 @@ fn browser_recovered_comments_preserve_typed_payloads_and_unclean_report_normali
                 .same_occurrence(declaration.source())
         );
         assert_eq!(report, before);
-        assert!(normalize_report_with_limits(&report, exact).is_ok());
+        assert!(report.normalize(exact).is_ok());
     }
 }

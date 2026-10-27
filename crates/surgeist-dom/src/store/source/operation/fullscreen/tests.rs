@@ -406,7 +406,8 @@ fn recorded_bound_descendant_context_refuses_context_free_handoff_before_either_
         DomInlineStyleChange, DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleProfile,
         DomInlineStyleRequestLimits, DomInlineStyleSourceContext,
     };
-    use surgeist_css::{CssParserContext, CssParserMode, CssUtf16InputLimits};
+    use surgeist_css::source::CssUtf16InputLimits;
+    use surgeist_css::{CssParserContext, CssParserMode};
     use surgeist_cssom::{
         CssomDeclarationRequestLimits, CssomDeclarationSupport, CssomInputRole, CssomInputVersion,
         CssomLimits,
@@ -562,7 +563,8 @@ fn bound_descendant_handoff_commits_context_once_and_resumes_original_removal() 
         DomInlineStyleInputs, DomInlineStyleLimits, DomInlineStyleProfile,
         DomInlineStyleRequestLimits, DomInlineStyleSourceContext,
     };
-    use surgeist_css::{CssParserContext, CssParserMode, CssUtf16InputLimits};
+    use surgeist_css::source::CssUtf16InputLimits;
+    use surgeist_css::{CssParserContext, CssParserMode};
     use surgeist_cssom::{
         CssomDeclarationRequestLimits, CssomDeclarationSupport, CssomInputRole, CssomInputVersion,
         CssomLimits, CssomUsabilityRequirement,
@@ -600,7 +602,7 @@ fn bound_descendant_handoff_commits_context_once_and_resumes_original_removal() 
         revision: 1,
     };
     let support = CssomDeclarationSupport::try_new(vec![(
-        surgeist_css::CssPropertyGrammar::from_name("width").unwrap(),
+        surgeist_css::property::CssPropertyGrammar::from_name("width").unwrap(),
         CssomUsabilityRequirement::AllCheckedValues,
     )])
     .unwrap();

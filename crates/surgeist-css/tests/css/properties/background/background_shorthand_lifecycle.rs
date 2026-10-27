@@ -6,7 +6,19 @@
 //! These tests use the existing public metadata/expansion/normalization boundary.
 
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandContributions,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::background::CssBackgroundSize;
 
 const MEMBERS: [CssKnownProperty; 8] = [
     CssKnownProperty::BackgroundImage,
@@ -21,7 +33,7 @@ const MEMBERS: [CssKnownProperty; 8] = [
 
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).expect("background has intrinsic expansion")
+        source.expand().expect("background has intrinsic expansion")
     else {
         panic!("completed background members")
     };
@@ -49,16 +61,30 @@ fn assert_context(values: &CssLonghandContributions, source: &CssDeclaration) {
 
 fn text(value: CssLonghandValueRef<'_>) -> String {
     match value {
-        CssLonghandValueRef::BackgroundImage(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundPosition(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundSize(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundRepeat(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundAttachment(v) => v.serialize_specified().unwrap(),
-        CssLonghandValueRef::BackgroundOrigin(v) | CssLonghandValueRef::BackgroundClip(v) => {
-            v.serialize_specified().unwrap()
+        CssLonghandValueRef::BackgroundImage(v) => {
+            v.serialize_specified(Default::default()).unwrap()
         }
-        CssLonghandValueRef::BackgroundColor(v) => v.to_specified_css().unwrap(),
-        CssLonghandValueRef::BackgroundBlendMode(v) => v.serialize_specified().unwrap(),
+        CssLonghandValueRef::BackgroundPosition(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundSize(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundRepeat(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundAttachment(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundOrigin(v) | CssLonghandValueRef::BackgroundClip(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundColor(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::BackgroundBlendMode(v) => {
+            v.serialize_specified(Default::default()).unwrap()
+        }
         _ => panic!("background terminal"),
     }
 }
@@ -149,12 +175,19 @@ fn color_only_background_supplies_each_schema_initial_list_and_one_color() {
     else {
         panic!("background wrapper")
     };
-    let [layer] = authored.background().layers() else {
+    let [layer] = authored.value().layers() else {
         panic!("one authored layer")
     };
     assert!(layer.image().is_none() && layer.position().is_none() && layer.size().is_none());
     assert!(layer.repeat().is_none() && layer.attachment().is_none() && layer.boxes().is_none());
-    assert_eq!(layer.color().unwrap().to_specified_css().unwrap(), "red");
+    assert_eq!(
+        layer
+            .color()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "red"
+    );
 }
 
 #[test]
@@ -220,18 +253,23 @@ fn explicit_layers_preserve_all_components_and_single_final_color() {
 
 #[test]
 fn pending_background_reentry_is_strict_reusable_and_preserves_both_origins() {
-    let programmatic_source = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Background),
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_function(
-                "var",
-                CssComponentValues::try_new(vec![
-                    CssComponentValue::try_ident("--layers").unwrap(),
-                ])
+    let programmatic_source = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Background)),
+        CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_function(
+                    "var",
+                    CssComponentValues::try_new(
+                        vec![CssComponentValue::try_ident("--layers").unwrap()],
+                        Default::default(),
+                    )
+                    .unwrap(),
+                )
                 .unwrap(),
-            )
-            .unwrap(),
-        ])
+            ],
+            Default::default(),
+        )
         .unwrap(),
         CssImportance::Important,
     )
@@ -246,33 +284,31 @@ fn pending_background_reentry_is_strict_reusable_and_preserves_both_origins() {
         programmatic_source,
     ] {
         let CssExpansion::Pending(pending) =
-            expand_declaration(&source).expect("background can defer expansion")
+            source.expand().expect("background can defer expansion")
         else {
             panic!("pending background")
         };
         assert!(pending.source().same_occurrence(&source));
         for invalid in ["red, none", "/ cover", "none,"] {
             let error = pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+            assert!(error.replacement_error().is_some());
         }
         for residual in ["var(--again)", "env(layer)", "attr(layer)"] {
-            assert_eq!(
+            assert!(
                 pending
-                    .reenter(parse_component_values(residual).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
         }
-        let parsed = parse_component_values("none, red").unwrap();
-        let programmatic =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident("red").unwrap()])
-                .unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), "none, red").unwrap();
+        let programmatic = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident("red").unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         assert!(matches!(
             parsed.items()[0].origin(),
             CssValueOrigin::Parsed(_)
@@ -316,7 +352,7 @@ fn pending_background_reentry_is_strict_reusable_and_preserves_both_origins() {
                 );
             }
         }
-        let replacement = parse_component_values("revert-layer").unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), "revert-layer").unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("nine symbolic replacement members")
@@ -335,10 +371,10 @@ fn pending_background_reentry_is_strict_reusable_and_preserves_both_origins() {
 #[test]
 fn normalization_keeps_one_shorthand_ordinal_but_charges_nine_contributions() {
     let css = ".a{background:red!important; background-size:cover}.b{background:var(--layers)}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 11).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), limits).unwrap();
+    let normalized = report.syntax().normalize(limits).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -390,13 +426,10 @@ fn normalization_keeps_one_shorthand_ordinal_but_charges_nine_contributions() {
     assert!(pending.source().same_occurrence(declarations[2].source()));
     for (limit, order) in [(8, 0), (9, 1), (10, 2)] {
         let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, limit).unwrap();
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+        let error = report.syntax().normalize(limits).unwrap_err();
         assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit
-            }
+            error.exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, limit))
         );
         assert_eq!(error.declaration_order(), Some(order));
         assert!(
@@ -418,7 +451,7 @@ fn forbidden_nonfinal_color_and_size_without_position_drop_only_the_background()
         ("left no-repeat / cover", "/"),
     ] {
         let css = format!("background:{invalid}; background-size:cover");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         let [source] = report.syntax().as_slice() else {
             panic!("valid sibling retained")
         };
@@ -438,9 +471,15 @@ fn forbidden_nonfinal_color_and_size_without_position_drop_only_the_background()
             diagnostic.error().position().byte_offset().value(),
             "background:".len() + invalid.find(responsible).unwrap()
         );
-        let ErrorKind::InvalidPropertyValue(detail) = diagnostic.error().kind() else {
-            panic!("property diagnostic")
-        };
-        assert_eq!(detail.property().canonical_name(), "background");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidPropertyValue,
+            "property diagnostic"
+        );
+        assert_eq!(
+            detail.known_property().unwrap().canonical_name(),
+            "background"
+        );
     }
 }

@@ -8,17 +8,26 @@ use crate::css::support::authored_syntax::{
     assert_origin_region as origin, assert_position as position, assert_strict_rejection,
     parsed_origin,
 };
-use surgeist_css::{
-    CssComponentValueRef, CssComponentValues, CssCounterStyleDescriptorKind as CounterKind,
-    CssCounterStyleDescriptorValue as CounterValue,
-    CssCounterStyleDescriptorValueRef as CounterRef, CssCounterStyleRange,
-    CssCounterStyleRangeBound, CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
-    CssErrorCode, CssEscapeError, CssFontDisplay, CssFontFeatureValueKind as FeatureKind,
-    CssFontFeatureValuesItem, CssImageValue, CssNumericTokenKind, CssParseReport, CssParsedOrigin,
-    CssRecoveryAction, CssRule, CssValueOrigin, CssValueTokenRef, ErrorKind,
-    parse_counter_style_descriptor_value, parse_font_feature_display_value,
-    parse_font_feature_value, parse_sheet,
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssNumericTokenKind, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::diagnostic::{CssErrorCode, CssEscapeFailure, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind as CounterKind;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorValue as CounterValue;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorValueRef as CounterRef;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorValue, CssCounterStyleRange, CssCounterStyleRangeBound,
+    CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
+};
+use surgeist_css::rule::font_face::CssFontDisplay;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueKind as FeatureKind;
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureDisplayValue, CssFontFeatureValue, CssFontFeatureValuesItem,
+};
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::values::image::CssImageValue;
+use surgeist_css::{CssParseReport, CssParser};
 
 #[derive(Clone, Copy, Debug)]
 enum Symbol {
@@ -68,9 +77,9 @@ fn bound(actual: &CssCounterStyleRangeBound, expected: Option<&str>) {
     match (actual, expected) {
         (CssCounterStyleRangeBound::Infinite, None) => {}
         (CssCounterStyleRangeBound::Integer(actual), Some(expected)) => {
-            assert_eq!(actual.literal().numeric().representation(), expected);
+            assert_eq!(actual.expect_literal().numeric().representation(), expected);
             assert_eq!(
-                actual.literal().numeric().kind(),
+                actual.expect_literal().numeric().kind(),
                 CssNumericTokenKind::Integer
             );
         }
@@ -85,16 +94,16 @@ fn counter_semantics(actual: &CounterValue, expected: &Expected) {
             assert_eq!(
                 actual
                     .first_symbol_value()
-                    .map(|n| n.literal().numeric().representation()),
+                    .map(|n| n.expect_literal().numeric().representation()),
                 *expected
             );
             if let Some(number) = actual.first_symbol_value() {
                 assert_eq!(
-                    number.literal().numeric().kind(),
+                    number.expect_literal().numeric().kind(),
                     CssNumericTokenKind::Integer
                 );
                 assert!(matches!(
-                    number.literal().origin(),
+                    number.expect_literal().origin(),
                     CssValueOrigin::Parsed(_)
                 ));
             }
@@ -131,10 +140,14 @@ fn counter_semantics(actual: &CounterValue, expected: &Expected) {
         }
         (CounterRef::Pad(actual), Expected::Pad(minimum, expected_symbol)) => {
             assert_eq!(
-                actual.minimum_length().literal().numeric().representation(),
+                actual
+                    .minimum_length()
+                    .expect_literal()
+                    .numeric()
+                    .representation(),
                 *minimum
             );
-            assert!(!actual.minimum_length().literal().is_negative());
+            assert!(!actual.minimum_length().expect_literal().is_negative());
             symbol(actual.symbol(), *expected_symbol);
         }
         (CounterRef::Fallback(actual), Expected::Fallback(expected)) => {
@@ -144,10 +157,10 @@ fn counter_semantics(actual: &CounterValue, expected: &Expected) {
             assert_eq!(actual.tuples().len(), expected.len());
             for (actual, (weight, expected_symbol)) in actual.tuples().iter().zip(expected) {
                 assert_eq!(
-                    actual.weight().literal().numeric().representation(),
+                    actual.weight().expect_literal().numeric().representation(),
                     *weight
                 );
-                assert!(!actual.weight().literal().is_negative());
+                assert!(!actual.weight().expect_literal().is_negative());
                 symbol(actual.symbol(), *expected_symbol);
             }
         }
@@ -378,7 +391,7 @@ fn ten_counter_descriptor_grammars_return_literal_semantics() {
         ),
     ];
     for (kind, source, expected) in cases {
-        let report = parse_counter_style_descriptor_value(source, kind);
+        let report = CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, kind);
         assert!(report.is_clean(), "{kind:?} {source:?}: {report:?}");
         let actual = report.syntax().as_ref().expect("typed counter value");
         assert_eq!(actual.kind(), kind);
@@ -401,7 +414,7 @@ fn ten_counter_descriptor_grammars_return_literal_semantics() {
         assert!(report.into_validation_result().unwrap().is_some());
     }
     for (kind, css_name, _) in COUNTERS {
-        assert_eq!(kind.css_name(), css_name);
+        assert_eq!(kind.as_str(), css_name);
     }
 }
 
@@ -442,28 +455,38 @@ fn counter_invalid_local_values_reject_without_enclosing_rule_requirements() {
     ];
     for (kind, sources) in cases {
         for source in *sources {
-            rejected(parse_counter_style_descriptor_value(source, *kind), source);
+            rejected(
+                CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, *kind),
+                source,
+            );
         }
     }
 }
 
 #[test]
 fn exact_counter_weights_and_bounds_exceed_machine_integer_limits() {
-    let report =
-        parse_counter_style_descriptor_value("fixed 18446744073709551616", CounterKind::System);
+    let report = CssCounterStyleDescriptorValue::parse(
+        &CssParser::default(),
+        "fixed 18446744073709551616",
+        CounterKind::System,
+    );
     assert!(report.is_clean(), "{report:?}");
     counter_semantics(
         report.syntax().as_ref().unwrap(),
         &Expected::Fixed(Some("18446744073709551616")),
     );
-    let report =
-        parse_counter_style_descriptor_value("18446744073709551616 \"0\"", CounterKind::Pad);
+    let report = CssCounterStyleDescriptorValue::parse(
+        &CssParser::default(),
+        "18446744073709551616 \"0\"",
+        CounterKind::Pad,
+    );
     assert!(report.is_clean(), "{report:?}");
     counter_semantics(
         report.syntax().as_ref().unwrap(),
         &Expected::Pad("18446744073709551616", Symbol::String("0")),
     );
-    let report = parse_counter_style_descriptor_value(
+    let report = CssCounterStyleDescriptorValue::parse(
+        &CssParser::default(),
         "18446744073709551617 A, 18446744073709551616 B",
         CounterKind::AdditiveSymbols,
     );
@@ -477,14 +500,16 @@ fn exact_counter_weights_and_bounds_exceed_machine_integer_limits() {
     );
     // Adjacent exact values must not collapse to one binary64 magnitude.
     rejected(
-        parse_counter_style_descriptor_value(
+        CssCounterStyleDescriptorValue::parse(
+            &CssParser::default(),
             "18446744073709551616 A, 18446744073709551617 B",
             CounterKind::AdditiveSymbols,
         ),
         "18446744073709551616 A, 18446744073709551617 B",
     );
     let source = "18446744073709551616 18446744073709551617";
-    let report = parse_counter_style_descriptor_value(source, CounterKind::Range);
+    let report =
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, CounterKind::Range);
     assert!(report.is_clean(), "{report:?}");
     counter_semantics(
         report.syntax().as_ref().unwrap(),
@@ -494,7 +519,8 @@ fn exact_counter_weights_and_bounds_exceed_machine_integer_limits() {
         )]),
     );
     rejected(
-        parse_counter_style_descriptor_value(
+        CssCounterStyleDescriptorValue::parse(
+            &CssParser::default(),
             "18446744073709551617 18446744073709551616",
             CounterKind::Range,
         ),
@@ -513,7 +539,7 @@ fn five_display_values_and_decoded_keyword_spellings_have_literal_enum_values() 
         ("sWaP", CssFontDisplay::Swap),
         (r"s\77 ap", CssFontDisplay::Swap),
     ] {
-        let report = parse_font_feature_display_value(source);
+        let report = CssFontFeatureDisplayValue::parse(&CssParser::default(), source);
         assert!(report.is_clean(), "{source}: {report:?}");
         let actual = report.syntax().as_ref().unwrap();
         assert_eq!(actual.ordinary_display(), expected);
@@ -546,13 +572,16 @@ fn five_display_values_and_decoded_keyword_spellings_have_literal_enum_values() 
         "swap,block",
         "var(--x)",
     ] {
-        rejected(parse_font_feature_display_value(source), source);
+        rejected(
+            CssFontFeatureDisplayValue::parse(&CssParser::default(), source),
+            source,
+        );
     }
-    let report = parse_font_feature_display_value("env(x)");
+    let report = CssFontFeatureDisplayValue::parse(&CssParser::default(), "env(x)");
     assert!(report.is_clean());
     assert!(matches!(
         report.syntax().as_ref().unwrap().view(),
-        surgeist_css::CssFontFeatureDisplayValueRef::Pending(_)
+        surgeist_css::rule::font_feature_values::CssFontFeatureDisplayValueRef::Pending(_)
     ));
 }
 
@@ -572,7 +601,7 @@ fn seven_feature_kinds_enforce_their_selected_cardinalities() {
         (FeatureKind::Annotation, "4", &["4"]),
     ];
     for (kind, source, expected) in cases {
-        let report = parse_font_feature_value(source, *kind);
+        let report = CssFontFeatureValue::parse(&CssParser::default(), source, *kind);
         assert!(report.is_clean(), "{kind:?} {source}: {report:?}");
         let actual = report.syntax().as_ref().unwrap();
         assert_eq!(actual.kind(), *kind);
@@ -593,10 +622,17 @@ fn seven_feature_kinds_enforce_their_selected_cardinalities() {
         FeatureKind::Ornaments,
         FeatureKind::Annotation,
     ] {
-        rejected(parse_font_feature_value("1 2", kind), "1 2");
+        rejected(
+            CssFontFeatureValue::parse(&CssParser::default(), "1 2", kind),
+            "1 2",
+        );
     }
     rejected(
-        parse_font_feature_value("1 2 3", FeatureKind::CharacterVariant),
+        CssFontFeatureValue::parse(
+            &CssParser::default(),
+            "1 2 3",
+            FeatureKind::CharacterVariant,
+        ),
         "1 2 3",
     );
 }
@@ -609,7 +645,7 @@ fn index_normalization_preserves_exact_integer_token_spellings_for_every_kind() 
             ("-0000", "0", Some(0)),
             ("18446744073709551616", "18446744073709551616", None),
         ] {
-            let report = parse_font_feature_value(source, kind);
+            let report = CssFontFeatureValue::parse(&CssParser::default(), source, kind);
             assert!(report.is_clean(), "{kind:?} {source}: {report:?}");
             let actual = report.syntax().as_ref().unwrap();
             let [index] = actual.ordinary_indexes() else {
@@ -639,13 +675,16 @@ fn index_normalization_preserves_exact_integer_token_spellings_for_every_kind() 
         for source in [
             "-1", "1.0", "1e0", "1px", "1%", "\"1\"", "one", "var(--x)", "calc(1)", "1,2",
         ] {
-            rejected(parse_font_feature_value(source, kind), source);
+            rejected(
+                CssFontFeatureValue::parse(&CssParser::default(), source, kind),
+                source,
+            );
         }
-        let report = parse_font_feature_value("env(x)", kind);
+        let report = CssFontFeatureValue::parse(&CssParser::default(), "env(x)", kind);
         assert!(report.is_clean());
         assert!(matches!(
             report.syntax().as_ref().unwrap().view(),
-            surgeist_css::CssFontFeatureValueRef::Pending(_)
+            surgeist_css::rule::font_feature_values::CssFontFeatureValueRef::Pending(_)
         ));
     }
 }
@@ -656,17 +695,20 @@ fn surplus_indexes_reject_at_the_first_authored_token_beyond_the_kind_cardinalit
         ("1 2", FeatureKind::Stylistic, 2, "2"),
         ("1 2 3", FeatureKind::CharacterVariant, 4, "3"),
     ] {
-        let report = parse_font_feature_value(source, kind);
+        let report = CssFontFeatureValue::parse(&CssParser::default(), source, kind);
         let diagnostic = report
             .diagnostics()
             .iter()
             .find(|d| d.action() == CssRecoveryAction::RejectInput)
             .unwrap();
         position(diagnostic.error().position(), offset, 0, offset as u32);
-        let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-            panic!("authored surplus index token")
-        };
-        assert_eq!(detail.encountered().authored(), token);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::UnexpectedToken,
+            "authored surplus index token"
+        );
+        assert_eq!(detail.encountered().unwrap().authored(), token);
         rejected(report, source);
     }
 }
@@ -674,7 +716,7 @@ fn surplus_indexes_reject_at_the_first_authored_token_beyond_the_kind_cardinalit
 #[test]
 fn original_unicode_trivia_belongs_to_full_carriers_and_precise_semantic_tokens() {
     let source = " /*é*/\r\nsWaP /*💡*/ ";
-    let report = parse_font_feature_display_value(source);
+    let report = CssFontFeatureDisplayValue::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{report:?}");
     let actual = report.syntax().as_ref().unwrap();
     assert_eq!(actual.ordinary_display(), CssFontDisplay::Swap);
@@ -706,7 +748,7 @@ fn original_unicode_trivia_belongs_to_full_carriers_and_precise_semantic_tokens(
     );
 
     let source = " /*é*/\r\n+0002 /*💡*/ ";
-    let report = parse_font_feature_value(source, FeatureKind::Stylistic);
+    let report = CssFontFeatureValue::parse(&CssParser::default(), source, FeatureKind::Stylistic);
     assert!(report.is_clean(), "{report:?}");
     let actual = report.syntax().as_ref().unwrap();
     origin(actual.origin().unwrap(), source, (0, 0, 0), (24, 1, 13));
@@ -730,7 +772,8 @@ fn original_unicode_trivia_belongs_to_full_carriers_and_precise_semantic_tokens(
     assert_eq!(parsed_origin(number.origin()), index.origin().unwrap());
 
     let source = "\"💡\"";
-    let report = parse_counter_style_descriptor_value(source, CounterKind::Prefix);
+    let report =
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, CounterKind::Prefix);
     assert!(report.is_clean(), "{report:?}");
     let actual = report.syntax().as_ref().unwrap();
     counter_semantics(actual, &Expected::Prefix(Symbol::String("💡")));
@@ -747,7 +790,8 @@ fn original_unicode_trivia_belongs_to_full_carriers_and_precise_semantic_tokens(
     );
 
     let source = " /*é*/\r\ncyclic /*💡*/ ";
-    let report = parse_counter_style_descriptor_value(source, CounterKind::System);
+    let report =
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, CounterKind::System);
     assert!(report.is_clean(), "{report:?}");
     let actual = report.syntax().as_ref().unwrap();
     counter_semantics(actual, &Expected::System(CssCounterStyleSystem::Cyclic));
@@ -770,7 +814,8 @@ fn original_unicode_trivia_belongs_to_full_carriers_and_precise_semantic_tokens(
 #[test]
 fn counter_numeric_semantic_origins_keep_order_separate_from_whole_value_origin() {
     let source = " \"0\"/*é*/ +0002 ";
-    let report = parse_counter_style_descriptor_value(source, CounterKind::Pad);
+    let report =
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, CounterKind::Pad);
     assert!(report.is_clean(), "{report:?}");
     let actual = report.syntax().as_ref().unwrap();
     origin(actual.origin().unwrap(), source, (0, 0, 0), (17, 0, 16));
@@ -779,10 +824,14 @@ fn counter_numeric_semantic_origins_keep_order_separate_from_whole_value_origin(
         panic!("pad")
     };
     assert_eq!(
-        pad.minimum_length().literal().numeric().representation(),
+        pad.minimum_length()
+            .expect_literal()
+            .numeric()
+            .representation(),
         "+0002"
     );
-    let CssValueOrigin::Parsed(number_origin) = pad.minimum_length().literal().origin() else {
+    let CssValueOrigin::Parsed(number_origin) = pad.minimum_length().expect_literal().origin()
+    else {
         panic!("number origin")
     };
     origin(number_origin, source, (11, 0, 10), (16, 0, 15));
@@ -802,7 +851,8 @@ fn counter_numeric_semantic_origins_keep_order_separate_from_whole_value_origin(
 #[test]
 fn punctuation_inside_an_admitted_url_is_data_with_original_group_origins() {
     let source = "url(\"x;y!z\")";
-    let report = parse_counter_style_descriptor_value(source, CounterKind::Prefix);
+    let report =
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, CounterKind::Prefix);
     assert!(report.is_clean(), "{report:?}");
     let actual = report.syntax().as_ref().unwrap();
     counter_semantics(actual, &Expected::Prefix(Symbol::Url("x;y!z")));
@@ -857,25 +907,29 @@ fn punctuation_inside_an_admitted_url_is_data_with_original_group_origins() {
 fn every_required_value_rejects_empty_source_and_trivia_without_inventing_empty_syntax() {
     for source in ["", " \t", "/**/"] {
         for (kind, _, _) in COUNTERS {
-            empty(parse_counter_style_descriptor_value(source, kind), source);
+            empty(
+                CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, kind),
+                source,
+            );
         }
-        empty(parse_font_feature_display_value(source), source);
+        empty(
+            CssFontFeatureDisplayValue::parse(&CssParser::default(), source),
+            source,
+        );
         for kind in FEATURES {
-            let report = parse_font_feature_value(source, kind);
+            let report = CssFontFeatureValue::parse(&CssParser::default(), source, kind);
             let diagnostic = report
                 .diagnostics()
                 .iter()
                 .find(|d| d.action() == CssRecoveryAction::RejectInput)
                 .unwrap();
-            assert!(matches!(
-                diagnostic.error().kind(),
-                ErrorKind::UnexpectedEnd(_)
-            ));
+            assert!(diagnostic.error().code() == CssErrorCode::UnexpectedEnd);
             empty(report, source);
         }
     }
     // A quoted empty String is an actual suffix value; it is not empty input.
-    let report = parse_counter_style_descriptor_value("\"\"", CounterKind::Suffix);
+    let report =
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), "\"\"", CounterKind::Suffix);
     assert!(report.is_clean());
     counter_semantics(
         report.syntax().as_ref().unwrap(),
@@ -912,10 +966,7 @@ fn boundary<T: std::fmt::Debug>(
         .unwrap();
     position(diagnostic.error().position(), offset, 0, offset as u32);
     if annotation {
-        assert!(matches!(
-            diagnostic.error().kind(),
-            ErrorKind::InvalidDeclarationAnnotation(_)
-        ));
+        assert!(diagnostic.error().code() == CssErrorCode::InvalidDeclarationAnnotation);
     }
     rejected(report, source);
 }
@@ -925,20 +976,25 @@ fn root_delimiters_and_importance_reject_the_complete_value_at_the_actual_bounda
     for suffix in [";", "!important", ")", "]", "}", "{}"] {
         let source = format!("cyclic{suffix}");
         boundary(
-            parse_counter_style_descriptor_value(&source, CounterKind::System),
+            CssCounterStyleDescriptorValue::parse(
+                &CssParser::default(),
+                &source,
+                CounterKind::System,
+            ),
             &source,
             6,
             suffix == "!important",
         );
         let source = format!("swap{suffix}");
         boundary(
-            parse_font_feature_display_value(&source),
+            CssFontFeatureDisplayValue::parse(&CssParser::default(), &source),
             &source,
             4,
             suffix == "!important",
         );
         let source = format!("1{suffix}");
-        let report = parse_font_feature_value(&source, FeatureKind::Stylistic);
+        let report =
+            CssFontFeatureValue::parse(&CssParser::default(), &source, FeatureKind::Stylistic);
         if suffix == "!important" {
             let diagnostic = report
                 .diagnostics()
@@ -946,24 +1002,34 @@ fn root_delimiters_and_importance_reject_the_complete_value_at_the_actual_bounda
                 .find(|d| d.action() == CssRecoveryAction::RejectInput)
                 .unwrap();
             position(diagnostic.error().position(), 1, 0, 1);
-            let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-                panic!("name-free index annotation token")
-            };
-            assert_eq!(detail.encountered().authored(), "!");
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::UnexpectedToken,
+                "name-free index annotation token"
+            );
+            assert_eq!(detail.encountered().unwrap().authored(), "!");
             rejected(report, &source);
         } else {
             boundary(report, &source, 1, false);
         }
     }
     for source in ["swap; font-display:block", "swap !important extra"] {
-        rejected(parse_font_feature_display_value(source), source);
+        rejected(
+            CssFontFeatureDisplayValue::parse(&CssParser::default(), source),
+            source,
+        );
     }
     rejected(
-        parse_counter_style_descriptor_value("x; suffix:y", CounterKind::Prefix),
+        CssCounterStyleDescriptorValue::parse(
+            &CssParser::default(),
+            "x; suffix:y",
+            CounterKind::Prefix,
+        ),
         "x; suffix:y",
     );
     rejected(
-        parse_font_feature_value("1; next:2", FeatureKind::Styleset),
+        CssFontFeatureValue::parse(&CssParser::default(), "1; next:2", FeatureKind::Styleset),
         "1; next:2",
     );
 }
@@ -971,48 +1037,58 @@ fn root_delimiters_and_importance_reject_the_complete_value_at_the_actual_bounda
 #[test]
 fn invalid_tokens_have_literal_unicode_positions_and_family_diagnostics() {
     let source = " /*é*/\r\nswap extra";
-    let report = parse_font_feature_display_value(source);
+    let report = CssFontFeatureDisplayValue::parse(&CssParser::default(), source);
     let diagnostic = report
         .diagnostics()
         .iter()
         .find(|d| d.action() == CssRecoveryAction::RejectInput)
         .unwrap();
     position(diagnostic.error().position(), 14, 1, 5);
-    let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-        panic!("display grammar diagnostic")
-    };
-    assert_eq!(detail.at_rule().as_str(), "font-feature-values");
-    assert_eq!(detail.descriptor().as_str(), "font-display");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidDescriptorValue,
+        "display grammar diagnostic"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "font-feature-values");
+    assert_eq!(detail.descriptor().unwrap().as_str(), "font-display");
     assert_eq!(detail.encountered().unwrap().authored(), "extra");
     rejected(report, source);
 
     let source = " /*é*/\r\n1.0";
-    let report = parse_font_feature_value(source, FeatureKind::Stylistic);
+    let report = CssFontFeatureValue::parse(&CssParser::default(), source, FeatureKind::Stylistic);
     let diagnostic = report
         .diagnostics()
         .iter()
         .find(|d| d.action() == CssRecoveryAction::RejectInput)
         .unwrap();
     position(diagnostic.error().position(), 9, 1, 0);
-    let ErrorKind::UnexpectedToken(detail) = diagnostic.error().kind() else {
-        panic!("name-free index grammar diagnostic")
-    };
-    assert_eq!(detail.encountered().authored(), "1.0");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::UnexpectedToken,
+        "name-free index grammar diagnostic"
+    );
+    assert_eq!(detail.encountered().unwrap().authored(), "1.0");
     rejected(report, source);
 
     let source = " /*é*/\r\nx y";
-    let report = parse_counter_style_descriptor_value(source, CounterKind::Prefix);
+    let report =
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, CounterKind::Prefix);
     let diagnostic = report
         .diagnostics()
         .iter()
         .find(|d| d.action() == CssRecoveryAction::RejectInput)
         .unwrap();
     position(diagnostic.error().position(), 11, 1, 2);
-    let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-        panic!("counter grammar diagnostic")
-    };
-    assert_eq!(detail.at_rule().as_str(), "counter-style");
-    assert_eq!(detail.descriptor().as_str(), "prefix");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidDescriptorValue,
+        "counter grammar diagnostic"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "counter-style");
+    assert_eq!(detail.descriptor().unwrap().as_str(), "prefix");
     assert_eq!(detail.encountered().unwrap().authored(), "y");
     rejected(report, source);
 }
@@ -1020,7 +1096,8 @@ fn invalid_tokens_have_literal_unicode_positions_and_family_diagnostics() {
 #[test]
 fn lexical_eof_recovery_retains_values_and_fails_clean_only_validation() {
     let source = "\"a";
-    let report = parse_counter_style_descriptor_value(source, CounterKind::Prefix);
+    let report =
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, CounterKind::Prefix);
     counter_semantics(
         report.syntax().as_ref().unwrap(),
         &Expected::Prefix(Symbol::String("a")),
@@ -1046,7 +1123,7 @@ fn lexical_eof_recovery_retains_values_and_fails_clean_only_validation() {
     );
 
     let source = "swap/*x";
-    let report = parse_font_feature_display_value(source);
+    let report = CssFontFeatureDisplayValue::parse(&CssParser::default(), source);
     let actual = report.syntax().as_ref().unwrap();
     assert_eq!(actual.ordinary_display(), CssFontDisplay::Swap);
     origin(actual.origin().unwrap(), source, (0, 0, 0), (7, 0, 7));
@@ -1066,7 +1143,7 @@ fn lexical_eof_recovery_retains_values_and_fails_clean_only_validation() {
     assert!(report.into_validation_result().is_err());
 
     let source = "1/*x";
-    let report = parse_font_feature_value(source, FeatureKind::Stylistic);
+    let report = CssFontFeatureValue::parse(&CssParser::default(), source, FeatureKind::Stylistic);
     let actual = report.syntax().as_ref().unwrap();
     assert_eq!(actual.ordinary_indexes()[0].as_decimal_str(), "1");
     origin(actual.origin().unwrap(), source, (0, 0, 0), (4, 0, 4));
@@ -1092,11 +1169,15 @@ fn lexical_eof_recovery_retains_values_and_fails_clean_only_validation() {
     assert!(report.into_validation_result().is_err());
 
     rejected(
-        parse_counter_style_descriptor_value("\"a\nb", CounterKind::Prefix),
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), "\"a\nb", CounterKind::Prefix),
         "\"a\nb",
     );
     rejected(
-        parse_counter_style_descriptor_value("url(a b)", CounterKind::Prefix),
+        CssCounterStyleDescriptorValue::parse(
+            &CssParser::default(),
+            "url(a b)",
+            CounterKind::Prefix,
+        ),
         "url(a b)",
     );
 }
@@ -1105,12 +1186,7 @@ fn eof_escape<T: std::fmt::Debug>(report: CssParseReport<Option<T>>, offset: usi
     let diagnostic = report
         .diagnostics()
         .iter()
-        .find(|d| {
-            matches!(
-                d.error().kind(),
-                ErrorKind::EscapeParseError(CssEscapeError::EndOfInput)
-            )
-        })
+        .find(|d| d.error().escape_failure() == Some(CssEscapeFailure::EndOfInput))
         .unwrap();
     assert_eq!(diagnostic.action(), CssRecoveryAction::RecoverEscape);
     position(diagnostic.error().position(), offset, 0, offset as u32);
@@ -1120,16 +1196,17 @@ fn eof_escape<T: std::fmt::Debug>(report: CssParseReport<Option<T>>, offset: usi
 #[test]
 fn lexical_escape_eof_is_reported_independently_of_grammar_retention() {
     let source = "base\\";
-    let report = parse_counter_style_descriptor_value(source, CounterKind::Prefix);
+    let report =
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, CounterKind::Prefix);
     counter_semantics(
         report.syntax().as_ref().unwrap(),
         &Expected::Prefix(Symbol::Ident("base�")),
     );
     eof_escape(report, 5);
-    let report = parse_font_feature_display_value("swap\\");
+    let report = CssFontFeatureDisplayValue::parse(&CssParser::default(), "swap\\");
     assert!(report.syntax().is_none());
     eof_escape(report, 5);
-    let report = parse_font_feature_value("1\\", FeatureKind::Stylistic);
+    let report = CssFontFeatureValue::parse(&CssParser::default(), "1\\", FeatureKind::Stylistic);
     assert!(report.syntax().is_none());
     eof_escape(report, 2);
 }
@@ -1145,10 +1222,13 @@ fn depth<T: std::fmt::Debug>(report: CssParseReport<Option<T>>, exceeded: bool) 
             .iter()
             .find(|d| d.action() == CssRecoveryAction::StopAtNestingLimit)
             .unwrap();
-        let ErrorKind::NestingLimit(detail) = diagnostic.error().kind() else {
-            panic!("typed resource stop")
-        };
-        assert_eq!(detail.limit(), 256);
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::NestingLimit,
+            "typed resource stop"
+        );
+        assert_eq!(detail.nesting_limit().unwrap(), 256);
         position(diagnostic.error().position(), 512, 0, 512);
         assert!(
             !report
@@ -1184,12 +1264,19 @@ fn the_257th_actual_component_opener_preserves_resource_precedence() {
     for (count, exceeded) in [(256, false), (257, true)] {
         let source = format!("{}x{}", "f(".repeat(count), ")".repeat(count));
         depth(
-            parse_counter_style_descriptor_value(&source, CounterKind::Prefix),
+            CssCounterStyleDescriptorValue::parse(
+                &CssParser::default(),
+                &source,
+                CounterKind::Prefix,
+            ),
             exceeded,
         );
-        depth(parse_font_feature_display_value(&source), exceeded);
         depth(
-            parse_font_feature_value(&source, FeatureKind::Stylistic),
+            CssFontFeatureDisplayValue::parse(&CssParser::default(), &source),
+            exceeded,
+        );
+        depth(
+            CssFontFeatureValue::parse(&CssParser::default(), &source, FeatureKind::Stylistic),
             exceeded,
         );
     }
@@ -1198,7 +1285,7 @@ fn the_257th_actual_component_opener_preserves_resource_precedence() {
 #[test]
 fn real_counter_rule_owns_names_and_grammar_recovery_with_separate_definition_inspection() {
     let source = "@counter-style demo{system:cyclic;symbols:x;prefix:1;suffix:\"!\"}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("one retained counter rule")
     };
@@ -1229,7 +1316,8 @@ fn real_counter_rule_owns_names_and_grammar_recovery_with_separate_definition_in
             .iter()
             .any(|d| d.action() == CssRecoveryAction::DropDescriptor)
     );
-    let direct = parse_counter_style_descriptor_value("cyclic", CounterKind::System);
+    let direct =
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), "cyclic", CounterKind::System);
     let CounterRef::System(system) = direct.syntax().as_ref().unwrap().view() else {
         panic!("system")
     };
@@ -1238,18 +1326,23 @@ fn real_counter_rule_owns_names_and_grammar_recovery_with_separate_definition_in
         rule.descriptors().system().unwrap().ordinary_system()
     );
     rejected(
-        parse_counter_style_descriptor_value("1", CounterKind::Prefix),
+        CssCounterStyleDescriptorValue::parse(&CssParser::default(), "1", CounterKind::Prefix),
         "1",
     );
 
     // Selected current grammar retains the rule; definition admission owns the conflict.
-    let direct = parse_counter_style_descriptor_value("extends decimal", CounterKind::System);
+    let direct = CssCounterStyleDescriptorValue::parse(
+        &CssParser::default(),
+        "extends decimal",
+        CounterKind::System,
+    );
     assert!(direct.is_clean());
     counter_semantics(
         direct.syntax().as_ref().unwrap(),
         &Expected::Extends("decimal"),
     );
-    let report = parse_sheet("@counter-style demo{system:extends decimal;symbols:x}");
+    let report =
+        CssParser::default().parse_sheet("@counter-style demo{system:extends decimal;symbols:x}");
     assert!(report.is_clean());
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("retained authored rule")
@@ -1259,8 +1352,8 @@ fn real_counter_rule_owns_names_and_grammar_recovery_with_separate_definition_in
             .prospective()
             .unwrap()
             .definition_status(),
-        surgeist_css::CssCounterStyleDefinitionStatus::Undefined(
-            surgeist_css::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
+        surgeist_css::rule::counter_style::CssCounterStyleDefinitionStatus::Undefined(
+            surgeist_css::rule::counter_style::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
         )
     );
 }
@@ -1268,7 +1361,7 @@ fn real_counter_rule_owns_names_and_grammar_recovery_with_separate_definition_in
 #[test]
 fn real_mixed_font_rule_keeps_actual_names_positions_and_later_valid_definitions() {
     let source = "@font-feature-values Demo{font-display:swap;@stylistic{bad:1.0;Good:+0002;}font-display:optional;@styleset{Wide:0 100 101;}}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::FontFeatureValues(rule)] = report.syntax().rules() else {
         panic!("one real font rule")
     };
@@ -1315,20 +1408,20 @@ fn real_mixed_font_rule_keeps_actual_names_positions_and_later_valid_definitions
             .iter()
             .any(|d| d.action() == CssRecoveryAction::DropDescriptor)
     );
-    let direct = parse_font_feature_value("+0002", FeatureKind::Stylistic);
+    let direct = CssFontFeatureValue::parse(&CssParser::default(), "+0002", FeatureKind::Stylistic);
     assert!(direct.is_clean());
     assert_eq!(
         direct.syntax().as_ref().unwrap().ordinary_indexes()[0].as_decimal_str(),
         definition.ordinary_indexes()[0].as_decimal_str()
     );
-    let direct = parse_font_feature_display_value("swap");
+    let direct = CssFontFeatureDisplayValue::parse(&CssParser::default(), "swap");
     assert!(direct.is_clean());
     assert_eq!(
         direct.syntax().as_ref().unwrap().ordinary_display(),
         first.value().ordinary_display()
     );
     rejected(
-        parse_font_feature_value("1.0", FeatureKind::Stylistic),
+        CssFontFeatureValue::parse(&CssParser::default(), "1.0", FeatureKind::Stylistic),
         "1.0",
     );
 }

@@ -10,11 +10,11 @@
 
 use crate::css::support::property_admission::Responsible::At;
 use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
-use surgeist_css::{
-    CssErrorCode, CssGlobalKeyword, CssImportance, CssKnownProperty, CssPropertyNameRef,
-    CssRecoveryAction, parse_component_values, parse_property_value, parse_sheet,
-    parse_style_attribute, validate_sheet, validate_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
 
 fn flow_tolerance() -> CssKnownProperty {
     CssKnownProperty::from_name("flow-tolerance")
@@ -51,7 +51,7 @@ fn obsolete_properties_are_unknown_and_recovery_retains_surrounding_declarations
     ] {
         let dropped = format!("{obsolete}:normal;");
         let source = format!("color:red;{dropped}width:3px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let properties: Vec<_> = report
             .syntax()
             .iter()
@@ -73,7 +73,11 @@ fn obsolete_properties_are_unknown_and_recovery_retains_surrounding_declarations
             start + dropped.len()
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
         );
     }
@@ -105,7 +109,7 @@ fn signed_lengths_percentages_and_dimensionally_valid_calculations_are_accepted(
         "calc(3px / -2)",
     ] {
         let source = format!("flow-tolerance:{value}");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [declaration] = report.syntax().as_slice() else {
             panic!("one retained flow-tolerance declaration: {source}");
@@ -116,11 +120,20 @@ fn signed_lengths_percentages_and_dimensionally_valid_calculations_are_accepted(
         assert!(known.global().is_none());
         assert!(known.substitution_dependent().is_none());
         assert_eq!(declaration.importance(), CssImportance::Normal);
-        validate_style_attribute(&source).expect("clean flow-tolerance validates");
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .expect("clean flow-tolerance validates");
 
         let sheet = format!(".grid {{{source}}}");
-        assert!(parse_sheet(&sheet).is_clean(), "{sheet}");
-        validate_sheet(&sheet).expect("the same grammar applies in style rules");
+        assert!(
+            CssParser::default().parse_sheet(&sheet).is_clean(),
+            "{sheet}"
+        );
+        CssParser::default()
+            .parse_sheet(&sheet)
+            .into_validation_result()
+            .expect("the same grammar applies in style rules");
     }
 }
 
@@ -132,7 +145,7 @@ fn property_and_keyword_escapes_keep_canonical_identity_and_authored_spelling() 
         (r"flow-\74 olerance", r"\69 nfinite"),
     ] {
         let source = format!("{name}:  {value} !ImPoRtAnT;");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let declaration = &report.syntax()[0];
         assert_eq!(declaration.known().unwrap().property(), flow_tolerance());
@@ -148,10 +161,17 @@ fn property_and_keyword_escapes_keep_canonical_identity_and_authored_spelling() 
             source
         );
         assert_eq!(
-            declaration.value_components().serialize().unwrap().as_css(),
+            declaration
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             format!("  {value} ")
         );
-        validate_style_attribute(&source).unwrap();
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap();
     }
 }
 
@@ -160,7 +180,7 @@ fn property_components_preserve_authored_boundary_whitespace() {
     // CssComponentValues::serialize preserves actual whitespace. Exercise an
     // existing property independently of the new flow-tolerance grammar.
     let source = "MARGIN:  AuTo !ImPoRtAnT;";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one valid existing margin declaration");
@@ -171,7 +191,11 @@ fn property_components_preserve_authored_boundary_whitespace() {
     );
     assert_eq!(declaration.importance(), CssImportance::Important);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "  AuTo "
     );
 }
@@ -208,7 +232,7 @@ fn invalid_keywords_dimensions_and_combinations_drop_only_the_offending_declarat
     ] {
         let dropped = format!("flow-tolerance:{invalid};");
         let source = format!("color:red;{dropped}width:3px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let properties: Vec<_> = report
             .syntax()
             .iter()
@@ -228,7 +252,7 @@ fn invalid_keywords_dimensions_and_combinations_drop_only_the_offending_declarat
             "{source}"
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert_invalid_value(diagnostic.error().kind(), property, token);
+        assert_invalid_value(diagnostic.error(), property, token);
         let start = "color:red;".len();
         assert_eq!(diagnostic.span().start().byte_offset().value(), start);
         assert_eq!(
@@ -236,13 +260,18 @@ fn invalid_keywords_dimensions_and_combinations_drop_only_the_offending_declarat
             start + dropped.len()
         );
         assert_eq!(
-            validate_style_attribute(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics(),
         );
         assert_checked_rejected(
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
-                parse_component_values(invalid).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+                CssComponentValues::parse(&CssParser::default(), invalid).unwrap(),
                 CssImportance::Normal,
             ),
             property,
@@ -261,7 +290,7 @@ fn css_wide_keywords_and_substitution_are_symbolic_whole_value_branches() {
         ("revert-layer", CssGlobalKeyword::RevertLayer),
     ] {
         let source = format!("flow-tolerance:{value}!important");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let declaration = &report.syntax()[0];
         let known = declaration.known().unwrap();
@@ -277,7 +306,7 @@ fn css_wide_keywords_and_substitution_are_symbolic_whole_value_branches() {
         "calc(var(--threshold) - 1px)",
     ] {
         let source = format!("flow-tolerance:{value}!important");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let declaration = &report.syntax()[0];
         let known = declaration.known().unwrap();

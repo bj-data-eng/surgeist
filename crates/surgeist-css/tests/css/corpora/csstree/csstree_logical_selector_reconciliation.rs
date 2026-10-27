@@ -3,7 +3,8 @@
 //! derivations; neither the current parser nor registry supplies its oracle.
 
 use serde_json::Value;
-use surgeist_css::{CssPseudoClass, CssPseudoSelectorListItem, CssSelector, parse_selector};
+use surgeist_css::CssParser;
+use surgeist_css::selector::{CssPseudoClass, CssPseudoSelectorListItem, CssSelector};
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
 use crate::css::support::csstree::reconciliation::{
@@ -17,7 +18,11 @@ fn reconciliation() -> Reconciliation {
 /// Public selector presence and, for recovered forgiving lists, the exact
 /// surviving members for one row.
 fn typed_members_reconcile(row: &Value) -> Result<(), String> {
-    let report = parse_selector(text(row, "input"), &namespace_context());
+    let report = CssSelector::parse(
+        &CssParser::default(),
+        text(row, "input"),
+        &namespace_context(),
+    );
     if report.syntax().is_some() != row["present"].as_bool().unwrap() {
         return Err(format!("presence differs: {:?}", report.syntax()));
     }

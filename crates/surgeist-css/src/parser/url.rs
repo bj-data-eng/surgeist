@@ -1,17 +1,20 @@
 //! Shared authored Values 4 `<url>` parsing for properties, imports, and fonts.
 
 use super::property_input::Parser;
-use crate::error::property::ParseError;
+use crate::diagnostic::error::property::ParseError;
 use cssparser::Token;
 use std::borrow::Cow;
 
-use crate::CssComponentValueRef;
-use crate::error::property::{Error, basic};
-use crate::syntax::*;
+use crate::component::CssComponentValueRef;
+use crate::declaration::CssAuthoredFunctionArguments;
+use crate::diagnostic::error::property::{Error, basic};
+use crate::values::common::{
+    CssIdent, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
+};
 
 pub(super) fn parse_url<'i, 't>(
     input: &mut Parser<'i, 't>,
-    _numeric: &crate::numeric::NumericInputContext<'_>,
+    _numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssUrl, ParseError<'i, Error>> {
     let location = input.current_source_location();
     match input.next().map_err(basic)?.clone() {
@@ -43,7 +46,7 @@ pub(super) fn parse_url<'i, 't>(
                             let modifier_end = input.state();
                             input.reset(&modifier_start);
                             let collected = input.collect_component().map_err(|error| {
-                                crate::error::property::invalid_component_value(
+                                crate::diagnostic::error::property::invalid_component_value(
                                     modifier_location,
                                     error,
                                 )
@@ -59,7 +62,7 @@ pub(super) fn parse_url<'i, 't>(
                                 Cow::Owned(component) => component.into_function_values(),
                             };
                             let Some(argument_components) = argument_components else {
-                                return Err(crate::error::property::unexpected_at(
+                                return Err(crate::diagnostic::error::property::unexpected_at(
                                     input.current_source_location(),
                                 ));
                             };
@@ -70,7 +73,7 @@ pub(super) fn parse_url<'i, 't>(
                                     argument_components,
                                 )
                                 .map_err(|error| {
-                                    crate::error::property::invalid_component_value(
+                                    crate::diagnostic::error::property::invalid_component_value(
                                         modifier_location,
                                         error,
                                     )

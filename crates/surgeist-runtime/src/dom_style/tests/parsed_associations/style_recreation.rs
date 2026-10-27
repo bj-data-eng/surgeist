@@ -4,7 +4,7 @@ use super::super::*;
 use super::consumption::{envelope, report};
 use super::style_decision::{installed, observe, request_ready};
 use super::style_sheet::{bind, create, pending, ready};
-use surgeist_css::CssUtf16InputError;
+use surgeist_css::source::CssUtf16Resource;
 use surgeist_dom::*;
 use surgeist_html::{HtmlCspAssociation, HtmlCspProcessorProfile, HtmlStyleTrigger};
 use surgeist_html_parser::{
@@ -642,9 +642,8 @@ fn nonempty_recreation_css_input_refusal_and_cancellation_preserve_retry_and_bot
     let work = session.state.borrow().work.get();
     assert!(matches!(
         create(&mut session, q.contribution(), envelope()),
-        Err(DomStyleParsedSheetError::Css(CssUtf16InputError::Limit(
-            "original UTF16 units"
-        )))
+        Err(DomStyleParsedSheetError::Css(ref error))
+            if error.exhausted_limit() == Some(CssUtf16Resource::InputUnits)
     ));
     assert!(session.state.borrow().work.get() > work);
     assert_eq!(session.snapshot().stamp(), stamp);

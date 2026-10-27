@@ -1,5 +1,9 @@
 //! Public Fonts4 family attribute behavior through the actual CSS prelude owner.
-use surgeist_css::*;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::rule::font_face::CssFontFaceFamily;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesFamilyList;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 use surgeist_cssom::*;
 
 fn batch(store: &CssomStore) -> CssomBatch {
@@ -198,7 +202,7 @@ fn complete_family_resource_failure_aborts_earlier_edits_while_typed_ingress_kee
             .has(&store, "earlier")
             .unwrap()
     );
-    let value = parse_font_feature_values_family_list("/*actual*/ B")
+    let value = CssFontFeatureValuesFamilyList::parse(&CssParser::default(), "/*actual*/ B")
         .into_parts()
         .0
         .unwrap();
@@ -219,10 +223,13 @@ fn complete_family_resource_failure_aborts_earlier_edits_while_typed_ingress_kee
     let input = view.family_input().unwrap();
     assert_eq!(input.value().origin(), &CssValueOrigin::Programmatic);
     assert!(input.value().family_origin(0).is_none());
-    let oversized = parse_font_feature_values_family_list(&format!("{}D", " ".repeat(40)))
-        .into_parts()
-        .0
-        .unwrap();
+    let oversized = CssFontFeatureValuesFamilyList::parse(
+        &CssParser::default(),
+        format!("{}D", " ".repeat(40)),
+    )
+    .into_parts()
+    .0
+    .unwrap();
     let mut edit = batch(&store);
     assert!(matches!(
         edit.set_font_feature_families(&rule, oversized),
@@ -245,14 +252,14 @@ fn family_output_budget_is_cumulative_and_raw_input_storage_joins_the_global_all
     let captured = object.capture(&snapshot).unwrap();
     assert_eq!(
         captured
-            .font_family(CssSpecifiedValueSerializationLimits::new(2, 2, 4))
+            .font_family(CssSerializationLimits::new(2, 2, 4))
             .unwrap(),
         "A, B"
     );
     for limits in [
-        CssSpecifiedValueSerializationLimits::new(1, 2, 4),
-        CssSpecifiedValueSerializationLimits::new(2, 1, 4),
-        CssSpecifiedValueSerializationLimits::new(2, 2, 3),
+        CssSerializationLimits::new(1, 2, 4),
+        CssSerializationLimits::new(2, 1, 4),
+        CssSerializationLimits::new(2, 2, 3),
     ] {
         assert!(matches!(
             captured.font_family(limits),

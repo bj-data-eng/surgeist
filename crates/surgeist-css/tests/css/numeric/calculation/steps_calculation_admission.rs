@@ -3,16 +3,22 @@
 //! Genuine math remains symbolic; these assertions never evaluate a function.
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#step-easing-functions
 
-use surgeist_css::{
-    CssIntegerCalculation, CssPositiveIntegerValue, CssStepPosition, CssSteps,
-    parse_component_values,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{CssCalculation, CssInteger, CssNumeric, CssPositive};
+use surgeist_css::values::animation::{CssStepPosition, CssSteps};
 
 fn admitted(root: &str, position: Option<CssStepPosition>) -> bool {
-    let calculation =
-        CssIntegerCalculation::try_from_components(parse_component_values(root).unwrap())
-            .expect("integer-domain calculation root");
-    CssSteps::try_new(CssPositiveIntegerValue::Calculation(calculation), position).is_some()
+    let calculation = CssCalculation::<CssInteger>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), root).unwrap(),
+        Default::default(),
+    )
+    .expect("integer-domain calculation root");
+    // A bare root re-enters the positive count's literal range admission.
+    CssNumeric::<CssInteger, CssPositive>::try_from_calculation(calculation)
+        .ok()
+        .and_then(|count| CssSteps::try_new(count, position))
+        .is_some()
 }
 
 #[test]

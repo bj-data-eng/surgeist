@@ -12,10 +12,17 @@
 //! This characterizes Standalone/Mix projection, not computed LCH/OKLCH hue.
 
 use crate::css::support::parsed_color as parsed;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorMix, CssColorMixComponent,
+    CssColorNumberLiteral, CssColorPercentageLiteral, CssColorSyntax, CssHslColor, CssHwbColor,
+    CssLchColor, CssNamedColor,
+};
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{CssAngle, CssCalculation, CssCalculationType, CssNumber};
 
 fn literal(text: &str) -> CssColorComponent {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let token = values.items()[0].clone();
     if text.ends_with('%') {
         CssColorComponent::Percentage(CssColorPercentageLiteral::try_from_component(token).unwrap())
@@ -25,12 +32,16 @@ fn literal(text: &str) -> CssColorComponent {
 }
 
 fn calculated_hue(text: &str, angle: bool) -> CssColorHue {
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     if angle {
-        CssColorHue::AngleCalculation(CssAngleCalculation::try_from_components(components).unwrap())
+        CssColorHue::AngleCalculation(
+            CssCalculation::<CssAngle>::try_from_components(components, Default::default())
+                .unwrap(),
+        )
     } else {
         CssColorHue::NumberCalculation(
-            CssNumberCalculation::try_from_components(components).unwrap(),
+            CssCalculation::<CssNumber>::try_from_components(components, Default::default())
+                .unwrap(),
         )
     }
 }
@@ -83,7 +94,13 @@ fn assert_raw(color: &CssColor, family: &str, calculation: &str, angle: bool) {
         }
         other => panic!("authored calculation domain changed: {other:?}"),
     };
-    assert_eq!(components.serialize().unwrap().as_css(), calculation);
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        calculation
+    );
     let CssValueOrigin::Parsed(origin) = origin else {
         panic!("retained calculation provenance")
     };
@@ -147,7 +164,11 @@ fn assert_case(family: &str, calculation: &str, angle: bool, expected: &str) {
     for color in [parsed(&text), constructed(family, calculation, angle)] {
         assert_raw(&color, family, calculation, angle);
         let before = color.clone();
-        assert_eq!(color.to_specified_css().unwrap(), expected, "{text}");
+        assert_eq!(
+            color.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{text}"
+        );
         assert_eq!(color, before);
         assert_raw(&color, family, calculation, angle);
     }
@@ -170,7 +191,7 @@ fn assert_case(family: &str, calculation: &str, angle: bool, expected: &str) {
         assert_raw(child, family, calculation, angle);
         let before = mix.clone();
         assert_eq!(
-            mix.to_specified_css().unwrap(),
+            mix.serialize_specified(Default::default()).unwrap(),
             format!("color-mix({expected}, blue)"),
             "{mix_text}"
         );

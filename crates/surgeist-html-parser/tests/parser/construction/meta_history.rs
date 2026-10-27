@@ -463,7 +463,7 @@ fn theme(state: &HtmlParseDocumentMeta<'_>) -> Option<surgeist_color::Color> {
 }
 fn scheme<'a>(
     state: &HtmlParseDocumentMeta<'a>,
-) -> Option<&'a std::sync::Arc<surgeist_css::CssColorSchemeParseReport>> {
+) -> Option<&'a std::sync::Arc<surgeist_css::values::color_adjust::CssColorSchemeParseReport>> {
     state.color_scheme()
 }
 

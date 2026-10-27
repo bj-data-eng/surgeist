@@ -5,10 +5,10 @@
 
 use crate::css::support::rules::invalid_descriptor;
 use crate::css::support::rules::retained_demo_font_face as font_face;
-use surgeist_css::{
-    CssErrorCode, CssFontFaceRule, CssFontFaceSource, CssParseReport, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, CssSheet, parse_sheet, validate_sheet,
-};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::rule::font_face::{CssFontFaceRule, CssFontFaceSource};
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn assert_sources(rule: &CssFontFaceRule, expected: &[(&str, &str)]) {
     let actual = ordinary_face!(rule.descriptors(), Src)
@@ -59,7 +59,10 @@ fn assert_member_diagnostics(
 }
 
 fn assert_validation_parity(source: &str, report: &CssParseReport<CssSheet>) {
-    match validate_sheet(source) {
+    match CssParser::default()
+        .parse_sheet(source)
+        .into_validation_result()
+    {
         Ok(sheet) => {
             assert!(report.is_clean());
             assert_eq!(&sheet, report.syntax());
@@ -79,7 +82,7 @@ fn invalid_source_members_preserve_valid_fallback_order_and_diagnostics() {
         "url(bad.woff2) tech(unknown),local(Last);font-display:swap}",
         ".after{color:red}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert_sources(
         font_face(&report),
@@ -104,7 +107,7 @@ fn empty_source_members_use_delimiting_comma_spans() {
         "@font-face{font-family:Demo;src:,url(first),,local(Last),;",
         "font-display:swap}.after{color:red}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert_sources(font_face(&report), &[("url", "first"), ("local", "Last")]);
     // The final comma before `;` adds no member: Fonts 4 "parse a list" uses
@@ -136,7 +139,7 @@ fn source_member_boundaries_handle_bad_urls_suffixes_and_nested_commas() {
         "url(\"last,part.woff2\") tech(variations,color-colrv1),local(\"A,B\");",
         "font-display:swap}.after{color:red}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert_sources(
         font_face(&report),
@@ -157,18 +160,18 @@ fn source_member_boundaries_handle_bad_urls_suffixes_and_nested_commas() {
 #[test]
 fn bad_url_cannot_use_later_env_to_bypass_source_recovery() {
     let source = "@font-face{src:url(not a valid url),env(source);font-display:swap}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::FontFace(rule)] = report.syntax().rules() else {
         panic!("font-face rule should survive a dropped src descriptor");
     };
     assert!(
         rule.descriptors()
-            .effective(surgeist_css::CssFontFaceDescriptorKind::Src)
+            .effective(surgeist_css::rule::font_face::CssFontFaceDescriptorKind::Src)
             .is_none()
     );
     assert!(
         rule.descriptors()
-            .effective(surgeist_css::CssFontFaceDescriptorKind::FontDisplay)
+            .effective(surgeist_css::rule::font_face::CssFontFaceDescriptorKind::FontDisplay)
             .is_some()
     );
     // Syntax 3 <declaration-value> excludes <bad-url-token>, so env() cannot
@@ -187,7 +190,7 @@ fn all_invalid_source_members_drop_one_descriptor_and_preserve_earlier_source() 
         let source = format!(
             "@font-face{{font-family:Demo;src:url(previous);{rejected}font-display:swap}}.after{{color:red}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
 
         assert_sources(font_face(&report), &[("url", "previous")]);
         let [diagnostic] = report.diagnostics() else {
@@ -211,7 +214,7 @@ fn rejected_descriptor_annotations_discard_pending_member_diagnostics() {
         let source = format!(
             "@font-face{{font-family:Demo;src:url(previous);{rejected}font-display:swap}}.after{{color:red}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
 
         assert_sources(font_face(&report), &[("url", "previous")]);
         let [diagnostic] = report.diagnostics() else {
@@ -239,7 +242,7 @@ fn recovered_source_member_span_preserves_unicode_source_coordinates() {
         "src:local(\"😀\"),local(inherit),url(last);font-display:swap}",
         ".after{color:red}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert_sources(font_face(&report), &[("local", "😀"), ("url", "last")]);
     assert_member_diagnostics(source, &report, &["local(inherit)"]);
@@ -258,7 +261,7 @@ fn clean_source_list_has_no_recovery_and_passes_validation() {
         "url(last) format(woff2) tech(variations,color-colrv1);",
         "font-display:swap}.after{color:red}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert_sources(font_face(&report), &[("local", "First"), ("url", "last")]);
     assert!(report.is_clean());
@@ -271,7 +274,7 @@ fn discarded_source_members_do_not_claim_implicit_closures() {
     // member also discards its unclosed functions, even if another member survives.
     for discarded in ["local(", "dummy(", "dummy(nested(", "url(bad) format("] {
         let source = format!("@font-face{{src:url(valid),{discarded}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("expected retained font-face for {source}");
         };
@@ -307,7 +310,7 @@ fn retained_source_members_keep_their_implicit_closures() {
         ("@font-face{src:url(first),local(Last", 0),
         ("@font-face{src:url(first),dummy(),local(Last", 1),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [CssRule::FontFace(rule)] = report.syntax().rules() else {
             panic!("expected retained font-face for {source}");
         };

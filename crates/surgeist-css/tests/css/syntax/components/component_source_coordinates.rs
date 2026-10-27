@@ -1,9 +1,9 @@
 //! Original UTF-8 offsets and zero-based UTF-16 coordinates are public contracts.
 
 use crate::css::support::authored_syntax::assert_position;
-use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef,
-    parse_component_values,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
 
 fn assert_origin(
@@ -27,7 +27,8 @@ fn line_endings_and_supplementary_characters_keep_original_token_coordinates() {
     for padding in (59..=68).chain(123..=132) {
         for newline in ["\r\n", "\r", "\n", "\u{000c}"] {
             let source = format!("{}{newline}😀;z", "a".repeat(padding));
-            let values = parse_component_values(&source).expect("valid component sequence");
+            let values = CssComponentValues::parse(&CssParser::default(), &source)
+                .expect("valid component sequence");
             let [prefix, whitespace, emoji, semicolon, last] = values.items() else {
                 panic!("identifier, whitespace, emoji, semicolon and final identifier");
             };
@@ -66,7 +67,8 @@ fn token_after_multiple_long_lines_uses_the_original_line_and_utf16_column() {
         let prefix = "a".repeat(padding);
         let long_line = "b".repeat(141);
         let source = format!("{prefix}\r\n{long_line}\r😀\u{000c}{long_line}\n😀;z");
-        let values = parse_component_values(&source).expect("valid component sequence");
+        let values = CssComponentValues::parse(&CssParser::default(), &source)
+            .expect("valid component sequence");
         let last = values.items().last().expect("last identifier");
         assert!(matches!(
             last.view(),

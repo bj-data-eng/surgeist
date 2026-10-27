@@ -12,7 +12,17 @@ use crate::css::support::color_and_selector_fixtures::assert_color_grammar_failu
 use crate::css::support::declaration_color as color;
 use crate::css::support::{component_values as components, detached_checked_declaration};
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssProfileColorExpression, CssProfileColorExpressionRef, CssRelativeColorEnvironment,
+    CssRelativeColorExpression, CssRelativeColorExpressionValue, CssRelativeColorResultDomain,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssCalculationType, CssNumericDimension, CssNumericType};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
 
 const HINTED: &str = "calc((1px + 1%) / 1px)";
 
@@ -39,7 +49,11 @@ fn assert_profile(expression: &CssProfileColorExpression) {
     assert_hinted_number(calculation.expression().numeric_type());
     assert!(calculation.references().is_empty());
     assert_eq!(
-        calculation.components().serialize().unwrap().as_css(),
+        calculation
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         HINTED
     );
 }
@@ -56,17 +70,26 @@ fn assert_relative(expression: &CssRelativeColorExpression) {
 
 fn parsed(text: &str) -> CssDeclaration {
     let source = format!("color:{text}!important;height:1px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);
     assert_eq!(
         report.syntax()[1].known().unwrap().property(),
         CssKnownProperty::Height
     );
-    assert!(validate_style_attribute(&source).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .is_ok()
+    );
     let declaration = report.syntax()[0].clone();
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         text
     );
     assert_eq!(declaration.importance(), CssImportance::Important);
@@ -75,7 +98,7 @@ fn parsed(text: &str) -> CssDeclaration {
 
 fn assert_reentry(text: &str) {
     let source = detached_checked_declaration("color", "var(--paint)", false);
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending color")
     };
     let replacement = components(text);
@@ -89,7 +112,9 @@ fn assert_reentry(text: &str) {
     assert_eq!(item.source().importance(), CssImportance::Important);
     assert_eq!(item.replacement_components(), Some(&replacement));
     let CssExpansion::Contributions(CssContributions::Longhands(expected)) =
-        expand_declaration(&detached_checked_declaration("color", text, false)).unwrap()
+        detached_checked_declaration("color", text, false)
+            .expand()
+            .unwrap()
     else {
         panic!("checked color")
     };
@@ -143,6 +168,7 @@ fn relative_expression_constructors_admit_hinted_number_only_in_percentage_permi
                 original.clone(),
                 environment,
                 domain,
+                Default::default(),
             )
             .unwrap();
             assert_relative(&value);
@@ -151,9 +177,13 @@ fn relative_expression_constructors_admit_hinted_number_only_in_percentage_permi
             assert_eq!(value.origin(), original.items()[0].origin());
         }
     }
-    let value =
-        CssRelativeColorExpression::try_from_components(components(HINTED), E::Alpha, D::Alpha)
-            .unwrap();
+    let value = CssRelativeColorExpression::try_from_components(
+        components(HINTED),
+        E::Alpha,
+        D::Alpha,
+        Default::default(),
+    )
+    .unwrap();
     assert_relative(&value);
 }
 
@@ -193,7 +223,7 @@ fn relative_non_hue_channels_and_alpha_admit_hinted_numbers_through_frontdoors()
 
 fn rejects(text: &str) {
     let source = format!("color:{text};height:1px");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert_eq!(report.syntax().len(), 1, "{text}");
     assert_eq!(
         report.syntax()[0].known().unwrap().property(),
@@ -205,25 +235,33 @@ fn rejects(text: &str) {
         CssRecoveryAction::DropDeclaration
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_color_grammar_failure(
-        parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Color),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
             components(text),
             CssImportance::Normal,
         ),
         text,
     );
     let pending = detached_checked_declaration("color", "var(--paint)", false);
-    let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+    let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
         panic!("pending")
     };
-    assert!(matches!(
-        handle.reenter(components(text)).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(
+        handle
+            .reenter(components(text))
+            .unwrap_err()
+            .replacement_error()
+            .is_some()
+    );
 }
 
 #[test]
@@ -235,18 +273,17 @@ fn hue_does_not_gain_percentage_permission_from_neighboring_channels() {
             components(HINTED),
             environment,
             D::Hue,
+            Default::default(),
         )
         .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch
-        );
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
         assert!(error.origin().is_some());
         assert!(
             CssRelativeColorExpression::try_from_components(
                 components("calc(1deg / 1deg)"),
                 environment,
-                D::Hue
+                D::Hue,
+                Default::default(),
             )
             .is_ok()
         );

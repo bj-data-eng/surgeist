@@ -1,6 +1,7 @@
 //! Actual moved String capacity is distinct from logical decoded-name length.
 
-use surgeist_css::{CssCustomIdent, CssViewTransitionIdent, CssViewTransitionName};
+use surgeist_css::values::common::CssCustomIdent;
+use surgeist_css::values::view_transition::{CssViewTransitionIdent, CssViewTransitionName};
 
 #[test]
 fn checked_transition_name_retains_original_spare_capacity_and_value_semantics() {
@@ -20,7 +21,7 @@ fn checked_transition_name_retains_original_spare_capacity_and_value_semantics()
     }
     assert_eq!(
         CssViewTransitionName::Custom(value)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "Card"
     );

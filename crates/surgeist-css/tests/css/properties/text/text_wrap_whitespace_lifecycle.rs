@@ -7,17 +7,36 @@ use crate::css::support::authored_property::checked;
 
 fn parsed(p: P, value: &str) -> CssDeclaration {
     let css = format!("/*😀*/{}:{value}!important", p.canonical_name());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     let [source] = report.syntax().as_slice() else {
         panic!("one occurrence")
     };
     source.clone()
 }
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::longhand_contributions as completed;
 use crate::css::support::serialization_limits::assert_node_limits as provider;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::{
+    CssTextWrap, CssTextWrapMode, CssTextWrapStyle, CssWhiteSpace, CssWhiteSpaceCollapse,
+    CssWhiteSpaceKeyword, CssWhiteSpaceTrim, CssWordBreak,
+};
 
 const MODES: [(CssTextWrapMode, &str); 2] = [
     (CssTextWrapMode::Wrap, "wrap"),
@@ -159,21 +178,33 @@ fn constructors_reject_only_empty_aggregates_and_preserve_authored_presence() {
     assert_eq!(style_only.style(), Some(CssTextWrapStyle::Auto));
     assert_eq!(mode_only.style(), None);
     assert_ne!(style_only, mode_only);
-    assert_eq!(style_only.serialize_specified().unwrap(), "auto");
-    assert_eq!(mode_only.serialize_specified().unwrap(), "wrap");
+    assert_eq!(
+        style_only.serialize_specified(Default::default()).unwrap(),
+        "auto"
+    );
+    assert_eq!(
+        mode_only.serialize_specified(Default::default()).unwrap(),
+        "wrap"
+    );
     for (before, after, inner, expected, _) in TRIM {
         let trim = CssWhiteSpaceTrim::new(before, after, inner);
         assert_eq!(trim.discard_before(), before);
         assert_eq!(trim.discard_after(), after);
         assert_eq!(trim.discard_inner(), inner);
         assert_eq!(trim.is_none(), !before && !after && !inner);
-        assert_eq!(trim.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            trim.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let value = CssWhiteSpace::try_new(None, None, Some(trim)).unwrap();
         assert_eq!(value.keyword(), None);
         assert_eq!(value.collapse(), None);
         assert_eq!(value.mode(), None);
         assert_eq!(value.trim(), Some(trim));
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     assert_eq!(
         CssWhiteSpaceTrim::none(),
@@ -191,9 +222,7 @@ fn every_mode_style_pair_has_programmatic_parsed_checked_and_typed_projection_pa
         for (style, style_css) in STYLES {
             let value = CssTextWrap::try_new(Some(mode), Some(style)).unwrap();
             let expected = format!("{mode_css} {style_css}");
-            provider(&expected, 2, |limits| {
-                value.serialize_specified_with_limits(limits)
-            });
+            provider(&expected, 2, |limits| value.serialize_specified(limits));
             for source in fronts(P::TextWrap, &format!("{style_css} {mode_css}")) {
                 assert_eq!(wrap(&source), &value);
                 let contributions = completed(&source);
@@ -244,9 +273,7 @@ fn special_white_space_forms_retain_alias_identity_and_exact_typed_projection() 
             (value.collapse(), value.mode(), value.trim()),
             (None, None, None)
         );
-        provider(css, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        provider(css, 1, |limits| value.serialize_specified(limits));
         for source in fronts(P::WhiteSpace, css) {
             assert_eq!(space(&source), &value);
             let contributions = completed(&source);
@@ -258,7 +285,10 @@ fn special_white_space_forms_retain_alias_identity_and_exact_typed_projection() 
                 .unwrap();
         assert_ne!(components, value);
         assert_eq!(components.keyword(), None);
-        assert_ne!(components.serialize_specified().unwrap(), css);
+        assert_ne!(
+            components.serialize_specified(Default::default()).unwrap(),
+            css
+        );
     }
 }
 #[test]
@@ -283,9 +313,7 @@ fn all_nonempty_component_presence_states_preserve_omission_and_defaults_for_eve
             let work = usize::from(collapse.is_some())
                 + usize::from(mode.is_some())
                 + if trim.is_some() { trim_work } else { 0 };
-            provider(&expected, work, |limits| {
-                value.serialize_specified_with_limits(limits)
-            });
+            provider(&expected, work, |limits| value.serialize_specified(limits));
             for source in fronts(P::WhiteSpace, &expected) {
                 assert_eq!(space(&source), &value);
                 assert_eq!(
@@ -311,25 +339,17 @@ fn all_nonempty_component_presence_states_preserve_omission_and_defaults_for_eve
 #[test]
 fn all_new_constituent_primitive_states_have_exact_keyword_work_and_bytes() {
     for (value, css) in MODES {
-        provider(css, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        provider(css, 1, |limits| value.serialize_specified(limits));
     }
     for (value, css) in STYLES {
-        provider(css, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        provider(css, 1, |limits| value.serialize_specified(limits));
     }
     for (value, css) in COLLAPSE {
-        provider(css, 1, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        provider(css, 1, |limits| value.serialize_specified(limits));
     }
     for (before, after, inner, css, work) in TRIM {
         let value = CssWhiteSpaceTrim::new(before, after, inner);
-        provider(css, work, |limits| {
-            value.serialize_specified_with_limits(limits)
-        });
+        provider(css, work, |limits| value.serialize_specified(limits));
     }
 }
 #[test]
@@ -483,6 +503,7 @@ fn programmatic_keyword_components_reenter_without_fabricated_parsed_origins() {
             .into_iter()
             .map(|value| CssComponentValue::try_ident(value).unwrap())
             .collect(),
+        Default::default(),
     )
     .unwrap();
     assert!(
@@ -493,14 +514,16 @@ fn programmatic_keyword_components_reenter_without_fabricated_parsed_origins() {
     );
     for grammar in [false, true] {
         let declaration = if grammar {
-            parse_property_value_for_grammar(
-                P::WhiteSpace.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(P::WhiteSpace.grammar()),
                 replacement.clone(),
                 CssImportance::Important,
             )
         } else {
-            parse_property_value(
-                CssPropertyNameRef::Known(P::WhiteSpace),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(P::WhiteSpace)),
                 replacement.clone(),
                 CssImportance::Important,
             )
@@ -519,7 +542,7 @@ fn programmatic_keyword_components_reenter_without_fabricated_parsed_origins() {
         assert_eq!(declaration.value_components(), &replacement);
     }
     let source = parsed(P::WhiteSpace, "var(--space)");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending")
     };
     let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap() else {
@@ -555,7 +578,9 @@ fn contiguous_trim_groups_permute_but_cannot_interleave_other_roles() {
                 CssWhiteSpaceTrim::new(true, true, true),
             );
             assert_eq!(
-                space(&source).serialize_specified().unwrap(),
+                space(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 "preserve nowrap discard-before discard-after discard-inner"
             );
         }
@@ -566,18 +591,20 @@ fn contiguous_trim_groups_permute_but_cannot_interleave_other_roles() {
         "discard-before preserve nowrap discard-inner",
         "none nowrap discard-before",
     ] {
-        let report = parse_style_attribute(&format!("white-space:{css}"));
+        let report = CssParser::default().parse_block_contents(format!("white-space:{css}"));
         assert!(report.syntax().is_empty());
         assert!(!report.is_clean());
         for result in [
-            parse_property_value(
-                CssPropertyNameRef::Known(P::WhiteSpace),
-                parse_component_values(css).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(P::WhiteSpace)),
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
                 CssImportance::Normal,
             ),
-            parse_property_value_for_grammar(
-                P::WhiteSpace.grammar(),
-                parse_component_values(css).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(P::WhiteSpace.grammar()),
+                CssComponentValues::parse(&CssParser::default(), css).unwrap(),
                 CssImportance::Normal,
             ),
         ] {
@@ -594,13 +621,16 @@ fn new_constituent_browser_recovery_retains_eof_and_strict_checked_rejection() {
         (P::WhiteSpaceTrim, "discard-before discard-after"),
     ] {
         let text = format!("{}:{css}/*", p.canonical_name());
-        let report = parse_style_attribute(&text);
+        let report = CssParser::default().parse_block_contents(&text);
         assert!(!report.is_clean());
         let [source] = report.syntax().as_slice() else {
             panic!("retained browser occurrence")
         };
         let before = source.clone();
-        let serialized = source.value_components().serialize().unwrap();
+        let serialized = source
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap();
         let origin = (0..serialized.as_css().len())
             .find_map(|offset| match serialized.origin_at(offset) {
                 Some(CssSerializedOrigin::Token(
@@ -618,34 +648,34 @@ fn new_constituent_browser_recovery_retains_eof_and_strict_checked_rejection() {
         let values = completed(source);
         assert_source(&values, source, None);
         for result in [
-            parse_property_value(
-                CssPropertyNameRef::Known(p),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(p)),
                 source.value_components().clone(),
                 CssImportance::Normal,
             ),
-            parse_property_value_for_grammar(
-                p.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(p.grammar()),
                 source.value_components().clone(),
                 CssImportance::Normal,
             ),
         ] {
             let error = result.unwrap_err();
-            assert!(matches!(
-                error.kind(),
-                CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-            ));
+            assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
             assert_eq!(
                 error.origin(),
-                &CssSerializedOrigin::End(Some(origin.clone()))
+                CssSerializedOrigin::End(Some(origin.clone()))
             );
         }
         assert_eq!(source, &before);
 
-        let report = parse_sheet(&format!(".a{{{}:{css}/*", p.canonical_name()));
+        let report =
+            CssParser::default().parse_sheet(format!(".a{{{}:{css}/*", p.canonical_name()));
         assert!(!report.is_clean());
         let before = report.clone();
         let exact = CssNormalizationLimits::try_new(0, 1, 1, 1).unwrap();
-        let normalized = normalize_report_with_limits(&report, exact).unwrap();
+        let normalized = report.normalize(exact).unwrap();
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let items: Vec<_> = normalized
             .syntax()
@@ -667,22 +697,17 @@ fn new_constituent_browser_recovery_retains_eof_and_strict_checked_rejection() {
         assert_eq!(values.items()[0].property(), p);
         assert_source(values, item.source(), None);
         for _ in 0..2 {
-            let error = normalize_report_with_limits(
-                &report,
-                CssNormalizationLimits::try_new(0, 1, 1, 0).unwrap(),
-            )
-            .unwrap_err();
+            let error = report
+                .normalize(CssNormalizationLimits::try_new(0, 1, 1, 0).unwrap())
+                .unwrap_err();
             assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded {
-                    resource: CssNormalizationResource::Contributions,
-                    limit: 0
-                }
+                error.exhausted_limit(),
+                Some((CssNormalizationResource::Contributions, 0))
             );
             assert!(error.declaration().unwrap().same_occurrence(item.source()));
         }
         assert_eq!(report, before);
-        assert!(normalize_report_with_limits(&report, exact).is_ok());
+        assert!(report.normalize(exact).is_ok());
     }
 }
 #[test]
@@ -697,19 +722,21 @@ fn typed_pending_retries_keep_original_occurrence_and_replacement_snapshots() {
     ] {
         let source = parsed(p, "var(--text)");
         let before = source.clone();
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
-        let replacement = parse_component_values(css).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), css).unwrap();
         for invalid in [bad.to_string(), format!("{css}/*"), "initial/*".into()] {
             for _ in 0..2 {
-                assert!(matches!(
+                assert!(
                     handle
-                        .reenter(parse_component_values(&invalid).unwrap())
+                        .reenter(
+                            CssComponentValues::parse(&CssParser::default(), &invalid).unwrap()
+                        )
                         .unwrap_err()
-                        .kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ));
+                        .replacement_error()
+                        .is_some()
+                );
             }
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -726,12 +753,11 @@ fn typed_pending_retries_keep_original_occurrence_and_replacement_snapshots() {
                 );
             }
         }
-        assert_eq!(
+        assert!(
             handle
-                .reenter(parse_component_values("env(again)").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "env(again)").unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         for _ in 0..2 {
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
@@ -762,13 +788,11 @@ fn typed_pending_retries_keep_original_occurrence_and_replacement_snapshots() {
 }
 #[test]
 fn seven_property_normalization_shares_context_and_atomic_eleven_member_budget() {
-    let report = parse_sheet(
-        "@media screen{.a{text-wrap-mode:nowrap!important;text-wrap-style:auto;white-space-collapse:discard;white-space-trim:none;text-wrap:stable;white-space:pre-line;word-break:auto-phrase;white-space:var(--space)}}",
-    );
+    let report = CssParser::default().parse_sheet("@media screen{.a{text-wrap-mode:nowrap!important;text-wrap-style:auto;white-space-collapse:discard;white-space-trim:none;text-wrap:stable;white-space:pre-line;word-break:auto-phrase;white-space:var(--space)}}");
     assert!(report.is_clean());
     let before = report.clone();
     let exact = CssNormalizationLimits::try_new(1, 2, 8, 11).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let items: Vec<_> = normalized
         .items()
         .iter()
@@ -844,11 +868,8 @@ fn seven_property_normalization_shares_context_and_atomic_eleven_member_budget()
         ),
     ] {
         for _ in 0..2 {
-            let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-            assert_eq!(
-                error.kind(),
-                &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-            );
+            let error = report.syntax().normalize(limits).unwrap_err();
+            assert_eq!(error.exhausted_limit(), Some((resource, limit)));
             assert_eq!(error.declaration_order(), Some(7));
             assert!(
                 error
@@ -859,18 +880,18 @@ fn seven_property_normalization_shares_context_and_atomic_eleven_member_budget()
         }
     }
     assert_eq!(report, before);
-    assert!(normalize_sheet_with_limits(report.syntax(), exact).is_ok());
+    assert!(report.syntax().normalize(exact).is_ok());
 }
 #[test]
 fn new_trim_declarations_and_sibling_rules_share_exact_provider_budgets() {
-    use CssSpecifiedValueSerializationErrorKind as Kind;
-    use CssSpecifiedValueSerializationLimits as Limits;
+    use crate::css::support::failure_classes::SerializationFailure as Kind;
+    use CssSerializationLimits as Limits;
     let source = parsed(P::WhiteSpaceTrim, "discard-after discard-before");
     let before = source.clone();
     let expected = "white-space-trim: discard-before discard-after !important;";
     assert_eq!(
         source
-            .to_specified_css_with_limits(Limits::new(4, 4, expected.len()))
+            .serialize_specified(Limits::new(4, 4, expected.len()))
             .unwrap(),
         expected
     );
@@ -881,26 +902,24 @@ fn new_trim_declarations_and_sibling_rules_share_exact_provider_budgets() {
     ] {
         for _ in 0..2 {
             assert_eq!(
-                source
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&source.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
         assert_eq!(source, before);
     }
-    assert_eq!(source.to_specified_css().unwrap(), expected);
-    let report = parse_sheet(
-        ".a{white-space-trim:discard-after discard-before}.b{text-wrap-style:avoid-short-last-line}",
+    assert_eq!(
+        source.serialize_specified(Default::default()).unwrap(),
+        expected
     );
+    let report = CssParser::default().parse_sheet(".a{white-space-trim:discard-after discard-before}.b{text-wrap-style:avoid-short-last-line}");
     assert!(report.is_clean());
     let before = report.clone();
     let expected = ".a { white-space-trim: discard-before discard-after; }\n.b { text-wrap-style: avoid-short-last-line; }";
     let exact = Limits::new(usize::MAX, usize::MAX, expected.len());
     let short = Limits::new(usize::MAX, usize::MAX, expected.len() - 1);
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
     assert!(
@@ -908,22 +927,16 @@ fn new_trim_declarations_and_sibling_rules_share_exact_provider_budgets() {
             .syntax()
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = report
-            .syntax()
-            .to_specified_css_with_limits(short)
-            .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(Kind::ByteLimit)
-        );
+        let error = report.syntax().serialize_specified(short).unwrap_err();
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(report, before);
     }
     assert_eq!(
-        report.syntax().to_specified_css_with_limits(exact).unwrap(),
+        report.syntax().serialize_specified(exact).unwrap(),
         expected
     );
 }

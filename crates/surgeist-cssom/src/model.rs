@@ -1,8 +1,49 @@
 use crate::shared_table::SharedTable;
 use crate::*;
 use std::{fmt, sync::Arc};
-use surgeist_css::*;
-use surgeist_css::{CssFontFaceDescriptors, CssMarginRule, CssRule};
+use surgeist_css::CssParserContext;
+use surgeist_css::component::{CssComponentValueError, CssValueOrigin};
+use surgeist_css::declaration::{
+    CssDeclarationBlockError, CssDeclarationList, CssSpecifiedDeclarationBlock,
+};
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::property::{CssExpansionError, CssPropertyMetadataError};
+use surgeist_css::query::container::CssContainerPrelude;
+use surgeist_css::query::media::{CssCustomMediaName, CssMediaQueryList};
+use surgeist_css::query::supports::{
+    CssSupportsConditionName, CssSupportsConstructionError, CssSupportsLeaf, CssSupportsTestBody,
+    CssSupportsTestChild,
+};
+use surgeist_css::query::{CssCondition, CssWhenLeaf};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDefinitionStatus, CssCounterStyleDescriptorValue, CssCounterStyleDescriptors,
+};
+use surgeist_css::rule::font_face::CssFontFaceDescriptors;
+use surgeist_css::rule::font_face::{
+    CssFontFaceDeclarationBlockError, CssFontFaceFamily, CssSpecifiedFontFaceDeclarationBlock,
+};
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureDisplayOccurrence, CssFontFeatureValue, CssFontFeatureValueDefinition,
+    CssFontFeatureValueKind,
+};
+use surgeist_css::rule::keyframes::{
+    CssKeyframeBlock, CssKeyframeDeclarationList, CssKeyframeRuleViewError,
+    CssKeyframeSelectorComparisonError, CssKeyframeSelectorList, CssKeyframesName,
+};
+use surgeist_css::rule::page::CssMarginRule;
+use surgeist_css::rule::page::{
+    CssMarginBox, CssMarginDeclarationBlock, CssPageBlockError, CssPageDeclarationBlock,
+    CssPageProjectionError, CssPageSelectorList, CssSpecifiedPageDeclarationBlock,
+};
+use surgeist_css::rule::{
+    CssImportLayer, CssImportSupports, CssImportTarget, CssLayerName, CssSheet,
+};
+use surgeist_css::selector::{CssNamespaceContext, CssScopeSelectorList, CssStyleSelectorList};
+use surgeist_css::serialization::{
+    CssRuleSerializationError, CssSerializationError, CssSerializationLimits,
+};
+use surgeist_css::source::{CssParseSource, CssParsedOrigin};
 
 /// Real product quotas, including retained detached objects. These bound admitted
 /// work/state, not allocator overhead or process RSS. Source backing uses actual
@@ -26,7 +67,7 @@ pub struct CssomLimits {
     pub max_identity: u64,
     pub max_revision: u64,
     pub summary_history: usize,
-    pub css: CssSpecifiedValueSerializationLimits,
+    pub css: CssSerializationLimits,
     pub max_pending_owner_effects: usize,
     pub max_pending_owner_effect_bytes: usize,
     pub max_owner_effect_identity: u64,
@@ -45,7 +86,7 @@ impl Default for CssomLimits {
             max_identity: u64::MAX,
             max_revision: u64::MAX,
             summary_history: 128,
-            css: CssSpecifiedValueSerializationLimits::default(),
+            css: CssSerializationLimits::default(),
             max_pending_owner_effects: 1024,
             max_pending_owner_effect_bytes: 16 * 1024 * 1024,
             max_owner_effect_identity: u64::MAX,
@@ -256,19 +297,13 @@ impl CssomSheetInputs {
 /// Original checked occurrence, independent of current live fields/membership.
 #[derive(Clone, Debug)]
 pub enum CssomAuthoredRule {
-    Ordinary(CssRule),
-    Scoped(CssScopedRule),
+    Rule(CssRule),
     Keyframe(CssKeyframeBlock),
     Margin(CssMarginRule),
     /// Genuine raw declaration input retained without manufacturing a rule position.
     RawNestedDeclarations(CssDeclarationList),
     /// Genuine inert named-support test occurrence, never a rendering rule.
     SupportsTestChild(CssSupportsTestChild),
-}
-#[derive(Clone, Debug)]
-pub enum CssomSelectors {
-    Ordinary(CssStyleSelectorList),
-    Scoped(CssScopedStyleSelectorList),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CssomGroupKind {
@@ -283,15 +318,15 @@ pub enum CssomGroupKind {
 #[derive(Clone, Debug)]
 pub enum CssomGroupPrelude {
     Media(CssomMediaListId),
-    Supports(CssSupportsCondition),
+    Supports(CssCondition<CssSupportsLeaf>),
     Container(CssContainerPrelude),
     Layer(Option<CssLayerName>),
     Scope {
         start: Option<CssScopeSelectorList>,
         end: Option<CssScopeSelectorList>,
     },
-    When(CssWhenCondition),
-    Else(Option<CssWhenCondition>),
+    When(CssCondition<CssWhenLeaf>),
+    Else(Option<CssCondition<CssWhenLeaf>>),
 }
 impl CssomGroupPrelude {
     pub const fn kind(&self) -> CssomGroupKind {
@@ -323,7 +358,7 @@ pub enum CssomRuleData {
     /// they have no descendant CSSOM identities or rendering capabilities.
     SupportsTestChild(CssSupportsTestChild),
     Style {
-        selectors: CssomSelectors,
+        selectors: CssStyleSelectorList,
         block: CssomBlockId,
         children: CssomRuleListId,
     },
@@ -821,7 +856,7 @@ impl CssomSnapshot {
     pub fn specified_property_css_text(
         &self,
         id: &CssomBlockId,
-        limits: CssSpecifiedValueSerializationLimits,
+        limits: CssSerializationLimits,
     ) -> Result<String, CssomError> {
         let block = self.block(id)?;
         let CssomBlockData::Properties { selected, .. } = block.data() else {
@@ -831,9 +866,7 @@ impl CssomSnapshot {
             return Ok(String::new());
         }
         match selected {
-            CssomProjection::Available(v) => v
-                .serialize_cssom_with_limits(limits)
-                .map_err(CssomError::Declaration),
+            CssomProjection::Available(v) => Ok(v.serialize_cssom(limits)?),
             CssomProjection::Unavailable(e) => Err(CssomError::Declaration(e.clone())),
         }
     }
@@ -912,7 +945,7 @@ pub enum CssomError {
     Expansion(CssExpansionError),
     PageBlock(CssPageBlockError),
     FontFace(CssFontFaceDeclarationBlockError),
-    Value(CssSpecifiedValueSerializationError),
+    Value(CssSerializationError),
     ForeignOwner,
     MissingObject,
     WrongKind,
@@ -932,14 +965,14 @@ pub enum CssomError {
     Page(CssPageProjectionError),
     ParseResource(Box<CssRecoveryDiagnostic>),
     Component(CssComponentValueError),
-    Media(CssMediaCssomSerializationError),
+    Media(CssSerializationError),
     AuthoredFeatureConversion,
-    Format(CssRuleCssomSerializationError),
-    Serialization(CssSpecifiedValueSerializationError),
+    Format(CssRuleSerializationError),
+    Serialization(CssSerializationError),
     QueryMatch(CssomQueryMatchError),
     Keyframe(CssKeyframeRuleViewError),
     KeyframeComparison(CssKeyframeSelectorComparisonError),
-    NamedSupports(CssNamedSupportsConstructionError),
+    NamedSupports(CssSupportsConstructionError),
 }
 impl fmt::Display for CssomError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -967,4 +1000,29 @@ impl std::error::Error for CssomError {
             _ => None,
         }
     }
+}
+/// Converts each CSS error that exactly one variant carries. The three variants
+/// carrying [`CssSerializationError`] name the operation that failed, so that
+/// error has no conversion.
+macro_rules! cssom_error_from {
+    ($($error:ty => $variant:ident),+ $(,)?) => {
+        $(impl From<$error> for CssomError {
+            fn from(error: $error) -> Self {
+                Self::$variant(error)
+            }
+        })+
+    };
+}
+cssom_error_from! {
+    CssPropertyMetadataError => Metadata,
+    CssExpansionError => Expansion,
+    CssPageBlockError => PageBlock,
+    CssFontFaceDeclarationBlockError => FontFace,
+    CssDeclarationBlockError => Declaration,
+    CssPageProjectionError => Page,
+    CssComponentValueError => Component,
+    CssRuleSerializationError => Format,
+    CssKeyframeRuleViewError => Keyframe,
+    CssKeyframeSelectorComparisonError => KeyframeComparison,
+    CssSupportsConstructionError => NamedSupports,
 }

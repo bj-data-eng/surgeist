@@ -1,12 +1,13 @@
 //! Shared selected descriptor root admission; nested matched blocks remain data.
-use crate::error::{Error, basic};
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::basic;
 use cssparser::{ParseError, Parser, Token};
 
 pub(super) fn validate_root<'i>(
     input: &mut Parser<'i, '_>,
     owner: &str,
     descriptor: &str,
-) -> Result<(), ParseError<'i, Error>> {
+) -> Result<(), ParseError<'i, CssError>> {
     let start = input.state();
     loop {
         let token_start = input.position();
@@ -23,7 +24,7 @@ pub(super) fn validate_root<'i>(
                 | Token::CloseParenthesis
                 | Token::CloseSquareBracket
         ) {
-            return Err(crate::error::invalid_descriptor_token_at(
+            return Err(crate::diagnostic::error::invalid_descriptor_token_at(
                 location,
                 owner,
                 descriptor,
@@ -39,7 +40,7 @@ pub(super) fn validate_root<'i>(
 
 pub(super) fn consume_remaining_components<'i>(
     input: &mut Parser<'i, '_>,
-) -> Result<(), ParseError<'i, Error>> {
+) -> Result<(), ParseError<'i, CssError>> {
     loop {
         let token = match input.next_including_whitespace_and_comments() {
             Ok(token) => token.clone(),

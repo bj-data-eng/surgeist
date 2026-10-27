@@ -14,9 +14,8 @@ mod colorimetry;
 mod transfer;
 mod wide;
 
-use std::fmt;
-
 use crate::PredefinedColorSpace;
+use crate::finite::Finite;
 use colorimetry::WhitePoint;
 use wide::Wide;
 
@@ -51,50 +50,7 @@ pub enum RectangularSpace {
     Oklab,
 }
 
-/// Why checked construction or rectangular conversion failed.
-///
-/// Input errors precede arithmetic. Result overflow concerns the computed final
-/// destination coordinates under ordinary binary64 significand rounding, not
-/// an intermediate or a claim of correctly rounded exact-real arithmetic.
-///
-/// Downstream matches must allow additional errors:
-///
-/// ```compile_fail
-/// use surgeist_color::RectangularConversionError;
-/// fn kind(error: RectangularConversionError) -> &'static str {
-///     match error {
-///         RectangularConversionError::NonFiniteInput { .. } => "input",
-///         RectangularConversionError::UnrepresentableResult { .. } => "result",
-///     }
-/// }
-/// ```
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum RectangularConversionError {
-    /// The first present nonfinite input channel in index order `0..3`.
-    NonFiniteInput { component: usize },
-    /// The first computed final destination channel unable to become finite f64.
-    UnrepresentableResult { component: usize },
-}
-
-impl fmt::Display for RectangularConversionError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NonFiniteInput { component } => write!(
-                formatter,
-                "rectangular color input component {component} is not finite"
-            ),
-            Self::UnrepresentableResult { component } => write!(
-                formatter,
-                "rectangular color result component {component} is not representable as finite f64"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for RectangularConversionError {}
-
-/// Checked finite or explicitly missing coordinates in one rectangular space.
+/// Finite or explicitly missing coordinates in one rectangular space.
 ///
 /// The space fixes channel order: RGB, XYZ, or L/a/b. Construction preserves
 /// every present input bit, including negative zero, and retains missing
@@ -103,32 +59,25 @@ impl std::error::Error for RectangularConversionError {}
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RectangularCoordinates {
     space: RectangularSpace,
-    channels: [Option<f64>; 3],
+    channels: [Option<Finite>; 3],
 }
 
 impl RectangularCoordinates {
-    /// Checks present channels for finiteness in index order before construction.
+    /// Builds coordinates from finite or missing channels in index order.
     ///
     /// ```
-    /// use surgeist_color::{PredefinedColorSpace, RectangularCoordinates,
+    /// use surgeist_color::{Finite, PredefinedColorSpace, RectangularCoordinates,
     ///     RectangularSpace};
-    /// let color = RectangularCoordinates::try_new(
+    /// let color = RectangularCoordinates::new(
     ///     RectangularSpace::Predefined(PredefinedColorSpace::Srgb),
-    ///     [Some(-0.0), None, Some(1.2)],
-    /// ).unwrap();
-    /// assert_eq!(color.channels()[0].unwrap().to_bits(), (-0.0_f64).to_bits());
+    ///     [Finite::new(-0.0), None, Finite::new(1.2)],
+    /// );
+    /// assert_eq!(color.channels()[0].unwrap().get().to_bits(), (-0.0_f64).to_bits());
     /// assert_eq!(color.channels()[1], None);
     /// ```
-    pub fn try_new(
-        space: RectangularSpace,
-        channels: [Option<f64>; 3],
-    ) -> Result<Self, RectangularConversionError> {
-        for (component, channel) in channels.iter().enumerate() {
-            if channel.is_some_and(|value| !value.is_finite()) {
-                return Err(RectangularConversionError::NonFiniteInput { component });
-            }
-        }
-        Ok(Self { space, channels })
+    #[must_use]
+    pub const fn new(space: RectangularSpace, channels: [Option<Finite>; 3]) -> Self {
+        Self { space, channels }
     }
 
     /// The space that determines units, channel order and whitepoint.
@@ -139,8 +88,8 @@ impl RectangularCoordinates {
 
     /// The retained finite or explicitly missing channels, without resolution.
     #[must_use]
-    pub const fn channels(&self) -> &[Option<f64>; 3] {
-        &self.channels
+    pub const fn channels(&self) -> [Option<Finite>; 3] {
+        self.channels
     }
 
     /// Converts to another intrinsic rectangular space without gamut mapping.
@@ -148,7 +97,6 @@ impl RectangularCoordinates {
     /// Same-space conversion is identity, preserving missing channels and all
     /// present bits. For different spaces, missing input channels locally become
     /// zero, as required by Color 4 §11.2, and all destination channels are present.
-    /// The source remains unchanged, including if conversion fails.
     ///
     /// Conversion undoes RGB transfer, uses the native-whitepoint XYZ matrices,
     /// Bradford-adapts only when the whitepoint changes, then converts and encodes
@@ -160,31 +108,34 @@ impl RectangularCoordinates {
     /// Private per-channel wide exponents preserve intermediate range. Each
     /// significand operation uses ordinary binary64 rounding, so tiny terms and
     /// cancellation residuals may be lost. This is not correctly rounded
-    /// exact-real conversion and does not guarantee every mathematically finite
-    /// answer. Only the first computed final channel that cannot become finite
-    /// `f64` returns `UnrepresentableResult`; final underflow to zero is allowed.
+    /// exact-real conversion. A final channel beyond binary64 is the signed
+    /// closest finite value (CSS Values 4 closest supported value); final
+    /// underflow to zero is allowed.
     ///
     /// ```
-    /// use surgeist_color::{PredefinedColorSpace as P, RectangularCoordinates,
+    /// use surgeist_color::{Finite, PredefinedColorSpace as P, RectangularCoordinates,
     ///     RectangularSpace as S};
-    /// let encoded = RectangularCoordinates::try_new(
-    ///     S::Predefined(P::Srgb), [Some(0.01292), None, Some(-0.01292)],
-    /// ).unwrap();
-    /// let linear = encoded.convert_to(S::Predefined(P::SrgbLinear)).unwrap();
-    /// assert!((linear.channels()[0].unwrap() - 0.001).abs() < 1e-15);
-    /// assert_eq!(linear.channels()[1], Some(0.0));
+    /// let encoded = RectangularCoordinates::new(
+    ///     S::Predefined(P::Srgb), [Finite::new(0.01292), None, Finite::new(-0.01292)],
+    /// );
+    /// let linear = encoded.convert_to(S::Predefined(P::SrgbLinear));
+    /// assert!((linear.channels()[0].unwrap().get() - 0.001).abs() < 1e-15);
+    /// assert_eq!(linear.channels()[1].map(Finite::get), Some(0.0));
     /// assert_eq!(encoded.channels()[1], None);
+    /// let extreme = RectangularCoordinates::new(
+    ///     S::Predefined(P::Srgb), [Finite::new(f64::MAX), None, None],
+    /// );
+    /// let xyz = extreme.convert_to(S::Predefined(P::XyzD65));
+    /// assert_eq!(xyz.channels()[1].map(Finite::get), Some(f64::MAX));
     /// ```
-    pub fn convert_to(
-        &self,
-        destination: RectangularSpace,
-    ) -> Result<Self, RectangularConversionError> {
+    #[must_use]
+    pub fn convert_to(&self, destination: RectangularSpace) -> Self {
         if self.space == destination {
-            return Ok(*self);
+            return *self;
         }
         let source = self
             .channels
-            .map(|value| Wide::from_f64(value.unwrap_or(0.0)));
+            .map(|value| Wide::from_f64(value.map_or(0.0, Finite::get)));
         let converted = if let Some((source_space, destination_space)) =
             same_rgb_primaries(self.space, destination)
         {
@@ -196,21 +147,12 @@ impl RectangularCoordinates {
             let xyz = colorimetry::adapt(xyz, whitepoint(self.space), whitepoint(destination));
             from_xyz(xyz, destination)
         };
-        let mut channels = [None; 3];
-        for (component, value) in converted.into_iter().enumerate() {
-            channels[component] = Some(
-                value
-                    .to_f64()
-                    .ok_or(RectangularConversionError::UnrepresentableResult { component })?,
-            );
-        }
-        Ok(Self {
+        Self {
             space: destination,
-            channels,
-        })
+            channels: converted.map(|value| Some(value.to_finite())),
+        }
     }
 }
-
 fn whitepoint(space: RectangularSpace) -> WhitePoint {
     use PredefinedColorSpace::{ProphotoRgb, XyzD50};
     match space {

@@ -2,17 +2,34 @@
 //! lexical integers from Values 4 §5.2.
 
 use crate::css::support::checked_grammar_declaration as checked;
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::numeric_failure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::named_property::sole_longhand_contribution;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::property_support_metadata;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssCalculation, CssInteger, CssNumeric, CssPositive};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownPropertyValueRef, CssLonghandValue,
+    CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 const NAMES: [&str; 2] = ["orphans", "widows"];
 
-fn minimum(source: &CssDeclaration) -> &CssPageLineMinimum {
+fn minimum(source: &CssDeclaration) -> &CssNumeric<CssInteger, CssPositive> {
     match source.known().unwrap().property_value().unwrap() {
-        CssKnownPropertyValueRef::Orphans(value) => value.minimum(),
-        CssKnownPropertyValueRef::Widows(value) => value.minimum(),
+        CssKnownPropertyValueRef::Orphans(value) => value.value(),
+        CssKnownPropertyValueRef::Widows(value) => value.value(),
         _ => panic!("expected a line minimum"),
     }
 }
@@ -38,18 +55,26 @@ fn positive_integer_literals_preserve_exact_authored_magnitude() {
             for source in [declaration(name, value), checked(name, value)] {
                 assert_eq!(source.importance(), CssImportance::Important);
                 assert_eq!(
-                    source.value_components().serialize().unwrap().as_css(),
+                    source
+                        .value_components()
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
                     value
                 );
             }
         }
         assert_eq!(
-            minimum(&declaration(name, "2147483647")).literal(),
+            minimum(&declaration(name, "2147483647"))
+                .literal()
+                .and_then(|literal| literal.value()),
             Some(i32::MAX)
         );
         for value in ["2147483648", "2147483649", "9999999999999999999999"] {
             assert_eq!(
-                minimum(&declaration(name, value)).literal(),
+                minimum(&declaration(name, value))
+                    .literal()
+                    .and_then(|literal| literal.value()),
                 None,
                 "{name}:{value} must not saturate to i32::MAX"
             );
@@ -81,19 +106,25 @@ fn invalid_integer_syntax_drops_only_its_declaration() {
     for name in NAMES {
         for value in ["0", "-0", "-1", "1.0", "1e0", "1px", "1%"] {
             let source = format!("color:red;{name}:{value};color:blue");
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.syntax().len(), 2, "neighbors survive: {source}");
             let [diagnostic] = report.diagnostics() else {
                 panic!("one invalid-value diagnostic: {source}")
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
             assert_ne!(diagnostic.error().code(), CssErrorCode::UnknownProperty);
-            assert!(validate_style_attribute(&source).is_err());
             assert!(
-                parse_property_value_for_grammar(
-                    grammar(name),
-                    parse_component_values(value).unwrap(),
-                    CssImportance::Normal,
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .is_err()
+            );
+            assert!(
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Grammar(grammar(name)),
+                    CssComponentValues::parse(&CssParser::default(), value).unwrap(),
+                    CssImportance::Normal
                 )
                 .is_err(),
                 "checked construction accepted {name}:{value}"
@@ -140,25 +171,26 @@ fn pending_substitution_reenters_original_grammar_and_occurrence() {
     for name in NAMES {
         for pending in ["var(--minimum)", "env(--minimum)"] {
             let source = declaration(name, pending);
-            let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                 panic!("pending {name} substitution")
             };
             assert!(handle.source().same_occurrence(&source));
-            assert!(matches!(
+            assert!(
                 handle
-                    .reenter(parse_component_values("0").unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), "0").unwrap())
                     .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert_eq!(
-                handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
-                    .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .replacement_error()
+                    .is_some()
             );
-            let replacement = parse_component_values("3").unwrap();
+            assert!(
+                handle
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
+                    .unwrap_err()
+                    .is_residual_substitution()
+            );
+            let replacement = CssComponentValues::parse(&CssParser::default(), "3").unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("one substituted longhand")
@@ -181,17 +213,13 @@ fn pending_substitution_reenters_original_grammar_and_occurrence() {
 #[test]
 fn checked_construction_preserves_exact_tokens_and_origins() {
     for text in ["1", "+0002", "2147483648", "9999999999999999999999"] {
-        let programmatic =
-            CssPageLineMinimum::try_from_component(CssComponentValue::try_number(text).unwrap())
-                .unwrap();
+        let programmatic = CssNumeric::<CssInteger, CssPositive>::try_from_component(
+            CssComponentValue::try_number(text).unwrap(),
+        )
+        .unwrap();
         assert_eq!(programmatic.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(
-            programmatic
-                .exact_literal()
-                .unwrap()
-                .integer()
-                .numeric()
-                .representation(),
+            programmatic.literal().unwrap().numeric().representation(),
             text
         );
         let parsed = declaration("orphans", text);
@@ -201,57 +229,114 @@ fn checked_construction_preserves_exact_tokens_and_origins() {
         ));
         assert_eq!(
             minimum(&parsed)
-                .exact_literal()
+                .literal()
                 .unwrap()
-                .integer()
                 .numeric()
                 .representation(),
             text
         );
     }
     for text in ["0", "-1", "1.0", "1e0"] {
-        let error =
-            CssPageLineMinimum::try_from_component(CssComponentValue::try_number(text).unwrap())
-                .unwrap_err();
+        let error = CssNumeric::<CssInteger, CssPositive>::try_from_component(
+            CssComponentValue::try_number(text).unwrap(),
+        )
+        .unwrap_err();
         assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
         let expected = if text == "0" || text == "-1" {
-            CssNumericConstructionErrorKind::OutOfRange
+            NumericFailure::OutOfRange
         } else {
-            CssNumericConstructionErrorKind::RootDomainMismatch
+            NumericFailure::RootDomainMismatch
         };
-        assert_eq!(error.kind(), &expected);
+        assert_eq!(numeric_failure(&error), expected);
     }
 }
 
 #[test]
 fn calculation_constructor_checks_bare_roots_and_retains_math() {
     for text in ["0", "-1"] {
-        let calculation =
-            CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap();
-        let error = CssPageLineMinimum::try_from_calculation(calculation).unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        let calculation = CssCalculation::<CssInteger>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
+        let error =
+            CssNumeric::<CssInteger, CssPositive>::try_from_calculation(calculation).unwrap_err();
+        assert!(error.is_out_of_range(), "{error:?}");
         assert!(matches!(error.origin(), Some(CssValueOrigin::Parsed(_))));
     }
-    let error =
-        CssPageLineMinimum::try_from_calculation(CssIntegerCalculation::literal(-1)).unwrap_err();
-    assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+    let error = CssNumeric::<CssInteger, CssPositive>::try_from_calculation(CssCalculation::<
+        CssInteger,
+    >::literal(-1))
+    .unwrap_err();
+    assert!(error.is_out_of_range(), "{error:?}");
     assert_eq!(error.origin(), Some(&CssValueOrigin::Programmatic));
-    let bare =
-        CssIntegerCalculation::try_from_components(parse_component_values("2147483648").unwrap())
-            .unwrap();
-    let admitted = CssPageLineMinimum::try_from_calculation(bare).unwrap();
-    assert!(admitted.exact_literal().is_some());
-    assert_eq!(admitted.literal(), None);
+    let bare = CssCalculation::<CssInteger>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "2147483648").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    let admitted = CssNumeric::<CssInteger, CssPositive>::try_from_calculation(bare).unwrap();
+    // A bare root re-enters literal admission; its magnitude exceeds `i32`.
+    assert!(admitted.literal().is_some());
+    assert_eq!(admitted.literal().and_then(|literal| literal.value()), None);
     for (text, expected) in [("calc(-1)", "calc(-1)"), ("calc(2 + 1)", "calc(3)")] {
-        let calculation =
-            CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap();
-        let value = CssPageLineMinimum::try_from_calculation(calculation).unwrap();
+        let calculation = CssCalculation::<CssInteger>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
+        let value =
+            CssNumeric::<CssInteger, CssPositive>::try_from_calculation(calculation).unwrap();
         assert!(value.calculation().is_some());
         assert!(matches!(value.origin(), CssValueOrigin::Parsed(_)));
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
+}
+
+/// CSS Typed OM 1 "equal numeric values": the minimum and the longhand value
+/// built from it are equal for the same integer value, whatever the spelling
+/// or origin, and differ for another value or another property.
+#[test]
+fn line_minimum_owners_inherit_numeric_value_equality() {
+    for name in NAMES {
+        let two = declaration(name, "2");
+        let programmatic = CssNumeric::<CssInteger, CssPositive>::try_from_component(
+            CssComponentValue::try_number("2").unwrap(),
+        )
+        .unwrap();
+        for spelling in ["+2", "+0002", "02"] {
+            let other = declaration(name, spelling);
+            assert_eq!(
+                minimum(&two),
+                minimum(&other),
+                "{name}: 2 versus {spelling}"
+            );
+            assert_eq!(
+                one_value(&two),
+                one_value(&other),
+                "{name}: longhand 2 versus {spelling}"
+            );
+        }
+        assert_eq!(
+            minimum(&two),
+            &programmatic,
+            "{name}: parsed versus programmatic"
+        );
+        assert_ne!(minimum(&two), minimum(&declaration(name, "3")), "{name}");
+        assert_ne!(
+            one_value(&two),
+            one_value(&declaration(name, "3")),
+            "{name}"
+        );
+    }
+    assert_ne!(
+        one_value(&declaration("orphans", "2")),
+        one_value(&declaration("widows", "2")),
+        "equal values of different longhands stay distinct"
+    );
 }
 
 #[test]
@@ -262,38 +347,44 @@ fn specified_serialization_is_exact_and_resource_bounded() {
         ("9999999999999999999999", "9999999999999999999999"),
     ] {
         let value = minimum(&declaration("widows", authored)).clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     let value = minimum(&declaration("orphans", "2147483648")).clone();
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 8, 20),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, 8, 20),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(8, 0, 20),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(8, 0, 20),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(8, 8, 3),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(8, 8, 3),
+            SerializationFailure::ByteLimit,
         ),
     ] {
-        let error = value.serialize_specified_with_limits(limits).unwrap_err();
-        assert_eq!(error.kind(), kind);
-        assert_eq!(value.serialize_specified().unwrap(), "2147483648");
+        let error = value.serialize_specified(limits).unwrap_err();
+        assert_eq!(serialization_failure(&error), kind);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            "2147483648"
+        );
     }
 }
 
 #[test]
 fn normalization_keeps_valid_line_minima_in_source_order_after_recovery() {
-    let report =
-        parse_sheet(".a{orphans:2!important;widows:3;orphans:0;widows:2147483648!important}");
+    let report = CssParser::default()
+        .parse_sheet(".a{orphans:2!important;widows:3;orphans:0;widows:2147483648!important}");
     let [diagnostic] = report.diagnostics() else {
         panic!("one invalid line minimum: {:?}", report.diagnostics())
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -326,25 +417,20 @@ fn normalization_keeps_valid_line_minima_in_source_order_after_recovery() {
 
 #[test]
 fn line_minimum_normalization_reports_cumulative_contribution_limit() {
-    let report = parse_sheet(".a{orphans:2;widows:3}");
+    let report = CssParser::default().parse_sheet(".a{orphans:2;widows:3}");
     assert!(report.is_clean());
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 2, 1).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 1).unwrap())
+        .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 1,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 1))
     );
-    let normalized = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
-    )
-    .unwrap();
+    let normalized = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap())
+        .unwrap();
     assert_eq!(
         normalized
             .items()

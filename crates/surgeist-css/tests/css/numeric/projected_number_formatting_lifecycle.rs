@@ -10,34 +10,59 @@
 
 use crate::css::support::authored_property;
 use crate::css::support::component_values as components;
-use surgeist_css::*;
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::numeric_failure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::numeric::{
+    CssAngle, CssCalculation, CssFrequency, CssInteger, CssLength, CssLengthPercentage,
+    CssNonNegative, CssNumber, CssNumeric, CssNumericLiteral, CssPercentage, CssTime,
+};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::CssEasing;
+use surgeist_css::values::border::{
+    CssBorderImage, CssBorderImageOutset, CssBorderImageOutsetComponent, CssBorderImageSlice,
+    CssBorderImageSliceComponent, CssBorderImageWidth, CssBorderImageWidthComponent,
+};
+use surgeist_css::values::box_model::{CssBoxSize, CssCalcSize};
+use surgeist_css::values::common::{CssAutoOr, CssBoxSideKind, CssFourSides, CssSidePair};
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 fn component(source: &str) -> CssComponentValue {
     let values = components(source);
     assert_eq!(values.items().len(), 1, "{source}");
     values.items()[0].clone()
 }
-fn number(source: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_calculation(
-        CssNumberCalculation::try_from_components(components(source)).unwrap(),
+fn number(source: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_calculation(
+        CssCalculation::<CssNumber>::try_from_components(components(source), Default::default())
+            .unwrap(),
     )
     .unwrap()
 }
-fn length(source: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_calculation(
-        CssLengthCalculation::try_from_components(components(source)).unwrap(),
+fn length(source: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_calculation(
+        CssCalculation::<CssLength>::try_from_components(components(source), Default::default())
+            .unwrap(),
     )
     .unwrap()
 }
-fn padding(source: &str) -> CssScrollPaddingValue {
-    CssScrollPaddingValue::LengthPercentage(nonnegative_lp(source))
+fn padding(source: &str) -> CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>> {
+    CssAutoOr::Value(nonnegative_lp(source))
 }
-fn nonnegative_lp(source: &str) -> CssSpecifiedNonNegativeLengthPercentage {
-    CssSpecifiedNonNegativeLengthPercentage::try_from_calculation(
-        CssLengthPercentageCalculation::try_from_components(components(source)).unwrap(),
+fn nonnegative_lp(source: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
+    CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssLengthPercentage>::try_from_components(
+            components(source),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap()
 }
@@ -47,8 +72,12 @@ fn slice(sources: &[&str]) -> CssBorderImageSlice {
             .iter()
             .map(|source| {
                 CssBorderImageSliceComponent::Number(
-                    CssSpecifiedNonNegativeNumber::try_from_calculation(
-                        CssNumberCalculation::try_from_components(components(source)).unwrap(),
+                    CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+                        CssCalculation::<CssNumber>::try_from_components(
+                            components(source),
+                            Default::default(),
+                        )
+                        .unwrap(),
                     )
                     .unwrap(),
                 )
@@ -70,10 +99,16 @@ fn assert_number(source: &str, expected: &str) {
     let value = number(source);
     let before = value.clone();
     let calculation = value.calculation().expect("actual calculation");
-    assert_eq!(calculation.serialize().unwrap().as_css(), source);
+    assert_eq!(
+        calculation
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        source
+    );
     assert_eq!(calculation.components(), &components(source));
     let origin = value.origin().clone();
-    let result = value.serialize_specified();
+    let result = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(value.origin(), &origin);
     assert_eq!(result.unwrap(), expected, "{source}");
@@ -138,16 +173,15 @@ fn rounded_zero_and_carry_use_actual_short_output() {
         // Calc wrapper + leaf: two inputs, one projection, no formatter visits.
         assert_eq!(
             value
-                .serialize_specified_with_limits(Limits::new(2, 1, expected.len()))
+                .serialize_specified(Limits::new(2, 1, expected.len()))
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             value
-                .serialize_specified_with_limits(Limits::new(2, 1, expected.len() - 1))
+                .serialize_specified(Limits::new(2, 1, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
     }
 }
@@ -203,18 +237,13 @@ fn generic_byte_limits_keep_tree_visits_failure_order_and_input_identity() {
         (Limits::new(4, 4, 13), Kind::ByteLimit),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(value, before);
     }
     assert_eq!(
-        value
-            .serialize_specified_with_limits(Limits::new(4, 4, 14))
-            .unwrap(),
+        value.serialize_specified(Limits::new(4, 4, 14)).unwrap(),
         "calc(0.333333)"
     );
 }
@@ -222,16 +251,26 @@ fn generic_byte_limits_keep_tree_visits_failure_order_and_input_identity() {
 #[test]
 fn ordinary_roots_retain_exact_decimal_admission_and_authored_identity() {
     let raw = component("5e-7");
-    let ordinary = CssSpecifiedNumber::try_from_component(raw.clone()).unwrap();
-    assert_eq!(ordinary.serialize_specified().unwrap(), "0.000001");
+    let ordinary = CssNumeric::<CssNumber>::try_from_component(raw.clone()).unwrap();
+    assert_eq!(
+        ordinary.serialize_specified(Default::default()).unwrap(),
+        "0.000001"
+    );
     let normalized = number("5e-7");
     assert!(normalized.calculation().is_none());
-    assert_eq!(normalized.literal_component(), Some(&raw));
-    assert_eq!(normalized.serialize_specified().unwrap(), "0.000001");
+    assert_eq!(
+        normalized.literal().map(|literal| literal.component()),
+        Some(&raw)
+    );
+    assert_eq!(
+        normalized.serialize_specified(Default::default()).unwrap(),
+        "0.000001"
+    );
     for source in ["-1e-999px", "-0.0000004px"] {
         let raw = component(source);
-        let error = CssSpecifiedNonNegativeLength::try_from_component(raw.clone()).unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        let error =
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component(raw.clone()).unwrap_err();
+        assert!(error.is_out_of_range(), "{error:?}");
         assert_eq!(error.origin(), Some(raw.origin()));
     }
     assert_ne!(number("calc(1 / 2)"), number("calc(.5)"));
@@ -240,19 +279,15 @@ fn ordinary_roots_retain_exact_decimal_admission_and_authored_identity() {
 #[test]
 fn original_recovery_and_substitution_errors_precede_projection() {
     for (source, kind) in [
-        (
-            "calc(1",
-            CssNumericConstructionErrorKind::RecoveredComponent,
-        ),
-        (
-            "calc(var(--n))",
-            CssNumericConstructionErrorKind::SubstitutionRequired,
-        ),
+        ("calc(1", NumericFailure::RecoveredComponent),
+        ("calc(var(--n))", NumericFailure::SubstitutionRequired),
     ] {
         let original = components(source);
         let before = original.clone();
-        let error = CssNumberCalculation::try_from_components(original.clone()).unwrap_err();
-        assert_eq!(error.kind(), &kind);
+        let error =
+            CssCalculation::<CssNumber>::try_from_components(original.clone(), Default::default())
+                .unwrap_err();
+        assert_eq!(numeric_failure(&error), kind);
         assert!(error.origin().is_some());
         assert_eq!(original, before);
     }
@@ -267,16 +302,32 @@ fn integer_calculation_text_rounding_is_distinct_from_integer_arithmetic() {
         ("round(-2.5)", "calc(-2)"),
         ("sign(1em - 1px)", "sign(1em - 1px)"),
     ] {
-        let calculation = CssIntegerCalculation::try_from_components(components(source)).unwrap();
-        let value = CssIntegerValue::Calculation(calculation.clone());
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{source}");
-        assert_eq!(calculation.serialize().unwrap().as_css(), source);
+        let calculation = CssCalculation::<CssInteger>::try_from_components(
+            components(source),
+            Default::default(),
+        )
+        .unwrap();
+        let value = CssNumeric::<CssInteger>::try_from_calculation(calculation.clone()).unwrap();
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{source}"
+        );
+        assert_eq!(
+            calculation
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            source
+        );
     }
-    let literal = CssIntegerValue::Literal(
-        CssIntegerLiteral::try_from_component(component("1000000000000000100")).unwrap(),
-    );
+    let literal = CssNumeric::<CssInteger>::try_from_literal(
+        CssNumericLiteral::<CssInteger>::try_from_component(component("1000000000000000100"))
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(
-        literal.serialize_specified().unwrap(),
+        literal.serialize_specified(Default::default()).unwrap(),
         "1000000000000000100"
     );
 }
@@ -296,7 +347,9 @@ fn nonfinite_roots_and_actual_negative_zero_keep_their_math_representation() {
         ("calc(0px * -1 + 1em)", "calc(1em + (0px * -1))"),
     ] {
         assert_eq!(
-            length(source).serialize_specified().unwrap(),
+            length(source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );
@@ -312,10 +365,19 @@ fn symbolic_terms_keep_order_sign_and_units_while_finite_children_round() {
     ] {
         let value = length(source);
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{source}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{source}"
+        );
         assert_eq!(value, before);
         assert_eq!(
-            value.calculation().unwrap().serialize().unwrap().as_css(),
+            value
+                .calculation()
+                .unwrap()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             source
         );
     }
@@ -323,8 +385,12 @@ fn symbolic_terms_keep_order_sign_and_units_while_finite_children_round() {
 
 #[test]
 fn dimensional_calculation_providers_convert_units_before_rounding_text() {
-    let angle = CssAngleValue::try_from_calculation(
-        CssAngleCalculation::try_from_components(components("calc(0.0078125turn)")).unwrap(),
+    let angle = CssNumeric::<CssAngle>::try_from_calculation(
+        CssCalculation::<CssAngle>::try_from_components(
+            components("calc(0.0078125turn)"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
     let angle_declaration = authored_property::checked(
@@ -337,24 +403,50 @@ fn dimensional_calculation_providers_convert_units_before_rounding_text() {
         "hue-rotate(calc(2.8125deg))"
     );
     assert_eq!(
-        angle.calculation().unwrap().serialize().unwrap().as_css(),
+        angle
+            .calculation()
+            .unwrap()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "calc(0.0078125turn)"
     );
-    let time = CssTimeValue::try_from_calculation(
-        CssTimeCalculation::try_from_components(components("calc(123.45641ms)")).unwrap(),
+    let time = CssNumeric::<CssTime>::try_from_calculation(
+        CssCalculation::<CssTime>::try_from_components(
+            components("calc(123.45641ms)"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
-    assert_eq!(time.serialize_specified().unwrap(), "calc(0.123456s)");
-    let frequency = CssFrequencyValue::try_from_calculation(
-        CssFrequencyCalculation::try_from_components(components("calc(0.00012345641khz)")).unwrap(),
+    assert_eq!(
+        time.serialize_specified(Default::default()).unwrap(),
+        "calc(0.123456s)"
+    );
+    let frequency = CssNumeric::<CssFrequency>::try_from_calculation(
+        CssCalculation::<CssFrequency>::try_from_components(
+            components("calc(0.00012345641khz)"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
-    assert_eq!(frequency.serialize_specified().unwrap(), "calc(0.123456hz)");
-    let percentage = CssSpecifiedPercentage::try_from_calculation(
-        CssPercentageCalculation::try_from_components(components("calc(1% / 128)")).unwrap(),
+    assert_eq!(
+        frequency.serialize_specified(Default::default()).unwrap(),
+        "calc(0.123456hz)"
+    );
+    let percentage = CssNumeric::<CssPercentage>::try_from_calculation(
+        CssCalculation::<CssPercentage>::try_from_components(
+            components("calc(1% / 128)"),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
-    assert_eq!(percentage.serialize_specified().unwrap(), "calc(0.007813%)");
+    assert_eq!(
+        percentage.serialize_specified(Default::default()).unwrap(),
+        "calc(0.007813%)"
+    );
 }
 
 #[test]
@@ -370,7 +462,13 @@ fn opacity_calculations_use_generic_emission_without_computed_clamping() {
         else {
             panic!("opacity")
         };
-        assert_eq!(value.value().serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
@@ -386,7 +484,10 @@ const FOUR_NUMBERS: &str = "calc(0.123456) calc(0.123456) calc(0.123456) calc(0.
 fn unequal_projected_border_slice_components_survive_identical_rounded_text() {
     let value = slice(&COLLIDING);
     let before = value.clone();
-    assert_eq!(value.serialize_specified().unwrap(), FOUR_NUMBERS);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        FOUR_NUMBERS
+    );
     assert_eq!(value, before);
 }
 
@@ -402,18 +503,13 @@ fn border_collision_limits_charge_all_four_captures_before_selection() {
         (Limits::new(13, 9, 58), Kind::ByteLimit),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(value, before);
     }
     assert_eq!(
-        value
-            .serialize_specified_with_limits(Limits::new(13, 9, 59))
-            .unwrap(),
+        value.serialize_specified(Limits::new(13, 9, 59)).unwrap(),
         FOUR_NUMBERS
     );
 }
@@ -423,9 +519,7 @@ fn equal_projected_border_edges_keep_canonical_compression_and_scratch_limits() 
     let value = slice(&["calc(1 / 2)", "calc(0.5)", "calc(2 / 4)", "calc(0.50)"]);
     // Five wrappers; trees contribute twelve inputs/ten projections.
     assert_eq!(
-        value
-            .serialize_specified_with_limits(Limits::new(17, 15, 9))
-            .unwrap(),
+        value.serialize_specified(Limits::new(17, 15, 9)).unwrap(),
         "calc(0.5)"
     );
     for (limits, kind) in [
@@ -434,27 +528,21 @@ fn equal_projected_border_edges_keep_canonical_compression_and_scratch_limits() 
         (Limits::new(17, 15, 8), Kind::ByteLimit),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
     // A captured scalar tree needs fourteen bytes even when selected to one edge.
     let equal = slice(&["calc(0.12345641)"]);
     assert_eq!(
-        equal
-            .serialize_specified_with_limits(Limits::new(13, 9, 14))
-            .unwrap(),
+        equal.serialize_specified(Limits::new(13, 9, 14)).unwrap(),
         "calc(0.123456)"
     );
-    assert_eq!(
+    assert!(
         equal
-            .serialize_specified_with_limits(Limits::new(13, 9, 13))
+            .serialize_specified(Limits::new(13, 9, 13))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
 }
 
@@ -465,8 +553,12 @@ fn border_width_outset_and_full_shorthand_preserve_colliding_edges() {
             .iter()
             .map(|s| {
                 CssBorderImageWidthComponent::Number(
-                    CssSpecifiedNonNegativeNumber::try_from_calculation(
-                        CssNumberCalculation::try_from_components(components(s)).unwrap(),
+                    CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+                        CssCalculation::<CssNumber>::try_from_components(
+                            components(s),
+                            Default::default(),
+                        )
+                        .unwrap(),
                     )
                     .unwrap(),
                 )
@@ -474,14 +566,21 @@ fn border_width_outset_and_full_shorthand_preserve_colliding_edges() {
             .collect(),
     )
     .unwrap();
-    assert_eq!(width.serialize_specified().unwrap(), FOUR_NUMBERS);
+    assert_eq!(
+        width.serialize_specified(Default::default()).unwrap(),
+        FOUR_NUMBERS
+    );
     let outset = CssBorderImageOutset::try_new(
         COLLIDING
             .iter()
             .map(|s| {
                 CssBorderImageOutsetComponent::Number(
-                    CssSpecifiedNonNegativeNumber::try_from_calculation(
-                        CssNumberCalculation::try_from_components(components(s)).unwrap(),
+                    CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(
+                        CssCalculation::<CssNumber>::try_from_components(
+                            components(s),
+                            Default::default(),
+                        )
+                        .unwrap(),
                     )
                     .unwrap(),
                 )
@@ -489,7 +588,10 @@ fn border_width_outset_and_full_shorthand_preserve_colliding_edges() {
             .collect(),
     )
     .unwrap();
-    assert_eq!(outset.serialize_specified().unwrap(), FOUR_NUMBERS);
+    assert_eq!(
+        outset.serialize_specified(Default::default()).unwrap(),
+        FOUR_NUMBERS
+    );
     let image = CssBorderImage::try_new(
         None,
         Some(slice(&COLLIDING)),
@@ -499,7 +601,7 @@ fn border_width_outset_and_full_shorthand_preserve_colliding_edges() {
     )
     .unwrap();
     assert_eq!(
-        image.serialize_specified().unwrap(),
+        image.serialize_specified(Default::default()).unwrap(),
         format!("{FOUR_NUMBERS} / {FOUR_NUMBERS} / {FOUR_NUMBERS}")
     );
 }
@@ -522,48 +624,52 @@ fn contextual_border_components_compare_unrounded_coefficients_and_canonical_syn
         "calc(2px + 1em)",
     ]);
     assert_eq!(
-        equal
-            .serialize_specified_with_limits(Limits::new(21, 25, 15))
-            .unwrap(),
+        equal.serialize_specified(Limits::new(21, 25, 15)).unwrap(),
         "calc(1em + 2px)"
     );
     let unequal = make(&["calc(1em + 0.12345641px)", "calc(0.12345642px + 1em)"]);
     assert_eq!(
-        unequal.serialize_specified().unwrap(),
+        unequal.serialize_specified(Default::default()).unwrap(),
         "calc(1em + 0.123456px) calc(1em + 0.123456px)"
     );
     let units = make(&["calc(0.0000001em)", "calc(0.0000001px)"]);
-    assert_eq!(units.serialize_specified().unwrap(), "calc(0em) calc(0px)");
+    assert_eq!(
+        units.serialize_specified(Default::default()).unwrap(),
+        "calc(0em) calc(0px)"
+    );
 }
 
 #[test]
 fn scroll_pairs_preserve_collision_omission_auto_and_signed_length_policies() {
-    let pair = CssScrollMarginPair::new(
+    let pair = CssSidePair::new(
         length("calc(-0.12345641px)"),
         Some(length("calc(-0.12345642px)")),
     );
     let before = pair.clone();
     assert_eq!(
-        pair.serialize_specified().unwrap(),
+        pair.serialize_specified(Default::default()).unwrap(),
         "calc(-0.123456px) calc(-0.123456px)"
     );
     assert_eq!(pair, before);
-    let pad = CssScrollPaddingPair::new(
+    let pad = CssSidePair::new(
         padding("calc(0.12345641%)"),
         Some(padding("calc(0.12345642%)")),
     );
     assert_eq!(
-        pad.serialize_specified().unwrap(),
+        pad.serialize_specified(Default::default()).unwrap(),
         "calc(0.123456%) calc(0.123456%)"
     );
-    let absent = CssScrollMarginPair::new(length("calc(0.12345641px)"), None);
-    assert!(absent.authored_end().is_none());
-    assert_eq!(absent.serialize_specified().unwrap(), "calc(0.123456px)");
-    let auto = CssScrollPaddingPair::new(
-        CssScrollPaddingValue::Auto,
-        Some(padding("calc(0.0000001px)")),
+    let absent = CssSidePair::new(length("calc(0.12345641px)"), None);
+    assert!(absent.authored_second().is_none());
+    assert_eq!(
+        absent.serialize_specified(Default::default()).unwrap(),
+        "calc(0.123456px)"
     );
-    assert_eq!(auto.serialize_specified().unwrap(), "auto calc(0px)");
+    let auto = CssSidePair::new(CssAutoOr::Auto, Some(padding("calc(0.0000001px)")));
+    assert_eq!(
+        auto.serialize_specified(Default::default()).unwrap(),
+        "auto calc(0px)"
+    );
 }
 
 #[test]
@@ -574,11 +680,11 @@ fn scroll_authored_roles_keep_marker_arity_and_exact_cumulative_capture_visits()
         "calc(0.12345643px)",
         "calc(0.12345644px)",
     ];
-    for kind in [CssScrollSideKind::Physical, CssScrollSideKind::Logical] {
+    for kind in [CssBoxSideKind::Physical, CssBoxSideKind::Logical] {
         for count in 1..=4 {
             let authored: Vec<_> = sources[..count].iter().map(|s| length(s)).collect();
-            let value = CssScrollMarginShorthand::try_new(kind, authored.clone()).unwrap();
-            assert_eq!(value.authored_values(), authored);
+            let value = CssFourSides::try_new(kind, authored.clone()).unwrap();
+            assert_eq!(value.authored(), authored);
             let indices = match count {
                 1 => [0, 0, 0, 0],
                 2 => [0, 1, 0, 1],
@@ -586,147 +692,155 @@ fn scroll_authored_roles_keep_marker_arity_and_exact_cumulative_capture_visits()
                 _ => [0, 1, 2, 3],
             };
             for (role, index) in indices.into_iter().enumerate() {
-                assert_eq!(value.role(role), Some(&authored[index]));
+                assert_eq!(value.assigned().get(role).copied(), Some(&authored[index]));
             }
-            let marker = usize::from(kind == CssScrollSideKind::Logical);
+            let marker = usize::from(kind == CssBoxSideKind::Logical);
             let expected = format!(
                 "{}{}",
                 if marker == 1 { "logical " } else { "" },
                 vec!["calc(0.123456px)"; count].join(" ")
             );
-            // No physical aggregate charge; each authored Calc costs 2/1.
+            // One aggregate node for physical and logical forms alike; each authored Calc
+            // costs 2/1.
             assert_eq!(
                 value
-                    .serialize_specified_with_limits(Limits::new(
-                        2 * count + marker,
-                        count + marker,
-                        expected.len()
-                    ))
+                    .serialize_specified(Limits::new(2 * count + 1, count + 1, expected.len()))
                     .unwrap(),
                 expected
             );
             for (limits, error) in [
                 (
-                    Limits::new(2 * count + marker - 1, count + marker, expected.len()),
+                    Limits::new(2 * count, count + 1, expected.len()),
                     Kind::InputNodeLimit,
                 ),
                 (
-                    Limits::new(2 * count + marker, count + marker - 1, expected.len()),
+                    Limits::new(2 * count + 1, count, expected.len()),
                     Kind::ProjectionNodeLimit,
                 ),
                 (
-                    Limits::new(2 * count + marker, count + marker, expected.len() - 1),
+                    Limits::new(2 * count + 1, count + 1, expected.len() - 1),
                     Kind::ByteLimit,
                 ),
             ] {
                 assert_eq!(
-                    value
-                        .serialize_specified_with_limits(limits)
-                        .unwrap_err()
-                        .kind(),
+                    serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                     error
                 );
             }
-            let padded = CssScrollPaddingShorthand::try_new(
-                kind,
-                sources[..count].iter().map(|s| padding(s)).collect(),
-            )
-            .unwrap();
-            assert_eq!(padded.serialize_specified().unwrap(), expected);
+            let padded =
+                CssFourSides::try_new(kind, sources[..count].iter().map(|s| padding(s)).collect())
+                    .unwrap();
+            assert_eq!(
+                padded.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
 }
 
 #[test]
 fn canonical_scroll_equivalence_keeps_authored_capture_work_and_order() {
-    let pair = CssScrollMarginPair::new(length("calc(1in)"), Some(length("calc(96px)")));
+    // Every pair limit includes the aggregate node.
+    let pair = CssSidePair::new(length("calc(1in)"), Some(length("calc(96px)")));
     assert_eq!(
-        pair.serialize_specified_with_limits(Limits::new(4, 2, 10))
-            .unwrap(),
+        pair.serialize_specified(Limits::new(5, 3, 10)).unwrap(),
         "calc(96px)"
     );
-    assert_eq!(
-        pair.serialize_specified_with_limits(Limits::new(3, 2, 10))
+    assert!(
+        pair.serialize_specified(Limits::new(4, 3, 10))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
-    let symbolic =
-        CssScrollMarginPair::new(length("calc(1em + 2px)"), Some(length("calc(2px + 1em)")));
+    let symbolic = CssSidePair::new(length("calc(1em + 2px)"), Some(length("calc(2px + 1em)")));
     assert_eq!(
         symbolic
-            .serialize_specified_with_limits(Limits::new(8, 10, 15))
+            .serialize_specified(Limits::new(9, 11, 15))
             .unwrap(),
         "calc(1em + 2px)"
     );
     // Eager capture: a failed first scratch precedes work on the next sibling.
-    let first = CssScrollMarginPair::new(length("calc(1em + 2px)"), Some(length("calc(1px)")));
-    let second = CssScrollMarginPair::new(length("calc(1px)"), Some(length("calc(1em + 2px)")));
-    assert_eq!(
+    let first = CssSidePair::new(length("calc(1em + 2px)"), Some(length("calc(1px)")));
+    let second = CssSidePair::new(length("calc(1px)"), Some(length("calc(1em + 2px)")));
+    assert!(
         first
-            .serialize_specified_with_limits(Limits::new(4, 5, 14))
+            .serialize_specified(Limits::new(5, 6, 14))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
-    assert_eq!(
+    assert!(
         second
-            .serialize_specified_with_limits(Limits::new(4, 5, 14))
+            .serialize_specified(Limits::new(5, 6, 14))
             .unwrap_err()
-            .kind(),
-        Kind::InputNodeLimit
+            .is_input_node_limit()
     );
 }
 
 #[test]
 fn tiny_nonzero_math_does_not_compare_equal_to_actual_zero() {
-    let pair = CssScrollMarginPair::new(length("calc(0px)"), Some(length("calc(0.0000001px)")));
-    assert_eq!(pair.serialize_specified().unwrap(), "calc(0px) calc(0px)");
-    let negative = CssScrollMarginPair::new(length("calc(0px * -1)"), Some(length("calc(0px)")));
-    assert_eq!(negative.serialize_specified().unwrap(), "calc(0px)");
+    let pair = CssSidePair::new(length("calc(0px)"), Some(length("calc(0.0000001px)")));
+    assert_eq!(
+        pair.serialize_specified(Default::default()).unwrap(),
+        "calc(0px) calc(0px)"
+    );
+    let negative = CssSidePair::new(length("calc(0px * -1)"), Some(length("calc(0px)")));
+    assert_eq!(
+        negative.serialize_specified(Default::default()).unwrap(),
+        "calc(0px)"
+    );
 }
 
 #[test]
 fn calc_size_and_fit_content_round_shared_children_without_erasing_symbols() {
     let source = "calc-size(min-content, size + 0.12345641px)";
-    let value = CssCalcSize::try_from_component(component(source)).unwrap();
+    let value = CssCalcSize::try_from_component(component(source), Default::default()).unwrap();
     let before = value.clone();
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "calc-size(min-content, 0.123456px + size)"
     );
     assert_eq!(value, before);
     let fit = CssBoxSize::FitContentFunction(nonnegative_lp("calc(0.12345641px)"));
     let expected = "fit-content(calc(0.123456px))";
     assert_eq!(
-        fit.serialize_specified_with_limits(Limits::new(3, 2, expected.len()))
+        fit.serialize_specified(Limits::new(3, 2, expected.len()))
             .unwrap(),
         expected
     );
-    assert_eq!(
-        fit.serialize_specified_with_limits(Limits::new(3, 2, expected.len() - 1))
+    assert!(
+        fit.serialize_specified(Limits::new(3, 2, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        Kind::ByteLimit
+            .is_byte_limit()
     );
 }
 
 fn composed_text(value: &CssDeclaration) -> String {
     match value.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::BackgroundPosition(v) => {
-            v.positions().serialize_specified().unwrap()
+            v.value().serialize_specified(Default::default()).unwrap()
         }
-        CssKnownPropertyValueRef::BackgroundImage(v) => v.images().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::ClipPath(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::Filter(v) => v.value().serialize_specified().unwrap(),
+        CssKnownPropertyValueRef::BackgroundImage(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::ClipPath(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::Filter(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
         CssKnownPropertyValueRef::GridTemplateColumns(v) => {
-            v.value().serialize_specified().unwrap()
+            v.value().serialize_specified(Default::default()).unwrap()
         }
-        CssKnownPropertyValueRef::FontWeight(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::FontStyle(v) => v.value().serialize_specified().unwrap(),
-        CssKnownPropertyValueRef::AspectRatio(v) => v.ratio().serialize_specified().unwrap(),
+        CssKnownPropertyValueRef::FontWeight(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::FontStyle(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
+        CssKnownPropertyValueRef::AspectRatio(v) => {
+            v.value().serialize_specified(Default::default()).unwrap()
+        }
         CssKnownPropertyValueRef::TextCombineUpright(v) => {
-            v.combine().serialize_specified().unwrap()
+            v.value().serialize_specified(Default::default()).unwrap()
         }
         _ => panic!("fixture with existing specified emitter"),
     }
@@ -784,7 +898,11 @@ fn representative_composed_writers_use_generic_projected_children() {
         let value = authored_property::checked(property, source, false);
         let before = value.clone();
         assert_eq!(
-            value.value_components().serialize().unwrap().as_css(),
+            value
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             source
         );
         assert_eq!(composed_text(&value), expected, "{property:?}: {source}");
@@ -805,11 +923,15 @@ fn timing_children_round_without_inventing_an_aggregate_writer() {
         panic!("duration")
     };
     assert_eq!(
-        value.durations().values()[0].serialize_specified().unwrap(),
+        value.value().values()[0]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "calc(0.123456s)"
     );
     assert_eq!(
-        value.durations().values()[1].serialize_specified().unwrap(),
+        value.value().values()[1]
+            .serialize_specified(Default::default())
+            .unwrap(),
         "calc(0.007813s)"
     );
     let source = authored_property::checked(
@@ -822,14 +944,21 @@ fn timing_children_round_without_inventing_an_aggregate_writer() {
     else {
         panic!("easing")
     };
-    let CssEasing::CubicBezier(value) = &value.timing_functions().values()[0] else {
+    let CssEasing::CubicBezier(value) = &value.value().values()[0] else {
         panic!("bezier")
     };
     assert_eq!(
-        value.x1().value().serialize_specified().unwrap(),
+        value
+            .x1()
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "calc(0.007813)"
     );
-    assert_eq!(value.y1().serialize_specified().unwrap(), "calc(-0.007813)");
+    assert_eq!(
+        value.y1().serialize_specified(Default::default()).unwrap(),
+        "calc(-0.007813)"
+    );
 }
 
 #[test]
@@ -845,23 +974,22 @@ fn calculated_alpha_finalizes_ordinary_slots_and_retains_relative_overrides() {
     ] {
         let value = color(source);
         let before = value.clone();
-        assert_eq!(value.to_specified_css().unwrap(), expected, "{source}");
         assert_eq!(
-            value
-                .to_specified_css_with_limits(Limits::new(usize::MAX, usize::MAX, expected.len()))
-                .unwrap(),
-            expected
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{source}"
         );
         assert_eq!(
             value
-                .to_specified_css_with_limits(Limits::new(
-                    usize::MAX,
-                    usize::MAX,
-                    expected.len() - 1
-                ))
+                .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len()))
+                .unwrap(),
+            expected
+        );
+        assert!(
+            value
+                .serialize_specified(Limits::new(usize::MAX, usize::MAX, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            Kind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, before);
     }
@@ -902,7 +1030,11 @@ fn color_calculation_text_follows_its_declared_slot() {
     ] {
         let value = color(source);
         let before = value.clone();
-        assert_eq!(value.to_specified_css().unwrap(), expected, "{source}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{source}"
+        );
         assert_eq!(value, before);
     }
 }

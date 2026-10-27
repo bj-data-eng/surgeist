@@ -2,19 +2,38 @@
 //! Expected order and disambiguation follow the selected Transitions 1 §2.5
 //! and Animations 1 §3.10 references. Limits follow the provider node policy.
 
+use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_numeric_rejected;
 use crate::css::support::serialization_limits::assert_limits as budget;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
+use crate::css::support::value_assertions::checked_range;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssNonNegative, CssNumber, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit,
 };
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::keyframes::{CssKeyframesIdent, CssKeyframesString};
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::animation::{
+    CssAnimation, CssAnimationComponents, CssAnimationDirection, CssAnimationDirectionList,
+    CssAnimationFillMode, CssAnimationFillModeList, CssAnimationIterationCount,
+    CssAnimationIterationCountList, CssAnimationList, CssAnimationName, CssAnimationNameList,
+    CssAnimationPlayState, CssAnimationPlayStateList, CssDelayList, CssDurationList, CssEasing,
+    CssEasingKeyword, CssTransition, CssTransitionList, CssTransitionProperty,
+    CssTransitionPropertyList, CssTransitionPropertyName,
+};
+use surgeist_css::values::common::CssCustomIdent;
 
-fn time(text: &str) -> CssTimeValue {
-    CssTimeValue::from_literal(CssTimeLiteral::try_new(text, CssTimeUnit::Seconds).unwrap())
+fn time(text: &str) -> CssNumeric<CssTime> {
+    CssNumeric::<CssTime>::try_from_literal(
+        CssNumericLiteral::<CssTime>::try_new(text, CssTimeUnit::Seconds).unwrap(),
+    )
+    .unwrap()
 }
 
-fn duration(text: &str) -> CssDuration {
-    CssDuration::try_new(time(text)).unwrap()
+fn duration(text: &str) -> CssNumeric<CssTime, CssNonNegative> {
+    checked_range::<CssTime, CssNonNegative>(&time(text)).unwrap()
 }
 
 fn name(text: &str) -> CssAnimationName {
@@ -31,7 +50,7 @@ fn property(text: &str) -> CssTransitionProperty {
 
 fn count(text: &str) -> CssAnimationIterationCount {
     CssAnimationIterationCount::Number(
-        CssSpecifiedNonNegativeNumber::try_from_component(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number(text).unwrap(),
         )
         .unwrap(),
@@ -45,7 +64,7 @@ fn animations(css: &str) -> CssAnimationList {
     else {
         panic!("animation")
     };
-    value.animations().clone()
+    value.value().clone()
 }
 
 fn transitions(css: &str) -> CssTransitionList {
@@ -55,15 +74,15 @@ fn transitions(css: &str) -> CssTransitionList {
     else {
         panic!("transition")
     };
-    value.transitions().clone()
+    value.value().clone()
 }
 
 macro_rules! check {
     ($value:expr, $input:expr, $projection:expr, $css:expr) => {{
         let value = $value;
-        assert_eq!(value.serialize_specified().unwrap(), $css);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), $css);
         budget($css, $input, $projection, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
     }};
 }
@@ -173,7 +192,7 @@ fn full_shorthands_follow_grammar_order_and_omit_meaningless_transition_initials
     check!(&transition, 6, 6, "opacity 0s -1s");
     assert_eq!(
         transitions("0s ease opacity -1s")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "opacity 0s -1s"
     );
@@ -196,13 +215,17 @@ fn full_shorthands_follow_grammar_order_and_omit_meaningless_transition_initials
         ("linear ease", "linear ease"),
     ] {
         assert_eq!(
-            transitions(authored).serialize_specified().unwrap(),
+            transitions(authored)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{authored}"
         );
         // The shortest form reenters the grammar and is already shortest.
         assert_eq!(
-            transitions(expected).serialize_specified().unwrap(),
+            transitions(expected)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected
         );
     }
@@ -231,7 +254,7 @@ fn full_shorthands_follow_grammar_order_and_omit_meaningless_transition_initials
         11,
         "2s ease-out -0.5s 1 normal none running slide"
     );
-    let reparsed = animations(&animation.serialize_specified().unwrap());
+    let reparsed = animations(&animation.serialize_specified(Default::default()).unwrap());
     assert_eq!(reparsed, animation);
     assert_eq!(
         animations("slide running none normal 1 2s ease-out -0.5s"),
@@ -272,36 +295,44 @@ fn parsed_longhands_use_the_same_canonical_providers_as_constructed_lists() {
         let parsed = declaration(&format!("{property}:{authored}"));
         let text = match parsed.known().unwrap().property_value().unwrap() {
             CssKnownPropertyValueRef::TransitionProperty(value) => {
-                value.properties().serialize_specified()
+                value.value().serialize_specified(Default::default())
             }
             CssKnownPropertyValueRef::TransitionDuration(value) => {
-                value.durations().serialize_specified()
+                value.value().serialize_specified(Default::default())
             }
             CssKnownPropertyValueRef::AnimationDuration(value) => {
-                value.durations().serialize_specified()
+                value.value().serialize_specified(Default::default())
             }
             CssKnownPropertyValueRef::TransitionDelay(value) => {
-                value.delays().serialize_specified()
+                value.value().serialize_specified(Default::default())
             }
-            CssKnownPropertyValueRef::AnimationDelay(value) => value.delays().serialize_specified(),
-            CssKnownPropertyValueRef::AnimationName(value) => value.names().serialize_specified(),
+            CssKnownPropertyValueRef::AnimationDelay(value) => {
+                value.value().serialize_specified(Default::default())
+            }
+            CssKnownPropertyValueRef::AnimationName(value) => {
+                value.value().serialize_specified(Default::default())
+            }
             CssKnownPropertyValueRef::AnimationIterationCount(value) => {
-                value.iteration_counts().serialize_specified()
+                value.value().serialize_specified(Default::default())
             }
             CssKnownPropertyValueRef::AnimationDirection(value) => {
-                value.directions().serialize_specified()
+                value.value().serialize_specified(Default::default())
             }
             CssKnownPropertyValueRef::AnimationFillMode(value) => {
-                value.fill_modes().serialize_specified()
+                value.value().serialize_specified(Default::default())
             }
             CssKnownPropertyValueRef::AnimationPlayState(value) => {
-                value.play_states().serialize_specified()
+                value.value().serialize_specified(Default::default())
             }
             _ => panic!("timed property"),
         }
         .unwrap();
         assert_eq!(text, expected, "{property}");
-        assert!(parse_style_attribute(&format!("{property}:{text}")).is_clean());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("{property}:{text}"))
+                .is_clean()
+        );
     }
 }
 
@@ -359,16 +390,20 @@ fn explicit_non_name_slots_disambiguate_keyword_names_without_extra_defaults() {
     ] {
         let value =
             CssAnimationList::try_new(vec![CssAnimation::try_new(components).unwrap()]).unwrap();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(animations(expected), value);
     }
 }
 
 #[test]
 fn delay_only_items_insert_duration_without_mutating_omissions_or_exact_input() {
-    let delay = CssTimeValue::from_literal(
-        CssTimeLiteral::try_new("-250", CssTimeUnit::Milliseconds).unwrap(),
-    );
+    let delay = CssNumeric::<CssTime>::try_from_literal(
+        CssNumericLiteral::<CssTime>::try_new("-250", CssTimeUnit::Milliseconds).unwrap(),
+    )
+    .unwrap();
     let transition = CssTransitionList::try_new(vec![
         CssTransition::try_new(None, None, Some(delay.clone()), None).unwrap(),
     ])
@@ -393,7 +428,7 @@ fn delay_only_items_insert_duration_without_mutating_omissions_or_exact_input() 
         animations("0s -0.25s").values()[0]
             .delay()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "-0.25s"
     );
@@ -437,7 +472,10 @@ fn keyword_names_fill_only_the_ambiguous_slot_before_the_final_name() {
             Some(&original_name),
             "{name_text}"
         );
-        assert_eq!(parsed.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            parsed.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert!(value.values()[0].timing_function().is_none());
         assert!(value.values()[0].iteration_count().is_none());
         assert!(value.values()[0].direction().is_none());
@@ -459,7 +497,7 @@ fn keyword_names_fill_only_the_ambiguous_slot_before_the_final_name() {
     );
     assert_eq!(
         animations("3s none backwards")
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "3s none backwards"
     );
@@ -492,7 +530,7 @@ fn transition_keyword_property_follows_the_actual_or_default_easing_slot() {
                 "1s {} {keyword}",
                 if easing.is_some() { "ease-out" } else { "ease" }
             );
-            let text = value.serialize_specified().unwrap();
+            let text = value.serialize_specified(Default::default()).unwrap();
             assert_eq!(text, expected);
             let parsed = transitions(&text);
             assert_eq!(parsed.values()[0].property(), Some(&prop));
@@ -504,7 +542,10 @@ fn transition_keyword_property_follows_the_actual_or_default_easing_slot() {
                         .unwrap_or(&CssEasing::Keyword(CssEasingKeyword::Ease))
                 )
             );
-            assert_eq!(parsed.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                parsed.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
 }
@@ -520,10 +561,10 @@ fn escaped_identifiers_and_quoted_names_keep_their_distinct_forms_and_list_order
     check!(value, 4, 4, "a\\ b, \"a b\", \\39 spin");
     let parsed = animations("\"ease\", a\\ b, \\39 spin");
     assert_eq!(
-        parsed.serialize_specified().unwrap(),
+        parsed.serialize_specified(Default::default()).unwrap(),
         "\"ease\", a\\ b, \\39 spin"
     );
-    let reparsed = animations(&parsed.serialize_specified().unwrap());
+    let reparsed = animations(&parsed.serialize_specified(Default::default()).unwrap());
     assert_eq!(parsed, reparsed);
 }
 
@@ -555,26 +596,23 @@ fn checked_keyword_names_and_mixed_none_lists_are_rejected() {
 #[test]
 fn late_byte_failure_returns_no_partial_css_and_leaves_large_lists_unchanged() {
     let value = CssDelayList::try_new(vec![time("-1"); 8192]).unwrap();
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(L::new(4, usize::MAX, usize::MAX))
+            .serialize_specified(L::new(4, usize::MAX, usize::MAX))
             .unwrap_err()
-            .kind(),
-        K::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(L::new(usize::MAX, 4, usize::MAX))
+            .serialize_specified(L::new(usize::MAX, 4, usize::MAX))
             .unwrap_err()
-            .kind(),
-        K::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(L::new(usize::MAX, usize::MAX, 8))
+            .serialize_specified(L::new(usize::MAX, usize::MAX, 8))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value.values().len(), 8192);
     assert_eq!(
@@ -597,8 +635,8 @@ fn late_byte_failure_returns_no_partial_css_and_leaves_large_lists_unchanged() {
 fn exact_duration_admission_and_signed_delay_projection_keep_distinct_domains() {
     let tiny_negative = time("-1e-999");
     assert_numeric_rejected(
-        CssDuration::try_new(tiny_negative.clone()),
-        CssNumericConstructionErrorKind::OutOfRange,
+        checked_range::<CssTime, CssNonNegative>(&tiny_negative.clone()),
+        NumericFailure::OutOfRange,
     );
     let delays = CssDelayList::try_new(vec![tiny_negative]).unwrap();
     check!(&delays, 2, 2, "0s");
@@ -617,9 +655,11 @@ fn exact_duration_admission_and_signed_delay_projection_keep_distinct_domains() 
 fn nul_quoted_animation_identity_cannot_be_replaced_during_output() {
     let original = CssAnimationName::String(CssKeyframesString::new("a\0b"));
     let values = CssAnimationNameList::try_new(vec![original.clone()]).unwrap();
-    assert_eq!(
-        values.serialize_specified().unwrap_err().kind(),
-        K::UnrepresentableValue
+    assert!(
+        values
+            .serialize_specified(Default::default())
+            .unwrap_err()
+            .is_unrepresentable_value()
     );
     assert_eq!(values.names()[0], original);
 }
@@ -632,8 +672,10 @@ fn nul_animation_shorthand_string_cannot_be_replaced_during_output() {
     })
     .unwrap();
     let values = CssAnimationList::try_new(vec![item]).unwrap();
-    assert_eq!(
-        values.serialize_specified().unwrap_err().kind(),
-        K::UnrepresentableValue
+    assert!(
+        values
+            .serialize_specified(Default::default())
+            .unwrap_err()
+            .is_unrepresentable_value()
     );
 }

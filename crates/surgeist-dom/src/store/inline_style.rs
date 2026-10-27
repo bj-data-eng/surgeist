@@ -420,7 +420,7 @@ fn support_bytes(value: &surgeist_cssom::CssomDeclarationSupport) -> Result<usiz
         .properties()
         .len()
         .checked_mul(size_of::<(
-            surgeist_css::CssPropertyGrammar,
+            surgeist_css::property::CssPropertyGrammar,
             surgeist_cssom::CssomUsabilityRequirement,
         )>())
         .and_then(|n| {
@@ -428,7 +428,7 @@ fn support_bytes(value: &surgeist_cssom::CssomDeclarationSupport) -> Result<usiz
                 .page_descriptors()
                 .len()
                 .checked_mul(size_of::<(
-                    surgeist_css::CssPageDescriptorKind,
+                    surgeist_css::rule::page::CssPageDescriptorKind,
                     surgeist_cssom::CssomUsabilityRequirement,
                 )>())
                 .and_then(|v| n.checked_add(v))
@@ -438,7 +438,7 @@ fn support_bytes(value: &surgeist_cssom::CssomDeclarationSupport) -> Result<usiz
                 .font_face_descriptors()
                 .len()
                 .checked_mul(size_of::<(
-                    surgeist_css::CssFontFaceDescriptorKind,
+                    surgeist_css::rule::font_face::CssFontFaceDescriptorKind,
                     surgeist_cssom::CssomUsabilityRequirement,
                 )>())
                 .and_then(|v| n.checked_add(v))

@@ -5062,7 +5062,9 @@ fn assert_color_palette_refusal(
         }
     }
     let first = ParseStop::ColorProcessing(crate::HtmlColorProcessingError::Unavailable(
-        surgeist_css::CssColorUnavailable::Palette(surgeist_css::CssSystemColor::CanvasText),
+        surgeist_css::color::CssColorUnavailable::Palette(
+            surgeist_css::color::CssSystemColor::CanvasText,
+        ),
     ));
     assert_eq!(driver.control.stop(), Some(first));
     assert_eq!(

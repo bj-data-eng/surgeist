@@ -1,11 +1,21 @@
 use super::combinators::{Combinator, Operand, Tail, commit, fill, parse_group};
 use super::property_input::Parser;
-use crate::error::property::{CssFeatureId, Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::CssFeatureId;
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
 use super::values::{parse_custom_ident_from_str_at, parse_nonnegative_number};
-use crate::CssDuration;
-use crate::syntax::*;
+use crate::numeric::{CssNonNegative, CssNumeric, CssPositive, CssTime};
+use crate::rule::keyframes::{CssKeyframesIdent, CssKeyframesString};
+use crate::values::animation::{
+    CssAnimation, CssAnimationComponents, CssAnimationDirection, CssAnimationDirectionList,
+    CssAnimationFillMode, CssAnimationFillModeList, CssAnimationIterationCount,
+    CssAnimationIterationCountList, CssAnimationList, CssAnimationName, CssAnimationNameList,
+    CssAnimationPlayState, CssAnimationPlayStateList, CssCubicBezier, CssCubicBezierX,
+    CssDelayList, CssDurationList, CssEasing, CssEasingKeyword, CssEasingList, CssLinearEasing,
+    CssLinearStop, CssStepPosition, CssSteps, CssTransition, CssTransitionList,
+    CssTransitionProperty, CssTransitionPropertyList, CssTransitionPropertyName,
+};
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("official.value.easing-function"),
@@ -15,17 +25,17 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("official.value.step-position"),
 ];
 
-pub(super) fn parse_duration_list<'i, 't>(
+pub(crate) fn parse_duration_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssDurationList, ParseError<'i, Error>> {
     let values = input.parse_comma_separated(|input| parse_duration(input, numeric))?;
     Ok(CssDurationList::from_parser(values))
 }
 
-pub(super) fn parse_delay_list<'i, 't>(
+pub(crate) fn parse_delay_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssDelayList, ParseError<'i, Error>> {
     let values = input.parse_comma_separated(|input| parse_delay(input, numeric))?;
     Ok(CssDelayList::from_parser(values))
@@ -33,46 +43,50 @@ pub(super) fn parse_delay_list<'i, 't>(
 
 pub(super) fn parse_duration<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<CssDuration, ParseError<'i, Error>> {
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+) -> std::result::Result<CssNumeric<CssTime, CssNonNegative>, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let offset = input.position();
     let time = parse_delay(input, numeric)?;
-    crate::CssDuration::from_parser_value(time)
+    time.try_narrow()
         .map_err(|error| time_error(numeric, &error, location, offset))
 }
 
 pub(super) fn parse_delay<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<crate::CssTimeValue, ParseError<'i, Error>> {
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+) -> std::result::Result<crate::numeric::CssNumeric<crate::numeric::CssTime>, ParseError<'i, Error>>
+{
     input.skip_whitespace();
     let location = input.current_source_location();
     let offset = input.position();
     let component = input
         .collect_numeric_component(numeric)
         .map_err(|error| time_error(numeric, &error, location, offset))?;
-    crate::CssTimeValue::from_parser_component(component, numeric)
+    crate::numeric::CssNumeric::<crate::numeric::CssTime>::from_parser_component(component, numeric)
         .map_err(|error| time_error(numeric, &error, location, offset))
 }
 fn time_error<'i>(
-    numeric: &crate::numeric::NumericInputContext<'_>,
-    error: &crate::CssNumericConstructionError,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+    error: &crate::numeric::CssNumericConstructionError,
     fallback: super::property_input::Site<'i>,
     offset: super::property_input::Site<'i>,
 ) -> ParseError<'i, Error> {
     let location = numeric.property_error_location(error, fallback, offset);
     if let Some(component) = error.component_error()
-        && crate::error::is_component_resource_error(component)
+        && crate::diagnostic::error::is_component_resource_error(component)
     {
-        return crate::error::property::invalid_component_value(location, component.clone());
+        return crate::diagnostic::error::property::invalid_component_value(
+            location,
+            component.clone(),
+        );
     }
     unexpected_at(location)
 }
 
-pub(super) fn parse_easing_list<'i, 't>(
+pub(crate) fn parse_easing_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssEasingList, ParseError<'i, Error>> {
     let values = input.parse_comma_separated(|input| parse_easing(input, numeric))?;
     CssEasingList::try_new(values).ok_or_else(|| unexpected_at(input.current_source_location()))
@@ -80,7 +94,7 @@ pub(super) fn parse_easing_list<'i, 't>(
 
 pub(super) fn parse_easing<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssEasing, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
@@ -137,7 +151,7 @@ fn easing_function_kind(name: &str) -> Option<CssEasingFunctionKind> {
 fn easing_operand<'i, 't>(
     slot: &mut Option<CssEasing>,
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Operand<'i> {
     let starts = |input: &mut Parser<'i, 't>| {
         let state = input.state();
@@ -156,7 +170,7 @@ fn easing_operand<'i, 't>(
 
 fn parse_linear<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssLinearEasing, ParseError<'i, Error>> {
     let stops = input.parse_comma_separated(|input| parse_linear_stop(input, numeric))?;
     CssLinearEasing::from_parser(stops)
@@ -165,7 +179,7 @@ fn parse_linear<'i, 't>(
 
 fn parse_linear_stop<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssLinearStop, ParseError<'i, Error>> {
     use super::values::{parse_specified_number, parse_specified_percentage};
 
@@ -193,7 +207,7 @@ fn parse_linear_stop<'i, 't>(
 
 fn parse_cubic_bezier<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssCubicBezier, ParseError<'i, Error>> {
     let x1_location = input.current_source_location();
     let x1 = super::values::parse_specified_number(input, numeric)?;
@@ -217,17 +231,12 @@ fn parse_cubic_bezier<'i, 't>(
 
 fn parse_steps<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssSteps, ParseError<'i, Error>> {
     let count_location = input.current_source_location();
-    let count = match super::values::parse_integer_value(input, numeric)? {
-        CssIntegerValue::Literal(literal) => {
-            let literal = CssPositiveIntegerLiteral::try_new(literal)
-                .ok_or_else(|| unexpected_at(count_location))?;
-            CssPositiveIntegerValue::Literal(literal)
-        }
-        CssIntegerValue::Calculation(value) => CssPositiveIntegerValue::Calculation(value),
-    };
+    let count = super::values::parse_integer_value(input, numeric)?
+        .try_narrow::<CssPositive>()
+        .map_err(|_| unexpected_at(count_location))?;
 
     let mut position_location = None;
     let position = if input.is_exhausted() {
@@ -260,7 +269,7 @@ fn parse_steps<'i, 't>(
     CssSteps::try_new(count, position).ok_or_else(|| unexpected_at(location))
 }
 
-pub(super) fn parse_transition_property_list<'i, 't>(
+pub(crate) fn parse_transition_property_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTransitionPropertyList, ParseError<'i, Error>> {
     // List post-condition: `none` is admitted only alone (Transitions 1
@@ -305,9 +314,9 @@ pub(super) fn parse_transition_property<'i, 't>(
     }
 }
 
-pub(super) fn parse_transition_value_list<'i, 't>(
+pub(crate) fn parse_transition_value_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssTransitionList, ParseError<'i, Error>> {
     // List post-condition: a `none` transition property is admitted only
     // alone (Transitions 1 §2.5). A leading item with `none` is a valid
@@ -333,7 +342,7 @@ pub(super) fn parse_transition_value_list<'i, 't>(
 
 pub(super) fn parse_single_transition_value<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<
     (CssTransition, Option<super::property_input::Site<'i>>),
     ParseError<'i, Error>,
@@ -368,7 +377,7 @@ pub(super) fn parse_single_transition_value<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_animation_name_list<'i, 't>(
+pub(crate) fn parse_animation_name_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssAnimationNameList, ParseError<'i, Error>> {
     let names = input.parse_comma_separated(|input| parse_animation_name(input))?;
@@ -398,9 +407,9 @@ pub(super) fn parse_animation_name<'i, 't>(
     }
 }
 
-pub(super) fn parse_animation_iteration_value_list<'i, 't>(
+pub(crate) fn parse_animation_iteration_value_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssAnimationIterationCountList, ParseError<'i, Error>> {
     let counts =
         input.parse_comma_separated(|input| parse_animation_iteration_value(input, numeric))?;
@@ -410,7 +419,7 @@ pub(super) fn parse_animation_iteration_value_list<'i, 't>(
 
 pub(super) fn parse_animation_iteration_value<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssAnimationIterationCount, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("infinite"))
@@ -421,7 +430,7 @@ pub(super) fn parse_animation_iteration_value<'i, 't>(
     parse_nonnegative_number(input, numeric).map(CssAnimationIterationCount::Number)
 }
 
-pub(super) fn parse_animation_direction_list<'i, 't>(
+pub(crate) fn parse_animation_direction_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssAnimationDirectionList, ParseError<'i, Error>> {
     let directions = input.parse_comma_separated(|input| parse_animation_direction(input))?;
@@ -443,7 +452,7 @@ pub(super) fn parse_animation_direction<'i, 't>(
     }
 }
 
-pub(super) fn parse_animation_fill_mode_list<'i, 't>(
+pub(crate) fn parse_animation_fill_mode_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssAnimationFillModeList, ParseError<'i, Error>> {
     let modes = input.parse_comma_separated(|input| parse_animation_fill_mode(input))?;
@@ -465,7 +474,7 @@ pub(super) fn parse_animation_fill_mode<'i, 't>(
     }
 }
 
-pub(super) fn parse_animation_play_state_list<'i, 't>(
+pub(crate) fn parse_animation_play_state_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssAnimationPlayStateList, ParseError<'i, Error>> {
     let states = input.parse_comma_separated(|input| parse_animation_play_state(input))?;
@@ -485,9 +494,9 @@ pub(super) fn parse_animation_play_state<'i, 't>(
     }
 }
 
-pub(super) fn parse_animation_value_list<'i, 't>(
+pub(crate) fn parse_animation_value_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssAnimationList, ParseError<'i, Error>> {
     let items =
         input.parse_comma_separated(|input| parse_single_animation_value(input, numeric))?;
@@ -496,7 +505,7 @@ pub(super) fn parse_animation_value_list<'i, 't>(
 
 pub(super) fn parse_single_animation_value<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssAnimation, ParseError<'i, Error>> {
     // `<time> || <easing-function> || <time> || <iteration-count> ||
     // <direction> || <fill-mode> || <play-state> || <keyframes-name>`: the

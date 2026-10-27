@@ -9,10 +9,38 @@
 //! never geometry, computed defaults or unfinished exact math projection.
 //! All tests use callable public APIs that predate shape() support.
 
+use crate::css::support::failure_classes::SerializationFailure as K;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use crate::css::support::property_admission::validated_sole_declaration;
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{
+    CssAngle, CssCalculation, CssLengthPercentage, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::common::CssBoxEdgeKeyword;
+use surgeist_css::values::effects::{CssClipPath, CssClipPathShape};
+use surgeist_css::values::position::{
+    CssCartesianPosition, CssHorizontalPosition, CssHorizontalPositionKeyword, CssPosition,
+    CssPositionRef, CssVerticalPosition, CssVerticalPositionKeyword,
+};
+use surgeist_css::values::shape::{
+    CssBasicShape, CssFillRule, CssShapeAbsoluteControlPoint, CssShapeAbsoluteControlPointRef,
+    CssShapeArc, CssShapeArcRadii, CssShapeArcSize, CssShapeArcSweep, CssShapeCommand,
+    CssShapeCommandList, CssShapeControlAnchor, CssShapeCoordinatePair, CssShapeCurve,
+    CssShapeCurveRef, CssShapeEndpoint, CssShapeFunction, CssShapeHorizontalLine,
+    CssShapeRelativeControlPoint, CssShapeSmooth, CssShapeSmoothRef, CssShapeVerticalLine,
 };
 
 fn clip(source: &CssDeclaration) -> &CssClipPath {
@@ -33,28 +61,44 @@ fn clip_path_declaration(value: &str) -> CssDeclaration {
         assert_eq!(parsed.as_css(), value, "retain authored spelling and order");
     }
     let sheet = format!(".a{{{css}}}");
-    let report = parse_sheet(&sheet);
+    let report = CssParser::default().parse_sheet(&sheet);
     assert!(report.is_clean(), "{sheet}: {:?}", report.diagnostics());
-    assert_eq!(validate_sheet(&sheet), Ok(report.syntax().clone()));
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(&sheet)
+            .into_validation_result(),
+        Ok(report.syntax().clone())
+    );
     source
 }
 
 fn accept(authored: &str, expected: &str) {
     let source = clip_path_declaration(authored);
-    assert_eq!(clip(&source).serialize_specified().unwrap(), expected);
-    let components = parse_component_values(authored).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
+    assert_eq!(
+        clip(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
+    let components = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ClipPath)),
         components.clone(),
         CssImportance::Important,
     )
     .unwrap_or_else(|error| panic!("{authored}: {error:?}"));
     assert_eq!(checked.value_components(), &components);
     assert_eq!(checked.importance(), CssImportance::Important);
-    assert_eq!(clip(&checked).serialize_specified().unwrap(), expected);
+    assert_eq!(
+        clip(&checked)
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
     for declaration in [&source, &checked] {
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-            expand_declaration(declaration).unwrap()
+            declaration.expand().unwrap()
         else {
             panic!("terminal shape contribution")
         };
@@ -68,7 +112,10 @@ fn accept(authored: &str, expected: &str) {
         let CssLonghandValueRef::ClipPath(value) = item.ordinary_value().unwrap().view() else {
             panic!("typed shape terminal")
         };
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
 }
 
@@ -277,9 +324,10 @@ fn symbolic_position_pair_radius_and_angle_graphs_remain_authored() {
     // No exact numerical projection oracle is claimed for unfinished math work.
     let authored = "shape(from calc(1px + 2%) 0px, curve by min(-1px, 2%) 3px with calc(4px + 5%) 6px from end, arc to 7px 8% of calc(-9px) min(10px, 11%) rotate calc(12deg + 13deg))";
     let source = clip_path_declaration(authored);
-    let components = parse_component_values(authored).unwrap();
-    let checked = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
+    let components = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
+    let checked = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ClipPath)),
         components.clone(),
         CssImportance::Important,
     )
@@ -288,7 +336,7 @@ fn symbolic_position_pair_radius_and_angle_graphs_remain_authored() {
     assert_eq!(clip(&source), clip(&checked));
     let before = source.clone();
     assert!(matches!(
-        expand_declaration(&source).unwrap(),
+        source.expand().unwrap(),
         CssExpansion::Contributions(CssContributions::Longhands(_))
     ));
     assert_eq!(source, before);
@@ -335,7 +383,7 @@ fn reject(value: &str) {
     let prefix = "/*😀*/ ";
     let unit = format!("clip-path:{value};");
     let css = format!("{prefix}{unit} color:blue");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     let [sibling] = report.syntax().as_slice() else {
         panic!("only color survives {css}: {:?}", report.syntax())
     };
@@ -370,15 +418,23 @@ fn reject(value: &str) {
         css[..byte].encode_utf16().count()
     );
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_checked_matches_diagnostic(CssKnownProperty::ClipPath, value, diagnostic);
     let sheet = format!(".a{{{css}}}");
-    let report = parse_sheet(&sheet);
+    let report = CssParser::default().parse_sheet(&sheet);
     assert_eq!(report.diagnostics().len(), 1, "{sheet}");
     assert_eq!(
-        validate_sheet(&sheet).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(&sheet)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
 }
@@ -512,7 +568,7 @@ fn assert_origin(origin: &CssValueOrigin, css: &str, start: usize, length: usize
 #[test]
 fn original_function_command_keyword_scalar_and_punctuation_origins_survive() {
     let css = "/*😀*/ clip-path:ShApE(evenodd from -1e-999px 2%, curve by 3px 4% with 5px 6% from end / 7px 8% from origin, arc to x-end y-start of -9px rotate 10deg, close)!important";
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let component = &report.syntax()[0].value_components().items()[0];
     let CssComponentValueRef::Function(function) = component.view() else {
@@ -564,7 +620,8 @@ fn original_function_command_keyword_scalar_and_punctuation_origins_survive() {
 fn aggregate_equality_ignores_raw_origins_but_retains_order_affinity_and_omissions() {
     let text = "shape(from 0px 0px, curve to 1px 2px with 3px 4px, arc by 5px 6px of 7px)";
     let a = clip_path_declaration(text);
-    let b = parse_style_attribute(&format!("/*different source*/ clip-path:{text}!important"));
+    let b = CssParser::default()
+        .parse_block_contents(format!("/*different source*/ clip-path:{text}!important"));
     assert!(b.is_clean());
     assert_ne!(a.value_components(), b.syntax()[0].value_components());
     assert_eq!(clip(&a), clip(&b.syntax()[0]));
@@ -591,7 +648,7 @@ fn aggregate_equality_ignores_raw_origins_but_retains_order_affinity_and_omissio
 fn diagnosed_implicit_closure_is_retained_but_original_components_remain_strict() {
     let value = "shape(from 0px 0px, close";
     let css = format!("clip-path:{value}");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert_eq!(report.syntax().len(), 1, "{:?}", report.diagnostics());
     assert!(!report.is_clean());
     assert!(
@@ -601,16 +658,23 @@ fn diagnosed_implicit_closure_is_retained_but_original_components_remain_strict(
             .any(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
     );
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_eq!(
-        clip(&report.syntax()[0]).serialize_specified().unwrap(),
+        clip(&report.syntax()[0])
+            .serialize_specified(Default::default())
+            .unwrap(),
         "shape(from 0px 0px, close)"
     );
-    let components = parse_component_values(value).unwrap();
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ClipPath)),
         components.clone(),
         CssImportance::Normal,
     )
@@ -626,13 +690,16 @@ fn diagnosed_implicit_closure_is_retained_but_original_components_remain_strict(
     assert_eq!(at.span().start().byte_offset().value(), value.len());
     assert_eq!(at.span().end().byte_offset().value(), value.len());
     let source = clip_path_declaration("var(--shape)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending clip")
     };
-    assert!(matches!(
-        pending.reenter(components).unwrap_err().kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
+    assert!(
+        pending
+            .reenter(components)
+            .unwrap_err()
+            .replacement_error()
+            .is_some()
+    );
 }
 
 #[test]
@@ -643,12 +710,15 @@ fn checked_property_construction_accepts_programmatic_original_component_graphs(
     .into_iter()
     .map(|token| CssComponentValue::try_token(token).unwrap())
     .collect();
-    let function =
-        CssComponentValue::try_function("shape", CssComponentValues::try_new(tokens).unwrap())
-            .unwrap();
-    let components = CssComponentValues::try_new(vec![function]).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ClipPath),
+    let function = CssComponentValue::try_function(
+        "shape",
+        CssComponentValues::try_new(tokens, Default::default()).unwrap(),
+    )
+    .unwrap();
+    let components = CssComponentValues::try_new(vec![function], Default::default()).unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ClipPath)),
         components.clone(),
         CssImportance::Important,
     )
@@ -659,7 +729,9 @@ fn checked_property_construction_accepts_programmatic_original_component_graphs(
         &CssValueOrigin::Programmatic
     );
     assert_eq!(
-        clip(&declaration).serialize_specified().unwrap(),
+        clip(&declaration)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "shape(from 0px 0px, line by -1px 2%, close)"
     );
 }
@@ -667,7 +739,7 @@ fn checked_property_construction_accepts_programmatic_original_component_graphs(
 #[test]
 fn pending_reentry_is_reusable_and_returns_only_validated_terminal_replacements() {
     let source = clip_path_declaration("var(--shape)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending shape")
     };
     for invalid in [
@@ -675,20 +747,22 @@ fn pending_reentry_is_reusable_and_returns_only_validated_terminal_replacements(
         "shape(from 0px 0px, arc by 1px 2px)",
         "shape(from 0px 0px, close",
     ] {
-        assert!(matches!(
+        assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
-            .reenter(parse_component_values("shape(from var(--again), close)").unwrap())
+            .reenter(
+                CssComponentValues::parse(&CssParser::default(), "shape(from var(--again), close)")
+                    .unwrap()
+            )
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
     for (authored, expected) in [
         ("shape(from 0px 0px, close)", "shape(from 0px 0px, close)"),
@@ -697,7 +771,7 @@ fn pending_reentry_is_reusable_and_returns_only_validated_terminal_replacements(
             "shape(evenodd from start end, line by -1px 2%) border-box",
         ),
     ] {
-        let replacement = parse_component_values(authored).unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -712,7 +786,10 @@ fn pending_reentry_is_reusable_and_returns_only_validated_terminal_replacements(
             let CssLonghandValueRef::ClipPath(value) = item.ordinary_value().unwrap().view() else {
                 panic!("shape terminal")
             };
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
     assert!(pending.source().same_occurrence(&source));
@@ -721,9 +798,9 @@ fn pending_reentry_is_reusable_and_returns_only_validated_terminal_replacements(
 #[test]
 fn normalization_preserves_surviving_occurrences_importance_and_pending_state() {
     let css = ".a{clip-path:shape(from 0px 0px, close)!important;clip-path:shape(from 0px 0px close);clip-path:border-box shape(nonzero from start end, line by -1px 2%);clip-path:inherit;clip-path:var(--shape)}";
-    let report = parse_sheet(css);
+    let report = CssParser::default().parse_sheet(css);
     assert_eq!(report.diagnostics().len(), 1, "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let items: Vec<_> = normalized
         .items()
         .iter()
@@ -782,7 +859,7 @@ fn normalization_preserves_surviving_occurrences_importance_and_pending_state() 
                     panic!("typed occurrence")
                 };
                 assert_eq!(
-                    value.serialize_specified().unwrap(),
+                    value.serialize_specified(Default::default()).unwrap(),
                     if order == 0 {
                         "shape(from 0px 0px, close)"
                     } else {
@@ -807,20 +884,16 @@ fn close_fixture_obeys_atomic_cumulative_limits_without_mutating_values_or_origi
     let expected = "shape(from 0px 0px, close)";
     assert_eq!(expected.len(), 26);
     assert_eq!(
-        basic
-            .serialize_specified_with_limits(L::new(9, 9, 26))
-            .unwrap(),
+        basic.serialize_specified(L::new(9, 9, 26)).unwrap(),
         expected
     );
     assert_eq!(
-        composition
-            .serialize_specified_with_limits(L::new(10, 10, 26))
-            .unwrap(),
+        composition.serialize_specified(L::new(10, 10, 26)).unwrap(),
         expected
     );
     assert_eq!(
         clip(&source)
-            .serialize_specified_with_limits(L::new(10, 10, 26))
+            .serialize_specified(L::new(10, 10, 26))
             .unwrap(),
         expected
     );
@@ -830,10 +903,7 @@ fn close_fixture_obeys_atomic_cumulative_limits_without_mutating_values_or_origi
         (L::new(9, 9, 25), K::ByteLimit),
     ] {
         assert_eq!(
-            basic
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&basic.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -843,10 +913,7 @@ fn close_fixture_obeys_atomic_cumulative_limits_without_mutating_values_or_origi
         (L::new(10, 10, 25), K::ByteLimit),
     ] {
         assert_eq!(
-            clip(&source)
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&clip(&source).serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -854,11 +921,14 @@ fn close_fixture_obeys_atomic_cumulative_limits_without_mutating_values_or_origi
     let expected_boxed = "shape(from 0px 0px, close) border-box";
     assert_eq!(
         boxed
-            .serialize_specified_with_limits(L::new(11, 11, expected_boxed.len()))
+            .serialize_specified(L::new(11, 11, expected_boxed.len()))
             .unwrap(),
         expected_boxed
     );
-    assert_eq!(basic.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        basic.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(source, before);
 }
 
@@ -869,8 +939,8 @@ mod construction {
     use super::*;
     use std::error::Error;
 
-    fn lp(text: &str) -> CssSpecifiedLengthPercentage {
-        CssSpecifiedLengthPercentage::try_from_component(
+    fn lp(text: &str) -> CssNumeric<CssLengthPercentage> {
+        CssNumeric::<CssLengthPercentage>::try_from_component(
             CssComponentValue::try_token(text).unwrap(),
         )
         .unwrap()
@@ -887,11 +957,14 @@ mod construction {
             .unwrap(),
         )
     }
-    fn angle(text: &str) -> CssAngleValue {
-        CssAngleValue::from_literal(
-            CssAngleLiteral::try_from_component(CssComponentValue::try_token(text).unwrap())
-                .unwrap(),
+    fn angle(text: &str) -> CssNumeric<CssAngle> {
+        CssNumeric::<CssAngle>::try_from_literal(
+            CssNumericLiteral::<CssAngle>::try_from_component(
+                CssComponentValue::try_token(text).unwrap(),
+            )
+            .unwrap(),
         )
+        .unwrap()
     }
     fn shape(commands: Vec<CssShapeCommand>) -> CssShapeFunction {
         CssShapeFunction::new(
@@ -910,7 +983,7 @@ mod construction {
     #[test]
     fn empty_list_returns_only_the_typed_construction_error() {
         let error = CssShapeCommandList::try_new(vec![]).unwrap_err();
-        assert_eq!(error, CssShapeConstructionError::EmptyCommands);
+        assert!(error.is_empty_commands());
         assert!(error.source().is_none());
         assert_eq!(
             CssShapeCommandList::try_new(vec![CssShapeCommand::Close])
@@ -944,7 +1017,7 @@ mod construction {
         assert_eq!(value.fill_rule(), None);
         assert_eq!(value.start(), &position());
         assert_eq!(
-            value.serialize_specified().unwrap(),
+            value.serialize_specified(Default::default()).unwrap(),
             "shape(from 0px 0px, move to 0px 0px, line by 1px 2%, hline to x-start, vline by -3px, curve to 0px 0px with 1px 2%, smooth by 1px 2%, arc by 1px 2% of -4px, close)"
         );
     }
@@ -1012,7 +1085,7 @@ mod construction {
     }
     #[test]
     fn absolute_numeric_pair_normalization_moves_original_scalar_origins() {
-        let values = parse_component_values("-1e-999px 2%").unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), "-1e-999px 2%").unwrap();
         let scalars: Vec<_> = values
             .items()
             .iter()
@@ -1026,8 +1099,8 @@ mod construction {
             })
             .cloned()
             .collect();
-        let x = CssSpecifiedLengthPercentage::try_from_component(scalars[0].clone()).unwrap();
-        let y = CssSpecifiedLengthPercentage::try_from_component(scalars[1].clone()).unwrap();
+        let x = CssNumeric::<CssLengthPercentage>::try_from_component(scalars[0].clone()).unwrap();
+        let y = CssNumeric::<CssLengthPercentage>::try_from_component(scalars[1].clone()).unwrap();
         let value = CssShapeAbsoluteControlPoint::from_coordinates(
             CssShapeCoordinatePair::new(x.clone(), y.clone()),
             None,
@@ -1067,13 +1140,13 @@ mod construction {
         }
     }
     #[test]
-    fn pair_equality_ignores_provenance_while_raw_scalars_retain_it() {
-        let components = parse_component_values("1px").unwrap();
+    fn pair_and_raw_scalar_equality_ignore_provenance() {
+        let components = CssComponentValues::parse(&CssParser::default(), "1px").unwrap();
         let parsed =
-            CssSpecifiedLengthPercentage::try_from_component(components.items()[0].clone())
+            CssNumeric::<CssLengthPercentage>::try_from_component(components.items()[0].clone())
                 .unwrap();
         let programmatic = lp("1px");
-        assert_ne!(parsed, programmatic);
+        assert_eq!(parsed, programmatic);
         let a = CssShapeCoordinatePair::new(parsed, lp("2%"));
         let b = pair();
         assert_eq!(a, b);
@@ -1144,9 +1217,9 @@ mod construction {
         // A zero number is not the required angle dimension token.
         let component = CssComponentValue::try_number("0").unwrap();
         let origin = component.origin().clone();
-        let error = CssAngleLiteral::try_from_component(component).unwrap_err();
-        assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
-        assert_eq!(error.origin(), &origin);
+        let error = CssNumericLiteral::<CssAngle>::try_from_component(component).unwrap_err();
+        assert!(error.is_root_domain_mismatch(), "{error:?}");
+        assert_eq!(error.origin(), Some(&origin));
         for text in [
             "-1e-999deg",
             "1e400turn",
@@ -1170,7 +1243,7 @@ mod construction {
     }
     fn budget(value: &CssShapeFunction, expected: &str, nodes: usize) {
         crate::css::support::serialization_limits::LimitLadder::new(expected, nodes, nodes)
-            .assert_unchanged(value, CssShapeFunction::serialize_specified_with_limits);
+            .assert_unchanged(value, CssShapeFunction::serialize_specified);
     }
     #[test]
     fn literal_commands_controls_radii_and_options_accumulate_independent_counts() {
@@ -1238,15 +1311,13 @@ mod construction {
             Some(CssBoxEdgeKeyword::BorderBox),
         ));
         assert_eq!(
-            clip.serialize_specified_with_limits(L::new(11, 11, 37))
-                .unwrap(),
+            clip.serialize_specified(L::new(11, 11, 37)).unwrap(),
             "shape(from 0px 0px, close) border-box"
         );
-        assert_eq!(
-            clip.serialize_specified_with_limits(L::new(10, 11, 37))
+        assert!(
+            clip.serialize_specified(L::new(10, 11, 37))
                 .unwrap_err()
-                .kind(),
-            K::InputNodeLimit
+                .is_input_node_limit()
         );
     }
 
@@ -1263,7 +1334,7 @@ mod construction {
             assert!(matches!(&command,CssShapeHorizontalLine::ToKeyword(v) if *v==keyword));
             assert_eq!(
                 shape(vec![CssShapeCommand::HorizontalLine(command)])
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 format!("shape(from 0px 0px, hline to {text})")
             );
@@ -1279,7 +1350,7 @@ mod construction {
             assert!(matches!(&command,CssShapeVerticalLine::ToKeyword(v) if *v==keyword));
             assert_eq!(
                 shape(vec![CssShapeCommand::VerticalLine(command)])
-                    .serialize_specified()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 format!("shape(from 0px 0px, vline to {text})")
             );
@@ -1306,9 +1377,14 @@ mod construction {
     }
     #[test]
     fn sibling_command_math_arenas_share_budgets_and_keep_original_graphs() {
-        let components = parse_component_values("calc(1px + 2%)").unwrap();
-        let scalar = CssSpecifiedLengthPercentage::try_from_calculation(
-            CssLengthPercentageCalculation::try_from_components(components.clone()).unwrap(),
+        let components =
+            CssComponentValues::parse(&CssParser::default(), "calc(1px + 2%)").unwrap();
+        let scalar = CssNumeric::<CssLengthPercentage>::try_from_calculation(
+            CssCalculation::<CssLengthPercentage>::try_from_components(
+                components.clone(),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
         let offsets = CssShapeCoordinatePair::new(scalar.clone(), scalar.clone());
@@ -1321,7 +1397,7 @@ mod construction {
         // Four independent mixed LP arenas add 4 input / 5 projection nodes each.
         assert_eq!(
             value
-                .serialize_specified_with_limits(L::new(30, 34, expected.len()))
+                .serialize_specified(L::new(30, 34, expected.len()))
                 .unwrap(),
             expected
         );
@@ -1331,10 +1407,7 @@ mod construction {
             (L::new(30, 34, expected.len() - 1), K::ByteLimit),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
             let CssShapeCommand::Line(CssShapeEndpoint::By(pair)) = &value.commands().commands()[0]

@@ -1,11 +1,19 @@
 //! Exact authored float/clear values from CSS2 §§9.5.1–2 and Logical 1 §2.2.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_declaration as parsed;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownPropertyValueRef, CssLonghandValue, CssLonghandValueRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssClear, CssFloat};
 
 fn ordinary(source: &CssDeclaration) -> CssLonghandValue {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one completed longhand")
     };
@@ -24,36 +32,29 @@ fn every_float_keyword_serializes_with_exact_single_keyword_budgets() {
         (CssFloat::InlineStart, "inline-start"),
         (CssFloat::InlineEnd, "inline-end"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), text);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    text.len(),
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, text.len(),))
                 .unwrap(),
             text
         );
         for (limits, kind) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, text.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, text.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, text.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, text.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, text.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, text.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
@@ -70,27 +71,18 @@ fn every_clear_keyword_serializes_and_both_expands_as_its_own_value() {
         (CssClear::InlineStart, "inline-start"),
         (CssClear::InlineEnd, "inline-end"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), text);
+        assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    text.len(),
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, text.len(),))
                 .unwrap(),
             text
         );
-        assert_eq!(
+        assert!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    text.len() - 1,
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, text.len() - 1,))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
     }
     assert_eq!(
@@ -146,10 +138,10 @@ fn wrappers_keep_physical_and_flow_relative_keywords() {
 fn substituted_inline_end_reenters_to_exact_typed_keyword() {
     for name in ["float", "clear"] {
         let source = parsed(name, "var(--side)");
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending substitution")
         };
-        let replacement = parse_component_values("inline-end").unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), "inline-end").unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("reentered longhand")

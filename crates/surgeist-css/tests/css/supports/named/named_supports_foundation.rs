@@ -5,11 +5,13 @@
 //! https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#use
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#conditionals
 
-use surgeist_css::{
-    CssErrorCode, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet,
-    CssRecoveryAction, CssRule, CssRuleContext, CssRuleContextKindRef, normalize_sheet,
-    parse_sheet, validate_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet, CssRuleContext,
+    CssRuleContextKindRef,
 };
+use surgeist_css::rule::CssRule;
 
 fn rule_at(sheet: &CssNormalizedSheet, offset: usize) -> &CssRuleContext {
     sheet
@@ -46,12 +48,18 @@ fn empty_declaration_only_and_unknown_test_bodies_remain_clean_nonstyle_rules() 
         "@supports-condition --terminal{color:red}",
         "@supports-condition --future{mystery:future(value);&{color:blue}}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     assert_eq!(report.syntax().rules().len(), 3);
 
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let offsets: Vec<_> = source
         .match_indices("@supports-condition")
         .map(|(offset, _)| offset)
@@ -72,7 +80,7 @@ fn empty_declaration_only_and_unknown_test_bodies_remain_clean_nonstyle_rules() 
 
 #[test]
 fn bare_named_import_operand_is_a_supports_clause_without_media() {
-    let report = parse_sheet("@import url(theme.css) supports(--theme);");
+    let report = CssParser::default().parse_sheet("@import url(theme.css) supports(--theme);");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Import(import)] = report.syntax().rules() else {
         panic!("one retained import: {report:?}");
@@ -95,9 +103,9 @@ fn definitions_remain_inside_each_supported_rule_list() {
         (".host{@supports(display:grid){", "}}"),
     ] {
         let source = format!("{prefix}@supports-condition --probe{{}}{suffix}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let definition = rule_at(&normalized, prefix.len());
         let parent = definition
             .parent()
@@ -126,13 +134,13 @@ fn definitions_preserve_import_and_namespace_prelude_admission() {
         "@namespace n \"urn:n\";",
         "@supports-condition --last{}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().rules().len(), 6);
     assert!(matches!(report.syntax().rules()[1], CssRule::Import(_)));
     assert!(matches!(report.syntax().rules()[3], CssRule::Import(_)));
     assert!(matches!(report.syntax().rules()[4], CssRule::Namespace(_)));
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     for (offset, _) in source.match_indices("@supports-condition") {
         assert!(rule_at(&normalized, offset).parent().is_none());
     }
@@ -142,7 +150,7 @@ fn definitions_preserve_import_and_namespace_prelude_admission() {
         "@supports-condition --after-namespace{}",
         "@import url(late.css);",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [diagnostic] = report.diagnostics() else {
         panic!("import phase stays closed after namespace: {report:?}");
     };
@@ -152,7 +160,7 @@ fn definitions_preserve_import_and_namespace_prelude_admission() {
         CssErrorCode::InvalidAtRulePlacement
     );
     assert_eq!(report.syntax().rules().len(), 2);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert!(
         rule_at(&normalized, source.find("@supports-condition").unwrap())
             .parent()
@@ -166,14 +174,14 @@ fn definitions_preserve_import_and_namespace_prelude_admission() {
         "@import url(late.css);",
         "@namespace late \"urn:late\";",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 2, "{report:?}");
     assert!(report.diagnostics().iter().all(|diagnostic| {
         diagnostic.action() == CssRecoveryAction::DropAtRule
             && diagnostic.error().code() == CssErrorCode::InvalidAtRulePlacement
     }));
     assert_eq!(report.syntax().rules().len(), 3);
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     assert!(
         rule_at(&normalized, source.find("@supports-condition").unwrap())
             .parent()
@@ -188,9 +196,9 @@ fn style_nested_definition_is_terminal_and_preserves_only_surrounding_declaratio
         "@supports-condition --probe{color:blue;mystery:future(value);&{color:blue}}",
         "color:green;}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let outer = rule_at(&normalized, 0);
     let definition = rule_at(&normalized, source.find("@supports-condition").unwrap());
     assert!(definition.parent().unwrap().same_context(outer));
@@ -202,7 +210,7 @@ fn style_nested_definition_is_terminal_and_preserves_only_surrounding_declaratio
             declaration
                 .source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             color

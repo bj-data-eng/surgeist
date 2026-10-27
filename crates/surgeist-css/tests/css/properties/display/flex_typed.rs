@@ -1,23 +1,50 @@
 //! Public checked flex construction and intrinsic specified-value behavior.
 
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandValueRef, CssPropertyGrammar,
+    CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{
+    CssBoxCalcSize, CssBoxSize, CssCalcSize, CssCalcSizeBasisRef, CssMaxSizeValue, CssSizeValue,
+};
+use surgeist_css::values::layout::{
+    CssFlexBasisRef, CssFlexBasisValue, CssFlexComponents, CssFlexValue,
+};
 
 fn one_component(text: &str) -> CssComponentValue {
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [component] = values.items() else {
         panic!("expected one component: {text}")
     };
     component.clone()
 }
 
-fn factor(text: &str) -> CssSpecifiedNonNegativeNumber {
-    CssSpecifiedNonNegativeNumber::try_from_component(CssComponentValue::try_number(text).unwrap())
-        .unwrap()
+fn factor(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
+    CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
+        CssComponentValue::try_number(text).unwrap(),
+    )
+    .unwrap()
 }
 
 fn basis(text: &str) -> CssFlexBasisValue {
     let source = format!("flex-basis:{text}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::FlexBasis(value) = report.syntax()[0]
         .known()
@@ -32,7 +59,7 @@ fn basis(text: &str) -> CssFlexBasisValue {
 
 fn flex(text: &str) -> CssFlexValue {
     let source = format!("flex:{text}");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let CssKnownPropertyValueRef::Flex(value) = report.syntax()[0]
         .known()
@@ -47,11 +74,11 @@ fn flex(text: &str) -> CssFlexValue {
 
 fn contributions(text: &str) -> Vec<CssLonghandContribution> {
     let source = format!("flex:{text}!important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let declaration = &report.syntax()[0];
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(declaration).unwrap()
+        declaration.expand().unwrap()
     else {
         panic!("three flex contributions: {source}")
     };
@@ -78,7 +105,11 @@ fn checked_components_reject_empty_and_orphan_shrink_but_admit_basis_only() {
     assert!(components.grow().is_none());
     assert!(components.shrink().is_none());
     assert_eq!(
-        components.basis().unwrap().serialize_specified().unwrap(),
+        components
+            .basis()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "10px"
     );
 }
@@ -91,8 +122,11 @@ fn checked_factors_preserve_exact_lexical_numbers_and_symbolic_math() {
         ("1e-100", "0".to_owned()),
     ] {
         let value = factor(text);
-        assert_eq!(value.serialize_specified().unwrap(), expected);
-        let Some(component) = value.literal_component() else {
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        let Some(component) = value.literal().map(|literal| literal.component()) else {
             panic!("exact lexical literal: {text}")
         };
         let CssComponentValueRef::Token(CssValueTokenRef::Number(number)) = component.view() else {
@@ -102,18 +136,23 @@ fn checked_factors_preserve_exact_lexical_numbers_and_symbolic_math() {
         assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
     }
     for text in ["-1", "-1e-100"] {
-        let error = CssSpecifiedNonNegativeNumber::try_from_component(
+        let error = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number(text).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(error.kind(), &CssNumericConstructionErrorKind::OutOfRange);
+        assert!(error.is_out_of_range(), "{error:?}");
     }
-    let math =
-        CssNumberCalculation::try_from_components(parse_component_values("calc(1 + 2)").unwrap())
-            .unwrap();
-    let value = CssSpecifiedNonNegativeNumber::try_from_calculation(math).unwrap();
+    let math = CssCalculation::<CssNumber>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(1 + 2)").unwrap(),
+        Default::default(),
+    )
+    .unwrap();
+    let value = CssNumeric::<CssNumber, CssNonNegative>::try_from_calculation(math).unwrap();
     assert!(value.calculation().is_some());
-    assert_eq!(value.serialize_specified().unwrap(), "calc(3)");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "calc(3)"
+    );
 }
 
 #[test]
@@ -123,25 +162,38 @@ fn flex_basis_borrows_content_size_and_calc_size_without_erasing_structure() {
         CssFlexBasisRef::Content
     ));
     assert_eq!(
-        CssFlexBasisValue::content().serialize_specified().unwrap(),
+        CssFlexBasisValue::content()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "content"
     );
 
     let size = CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_dimension("10", "px").unwrap(),
         )
         .unwrap(),
     ));
     let from_size = CssFlexBasisValue::from(size);
     assert!(matches!(from_size.view(), CssFlexBasisRef::Size(_)));
-    assert_eq!(from_size.serialize_specified().unwrap(), "10px");
+    assert_eq!(
+        from_size.serialize_specified(Default::default()).unwrap(),
+        "10px"
+    );
 
-    let calc = CssCalcSize::try_from_component(one_component("calc-size(content, size)")).unwrap();
+    let calc = CssCalcSize::try_from_component(
+        one_component("calc-size(content, size)"),
+        Default::default(),
+    )
+    .unwrap();
     let direct = CssFlexBasisValue::from(calc.clone());
     let through_box_size = CssFlexBasisValue::from(CssSizeValue::BoxSize(CssBoxSize::CalcSize(
         CssBoxCalcSize::try_from(
-            CssCalcSize::try_from_component(one_component("calc-size(min-content, size)")).unwrap(),
+            CssCalcSize::try_from_component(
+                one_component("calc-size(min-content, size)"),
+                Default::default(),
+            )
+            .unwrap(),
         )
         .unwrap(),
     )));
@@ -160,7 +212,8 @@ fn content_calc_size_is_flex_valid_and_box_invalid_at_the_offending_basis() {
         "calc-size(content, size)",
         "calc-size(calc-size(content, size), size + 1px)",
     ] {
-        let calc = CssCalcSize::try_from_component(one_component(text)).unwrap();
+        let calc =
+            CssCalcSize::try_from_component(one_component(text), Default::default()).unwrap();
         assert!(matches!(
             CssFlexBasisValue::from(calc.clone()).view(),
             CssFlexBasisRef::CalcSize(_)
@@ -171,36 +224,31 @@ fn content_calc_size_is_flex_valid_and_box_invalid_at_the_offending_basis() {
         }
         .clone();
         let error = CssBoxCalcSize::try_from(calc).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::InvalidArgumentType
-        );
+        assert!(error.is_invalid_argument_type(), "{error:?}");
         assert_eq!(error.origin(), Some(&expected_origin));
     }
 
     let constructed = CssComponentValue::try_function(
         "calc-size",
-        parse_component_values("content, size").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "content, size").unwrap(),
     )
     .unwrap();
-    let calc = CssCalcSize::try_from_component(constructed).unwrap();
+    let calc = CssCalcSize::try_from_component(constructed, Default::default()).unwrap();
     let error = CssBoxCalcSize::try_from(calc.clone()).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::InvalidArgumentType
-    );
+    assert!(error.is_invalid_argument_type(), "{error:?}");
     assert_eq!(error.origin(), Some(calc.basis_origin()));
     assert!(matches!(error.origin(), Some(CssValueOrigin::Parsed(_))));
 
-    let nested_auto =
-        CssCalcSize::try_from_component(one_component("calc-size(calc-size(auto, size), size)"))
-            .unwrap();
+    let nested_auto = CssCalcSize::try_from_component(
+        one_component("calc-size(calc-size(auto, size), size)"),
+        Default::default(),
+    )
+    .unwrap();
     let box_value = CssBoxCalcSize::try_from(nested_auto).unwrap();
-    assert_eq!(
+    assert!(
         CssMaxSizeValue::try_box_size(CssBoxSize::CalcSize(box_value))
             .unwrap_err()
-            .kind(),
-        &CssNumericConstructionErrorKind::InvalidArgumentType
+            .is_invalid_argument_type()
     );
 }
 
@@ -213,37 +261,68 @@ fn typed_flex_serialization_materializes_the_specified_default_triple() {
         ("2 3 10px", "2 3 10px"),
     ] {
         assert_eq!(
-            flex(source).serialize_specified().unwrap(),
+            flex(source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );
     }
-    assert_eq!(CssFlexValue::None.serialize_specified().unwrap(), "none");
-    assert_eq!(CssFlexValue::Auto.serialize_specified().unwrap(), "auto");
+    assert_eq!(
+        CssFlexValue::None
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "none"
+    );
+    assert_eq!(
+        CssFlexValue::Auto
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "auto"
+    );
 
     let constructed = CssFlexValue::Components(
         CssFlexComponents::try_new(Some(factor("2")), None, None).unwrap(),
     );
-    assert_eq!(constructed.serialize_specified().unwrap(), "2 1 0");
+    assert_eq!(
+        constructed.serialize_specified(Default::default()).unwrap(),
+        "2 1 0"
+    );
     let CssFlexValue::Components(components) = &constructed else {
         panic!("directly constructed flex components")
     };
     assert_eq!(
-        components.grow().unwrap().serialize_specified().unwrap(),
+        components
+            .grow()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "2"
     );
     assert!(components.shrink().is_none());
     assert!(components.basis().is_none());
     let basis_only_zero =
         CssFlexValue::Components(CssFlexComponents::try_new(None, None, Some(basis("0"))).unwrap());
-    assert_eq!(basis_only_zero.serialize_specified().unwrap(), "1 1 0");
+    assert_eq!(
+        basis_only_zero
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "1 1 0"
+    );
 }
 
 #[test]
 fn serialized_flex_reparses_with_the_same_effective_terminals() {
     for source in ["0", "0%", "2", "10px", "2 3 10px", "none", "auto"] {
-        let serialized = flex(source).serialize_specified().unwrap();
-        assert_eq!(flex(&serialized).serialize_specified().unwrap(), serialized);
+        let serialized = flex(source)
+            .serialize_specified(Default::default())
+            .unwrap();
+        assert_eq!(
+            flex(&serialized)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            serialized
+        );
         let original = contributions(source);
         let reparsed = contributions(&serialized);
         for (left, right) in original.iter().zip(reparsed.iter()) {
@@ -254,14 +333,14 @@ fn serialized_flex_reparses_with_the_same_effective_terminals() {
                 (CssLonghandValueRef::FlexGrow(a), CssLonghandValueRef::FlexGrow(b))
                 | (CssLonghandValueRef::FlexShrink(a), CssLonghandValueRef::FlexShrink(b)) => {
                     assert_eq!(
-                        a.serialize_specified().unwrap(),
-                        b.serialize_specified().unwrap()
+                        a.serialize_specified(Default::default()).unwrap(),
+                        b.serialize_specified(Default::default()).unwrap()
                     );
                 }
                 (CssLonghandValueRef::FlexBasis(a), CssLonghandValueRef::FlexBasis(b)) => {
                     assert_eq!(
-                        a.serialize_specified().unwrap(),
-                        b.serialize_specified().unwrap()
+                        a.serialize_specified(Default::default()).unwrap(),
+                        b.serialize_specified(Default::default()).unwrap()
                     );
                 }
                 _ => panic!("mismatched effective flex terminal: {source}"),
@@ -292,9 +371,9 @@ fn intrinsic_flex_initials_are_zero_one_auto() {
         let serialized = match value.view() {
             CssLonghandValueRef::FlexGrow(v) | CssLonghandValueRef::FlexShrink(v) => {
                 assert_eq!(v.origin(), &CssValueOrigin::Programmatic);
-                v.serialize_specified().unwrap()
+                v.serialize_specified(Default::default()).unwrap()
             }
-            CssLonghandValueRef::FlexBasis(v) => v.serialize_specified().unwrap(),
+            CssLonghandValueRef::FlexBasis(v) => v.serialize_specified(Default::default()).unwrap(),
             _ => panic!("typed initial: {name}"),
         };
         assert_eq!(serialized, expected);
@@ -313,9 +392,11 @@ fn expanded_flex_keywords_and_omissions_have_distinct_effective_values() {
             .iter()
             .map(|item| match item.ordinary_value().unwrap().view() {
                 CssLonghandValueRef::FlexGrow(v) | CssLonghandValueRef::FlexShrink(v) => {
-                    v.serialize_specified().unwrap()
+                    v.serialize_specified(Default::default()).unwrap()
                 }
-                CssLonghandValueRef::FlexBasis(v) => v.serialize_specified().unwrap(),
+                CssLonghandValueRef::FlexBasis(v) => {
+                    v.serialize_specified(Default::default()).unwrap()
+                }
                 _ => panic!("unexpected flex terminal"),
             })
             .collect::<Vec<_>>();
@@ -336,7 +417,10 @@ fn expanded_flex_keywords_and_omissions_have_distinct_effective_values() {
         panic!("omitted basis is unitless zero")
     };
     assert_eq!(
-        zero.literal_component().unwrap().origin(),
+        zero.literal()
+            .map(|literal| literal.component())
+            .unwrap()
+            .origin(),
         &CssValueOrigin::Programmatic
     );
 }
@@ -346,29 +430,26 @@ fn flex_serialization_uses_one_shared_resource_budget() {
     let value = flex("calc(1 + 2) 3 calc-size(content, size)");
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(1, 100, 1000),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(1, 100, 1000),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(100, 1, 1000),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(100, 1, 1000),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(100, 100, 8),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(100, 100, 8),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
     assert!(
         value
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap()
             .contains("calc-size(content, size)")
     );
@@ -383,10 +464,10 @@ fn global_and_pending_flex_declarations_keep_all_three_contributions() {
         ("revert", CssGlobalKeyword::Revert),
         ("revert-layer", CssGlobalKeyword::RevertLayer),
     ] {
-        let report = parse_style_attribute(&format!("flex:{text}!important"));
+        let report = CssParser::default().parse_block_contents(format!("flex:{text}!important"));
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
         let CssExpansion::Contributions(CssContributions::Longhands(globals)) =
-            expand_declaration(&report.syntax()[0]).unwrap()
+            report.syntax()[0].expand().unwrap()
         else {
             panic!("global flex: {text}")
         };
@@ -397,19 +478,19 @@ fn global_and_pending_flex_declarations_keep_all_three_contributions() {
             assert_eq!(item.source().importance(), CssImportance::Important);
         }
     }
-    let report = parse_style_attribute("flex:var(--f)!important");
+    let report = CssParser::default().parse_block_contents("flex:var(--f)!important");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let CssExpansion::Pending(pending) = expand_declaration(&report.syntax()[0]).unwrap() else {
+    let CssExpansion::Pending(pending) = report.syntax()[0].expand().unwrap() else {
         panic!("pending flex")
     };
-    assert!(matches!(
+    assert!(
         pending
-            .reenter(parse_component_values("2 content 3").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "2 content 3").unwrap())
             .unwrap_err()
-            .kind(),
-        CssExpansionErrorKind::InvalidReplacement(_)
-    ));
-    let replacement = parse_component_values("10px 2 3").unwrap();
+            .replacement_error()
+            .is_some()
+    );
+    let replacement = CssComponentValues::parse(&CssParser::default(), "10px 2 3").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("reentered flex")
     };
@@ -423,13 +504,14 @@ fn global_and_pending_flex_declarations_keep_all_three_contributions() {
 
 #[test]
 fn normalization_retains_valid_flex_contributions_around_a_dropped_declaration() {
-    let report = parse_sheet(".a{flex:2;flex:2 content 3;flex:none!important}");
+    let report =
+        CssParser::default().parse_sheet(".a{flex:2;flex:2 content 3;flex:none!important}");
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -466,9 +548,9 @@ fn normalization_retains_valid_flex_contributions_around_a_dropped_declaration()
 
 #[test]
 fn normalization_preserves_mixed_flex_occurrence_order_and_rejects_member_limit() {
-    let report = parse_sheet(".a{flex-grow:4;flex:2;flex-basis:10px}");
+    let report = CssParser::default().parse_sheet(".a{flex-grow:4;flex:2;flex-basis:10px}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -495,14 +577,8 @@ fn normalization_preserves_mixed_flex_occurrence_order_and_rejects_member_limit(
     }
 
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 3).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 3
-        }
-    ));
+    let error = report.syntax().normalize(limits).unwrap_err();
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Contributions, 3)));
     assert_eq!(
         error.declaration().unwrap().known().unwrap().property(),
         CssKnownProperty::Flex

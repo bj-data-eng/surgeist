@@ -5,7 +5,7 @@ use crate::css::support::named_property::longhand_contributions as contributions
 
 fn declaration(name: &str, input: &str) -> CssDeclaration {
     let css = format!("/*😀*/{name}:{input}!important");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     let [source] = report.syntax().as_slice() else {
         panic!("one occurrence: {css}")
@@ -13,12 +13,39 @@ fn declaration(name: &str, input: &str) -> CssDeclaration {
     source.clone()
 }
 use crate::css::support::serialization_limits::assert_node_limits as budget;
-use CssSpecifiedValueSerializationErrorKind as K;
-use CssSpecifiedValueSerializationLimits as L;
-use surgeist_css::*;
+use CssSerializationLimits as L;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::conformance::{
+    CssFeatureKind, CssSpecificationTier, CssSupportStatus, feature_metadata,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssCalculation, CssLengthPercentage, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::{CssBoxEdgeKeyword, CssUrl, CssUrlFunction};
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssPosition, CssPositionRef, CssVerticalPosition,
+};
+use surgeist_css::values::shape::{CssBasicShape, CssCircleRadius, CssCircleShape};
+use surgeist_css::values::transform::{
+    CssCoordBox, CssOffset, CssOffsetAnchor, CssOffsetPath, CssOffsetPathKind, CssOffsetPathRef,
+    CssOffsetPathValue, CssOffsetPosition, CssOffsetRotate, CssOffsetRotateModifier, CssRay,
+    CssRaySize,
+};
 
-fn angle(number: &str, unit: CssAngleUnit) -> CssAngleValue {
-    CssAngleValue::from_literal(CssAngleLiteral::try_new(number, unit).unwrap())
+fn angle(number: &str, unit: CssAngleUnit) -> CssNumeric<CssAngle> {
+    CssNumeric::<CssAngle>::try_from_literal(
+        CssNumericLiteral::<CssAngle>::try_new(number, unit).unwrap(),
+    )
+    .unwrap()
 }
 fn position() -> CssPosition {
     CssPhysicalPosition::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Top)
@@ -80,14 +107,14 @@ fn checked_coord_conversion_admits_six_boxes_and_rejects_margin() {
             CssCoordBox::from_keyword(&keyword.to_ascii_uppercase()),
             Some(coord)
         );
-        assert_eq!(coord.as_css_str(), keyword);
-        budget(keyword, 1, |limits| {
-            coord.serialize_specified_with_limits(limits)
-        });
+        assert_eq!(coord.as_str(), keyword);
+        budget(keyword, 1, |limits| coord.serialize_specified(limits));
     }
-    assert_eq!(
-        CssCoordBox::try_from(CssBoxEdgeKeyword::MarginBox),
-        Err(CssMotionConstructionError::InvalidCoordBox)
+    assert!(
+        CssCoordBox::try_from(CssBoxEdgeKeyword::MarginBox)
+            .as_ref()
+            .unwrap_err()
+            .is_invalid_coord_box()
     );
     for keyword in ["margin-box", "text", "no-clip", "none"] {
         assert!(CssCoordBox::from_keyword(keyword).is_none());
@@ -112,13 +139,13 @@ fn ray_constructor_retains_required_bearing_and_optional_presence() {
     assert!(!omitted.contain());
     assert!(omitted.position().is_none());
     budget("ray(450deg)", 2, |limits| {
-        omitted.serialize_specified_with_limits(limits)
+        omitted.serialize_specified(limits)
     });
     let explicit = CssRay::new(bearing.clone(), Some(CssRaySize::ClosestSide), false, None);
     assert_ne!(explicit, omitted);
     assert_eq!(explicit.size(), Some(CssRaySize::ClosestSide));
     budget("ray(450deg)", 3, |limits| {
-        explicit.serialize_specified_with_limits(limits)
+        explicit.serialize_specified(limits)
     });
     let full = CssRay::new(bearing, Some(CssRaySize::Sides), true, Some(position()));
     let CssPositionRef::Cartesian(axes) = full.position().unwrap().view() else {
@@ -126,7 +153,7 @@ fn ray_constructor_retains_required_bearing_and_optional_presence() {
     };
     assert_eq!(axes.horizontal(), &CssHorizontalPosition::Left);
     budget("ray(450deg sides contain at left top)", 7, |limits| {
-        full.serialize_specified_with_limits(limits)
+        full.serialize_specified(limits)
     });
 }
 
@@ -143,10 +170,8 @@ fn ray_sizes_have_independent_direct_keyword_and_retained_default_contracts() {
             CssRaySize::from_keyword(&text.to_ascii_uppercase()),
             Some(size)
         );
-        assert_eq!(size.as_css_str(), text);
-        budget(text, 1, |limits| {
-            size.serialize_specified_with_limits(limits)
-        });
+        assert_eq!(size.as_str(), text);
+        budget(text, 1, |limits| size.serialize_specified(limits));
     }
     assert!(CssRaySize::from_keyword("contain").is_none());
     let source = declaration(
@@ -166,16 +191,18 @@ fn ray_sizes_have_independent_direct_keyword_and_retained_default_contracts() {
     );
     assert_eq!(value.position().unwrap(), &position());
     assert_eq!(
-        value.serialize_specified().unwrap(),
+        value.serialize_specified(Default::default()).unwrap(),
         "ray(100grad contain at left top)"
     );
 }
 
 #[test]
 fn rotation_rejects_empty_and_preserves_modifier_angle_omissions() {
-    assert_eq!(
-        CssOffsetRotate::try_new(None, None),
-        Err(CssMotionConstructionError::EmptyRotate)
+    assert!(
+        CssOffsetRotate::try_new(None, None)
+            .as_ref()
+            .unwrap_err()
+            .is_empty_rotate()
     );
     let literal = angle(".25", CssAngleUnit::Turns);
     let alone = CssOffsetRotate::try_new(None, Some(literal.clone())).unwrap();
@@ -184,22 +211,16 @@ fn rotation_rejects_empty_and_preserves_modifier_angle_omissions() {
         alone.angle().unwrap().origin(),
         &CssValueOrigin::Programmatic
     );
-    budget("0.25turn", 2, |limits| {
-        alone.serialize_specified_with_limits(limits)
-    });
+    budget("0.25turn", 2, |limits| alone.serialize_specified(limits));
     let automatic = CssOffsetRotate::auto();
     assert_eq!(automatic.modifier(), Some(CssOffsetRotateModifier::Auto));
     assert!(automatic.angle().is_none());
-    budget("auto", 2, |limits| {
-        automatic.serialize_specified_with_limits(limits)
-    });
+    budget("auto", 2, |limits| automatic.serialize_specified(limits));
     for (modifier, text) in [
         (CssOffsetRotateModifier::Auto, "auto"),
         (CssOffsetRotateModifier::Reverse, "reverse"),
     ] {
-        budget(text, 1, |limits| {
-            modifier.serialize_specified_with_limits(limits)
-        });
+        budget(text, 1, |limits| modifier.serialize_specified(limits));
         let both = CssOffsetRotate::try_new(Some(modifier), Some(literal.clone())).unwrap();
         assert_eq!(both.modifier(), Some(modifier));
         assert_eq!(
@@ -213,29 +234,36 @@ fn rotation_rejects_empty_and_preserves_modifier_angle_omissions() {
         );
         assert_ne!(both, alone);
         budget(&format!("{text} 0.25turn"), 3, |limits| {
-            both.serialize_specified_with_limits(limits)
+            both.serialize_specified(limits)
         });
     }
 }
 
 #[test]
 fn motion_angle_construction_uses_strict_angle_owner_errors_and_origins() {
-    let component = parse_component_values("0").unwrap().items()[0].clone();
+    let component = CssComponentValues::parse(&CssParser::default(), "0")
+        .unwrap()
+        .items()[0]
+        .clone();
     let origin = component.origin().clone();
-    let error = CssAngleLiteral::try_from_component(component).unwrap_err();
-    assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
-    assert_eq!(error.origin(), &origin);
+    let error = CssNumericLiteral::<CssAngle>::try_from_component(component).unwrap_err();
+    assert!(error.is_root_domain_mismatch(), "{error:?}");
+    assert_eq!(error.origin(), Some(&origin));
     let source = declaration("offset-path", "ray(calc(1turn - 90deg))");
     let bearing = ray(&source).angle();
     let components = bearing.calculation().unwrap().components().clone();
-    let constructed = CssAngleValue::try_from_calculation(
-        CssAngleCalculation::try_from_components(components.clone()).unwrap(),
+    let constructed = CssNumeric::<CssAngle>::try_from_calculation(
+        CssCalculation::<CssAngle>::try_from_components(components.clone(), Default::default())
+            .unwrap(),
     )
     .unwrap();
     assert_eq!(constructed.calculation().unwrap().components(), &components);
     assert_eq!(constructed.origin(), bearing.origin());
     let model = CssRay::new(constructed, None, false, None);
-    assert_eq!(model.serialize_specified().unwrap(), "ray(calc(270deg))");
+    assert_eq!(
+        model.serialize_specified(Default::default()).unwrap(),
+        "ray(calc(270deg))"
+    );
     assert_eq!(
         model.angle().calculation().unwrap().components(),
         &components
@@ -244,7 +272,7 @@ fn motion_angle_construction_uses_strict_angle_owner_errors_and_origins() {
 
 #[test]
 fn recovered_bearing_graph_cannot_reenter_a_checked_motion_constructor() {
-    let report = parse_style_attribute("/*😀*/offset-path:ray(calc(90deg");
+    let report = CssParser::default().parse_block_contents("/*😀*/offset-path:ray(calc(90deg");
     assert!(!report.is_clean());
     let [source] = report.syntax().as_slice() else {
         panic!("retained recovered authored occurrence")
@@ -256,17 +284,14 @@ fn recovered_bearing_graph_cannot_reenter_a_checked_motion_constructor() {
         panic!("calc root")
     };
     let before = calculation.components().clone();
-    let error = CssAngleValue::try_from_calculation(calculation.clone()).unwrap_err();
-    assert_eq!(
-        error.kind(),
-        &CssNumericConstructionErrorKind::RecoveredComponent
-    );
+    let error = CssNumeric::<CssAngle>::try_from_calculation(calculation.clone()).unwrap_err();
+    assert!(error.is_recovered_component(), "{error:?}");
     assert_eq!(error.origin(), Some(function.closing_origin()));
     assert!(error.path().is_none());
     assert!(std::error::Error::source(&error).is_none());
     assert_eq!(calculation.components(), &before);
     assert_eq!(
-        CssAngleValue::try_from_calculation(calculation.clone()).unwrap_err(),
+        CssNumeric::<CssAngle>::try_from_calculation(calculation.clone()).unwrap_err(),
         error
     );
 }
@@ -286,7 +311,9 @@ fn ray_catalog_reports_exact_selected_production_and_authored_complete_status() 
     assert!(feature.supported_subset().is_none() && feature.unsupported_remainder().is_none());
     let source = declaration("offset-path", "ray(90deg sides contain at left top)");
     assert_eq!(
-        ray(&source).serialize_specified().unwrap(),
+        ray(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "ray(90deg sides contain at left top)"
     );
 }
@@ -295,16 +322,14 @@ fn ray_catalog_reports_exact_selected_production_and_authored_complete_status() 
 fn whole_path_views_preserve_none_box_only_and_each_coupled_path_kind() {
     let none = CssOffsetPath::none();
     assert_eq!(none.view(), CssOffsetPathRef::None);
-    budget("none", 1, |limits| {
-        none.serialize_specified_with_limits(limits)
-    });
+    budget("none", 1, |limits| none.serialize_specified(limits));
     let box_only = CssOffsetPath::from_coord_box(CssCoordBox::BorderBox);
     assert_eq!(
         box_only.view(),
         CssOffsetPathRef::CoordBox(CssCoordBox::BorderBox)
     );
     budget("border-box", 1, |limits| {
-        box_only.serialize_specified_with_limits(limits)
+        box_only.serialize_specified(limits)
     });
     let kinds = [
         (
@@ -328,9 +353,7 @@ fn whole_path_views_preserve_none_box_only_and_each_coupled_path_kind() {
         ),
     ];
     for (kind, css, nodes) in kinds {
-        budget(css, nodes, |limits| {
-            kind.serialize_specified_with_limits(limits)
-        });
+        budget(css, nodes, |limits| kind.serialize_specified(limits));
         let pair = CssOffsetPathValue::new(kind.clone(), Some(CssCoordBox::BorderBox));
         assert_eq!(pair.path(), &kind);
         assert_eq!(pair.coord_box(), Some(CssCoordBox::BorderBox));
@@ -339,17 +362,15 @@ fn whole_path_views_preserve_none_box_only_and_each_coupled_path_kind() {
         assert_ne!(path, box_only);
         let expected = format!("{css} border-box");
         budget(&expected, nodes + 2, |limits| {
-            pair.serialize_specified_with_limits(limits)
+            pair.serialize_specified(limits)
         });
         budget(&expected, nodes + 2, |limits| {
-            path.serialize_specified_with_limits(limits)
+            path.serialize_specified(limits)
         });
         let omitted = CssOffsetPathValue::new(kind, None);
         assert!(omitted.coord_box().is_none());
         assert_ne!(omitted, pair);
-        budget(css, nodes + 1, |limits| {
-            omitted.serialize_specified_with_limits(limits)
-        });
+        budget(css, nodes + 1, |limits| omitted.serialize_specified(limits));
     }
 }
 
@@ -370,19 +391,22 @@ fn path_url_view_retains_src_target_modifier_order_and_never_becomes_image() {
     assert_eq!(url.as_str(), "é.svg");
     assert_eq!(url.modifiers().len(), 2);
     assert_eq!(
-        pair.serialize_specified().unwrap(),
+        pair.serialize_specified(Default::default()).unwrap(),
         "src(\"é.svg\" CORS integrity(\"sha256\")) view-box"
     );
     let empty = CssOffsetPath::from_path(CssOffsetPathValue::new(
         CssOffsetPathKind::Url(CssUrl::new(String::new())),
         None,
     ));
-    assert_eq!(empty.serialize_specified().unwrap(), "url(\"\")");
+    assert_eq!(
+        empty.serialize_specified(Default::default()).unwrap(),
+        "url(\"\")"
+    );
 }
 
 #[test]
 fn physical_position_anchor_and_position_branches_retain_checked_axes_and_origins() {
-    let scalar = CssSpecifiedLengthPercentage::try_from_component(
+    let scalar = CssNumeric::<CssLengthPercentage>::try_from_component(
         CssComponentValue::try_token("-25%").unwrap(),
     )
     .unwrap();
@@ -399,63 +423,78 @@ fn physical_position_anchor_and_position_branches_retain_checked_axes_and_origin
     let start = CssOffsetPosition::Position(physical.clone().into());
     let anchor = CssOffsetAnchor::Position(physical.into());
     // Position aggregate + two axis nodes + the retained percentage leaf.
+    budget("-25% bottom", 4, |limits| start.serialize_specified(limits));
     budget("-25% bottom", 4, |limits| {
-        start.serialize_specified_with_limits(limits)
-    });
-    budget("-25% bottom", 4, |limits| {
-        anchor.serialize_specified_with_limits(limits)
+        anchor.serialize_specified(limits)
     });
     budget("normal", 1, |limits| {
-        CssOffsetPosition::Normal.serialize_specified_with_limits(limits)
+        CssOffsetPosition::Normal.serialize_specified(limits)
     });
     budget("auto", 1, |limits| {
-        CssOffsetPosition::Auto.serialize_specified_with_limits(limits)
+        CssOffsetPosition::Auto.serialize_specified(limits)
     });
     budget("auto", 1, |limits| {
-        CssOffsetAnchor::Auto.serialize_specified_with_limits(limits)
+        CssOffsetAnchor::Auto.serialize_specified(limits)
     });
-    assert_eq!(
-        CssPhysicalPosition::try_new(CssHorizontalPosition::XStart, CssVerticalPosition::Top),
-        Err(CssPositionConstructionError::NonPhysicalKeyword)
+    assert!(
+        CssPhysicalPosition::try_new(CssHorizontalPosition::XStart, CssVerticalPosition::Top)
+            .as_ref()
+            .unwrap_err()
+            .is_non_physical_keyword()
     );
-    assert_eq!(
+    assert!(
         CssPhysicalPosition::try_new(
             CssHorizontalPosition::LeftOffset(scalar),
             CssVerticalPosition::Top
-        ),
-        Err(CssPositionConstructionError::UnpairedEdgeOffsets)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_unpaired_edge_offsets()
     );
 }
 
 #[test]
 fn shorthand_constructor_rejects_anchor_only_and_pathless_distance_or_rotation() {
-    assert_eq!(
-        CssOffset::try_new(None, None, None, None, None),
-        Err(CssMotionConstructionError::EmptyOffset)
+    assert!(
+        CssOffset::try_new(None, None, None, None, None)
+            .as_ref()
+            .unwrap_err()
+            .is_empty_offset()
     );
-    assert_eq!(
-        CssOffset::try_new(None, None, None, None, Some(CssOffsetAnchor::Auto)),
-        Err(CssMotionConstructionError::EmptyOffset)
+    assert!(
+        CssOffset::try_new(None, None, None, None, Some(CssOffsetAnchor::Auto))
+            .as_ref()
+            .unwrap_err()
+            .is_empty_offset()
     );
-    assert_eq!(
+    assert!(
         CssOffset::try_new(
             Some(CssOffsetPosition::Normal),
             None,
-            Some(CssSpecifiedLengthPercentage::zero()),
+            Some(
+                CssNumeric::<CssLengthPercentage>::try_from_component(
+                    CssComponentValue::try_number("0").unwrap()
+                )
+                .unwrap()
+            ),
             None,
             None
-        ),
-        Err(CssMotionConstructionError::MissingPath)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_missing_path()
     );
-    assert_eq!(
+    assert!(
         CssOffset::try_new(
             Some(CssOffsetPosition::Auto),
             None,
             None,
             Some(CssOffsetRotate::auto()),
             None
-        ),
-        Err(CssMotionConstructionError::MissingPath)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_missing_path()
     );
     let position_only =
         CssOffset::try_new(Some(CssOffsetPosition::Normal), None, None, None, None).unwrap();
@@ -467,12 +506,17 @@ fn shorthand_constructor_rejects_anchor_only_and_pathless_distance_or_rotation()
             && position_only.anchor().is_none()
     );
     budget("normal", 2, |limits| {
-        position_only.serialize_specified_with_limits(limits)
+        position_only.serialize_specified(limits)
     });
     let full = CssOffset::try_new(
         Some(CssOffsetPosition::Normal),
         Some(CssOffsetPath::none()),
-        Some(CssSpecifiedLengthPercentage::zero()),
+        Some(
+            CssNumeric::<CssLengthPercentage>::try_from_component(
+                CssComponentValue::try_number("0").unwrap(),
+            )
+            .unwrap(),
+        ),
         Some(CssOffsetRotate::auto()),
         Some(CssOffsetAnchor::Auto),
     )
@@ -488,7 +532,7 @@ fn shorthand_constructor_rejects_anchor_only_and_pathless_distance_or_rotation()
     );
     assert_eq!(full.anchor(), Some(&CssOffsetAnchor::Auto));
     budget("normal none 0 auto / auto", 7, |limits| {
-        full.serialize_specified_with_limits(limits)
+        full.serialize_specified(limits)
     });
 }
 
@@ -500,7 +544,7 @@ fn assert_initial(value: CssLonghandValueRef<'_>) {
             assert!(value.calculation().is_none());
             assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
             assert!(
-                matches!(value.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation() == "0")
+                matches!(value.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation() == "0")
             );
         }
         CssLonghandValueRef::OffsetRotate(value) => {
@@ -544,7 +588,12 @@ fn intrinsic_initial_payloads_and_omitted_shorthand_members_use_exact_central_va
             assert!(item.replacement_components().is_none());
             assert_initial(item.ordinary_value().unwrap().view());
         }
-        assert_eq!(offset(&source).serialize_specified().unwrap(), text);
+        assert_eq!(
+            offset(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            text
+        );
     }
 }
 
@@ -590,10 +639,11 @@ fn typed_extraction_preserves_parsed_programmatic_and_replacement_numeric_proven
     );
     assert!(model.rotate().unwrap().angle().unwrap().literal().is_some());
     let pending = declaration("offset", "var(--m)");
-    let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+    let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
         panic!("pending")
     };
-    let replacement = parse_component_values("ray(450deg) -2em reverse 90deg").unwrap();
+    let replacement =
+        CssComponentValues::parse(&CssParser::default(), "ray(450deg) -2em reverse 90deg").unwrap();
     let before = replacement.clone();
     let CssContributions::Longhands(items) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("reentered")
@@ -619,7 +669,7 @@ fn typed_extraction_preserves_parsed_programmatic_and_replacement_numeric_proven
     assert_eq!(origin.source().as_str(), "ray(450deg) -2em reverse 90deg");
     assert!(
         handle
-            .reenter(parse_component_values("none").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "none").unwrap())
             .is_ok()
     );
 }
@@ -627,12 +677,13 @@ fn typed_extraction_preserves_parsed_programmatic_and_replacement_numeric_proven
 #[test]
 fn typed_checked_construction_preserves_supplied_angle_and_distance_component_identity() {
     let bearing_component = CssComponentValue::try_dimension("+450.00", "GRAD").unwrap();
-    let bearing = CssAngleValue::from_literal(
-        CssAngleLiteral::try_from_component(bearing_component.clone()).unwrap(),
-    );
+    let bearing = CssNumeric::<CssAngle>::try_from_literal(
+        CssNumericLiteral::<CssAngle>::try_from_component(bearing_component.clone()).unwrap(),
+    )
+    .unwrap();
     let distance_component = CssComponentValue::try_token("-25.00%").unwrap();
     let distance =
-        CssSpecifiedLengthPercentage::try_from_component(distance_component.clone()).unwrap();
+        CssNumeric::<CssLengthPercentage>::try_from_component(distance_component.clone()).unwrap();
     let ray = CssRay::new(bearing, None, false, None);
     let model = CssOffset::try_new(
         None,
@@ -656,12 +707,16 @@ fn typed_checked_construction_preserves_supplied_angle_and_distance_component_id
         &bearing_component
     );
     assert_eq!(
-        model.distance().unwrap().literal_component(),
+        model
+            .distance()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component()),
         Some(&distance_component)
     );
     let before = model.clone();
     budget("ray(450grad) -25%", 5, |limits| {
-        model.serialize_specified_with_limits(limits)
+        model.serialize_specified(limits)
     });
     assert_eq!(model, before);
     assert_eq!(
@@ -669,7 +724,11 @@ fn typed_checked_construction_preserves_supplied_angle_and_distance_component_id
         &bearing_component
     );
     assert_eq!(
-        model.distance().unwrap().literal_component(),
+        model
+            .distance()
+            .unwrap()
+            .literal()
+            .map(|literal| literal.component()),
         Some(&distance_component)
     );
 }
@@ -684,20 +743,23 @@ fn composed_motion_numeric_graphs_share_projection_limits_without_mutation() {
     // and two literals, projecting four retained canonical math nodes.
     assert_eq!(
         value
-            .serialize_specified_with_limits(L::new(8, 7, expected.len()))
+            .serialize_specified(L::new(8, 7, expected.len()))
             .unwrap(),
         expected
     );
     let error = value
-        .serialize_specified_with_limits(L::new(8, 6, expected.len()))
+        .serialize_specified(L::new(8, 6, expected.len()))
         .unwrap_err();
-    assert_eq!(error.kind(), K::ProjectionNodeLimit);
+    assert!(error.is_projection_node_limit(), "{error:?}");
     assert_eq!(value, &before);
     assert_eq!(
         value
-            .serialize_specified_with_limits(L::new(8, 6, expected.len()))
+            .serialize_specified(L::new(8, 6, expected.len()))
             .unwrap_err(),
         error
     );
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }

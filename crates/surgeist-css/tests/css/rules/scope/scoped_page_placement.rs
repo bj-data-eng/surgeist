@@ -10,7 +10,12 @@
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule
 use crate::css::support::rules::normalized_rule_contexts as contexts;
 use crate::css::support::rules::page_pseudo;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::CssRuleContextKindRef;
+use surgeist_css::rule::page::CssPagePseudo;
+use surgeist_css::rule::{CssRule, CssStyleBlock};
+use surgeist_css::selector::CssNamespaceContext;
 
 fn assert_admitted(group: &str, expected_diagnostics: usize) {
     let bad = if expected_diagnostics == 0 {
@@ -20,7 +25,7 @@ fn assert_admitted(group: &str, expected_diagnostics: usize) {
     };
     let source =
         format!("@scope (.root){{{group}{{before{{}}@page :left{{{bad}margin:1px}}after{{}}}}}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert_eq!(
         report.diagnostics().len(),
         expected_diagnostics,
@@ -34,7 +39,7 @@ fn assert_admitted(group: &str, expected_diagnostics: usize) {
             source.find("opacity:").unwrap()
         );
     }
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let rules = contexts(&normalized);
     assert_eq!(rules.len(), 5);
     assert!(matches!(
@@ -131,13 +136,13 @@ fn immediate_scope_body_keeps_its_own_admission_through_group_ancestors() {
         ),
     ] {
         let source = format!("{prefix}before{{}}@page :left{{margin:1px}}after{{}}{suffix}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(report.diagnostics().len(), 1);
         assert_eq!(
             report.diagnostics()[0].action(),
             CssRecoveryAction::DropAtRule
         );
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let rules = contexts(&normalized);
         assert!(
             !rules
@@ -172,13 +177,13 @@ fn style_ancestor_remains_restrictive_through_scope_and_conditional_bodies() {
         ("@scope (.root){host{@container(width>1px){", "}}}"),
     ] {
         let source = format!("{prefix}before{{}}@page :left{{margin:1px}}after{{}}{suffix}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(report.diagnostics().len(), 1, "{:?}", report.diagnostics());
         assert_eq!(
             report.diagnostics()[0].action(),
             CssRecoveryAction::DropAtRule
         );
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let rules = contexts(&normalized);
         assert!(
             !rules
@@ -210,9 +215,9 @@ fn assert_chunked_admission(group: &str) {
         ));
     }
     source.push_str(&"}".repeat(65));
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let rules = contexts(&normalized);
     let pages: Vec<_> = rules
         .iter()
@@ -322,13 +327,13 @@ fn chunked_inner_scope_resets_body_admission() {
             "@media all{".repeat(depth),
             "}".repeat(depth)
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert_eq!(report.diagnostics().len(), 1, "{:?}", report.diagnostics());
         assert_eq!(
             report.diagnostics()[0].action(),
             CssRecoveryAction::DropAtRule
         );
-        let normalized = normalize_sheet(report.syntax()).unwrap();
+        let normalized = report.syntax().normalize(Default::default()).unwrap();
         let rules = contexts(&normalized);
         assert!(
             !rules
@@ -351,13 +356,13 @@ fn chunked_style_ancestry_remains_restrictive() {
         "@media all{".repeat(64),
         "}".repeat(64)
     );
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert_eq!(report.diagnostics().len(), 1, "{:?}", report.diagnostics());
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropAtRule
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let rules = contexts(&normalized);
     assert!(
         !rules
@@ -374,7 +379,8 @@ fn chunked_style_ancestry_remains_restrictive() {
 
 #[test]
 fn isolated_scope_rule_uses_ordinary_group_admission() {
-    let report = parse_rule(
+    let report = CssRule::parse(
+        &CssParser::default(),
         "@scope(.root){@media print{before{}@page :left{margin:1px}after{}}}",
         &CssNamespaceContext::default(),
     );
@@ -382,16 +388,17 @@ fn isolated_scope_rule_uses_ordinary_group_admission() {
     let Some(CssRule::Scope(scope)) = report.syntax() else {
         panic!("scope fragment")
     };
-    let [CssScopedRule::Media(media)] = scope.rules().rules() else {
+    let [CssRule::Media(media)] = scope.rules().rules() else {
         panic!("media child")
     };
     // Existing API can prove retention before a scoped Page variant is added.
-    assert_eq!(media.rules().rules().len(), 3);
+    assert_eq!(media.rules().len(), 3);
 }
 
 #[test]
 fn isolated_scope_rule_keeps_direct_body_rejection() {
-    let report = parse_rule(
+    let report = CssRule::parse(
+        &CssParser::default(),
         "@scope(.root){before{}@page :left{margin:1px}after{}}",
         &CssNamespaceContext::default(),
     );
@@ -408,7 +415,8 @@ fn isolated_scope_rule_keeps_direct_body_rejection() {
 
 #[test]
 fn isolated_style_block_preserves_style_ancestry() {
-    let report = parse_style_block(
+    let report = CssStyleBlock::parse(
+        &CssParser::default(),
         "{@scope{@container(width>1px){before{}@page :left{margin:1px}after{}}}}",
         &CssNamespaceContext::default(),
     );

@@ -429,7 +429,7 @@ fn inline_fixture(
         revision: 1,
     };
     let support = CssomDeclarationSupport::try_new(vec![(
-        surgeist_css::CssPropertyGrammar::from_name("width").unwrap(),
+        surgeist_css::property::CssPropertyGrammar::from_name("width").unwrap(),
         CssomUsabilityRequirement::WholeDeclarationDecision,
     )])
     .unwrap();

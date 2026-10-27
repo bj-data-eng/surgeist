@@ -3,10 +3,11 @@
 
 use std::sync::atomic::AtomicBool;
 use surgeist_color::Color;
-use surgeist_css::{
-    CssColorSchemeKeyword, CssColorSchemeParseReport, CssComponentValueLimits, CssGlobalKeyword,
-    CssKnownPropertyValueRef, CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssValueOrigin,
-};
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::source::{CssUtf16InputLimits, CssUtf16PropertyValueLimits};
+use surgeist_css::values::color_adjust::{CssColorSchemeKeyword, CssColorSchemeParseReport};
 use surgeist_dom::*;
 
 fn limits() -> DomLimits {
@@ -26,7 +27,6 @@ fn limits() -> DomLimits {
     .unwrap()
     .with_meta_color_scheme_limits(CssUtf16PropertyValueLimits {
         input: CssUtf16InputLimits::default(),
-        syntax: CssComponentValueLimits::default(),
         max_work: 1_000_000,
         max_live_bytes: 2 * 1024 * 1024,
         max_retained_bytes: 2 * 1024 * 1024,
@@ -268,7 +268,9 @@ fn contextual_theme_is_unavailable_rather_than_invalid_css_or_a_later_literal() 
     assert!(matches!(
         dom.apply(batch, &AtomicBool::new(false)),
         Err(DomError::Meta(DomMetaError::ThemeColorUnavailable(
-            surgeist_css::CssColorUnavailable::Palette(surgeist_css::CssSystemColor::CanvasText)
+            surgeist_css::color::CssColorUnavailable::Palette(
+                surgeist_css::color::CssSystemColor::CanvasText
+            )
         )))
     ));
     assert_eq!(dom.snapshot().stamp(), before.stamp());

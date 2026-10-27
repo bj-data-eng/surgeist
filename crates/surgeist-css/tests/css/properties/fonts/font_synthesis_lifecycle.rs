@@ -11,7 +11,16 @@ use crate::css::support::known_property;
 use crate::css::support::named_property::assert_checked_value_rejected_at;
 use crate::css::support::named_property::longhand_contributions as longhands;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandContributions,
+    CssPropertyKindRef, CssPropertyTarget,
+};
 
 const MEMBERS: [&str; 4] = [
     "font-synthesis-weight",
@@ -61,7 +70,7 @@ fn historical_weight_style_none_parsing_and_checked_values_remain_controls() {
         else {
             panic!("synthesis")
         };
-        assert_eq!(left.synthesis(), right.synthesis());
+        assert_eq!(left.value(), right.value());
         assert_eq!(left.as_css(), text);
         assert_eq!(constructed.importance(), CssImportance::Important);
     }
@@ -79,7 +88,7 @@ fn historical_invalid_shorthand_recovery_and_typed_checked_errors_remain_control
         ("oblique-only", "oblique-only"),
     ] {
         let source = format!("color:red;font-synthesis:{text};color:blue");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one diagnostic: {source}")
         };
@@ -89,7 +98,12 @@ fn historical_invalid_shorthand_recovery_and_typed_checked_errors_remain_control
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(report.syntax().len(), 2);
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
         assert_checked_value_rejected_at(CssKnownProperty::FontSynthesis, text, rest);
     }
 }
@@ -111,11 +125,19 @@ fn shorthand_global_and_pending_parse_admission_remains_a_control() {
         ));
         let constructed = checked("font-synthesis", text);
         assert_eq!(
-            source.value_components().serialize().unwrap().as_css(),
+            source
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             text
         );
         assert_eq!(
-            constructed.value_components().serialize().unwrap().as_css(),
+            constructed
+                .value_components()
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             text
         );
     }
@@ -136,7 +158,12 @@ fn four_capabilities_and_representative_permutations_are_admitted() {
     ] {
         let source = declaration("font-synthesis", text);
         assert!(source.known().unwrap().property_value().is_some());
-        assert!(validate_style_attribute(&format!("font-synthesis:{text}")).is_ok());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(format!("font-synthesis:{text}"))
+                .into_validation_result()
+                .is_ok()
+        );
         assert!(
             checked("font-synthesis", text)
                 .known()
@@ -152,7 +179,8 @@ fn four_capabilities_and_representative_permutations_are_admitted() {
         ("small-caps auto", "auto"),
         ("oblique-only weight", "oblique-only weight"),
     ] {
-        let report = parse_style_attribute(&format!("font-synthesis:{invalid};color:red"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("font-synthesis:{invalid};color:red"));
         assert_eq!(report.syntax().len(), 1, "{invalid}");
         let [diagnostic] = report.diagnostics() else {
             panic!("one shorthand grammar error")
@@ -176,7 +204,7 @@ fn four_longhands_admit_only_their_selected_keyword_grammars_with_exact_origins(
         };
         for keyword in keywords {
             let text = format!("{name}:{keyword}!important");
-            let report = parse_style_attribute(&text);
+            let report = CssParser::default().parse_block_contents(&text);
             assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
             let source = &report.syntax()[0];
             assert_eq!(source.known().unwrap().property().canonical_name(), name);
@@ -196,24 +224,26 @@ fn four_longhands_admit_only_their_selected_keyword_grammars_with_exact_origins(
 #[test]
 fn checked_longhand_admission_preserves_component_origins_and_typed_rejection() {
     for name in MEMBERS {
-        let components = parse_component_values("auto").unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), "auto").unwrap();
         let before = components.clone();
-        let source =
-            parse_property_value_for_grammar(grammar(name), components, CssImportance::Important)
-                .unwrap();
+        let source = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(grammar(name)),
+            components,
+            CssImportance::Important,
+        )
+        .unwrap();
         assert_eq!(source.value_components(), &before);
         assert!(source.position().is_none());
         assert_eq!(source.importance(), CssImportance::Important);
-        let error = parse_property_value_for_grammar(
-            grammar(name),
-            parse_component_values("auto none").unwrap(),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(grammar(name)),
+            CssComponentValues::parse(&CssParser::default(), "auto none").unwrap(),
             CssImportance::Normal,
         )
         .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
         let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
             panic!("original none token")
         };
@@ -231,7 +261,8 @@ fn longhand_grammar_errors_recover_locally_as_known_property_failures() {
             &["oblique-only", "auto none", "normal", "1", "auto,none"]
         };
         for text in invalid {
-            let report = parse_style_attribute(&format!("color:red;{name}:{text};color:blue"));
+            let report = CssParser::default()
+                .parse_block_contents(format!("color:red;{name}:{text};color:blue"));
             assert_eq!(report.syntax().len(), 2, "{name}:{text}");
             let [diagnostic] = report.diagnostics() else {
                 panic!("one grammar error")
@@ -320,7 +351,7 @@ fn pending_reentry_is_strict_and_preserves_source_and_replacement_provenance() {
         for symbolic in ["var(--synthesis)", "env(synthesis)"] {
             let source = declaration(name, symbolic);
             let before = source.clone();
-            let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+            let CssExpansion::Pending(pending) = source.expand().unwrap() else {
                 panic!("pending")
             };
             assert!(pending.source().same_occurrence(&source));
@@ -331,7 +362,7 @@ fn pending_reentry_is_strict_and_preserves_source_and_replacement_provenance() {
             } else {
                 "none"
             };
-            let replacement = parse_component_values(text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
             else {
                 panic!("completed")
@@ -350,7 +381,7 @@ fn pending_reentry_is_strict_and_preserves_source_and_replacement_provenance() {
                 assert_eq!(item.replacement_components(), Some(&replacement));
             }
             let CssContributions::Longhands(globals) = pending
-                .reenter(parse_component_values("initial").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "initial").unwrap())
                 .unwrap()
             else {
                 panic!("global replacement")
@@ -364,22 +395,21 @@ fn pending_reentry_is_strict_and_preserves_source_and_replacement_provenance() {
                 && item.source().same_occurrence(&source)));
             for invalid in ["auto none", "auto!important", "none;"] {
                 assert!(
-                    matches!(
-                        pending
-                            .reenter(parse_component_values(invalid).unwrap())
-                            .unwrap_err()
-                            .kind(),
-                        CssExpansionErrorKind::InvalidReplacement(_)
-                    ),
+                    pending
+                        .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
+                        .unwrap_err()
+                        .replacement_error()
+                        .is_some(),
                     "{name}: {invalid}"
                 );
             }
-            assert_eq!(
+            assert!(
                 pending
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .is_residual_substitution()
             );
             assert!(source.same_occurrence(&before));
             assert_eq!(source.value_components(), before.value_components());
@@ -390,9 +420,9 @@ fn pending_reentry_is_strict_and_preserves_source_and_replacement_provenance() {
 #[test]
 fn normalization_preserves_repeated_shorthand_order_importance_and_occurrence() {
     let text = ".a{font-synthesis:weight!important;color:red;font-synthesis:none;font-synthesis:style!important}";
-    let report = parse_sheet(text);
+    let report = CssParser::default().parse_sheet(text);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()

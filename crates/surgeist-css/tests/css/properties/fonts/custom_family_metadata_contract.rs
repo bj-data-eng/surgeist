@@ -1,7 +1,19 @@
 //! Variables1 CR20220616 §§2/2.2 supplies every literal intrinsic fact and
 //! the empty-authored-value versus guaranteed-invalid-initial distinction.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{
+    CssSpecificationTier, property_support_metadata, specification_source,
+};
+use surgeist_css::declaration::{
+    CssCustomPropertyDeclaredValue, CssCustomPropertyName, CssDeclaration, CssGlobalKeyword,
+    CssImportance,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssGuaranteedInvalidInitial, CssKnownProperty,
+    CssPropertyNameRef, CssPropertyTarget,
+};
 
 #[test]
 fn all_valid_names_share_the_complete_intrinsic_definition_and_selected_source() {
@@ -71,7 +83,7 @@ fn assert_authored_initial_distinction(
         assert_eq!(declaration.importance(), CssImportance::Normal);
     }
     let CssExpansion::Contributions(CssContributions::Custom(contribution)) =
-        expand_declaration(declaration).unwrap()
+        declaration.expand().unwrap()
     else {
         panic!("completed symbolic custom contribution");
     };
@@ -83,7 +95,10 @@ fn assert_authored_initial_distinction(
         contribution.declaration().name().metadata(),
         metadata
     ));
-    assert_eq!(declaration.to_specified_css().unwrap(), expected);
+    assert_eq!(
+        declaration.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(declaration, &before);
     assert!(declaration.same_occurrence(&before));
     assert_eq!(declaration.value_components(), &components);
@@ -92,7 +107,7 @@ fn assert_authored_initial_distinction(
 #[test]
 fn empty_tokens_and_authored_initial_remain_distinct_through_checked_and_parsed_contributions() {
     const SOURCE: &str = "--x:;--x:initial!important";
-    let report = parse_style_attribute(SOURCE);
+    let report = CssParser::default().parse_block_contents(SOURCE);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [empty, initial] = report.syntax().as_slice() else {
         panic!("two ordered authored occurrences with distinct declared values");
@@ -104,7 +119,10 @@ fn empty_tokens_and_authored_initial_remain_distinct_through_checked_and_parsed_
         initial.custom().unwrap().value()
     );
     assert_eq!(
-        validate_style_attribute(SOURCE).unwrap(),
+        CssParser::default()
+            .parse_block_contents(SOURCE)
+            .into_validation_result()
+            .unwrap(),
         report.syntax().clone()
     );
 
@@ -118,15 +136,23 @@ fn empty_tokens_and_authored_initial_remain_distinct_through_checked_and_parsed_
             "--x: initial !important;",
         ),
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let original_values = values.clone();
-        let checked =
-            parse_property_value(CssPropertyNameRef::Custom(&name), values, importance).unwrap();
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
+            values,
+            importance,
+        )
+        .unwrap();
         assert!(checked.parsed_name().is_none());
         assert!(checked.parsed_value().is_none());
         assert_eq!(checked.value_components(), &original_values);
         assert_authored_initial_distinction(&checked, is_initial, expected);
-        let reparsed = validate_style_attribute(expected).unwrap();
+        let reparsed = CssParser::default()
+            .parse_block_contents(expected)
+            .into_validation_result()
+            .unwrap();
         let [reparsed] = reparsed.as_slice() else {
             panic!("one complete canonical custom declaration");
         };

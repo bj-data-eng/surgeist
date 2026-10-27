@@ -10,7 +10,7 @@
 ))]
 
 use std::sync::atomic::AtomicBool;
-use surgeist_css::CssUtf16InputLimits;
+use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_dom::*;
 use surgeist_html::HtmlDocumentMode;
 use surgeist_runtime::*;

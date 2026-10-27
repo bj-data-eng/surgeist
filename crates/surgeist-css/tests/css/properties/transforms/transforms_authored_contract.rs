@@ -8,10 +8,24 @@ use crate::css::support::authored_property;
 use crate::css::support::known_property as property;
 use crate::css::support::named_property::sole_completed_contributions as completed;
 use crate::css::support::serialization_limits::LimitLadder;
-use CssSpecifiedValueSerializationErrorKind as K;
-use CssSpecifiedValueSerializationLimits as L;
+use CssSerializationLimits as L;
 use authored_property::{ParserFront, assert_source, checked, checked_components, invalid};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget, CssPropertyValueError,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::transform::CssTranslate;
 
 const FRONTS: [ParserFront; 5] = [
     ParserFront::StyleAttribute,
@@ -66,7 +80,7 @@ fn selected_3d_properties_admit_keywords_positions_and_unfloored_nonnegative_len
         ),
     ] {
         let text = format!("color:red;{name}:{input};color:blue");
-        let report = parse_style_attribute(&text);
+        let report = CssParser::default().parse_block_contents(&text);
         assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
         assert_eq!(report.syntax().len(), 3);
         admission(name, input, output);
@@ -263,18 +277,19 @@ fn all_pending_forms_reenter_strictly_and_reuse_original_identity_and_replacemen
             for pending in ["var(--t)", "env(t)", "attr(data-t *)"] {
                 let source = front.valid(p, pending, pending);
                 let before = source.clone();
-                let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+                let CssExpansion::Pending(handle) = source.expand().unwrap() else {
                     panic!("supported pending transform")
                 };
                 assert!(handle.source().same_occurrence(&source));
                 for invalid in ["var(--again)", "env(again)", "attr(data-again *)"] {
-                    assert!(matches!(
+                    assert!(
                         handle
-                            .reenter(parse_component_values(invalid).unwrap())
+                            .reenter(
+                                CssComponentValues::parse(&CssParser::default(), invalid).unwrap()
+                            )
                             .unwrap_err()
-                            .kind(),
-                        CssExpansionErrorKind::ResidualSubstitution
-                    ));
+                            .is_residual_substitution()
+                    );
                 }
                 for invalid in [
                     "__invalid__",
@@ -283,19 +298,23 @@ fn all_pending_forms_reenter_strictly_and_reuse_original_identity_and_replacemen
                     "initial;color:red",
                 ] {
                     for _ in 0..2 {
-                        assert!(matches!(
+                        assert!(
                             handle
-                                .reenter(parse_component_values(invalid).unwrap())
+                                .reenter(
+                                    CssComponentValues::parse(&CssParser::default(), invalid)
+                                        .unwrap()
+                                )
                                 .unwrap_err()
-                                .kind(),
-                            CssExpansionErrorKind::InvalidReplacement(_)
-                        ));
+                                .replacement_error()
+                                .is_some()
+                        );
                     }
                 }
                 for (text, expected_global) in
                     std::iter::once((input, None)).chain(GLOBALS.map(|(text, k)| (text, Some(k))))
                 {
-                    let replacement = parse_component_values(text).unwrap();
+                    let replacement =
+                        CssComponentValues::parse(&CssParser::default(), text).unwrap();
                     let CssContributions::Longhands(values) =
                         handle.reenter(replacement.clone()).unwrap()
                     else {
@@ -336,7 +355,7 @@ fn all_pending_forms_reenter_strictly_and_reuse_original_identity_and_replacemen
     }
 }
 fn implicit_origin(values: &CssComponentValues) -> CssValueOrigin {
-    let serialized = values.serialize().unwrap();
+    let serialized = values.serialize_tokens(Default::default()).unwrap();
     (0..serialized.as_css().len())
         .find_map(|offset| match serialized.origin_at(offset) {
             Some(CssSerializedOrigin::Token(v @ CssValueOrigin::ImplicitClosure { .. })) => {
@@ -355,14 +374,11 @@ fn implicit_origin(values: &CssComponentValues) -> CssValueOrigin {
         })
         .expect("original implicit closure")
 }
-fn closed_error(error: &CssPropertyValueParseError, origin: &CssValueOrigin, text: &str) {
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-    ));
+fn closed_error(error: &CssPropertyValueError, origin: &CssValueOrigin, text: &str) {
+    assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
     assert_eq!(
         error.origin(),
-        &CssSerializedOrigin::End(Some(origin.clone()))
+        CssSerializedOrigin::End(Some(origin.clone()))
     );
     let CssValueOrigin::ImplicitClosure { opening, at } = origin else {
         panic!("implicit closure")
@@ -392,7 +408,7 @@ fn checked_original_closures_reject_ordinary_global_and_pending_values_at_origin
                 .map(str::to_owned),
             )
         {
-            let values = parse_component_values(&text).unwrap();
+            let values = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
             let before = values.clone();
             let origin = implicit_origin(&values);
             for grammar in [false, true] {
@@ -412,15 +428,15 @@ fn pending_reentry_closures_reject_without_consuming_the_handle_and_complete_com
         let p = property(name);
         let value = if name == "scale" { "2 2 1" } else { value };
         let source = checked(p, "var(--t)", false);
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         for text in [format!("{value}/*"), "initial/*".to_owned()] {
-            let replacement = parse_component_values(&text).unwrap();
+            let replacement = CssComponentValues::parse(&CssParser::default(), &text).unwrap();
             let origin = implicit_origin(&replacement);
             for _ in 0..2 {
                 let error = handle.reenter(replacement.clone()).unwrap_err();
-                let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+                let Some(error) = error.replacement_error() else {
                     panic!("strict closure")
                 };
                 closed_error(error, &origin, &text);
@@ -428,7 +444,10 @@ fn pending_reentry_closures_reject_without_consuming_the_handle_and_complete_com
         }
         assert!(
             handle
-                .reenter(parse_component_values(&format!("{value}/**/")).unwrap())
+                .reenter(
+                    CssComponentValues::parse(&CssParser::default(), format!("{value}/**/"))
+                        .unwrap()
+                )
                 .is_ok()
         );
         assert!(handle.source().same_occurrence(&source));
@@ -437,11 +456,9 @@ fn pending_reentry_closures_reject_without_consuming_the_handle_and_complete_com
 #[test]
 fn normalized_composed_transform_families_preserve_occurrences_order_importance_and_pending_identity()
  {
-    let report = parse_sheet(
-        ".a{transform:translateX(10%);rotate:x 30deg!important;scale:50%;perspective:.25px;transform:var(--t)}",
-    );
+    let report = CssParser::default().parse_sheet(".a{transform:translateX(10%);rotate:x 30deg!important;scale:50%;perspective:.25px;transform:var(--t)}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let items: Vec<_> = normalized
         .items()
         .iter()
@@ -483,13 +500,10 @@ fn normalized_composed_transform_families_preserve_occurrences_order_importance_
         }
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 4).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 4
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 4))
     );
 }
 fn budgets(source: &CssDeclaration, output: &str, input: usize, projection: usize) {
@@ -498,7 +512,7 @@ fn budgets(source: &CssDeclaration, output: &str, input: usize, projection: usiz
         source.known().unwrap().property().canonical_name()
     );
     LimitLadder::new(&expected, input, projection)
-        .assert_unchanged(source, CssDeclaration::to_specified_css_with_limits);
+        .assert_unchanged(source, CssDeclaration::serialize_specified);
 }
 #[test]
 fn retained_provider_controls_charge_suppressed_defaults_and_specified_math_cumulatively() {
@@ -542,32 +556,27 @@ fn retained_provider_controls_charge_suppressed_defaults_and_specified_math_cumu
 }
 #[test]
 fn composed_sheets_share_bytes_and_retry_after_late_failure_without_mutation() {
-    let report = parse_sheet(
-        ".a{transform:scale(50%,150%);perspective:.25px!important}.b{rotate:x 30deg;transform-origin:top left 2px}",
-    );
+    let report = CssParser::default().parse_sheet(".a{transform:scale(50%,150%);perspective:.25px!important}.b{rotate:x 30deg;transform-origin:top left 2px}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let sheet = report.syntax();
     let before = sheet.clone();
     let expected = ".a { transform: scale(0.5, 1.5); perspective: 0.25px !important; }\n.b { rotate: x 30deg; transform-origin: left top 2px; }";
     let exact = L::new(usize::MAX, usize::MAX, expected.len());
     let short = L::new(usize::MAX, usize::MAX, expected.len() - 1);
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
     assert!(
         sheet
             .rules()
             .iter()
-            .all(|rule| rule.to_specified_css_with_limits(short).is_ok())
+            .all(|rule| rule.serialize_specified(short).is_ok())
     );
     for _ in 0..2 {
-        let error = sheet.to_specified_css_with_limits(short).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(K::ByteLimit)
-        );
+        let error = sheet.serialize_specified(short).unwrap_err();
+        assert!(error.is_byte_limit(), "{error:?}");
         assert_eq!(error.rule_index(), Some(1));
         assert_eq!(sheet, &before);
     }
-    assert_eq!(sheet.to_specified_css_with_limits(exact).unwrap(), expected);
+    assert_eq!(sheet.serialize_specified(exact).unwrap(), expected);
 }
 #[test]
 fn checked_nested_transform_values_clone_compare_serialize_and_drop_on_joined_ordinary_stack() {
@@ -583,9 +592,12 @@ fn checked_nested_transform_values_clone_compare_serialize_and_drop_on_joined_or
                     "calc(".repeat(depth),
                     ")".repeat(depth)
                 );
-                let components = parse_component_values(&value).unwrap();
-                let a = parse_property_value(
-                    CssPropertyNameRef::Known(CssKnownProperty::Transform),
+                let components = CssComponentValues::parse(&CssParser::default(), &value).unwrap();
+                let a = CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                        CssKnownProperty::Transform,
+                    )),
                     components.clone(),
                     CssImportance::Normal,
                 )
@@ -593,7 +605,7 @@ fn checked_nested_transform_values_clone_compare_serialize_and_drop_on_joined_or
                 let b = a.clone();
                 assert_eq!(a, b);
                 assert_eq!(
-                    a.to_specified_css().unwrap(),
+                    a.serialize_specified(Default::default()).unwrap(),
                     "transform: translateX(calc(1px));"
                 );
                 drop(b);
@@ -608,9 +620,11 @@ fn checked_nested_transform_values_clone_compare_serialize_and_drop_on_joined_or
 }
 #[test]
 fn checked_programmatic_tokens_and_parsed_numeric_children_keep_exact_original_provenance() {
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_dimension("25", "px").unwrap()])
-            .unwrap();
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_dimension("25", "px").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     for grammar in [false, true] {
         let source = checked_components(
             CssKnownProperty::Translate,
@@ -628,12 +642,12 @@ fn checked_programmatic_tokens_and_parsed_numeric_children_keep_exact_original_p
             CssValueOrigin::Programmatic
         ));
         assert_eq!(
-            source.to_specified_css().unwrap(),
+            source.serialize_specified(Default::default()).unwrap(),
             "translate: 25px !important;"
         );
     }
     let text = "/*😀*/\r\ntranslate:25% 1e-999px 0px!important";
-    let report = parse_style_attribute(text);
+    let report = CssParser::default().parse_block_contents(text);
     assert!(report.is_clean());
     let source = &report.syntax()[0];
     let before = source.clone();
@@ -646,8 +660,11 @@ fn checked_programmatic_tokens_and_parsed_numeric_children_keep_exact_original_p
         panic!("axes")
     };
     let y = values.y().unwrap();
-    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
-        y.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) = y
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("exact retained length")
     };
@@ -662,15 +679,14 @@ fn checked_programmatic_tokens_and_parsed_numeric_children_keep_exact_original_p
         text.find("1e-999").unwrap()
     );
     assert_eq!(
-        source.to_specified_css().unwrap(),
+        source.serialize_specified(Default::default()).unwrap(),
         "translate: 25% 0px !important;"
     );
-    assert_eq!(
+    assert!(
         source
-            .to_specified_css_with_limits(L::new(6, 6, 1))
+            .serialize_specified(L::new(6, 6, 1))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(source, &before);
 }

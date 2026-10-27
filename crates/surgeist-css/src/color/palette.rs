@@ -1,10 +1,10 @@
 //! Reached concrete palette facts, observed one actual fixed record per action.
 
-use super::facts::{
+use super::keywords::canonical_system;
+use crate::color::CssSystemColor;
+use crate::color::{
     CssColorFactIdentity, CssColorFacts, CssColorPaletteEntry, CssColorPropertyFacts,
 };
-use super::keywords::canonical_system;
-use crate::CssSystemColor;
 use surgeist_color::Color;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -195,8 +195,8 @@ impl<'a> PaletteLookup<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::facts::{CssColorSchemeFact, CssDeviceColorFact};
     use super::*;
+    use crate::color::{CssColorSchemeFact, CssDeviceColorFact};
     fn finish(operation: &mut PaletteLookup<'_>) -> Result<PaletteResult, PaletteError> {
         loop {
             if operation.action() == PaletteAction::Done {

@@ -1,13 +1,23 @@
 //! Direct typed and bounded specified-value evidence for Containment 2 §4.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::CssContentVisibility;
 
 const PROPERTY: CssKnownProperty = CssKnownProperty::ContentVisibility;
 
 fn terminal(source: &CssDeclaration) -> CssLonghandContribution {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("one ordinary longhand")
     };
@@ -64,9 +74,10 @@ fn intrinsic_visible_and_each_authored_keyword_have_exact_typed_terminal_values(
 fn programmatic_identifier_and_parsed_identifier_retain_distinct_origins() {
     let token = CssComponentValue::try_ident("auto").unwrap();
     assert!(matches!(token.origin(), CssValueOrigin::Programmatic));
-    let constructed = parse_property_value(
-        CssPropertyNameRef::Known(PROPERTY),
-        CssComponentValues::try_new(vec![token]).unwrap(),
+    let constructed = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(PROPERTY)),
+        CssComponentValues::try_new(vec![token], Default::default()).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -104,46 +115,45 @@ fn canonical_keywords_obey_exact_node_and_byte_limits_without_mutating_authored_
         (CssContentVisibility::Hidden, "hidden"),
         (CssContentVisibility::Auto, "auto"),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    expected.len(),
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, expected.len(),))
                 .unwrap(),
             expected
         );
         for (limits, error) in [
             (
-                CssSpecifiedValueSerializationLimits::new(0, 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                CssSerializationLimits::new(0, 1, expected.len()),
+                SerializationFailure::InputNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 0, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                CssSerializationLimits::new(1, 0, expected.len()),
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, expected.len() - 1),
+                SerializationFailure::ByteLimit,
             ),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, 0),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                CssSerializationLimits::new(1, 1, 0),
+                SerializationFailure::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 error
             );
-            assert_eq!(value.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
         let authored = format!("content-visibility:{}!important", expected.to_uppercase());
-        let report = parse_style_attribute(&authored);
+        let report = CssParser::default().parse_block_contents(&authored);
         assert!(report.is_clean());
         let CssKnownPropertyValueRef::ContentVisibility(wrapper) = report.syntax()[0]
             .known()
@@ -155,14 +165,19 @@ fn canonical_keywords_obey_exact_node_and_byte_limits_without_mutating_authored_
         };
         assert_eq!(wrapper.value(), &value);
         assert_eq!(wrapper.as_css(), expected.to_uppercase());
-        assert_eq!(wrapper.value().serialize_specified().unwrap(), expected);
         assert_eq!(
             wrapper
                 .value()
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 0))
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
+        assert!(
+            wrapper
+                .value()
+                .serialize_specified(CssSerializationLimits::new(1, 1, 0))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(wrapper.as_css(), expected.to_uppercase());
     }

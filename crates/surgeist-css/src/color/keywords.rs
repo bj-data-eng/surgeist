@@ -1,6 +1,6 @@
 //! Shared allocation-free decoded keyword recognition.
 
-use crate::CssSystemColor;
+use crate::color::CssSystemColor;
 use cssparser::match_ignore_ascii_case;
 
 pub(crate) fn system_color(ident: &str) -> Option<CssSystemColor> {
@@ -119,19 +119,19 @@ impl ColorFunction {
 pub(crate) enum Word {
     Current,
     Transparent,
-    System(crate::CssSystemColor),
+    System(crate::color::CssSystemColor),
     Named([u8; 3]),
     Function(ColorFunction),
-    Math(crate::CssMathFunction),
-    Predefined(crate::PredefinedColorSpace),
-    Interpolation(crate::ColorSpace),
-    Hue(crate::HueInterpolation),
+    Math(crate::numeric::CssMathFunction),
+    Predefined(surgeist_color::PredefinedColorSpace),
+    Interpolation(surgeist_color::ColorSpace),
+    Hue(surgeist_color::HueInterpolation),
     From,
     In,
     None,
     HueSuffix,
-    Constant(crate::CssNumericConstant),
-    Strategy(crate::CssRoundingStrategy),
+    Constant(crate::numeric::CssNumericConstant),
+    Strategy(crate::numeric::CssRoundingStrategy),
     Unknown,
 }
 
@@ -143,15 +143,15 @@ pub(crate) fn word(name: &str, kind: crate::tokenization::tokenizer::NameKind) -
         if let Some(value) = ColorFunction::parse(name) {
             return Word::Function(value);
         }
-        return crate::CssMathFunction::parse(name).map_or(Word::Unknown, Word::Math);
+        return crate::numeric::CssMathFunction::parse(name).map_or(Word::Unknown, Word::Math);
     }
     if kind != NameKind::Ident {
         return Word::Unknown;
     }
-    if let Some(value) = crate::syntax::color::predefined_color_space(name) {
+    if let Some(value) = crate::color::syntax::recognition::predefined_color_space(name) {
         return Word::Predefined(value);
     }
-    use crate::ColorSpace as Space;
+    use surgeist_color::ColorSpace as Space;
     let interpolation = match ColorFunction::parse(name) {
         Some(ColorFunction::Hsl) => Some(Space::Hsl),
         Some(ColorFunction::Hwb) => Some(Space::Hwb),
@@ -167,20 +167,20 @@ pub(crate) fn word(name: &str, kind: crate::tokenization::tokenizer::NameKind) -
     if let Some(value) = system_color(name) {
         return Word::System(value);
     }
-    if let Some(value) = crate::CssNumericConstant::parse(name) {
+    if let Some(value) = crate::numeric::CssNumericConstant::parse(name) {
         return Word::Constant(value);
     }
     match_ignore_ascii_case! { name,
         "currentcolor" => Word::Current, "transparent" => Word::Transparent,
         "from" => Word::From, "in" => Word::In, "none" => Word::None, "hue" => Word::HueSuffix,
-        "shorter" => Word::Hue(crate::HueInterpolation::Shorter),
-        "longer" => Word::Hue(crate::HueInterpolation::Longer),
-        "increasing" => Word::Hue(crate::HueInterpolation::Increasing),
-        "decreasing" => Word::Hue(crate::HueInterpolation::Decreasing),
-        "nearest" => Word::Strategy(crate::CssRoundingStrategy::Nearest),
-        "up" => Word::Strategy(crate::CssRoundingStrategy::Up),
-        "down" => Word::Strategy(crate::CssRoundingStrategy::Down),
-        "to-zero" => Word::Strategy(crate::CssRoundingStrategy::ToZero),
+        "shorter" => Word::Hue(surgeist_color::HueInterpolation::Shorter),
+        "longer" => Word::Hue(surgeist_color::HueInterpolation::Longer),
+        "increasing" => Word::Hue(surgeist_color::HueInterpolation::Increasing),
+        "decreasing" => Word::Hue(surgeist_color::HueInterpolation::Decreasing),
+        "nearest" => Word::Strategy(crate::numeric::CssRoundingStrategy::Nearest),
+        "up" => Word::Strategy(crate::numeric::CssRoundingStrategy::Up),
+        "down" => Word::Strategy(crate::numeric::CssRoundingStrategy::Down),
+        "to-zero" => Word::Strategy(crate::numeric::CssRoundingStrategy::ToZero),
         _ => cssparser::color::parse_named_color(name).map_or(Word::Unknown, |(r, g, b)| Word::Named([r, g, b])),
     }
 }
@@ -209,7 +209,7 @@ mod namespace_tests {
         assert_eq!(word("tan", NameKind::Ident), Word::Named([210, 180, 140]));
         assert_eq!(
             word("TAN", NameKind::Function),
-            Word::Math(crate::CssMathFunction::Tan)
+            Word::Math(crate::numeric::CssMathFunction::Tan)
         );
         assert_eq!(word("rgb", NameKind::Ident), Word::Unknown);
         assert_eq!(
@@ -219,7 +219,7 @@ mod namespace_tests {
         assert_eq!(word("red", NameKind::Function), Word::Unknown);
         assert_eq!(
             word("hsl", NameKind::Ident),
-            Word::Interpolation(crate::ColorSpace::Hsl)
+            Word::Interpolation(surgeist_color::ColorSpace::Hsl)
         );
         assert_eq!(
             word("hsl", NameKind::Function),

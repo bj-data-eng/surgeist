@@ -3,7 +3,16 @@
 //! rejected by the color grammar at their responsible token.
 
 use surgeist_color::{ColorSpace, HueInterpolation};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorMix, CssColorMixPercentage,
+    CssColorProfileName, CssCustomColor, CssHexColor, CssNamedColor, CssRelativeColorChannel,
+    CssRelativeColorExpressionValue, CssRelativeColorFunction, CssRelativeColorResultDomain,
+    CssSystemColor,
+};
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::diagnostic::{CssErrorCode, CssTokenKind};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
@@ -26,9 +35,12 @@ enum ResponsibleToken {
 fn assert_color_rejected(value: &str, responsible: ResponsibleToken) {
     let input = format!(".panel {{ color: {value}; }}");
     let error = assert_drops_sole_declaration(&input);
-    let ErrorKind::InvalidColorSyntax(detail) = error.kind() else {
-        panic!("{input}: not a color syntax rejection: {error:?}");
-    };
+    let detail = &error;
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidColorSyntax,
+        "{input}: not a color syntax rejection: {error:?}"
+    );
     let offset = error.position().byte_offset().value();
     match responsible {
         ResponsibleToken::Token(kind, spelling) => {
@@ -118,7 +130,7 @@ fn parses_css_system_colors_symbolically() {
         value
     );
     assert_eq!(
-        color.authored_values()[0].system(),
+        color.authored()[0].system(),
         Some(CssSystemColor::AccentColor)
     );
 
@@ -389,7 +401,9 @@ fn color_surface_accepts_expanded_strict_forms() {
         ".panel { color: color-mix(in oklch, red 40%, blue); }",
         ".panel { color: rgb(from red r g b / alpha); }",
     ] {
-        parse_sheet(css).unwrap_or_else(|error| panic!("{css} should parse: {error:?}"));
+        CssParser::default()
+            .parse_sheet(css)
+            .unwrap_or_else(|error| panic!("{css} should parse: {error:?}"));
     }
 }
 
@@ -422,10 +436,15 @@ fn color_model_preserves_authored_hex_and_currentcolor() {
     let hex = CssHexColor::try_new("ff800080").expect("eight hex digits");
     let color = CssColor::from_hex(hex);
     assert_eq!(color.hex_value().unwrap().digits(), "ff800080");
-    assert_eq!(color.to_specified_css().unwrap(), "rgba(255, 128, 0, 0.5)");
+    assert_eq!(
+        color.serialize_specified(Default::default()).unwrap(),
+        "rgba(255, 128, 0, 0.5)"
+    );
     assert!(CssColor::current_color().is_current_color());
     assert_eq!(
-        CssColor::current_color().to_specified_css().unwrap(),
+        CssColor::current_color()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "currentcolor"
     );
 }
@@ -443,26 +462,29 @@ fn color_model_rejects_invalid_hex_and_named_tokens() {
 fn symbolic_color_model_rejects_invalid_mix_weights_and_component_counts() {
     // Color 5 (WD 2026-09-08) §3: each mix weight is <percentage [0,100]>.
     for invalid in ["-0.1%", "100.1%", "1e999%"] {
-        assert_eq!(
+        assert!(
             CssColorMixPercentage::try_from_component(
                 CssComponentValue::try_token(invalid).unwrap()
             )
             .unwrap_err()
-            .kind(),
-            CssColorScalarErrorKind::OutOfRange,
+            .is_out_of_range(),
             "{invalid}"
         );
     }
-    assert_eq!(
-        CssColorMix::try_new(None, Vec::new()),
-        Err(CssColorMixConstructionError::EmptyComponents)
+    assert!(
+        CssColorMix::try_new(None, Vec::new())
+            .as_ref()
+            .unwrap_err()
+            .is_empty_components()
     );
-    assert_eq!(
+    assert!(
         CssCustomColor::try_new(
             CssColorProfileName::try_new("--brand").unwrap(),
             Vec::new(),
             None
-        ),
-        Err(CssColorConstructionError::EmptyComponents)
+        )
+        .as_ref()
+        .unwrap_err()
+        .is_empty_components()
     );
 }

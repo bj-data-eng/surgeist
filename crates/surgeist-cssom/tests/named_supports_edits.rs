@@ -1,5 +1,9 @@
 //! Public tests for Surgeist's explicitly selected inert named-support policy.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::query::supports::{CssSupportsTestChild, CssSupportsTestItem};
+use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::*;
 
 fn captured_rule(
@@ -683,7 +687,7 @@ fn read_work_output_and_live_node_budgets_fail_without_partial_output_or_state_c
             ..Default::default()
         },
         CssomRuleFormatLimits {
-            css: CssSpecifiedValueSerializationLimits::new(1000, 1000, 3),
+            css: CssSerializationLimits::new(1000, 1000, 3),
             ..Default::default()
         },
     ] {
@@ -802,7 +806,7 @@ fn detached_outer_keeps_stable_children_and_accepts_inert_edits() {
 #[test]
 fn typed_empty_definition_cannot_bypass_retained_input_byte_limit() {
     let source = format!("/*{}*/ @supports-condition --x {{}}", "padding".repeat(100));
-    let sheet = parse_sheet(&source).into_parts().0;
+    let sheet = CssParser::default().parse_sheet(&source).into_parts().0;
     let mut store = CssomStore::new(
         CssomLimits {
             max_input_bytes: 100,

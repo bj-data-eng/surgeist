@@ -7,15 +7,15 @@
 //! source starts in that order. Grouped wrap/pack productions never interleave.
 
 use super::property_input::{Parser, ParserState};
-use crate::error::property::ParseError;
+use crate::diagnostic::error::property::ParseError;
 use cssparser::match_ignore_ascii_case;
 
 use super::grid::parse_flow_tolerance;
-use crate::{
-    CssFlowTolerance, CssItemDirection, CssItemFlow, CssItemPack, CssItemWrap, CssItemWrapMode,
-    CssItemWrapOrder,
-    error::property::{Error, basic, unexpected_at},
-    numeric::NumericInputContext,
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::numeric::expression::NumericInputContext;
+use crate::values::box_model::CssFlowTolerance;
+use crate::values::layout::{
+    CssItemDirection, CssItemFlow, CssItemPack, CssItemWrap, CssItemWrapMode, CssItemWrapOrder,
 };
 
 type ParseResult<'i, T> = Result<T, ParseError<'i, Error>>;

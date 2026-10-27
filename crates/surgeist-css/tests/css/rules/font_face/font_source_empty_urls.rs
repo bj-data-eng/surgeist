@@ -6,15 +6,16 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#urls
 
 use crate::css::support::rules::retained_demo_font_face as font_face;
-use surgeist_css::{
-    CssFontFaceSource, CssFontFaceUrlSource, CssFontFormatHint, CssFontTechHint, CssParseReport,
-    CssSheet, parse_sheet, validate_sheet,
+use surgeist_css::rule::CssSheet;
+use surgeist_css::rule::font_face::{
+    CssFontFaceSource, CssFontFaceUrlSource, CssFontFormatHint, CssFontTechHint,
 };
+use surgeist_css::{CssParseReport, CssParser};
 
 fn assert_clean_urls(value: &str, expected: &[&str]) -> CssParseReport<CssSheet> {
     let source =
         format!("@font-face{{font-family:Demo;src:{value};font-display:swap}}.after{{color:red}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(
         report.is_clean(),
         "valid authored URL sources must not need recovery: {value:?}: {:?}",
@@ -30,7 +31,13 @@ fn assert_clean_urls(value: &str, expected: &[&str]) -> CssParseReport<CssSheet>
         })
         .collect::<Vec<_>>();
     assert_eq!(actual, expected, "authored source order for {value:?}");
-    assert_eq!(&validate_sheet(&source).unwrap(), report.syntax());
+    assert_eq!(
+        &CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
+        report.syntax()
+    );
     report
 }
 
@@ -64,13 +71,16 @@ fn empty_font_url_members_preserve_the_complete_source_order() {
 #[test]
 fn empty_and_whitespace_font_urls_cross_the_typed_constructor_boundary() {
     for authored in ["", " ", " \t "] {
-        let source =
-            CssFontFaceUrlSource::new(surgeist_css::CssUrl::new(authored), None, Vec::new());
+        let source = CssFontFaceUrlSource::new(
+            surgeist_css::values::common::CssUrl::new(authored),
+            None,
+            Vec::new(),
+        );
         assert_eq!(source.url().as_str(), authored);
         assert_eq!(
             source
                 .format()
-                .and_then(surgeist_css::CssFontFormat::recognized_format),
+                .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
             None
         );
         assert_eq!(source.format(), None);
@@ -88,8 +98,8 @@ fn empty_font_urls_preserve_valid_format_and_technology_hints() {
         panic!("expected exactly one URL source");
     };
     let constructed = CssFontFaceUrlSource::new(
-        surgeist_css::CssUrl::new(""),
-        Some(surgeist_css::CssFontFormat::Keyword(
+        surgeist_css::values::common::CssUrl::new(""),
+        Some(surgeist_css::rule::font_face::CssFontFormat::Keyword(
             CssFontFormatHint::Woff2,
         )),
         vec![CssFontTechHint::Variations],
@@ -98,7 +108,7 @@ fn empty_font_urls_preserve_valid_format_and_technology_hints() {
     assert_eq!(
         constructed
             .format()
-            .and_then(surgeist_css::CssFontFormat::recognized_format),
+            .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
         Some(CssFontFormatHint::Woff2)
     );
     assert_eq!(constructed.tech(), &[CssFontTechHint::Variations]);
@@ -112,8 +122,11 @@ fn nonempty_font_urls_remain_authored_values_without_resource_resolution() {
         &urls,
     );
     for authored in urls {
-        let source =
-            CssFontFaceUrlSource::new(surgeist_css::CssUrl::new(authored), None, Vec::new());
+        let source = CssFontFaceUrlSource::new(
+            surgeist_css::values::common::CssUrl::new(authored),
+            None,
+            Vec::new(),
+        );
         assert_eq!(source.url().as_str(), authored);
     }
 }

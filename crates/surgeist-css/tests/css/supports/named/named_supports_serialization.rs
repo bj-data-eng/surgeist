@@ -1,16 +1,18 @@
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssRule, CssSpecifiedRuleSerializationErrorKind,
-    CssSpecifiedValueSerializationErrorKind, CssSpecifiedValueSerializationLimits,
-    CssSupportsTestBody, CssSupportsTestItem, CssValueTokenRef, parse_sheet,
-};
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueTokenRef};
+use surgeist_css::query::supports::{CssSupportsTestBody, CssSupportsTestItem};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn definition(source: &str) -> String {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
         panic!("expected one named supports definition: {source}");
     };
-    rule.to_specified_css().unwrap()
+    rule.serialize_specified(Default::default()).unwrap()
 }
 
 #[test]
@@ -20,7 +22,7 @@ fn canonical_body_keeps_earlier_bangs_and_distinguishes_at_rule_forms() {
     assert_eq!(definition(source), expected);
     assert_eq!(definition(expected), expected);
 
-    let report = parse_sheet(expected);
+    let report = CssParser::default().parse_sheet(expected);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
         panic!("expected canonical definition");
@@ -37,7 +39,9 @@ fn canonical_body_keeps_earlier_bangs_and_distinguishes_at_rule_forms() {
             .any(|value| {
                 matches!(
                     value.view(),
-                    surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Delim('!'))
+                    surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Delim(
+                        '!'
+                    ))
                 )
             })
     );
@@ -56,102 +60,104 @@ fn canonical_body_keeps_earlier_bangs_and_distinguishes_at_rule_forms() {
         .filter(|component| {
             !matches!(
                 component.view(),
-                surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
+                surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(
+                    _
+                ))
             )
         })
         .collect();
     assert!(matches!(
         tokens[0].view(),
-        surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Number(_))
+        surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Number(_))
     ));
     assert!(matches!(
         tokens[1].view(),
-        surgeist_css::CssComponentValueRef::Comment(_)
+        surgeist_css::component::CssComponentValueRef::Comment(_)
     ));
     assert!(matches!(
         tokens[2].view(),
-        surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Ident("e3"))
+        surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Ident("e3"))
     ));
 }
 
 #[test]
 fn independently_supplied_adjacent_tokens_gain_a_safe_separator() {
     let body = CssSupportsTestBody::try_from_components(
-        CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("future").unwrap(),
-            CssComponentValue::try_token(":").unwrap(),
-            CssComponentValue::try_token("1").unwrap(),
-            CssComponentValue::try_ident("e3").unwrap(),
-            CssComponentValue::try_token(";").unwrap(),
-        ])
+        CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("future").unwrap(),
+                CssComponentValue::try_token(":").unwrap(),
+                CssComponentValue::try_token("1").unwrap(),
+                CssComponentValue::try_ident("e3").unwrap(),
+                CssComponentValue::try_token(";").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap(),
+        Default::default(),
     )
     .unwrap();
-    assert_eq!(body.to_specified_css().unwrap(), "future: 1/**/e3;");
+    assert_eq!(
+        body.serialize_specified(Default::default()).unwrap(),
+        "future: 1/**/e3;"
+    );
     let [CssSupportsTestItem::Declarations(run)] = body.items() else {
         panic!("expected a checked declaration run");
     };
     let value = run.declarations()[0].value_components();
     assert!(matches!(
         value[0].view(),
-        surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Number(_))
+        surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Number(_))
     ));
     assert!(matches!(
         value[1].view(),
-        surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Ident("e3"))
+        surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Ident("e3"))
     ));
 }
 
 #[test]
 fn sheet_budget_is_monotonic_across_palette_and_definition() {
     let source = "@font-palette-values --colors { font-family: Demo; }\n@supports-condition --feature { future:a; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [palette, named] = report.syntax().rules() else {
         panic!("expected two rules");
     };
-    let first = palette.to_specified_css().unwrap();
-    let second = named.to_specified_css().unwrap();
+    let first = palette.serialize_specified(Default::default()).unwrap();
+    let second = named.serialize_specified(Default::default()).unwrap();
     let expected = format!("{first}\n{second}");
-    assert_eq!(report.syntax().to_specified_css().unwrap(), expected);
+    assert_eq!(
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        expected
+    );
 
     let error = report
         .syntax()
-        .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
+        .serialize_specified(CssSerializationLimits::new(
             usize::MAX,
             usize::MAX,
             expected.len() - 1,
         ))
         .unwrap_err();
-    assert_eq!(
-        error.kind(),
-        CssSpecifiedRuleSerializationErrorKind::Resource(
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
-        )
-    );
+    assert!(error.is_byte_limit(), "{error:?}");
     assert_eq!(error.rule_index(), Some(1));
 
     for (input, projection, expected_kind) in [
-        (
-            true,
-            false,
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
-        ),
-        (
-            false,
-            true,
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
-        ),
+        (true, false, SerializationFailure::InputNodeLimit),
+        (false, true, SerializationFailure::ProjectionNodeLimit),
     ] {
         let limit = (1..100).find(|limit| {
-            let limits = CssSpecifiedValueSerializationLimits::new(
+            let limits = CssSerializationLimits::new(
                 if input { *limit } else { usize::MAX },
                 if projection { *limit } else { usize::MAX },
                 usize::MAX,
             );
-            palette.to_specified_css_with_limits(limits).is_ok()
-                && named.to_specified_css_with_limits(limits).is_ok()
-                && matches!(report.syntax().to_specified_css_with_limits(limits), Err(ref error) if error.kind() == CssSpecifiedRuleSerializationErrorKind::Resource(expected_kind) && error.rule_index() == Some(1))
+            palette.serialize_specified(limits).is_ok()
+                && named.serialize_specified(limits).is_ok()
+                && matches!(report.syntax().serialize_specified(limits), Err(ref error) if serialization_failure(error) == expected_kind && error.rule_index() == Some(1))
         });
         assert!(
             limit.is_some(),
@@ -162,11 +168,15 @@ fn sheet_budget_is_monotonic_across_palette_and_definition() {
 
 #[test]
 fn supported_definitions_compose_with_a_following_style_rule() {
-    let report = parse_sheet("@supports-condition --feature {}\n.after { color: red; }");
+    let report = CssParser::default()
+        .parse_sheet("@supports-condition --feature {}\n.after { color: red; }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let before = report.clone();
     assert_eq!(
-        report.syntax().to_specified_css().unwrap(),
+        report
+            .syntax()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@supports-condition --feature { }\n.after { color: red; }"
     );
     assert_eq!(report, before);

@@ -1,6 +1,9 @@
 //! Independent Syntax 3 (2026-10-01) and Nesting 1 (2026-01-22) block cases.
 //! All real outer blocks survive; unknown inner grammar recovers locally.
-use surgeist_css::{CssErrorCode, CssNamespaceContext, CssRecoveryAction, parse_style_block};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssStyleBlock;
+use surgeist_css::selector::CssNamespaceContext;
 type ExpectedDiagnostic = (
     &'static str,
     &'static str,
@@ -309,7 +312,11 @@ fn original_block_corpus_preserves_empty_blocks_and_owned_diagnostics() {
         let matching: Vec<_> = cases.iter().filter(|case| case["id"] == id).collect();
         assert_eq!(matching.len(), 1, "{id}");
         let source = matching[0]["input"].as_str().unwrap();
-        let report = parse_style_block(source, &CssNamespaceContext::default());
+        let report = CssStyleBlock::parse(
+            &CssParser::default(),
+            source,
+            &CssNamespaceContext::default(),
+        );
         let block = report
             .syntax()
             .as_ref()

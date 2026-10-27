@@ -3,12 +3,31 @@
 //! Literal order checks remain intrinsic; symbolic comparisons are downstream.
 
 use crate::css::support::rules::sole_counter_style as parsed;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues, CssValueOrigin};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::numeric::{CssCalculation, CssInteger, CssNumeric, CssNumericLiteral};
+use surgeist_css::rule::counter_style::{
+    CssCounterAdditiveSymbols, CssCounterAdditiveTuple, CssCounterStyleDescriptorKind,
+    CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef, CssCounterStyleDescriptors,
+    CssCounterStyleFixedSystem, CssCounterStylePad, CssCounterStyleRangeBound,
+    CssCounterStyleRangeInterval, CssCounterStyleSystem, CssCounterSymbol,
+};
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::content::CssContentString;
 
-fn calculation(text: &str) -> CssIntegerValue {
-    CssIntegerValue::Calculation(
-        CssIntegerCalculation::try_from_components(parse_component_values(text).unwrap()).unwrap(),
+fn calculation(text: &str) -> CssNumeric<CssInteger> {
+    CssNumeric::<CssInteger>::try_from_calculation(
+        CssCalculation::<CssInteger>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
+    .unwrap()
 }
 
 fn symbol() -> CssCounterSymbol {
@@ -35,10 +54,13 @@ fn typed_constructors_preserve_fractional_negative_and_nonfinite_calculation_gra
         let tuple = CssCounterAdditiveTuple::try_new(value.clone(), symbol()).unwrap();
         assert_eq!(tuple.weight(), &value);
         assert_eq!(tuple, tuple.clone());
-        let CssIntegerValue::Calculation(graph) = pad.minimum_length() else {
+        let Some(graph) = pad.minimum_length().calculation() else {
             panic!("calculation variant must be retained")
         };
-        assert_eq!(graph.components(), &parse_component_values(text).unwrap());
+        assert_eq!(
+            graph.components(),
+            &CssComponentValues::parse(&CssParser::default(), text).unwrap()
+        );
     }
 }
 
@@ -51,14 +73,18 @@ fn symbolic_order_is_deferred_while_adjacent_literal_descent_remains_checked() {
         "calc(-1) X, 5 Y",
         "1 X, calc(2) Y, 2 Z",
     ] {
-        let report = parse_counter_style_descriptor_value(
+        let report = CssCounterStyleDescriptorValue::parse(
+            &CssParser::default(),
             input,
             CssCounterStyleDescriptorKind::AdditiveSymbols,
         );
         assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     }
     let tuple = |value| CssCounterAdditiveTuple::try_new(value, symbol()).unwrap();
-    let literal = |value| CssIntegerValue::Literal(CssIntegerLiteral::from_i32(value));
+    let literal = |value| {
+        CssNumeric::<CssInteger>::try_from_literal(CssNumericLiteral::<CssInteger>::from_i32(value))
+            .unwrap()
+    };
     assert!(
         CssCounterAdditiveSymbols::try_new(vec![
             tuple(calculation("calc(100)")),
@@ -88,7 +114,7 @@ fn symbolic_order_is_deferred_while_adjacent_literal_descent_remains_checked() {
 fn fixed_calculated_default_retains_its_wrapper_and_explicit_occurrence() {
     let rule = parsed("@counter-style x { system: fixed calc(1); }");
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::System)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::System, Default::default())
             .unwrap(),
         "fixed calc(1)"
     );
@@ -102,7 +128,11 @@ fn fixed_calculated_default_retains_its_wrapper_and_explicit_occurrence() {
 #[test]
 fn isolated_rule_and_genuine_body_fronts_share_math_and_complete_member_recovery() {
     let body = "{system: fixed calc(1.5); range: calc(8) calc(2); pad: '0' min(1, 2); additive-symbols: max(1, 2) X, 0 N; pad: calc(1px) '0';}";
-    let block = parse_counter_style_block(body);
+    let block = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
+        &CssParser::default(),
+        body,
+        &CssBlockContext::default(),
+    );
     assert_eq!(block.diagnostics().len(), 1);
     assert_eq!(
         block.diagnostics()[0].action(),
@@ -111,26 +141,30 @@ fn isolated_rule_and_genuine_body_fronts_share_math_and_complete_member_recovery
     let descriptors = block.syntax().as_ref().unwrap().body();
     assert_eq!(descriptors.occurrences().count(), 4);
     let source = format!("@counter-style x {body}");
-    let isolated = parse_rule(&source, &CssNamespaceContext::default());
+    let isolated = CssRule::parse(
+        &CssParser::default(),
+        &source,
+        &CssNamespaceContext::default(),
+    );
     assert_eq!(isolated.diagnostics().len(), 1);
     let Some(CssRule::CounterStyle(rule)) = isolated.syntax() else {
         panic!("rule retained after descriptor recovery")
     };
     assert_eq!(rule.descriptors().occurrences().count(), 4);
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Pad)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Pad, Default::default())
             .unwrap(),
         "calc(1) \"0\""
     );
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Range)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Range, Default::default())
             .unwrap(),
         "calc(8) calc(2)"
     );
 }
 
 #[test]
-fn parsed_integer_graphs_keep_exact_lexical_source_and_origin_sensitive_identity() {
+fn parsed_integer_graphs_keep_exact_lexical_source_and_origin_blind_identity() {
     let source = "@counter-style x { system: fixed calc(+0001 + 1); }";
     let rule = parsed(source);
     let CssCounterStyleDescriptorValueRef::System(CssCounterStyleSystem::Fixed(fixed)) =
@@ -138,7 +172,7 @@ fn parsed_integer_graphs_keep_exact_lexical_source_and_origin_sensitive_identity
     else {
         panic!("fixed system")
     };
-    let CssIntegerValue::Calculation(graph) = fixed.first_symbol_value().unwrap() else {
+    let Some(graph) = fixed.first_symbol_value().unwrap().calculation() else {
         panic!("calculation graph")
     };
     let CssValueOrigin::Parsed(origin) = graph.origin() else {
@@ -151,7 +185,11 @@ fn parsed_integer_graphs_keep_exact_lexical_source_and_origin_sensitive_identity
         "calc("
     );
     assert_eq!(
-        graph.components().serialize().unwrap().as_css(),
+        graph
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "calc(+0001 + 1)"
     );
     let same = parsed(source);
@@ -160,7 +198,7 @@ fn parsed_integer_graphs_keep_exact_lexical_source_and_origin_sensitive_identity
         rule.descriptors().system().unwrap().value().view(),
         same.descriptors().system().unwrap().value().view()
     );
-    assert_ne!(
+    assert_eq!(
         rule.descriptors().system().unwrap().value().view(),
         shifted.descriptors().system().unwrap().value().view()
     );
@@ -171,34 +209,42 @@ fn checked_pending_env_math_reentry_is_reusable_and_rejects_residual_var_and_env
     for token in ["env(weight)", "env(weight, calc(1.5) X)"] {
         let pending = CssCounterStyleDescriptorValue::try_from_components(
             CssCounterStyleDescriptorKind::AdditiveSymbols,
-            parse_component_values(token).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), token).unwrap(),
+            Default::default(),
         )
         .unwrap();
         let before = pending.clone();
         // Counter Styles 3 §3.6: literal weights must strictly descend, so
         // the second weight is responsible.
         let error = pending
-            .reparse_after_substitution(parse_component_values("2 X, 2 Y").unwrap())
+            .reparse_after_substitution(
+                CssComponentValues::parse(&CssParser::default(), "2 X, 2 Y").unwrap(),
+                Default::default(),
+            )
             .unwrap_err();
-        let CssCounterStyleValueErrorKind::Grammar(detail) = error.kind() else {
+        let Some(detail) = error.diagnostic() else {
             panic!("grammar failure: {error:?}")
         };
         crate::css::support::rules::invalid_descriptor("counter-style", "additive-symbols")
             .at("2")
             .assert_kind(detail);
         for residual in ["calc(var(--weight)) X", "calc(env(weight)) X"] {
-            assert_eq!(
+            assert!(
                 pending
-                    .reparse_after_substitution(parse_component_values(residual).unwrap())
+                    .reparse_after_substitution(
+                        CssComponentValues::parse(&CssParser::default(), residual).unwrap(),
+                        Default::default()
+                    )
                     .unwrap_err()
-                    .kind(),
-                &CssCounterStyleValueErrorKind::ResidualSubstitution,
+                    .is_residual_substitution(),
                 "{residual}"
             );
         }
         let completed = pending
             .reparse_after_substitution(
-                parse_component_values("calc(1.5) X, calc(-1.5) Y").unwrap(),
+                CssComponentValues::parse(&CssParser::default(), "calc(1.5) X, calc(-1.5) Y")
+                    .unwrap(),
+                Default::default(),
             )
             .unwrap();
         assert!(matches!(
@@ -216,10 +262,10 @@ fn checked_pending_env_math_reentry_is_reusable_and_rejects_residual_var_and_env
 #[test]
 fn normalization_keeps_math_payloads_and_descriptor_origins_in_conditional_and_scoped_rules() {
     let source = "@media print { @counter-style A { system: fixed calc(1.5); } } @scope { @counter-style B { pad: calc(-1.5) '0'; } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let retained = report.syntax().clone();
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let counters = normalized
         .items()
         .iter()
@@ -234,13 +280,13 @@ fn normalization_keeps_math_payloads_and_descriptor_origins_in_conditional_and_s
     assert_eq!(counters.len(), 2);
     assert_eq!(
         counters[0]
-            .descriptor_specified_css(CssCounterStyleDescriptorKind::System)
+            .descriptor_specified_css(CssCounterStyleDescriptorKind::System, Default::default())
             .unwrap(),
         "fixed calc(1.5)"
     );
     assert_eq!(
         counters[1]
-            .descriptor_specified_css(CssCounterStyleDescriptorKind::Pad)
+            .descriptor_specified_css(CssCounterStyleDescriptorKind::Pad, Default::default())
             .unwrap(),
         "calc(-1.5) \"0\""
     );
@@ -262,40 +308,42 @@ fn suppressed_duplicate_math_spends_cumulative_input_budget_without_emitting_byt
     let duplicated =
         parsed("@counter-style x { system: fixed calc(1 + 2 + 3 + 4 + 5 + 6); system: fixed; }");
     let expected = "@counter-style x { system: fixed; }";
-    let limits = CssSpecifiedValueSerializationLimits::new(10, 1000, expected.len());
+    let limits = CssSerializationLimits::new(10, 1000, expected.len());
+    assert_eq!(effective.serialize_specified(limits).unwrap(), expected);
+    assert!(
+        duplicated
+            .serialize_specified(limits)
+            .unwrap_err()
+            .is_input_node_limit()
+    );
     assert_eq!(
-        effective.to_specified_css_with_limits(limits).unwrap(),
+        duplicated.serialize_specified(Default::default()).unwrap(),
         expected
     );
-    assert_eq!(
-        duplicated
-            .to_specified_css_with_limits(limits)
-            .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::InputNodeLimit
-    );
-    assert_eq!(duplicated.to_specified_css().unwrap(), expected);
 }
 
 #[test]
 fn checked_math_depth_failure_keeps_the_original_pending_descriptor() {
     let pending = CssCounterStyleDescriptorValue::try_from_components(
         CssCounterStyleDescriptorKind::Pad,
-        parse_component_values("env(pad)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "env(pad)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     let source = "calc(1 + (2 + (3 + (4 + 5)))) '0'";
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let limits = CssComponentValueLimits::try_new(2, 1000, 10000).unwrap();
     let before = pending.clone();
-    assert_eq!(
+    assert!(
         pending
-            .reparse_after_substitution_with_limits(components.clone(), limits)
+            .reparse_after_substitution(components.clone(), limits)
             .unwrap_err()
-            .kind(),
-        &CssCounterStyleValueErrorKind::Component(CssComponentValueErrorKind::NestingLimit)
+            .component_error()
+            .is_some_and(|error| error.is_nesting_limit())
     );
-    let completed = pending.reparse_after_substitution(components).unwrap();
+    let completed = pending
+        .reparse_after_substitution(components, Default::default())
+        .unwrap();
     assert!(matches!(
         completed.view(),
         CssCounterStyleDescriptorValueRef::Pad(_)

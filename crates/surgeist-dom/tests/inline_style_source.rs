@@ -1,6 +1,8 @@
 //! Authentic single-root Source synchronization and continuation ownership.
 use std::{cell::Cell, sync::atomic::AtomicBool};
-use surgeist_css::*;
+use surgeist_css::CssParserContext;
+use surgeist_css::property::CssPropertyGrammar;
+use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_cssom::*;
 use surgeist_dom::*;
 fn cancel() -> AtomicBool {

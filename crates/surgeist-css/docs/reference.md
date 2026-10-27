@@ -1,9 +1,9 @@
 # Reference
 
-The public front door is [src/lib.rs](../src/lib.rs); authored models live in
-[src/syntax.rs](../src/syntax.rs), property wrappers in
-[src/properties.rs](../src/properties.rs), and support metadata in
-[src/conformance.rs](../src/conformance.rs). These pages describe the implemented
+The public front door is [src/lib.rs](../src/lib.rs), whose module table maps each
+domain to its module; authored value models live under [src/values/](../src/values/),
+property wrappers and metadata under [src/property/](../src/property/), and support
+metadata under [src/conformance/](../src/conformance/). These pages describe the implemented
 selected surface. A catalog status applies to its named production and declared
 subset; it does not establish complete support for all CSS syntax.
 
@@ -11,34 +11,29 @@ subset; it does not establish complete support for all CSS syntax.
 
 | Interface | Available with | Result |
 | --- | --- | --- |
-| `parse_sheet(&str)` | Default features | `CssParseReport<CssSheet>` |
-| `decode_stylesheet_bytes(bytes, hints)` | Default features | `Result<CssDecodedStylesheetInput, CssInputDecodeError>` |
-| `decode_stylesheet_bytes_with_limits(bytes, hints, limits)` | Default features | Atomic bounded byte decoding |
-| `parse_decoded_stylesheet(input, location)` | Default features | `CssParseReport<CssSheet>` using the exact decoded snapshot |
-| `parse_sheet_with_options(source, options)` | Default features | Unicode stylesheet with optional symbolic location |
-| `parse_style_attribute(&str)` | Default features | `CssParseReport<CssDeclarationList>` |
-| `parse_declaration_list_text(&str)` | Default features | `CssParseReport<CssDeclarationList>` with raw Syntax list recovery |
-| `parse_style_block(source, namespace_context)` | Default features | `CssParseReport<Option<CssStyleBlock>>` |
-| `parse_rule(source, namespace_context)` | Default features | `CssParseReport<Option<CssRule>>` |
-| `parse_declaration(&str)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
-| `parse_selector(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssSelector>>` |
-| `parse_selector_list(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssStyleSelectorList>>` |
-| `parse_relative_selector_list(&str, &CssNamespaceContext)` | Default features | `CssParseReport<Option<CssRelativeSelectorList>>` |
-| `parse_style_selector_list(source, namespaces, CssStyleSelectorContext)` | Default features | `CssParseReport<Option<CssParsedStyleSelectors>>` |
-| `parse_style_selector_list_with_limits(source, namespaces, context, limits)` | Default features | Contextual raw selectors with cumulative component limits |
-| `parse_media_query(&str)` | Default features | `CssParseReport<CssMediaQuery>` |
-| `parse_media_query_list(&str)` | Default features | `CssParseReport<CssMediaQueryList>` |
-| `parse_font_face_descriptor_value(&str, CssFontFaceDescriptorKind)` | Default features | `CssParseReport<Option<CssFontFaceDescriptorValue>>` |
-| `parse_page_declaration_block_contents(&str)` / `_with_limits` | Default features | `CssParseReport<Option<CssPageDeclarationBlock>>` with raw block-contents recovery |
-| `parse_font_face_declaration_block_contents(&str)` / `_with_limits` | Default features | `CssParseReport<Option<CssFontFaceDescriptors>>` with raw block-contents recovery |
-| `validate_sheet(&str)` | Default features | `Result<CssSheet, CssValidationFailure>` |
-| `validate_style_attribute(&str)` | Default features | `Result<CssDeclarationList, CssValidationFailure>` |
-| `validate_declaration_list_text(&str)` | Default features | `Result<CssDeclarationList, CssValidationFailure>` |
-| `parse_component_values(&str)` | Default features | `Result<CssComponentValues, CssComponentValueError>` |
-| `parse_property_value_text(source, name, importance)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
-| `parse_property_value_text_for_grammar(source, grammar, importance)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
-| `parse_property_value(name, components, importance)` | Default features | `Result<CssDeclaration, CssPropertyValueParseError>` |
-| `expand_declaration(&declaration)` | Default features | `Result<CssExpansion, CssExpansionError>` |
+| `CssParser::new(context, component_limits)` | Default features | The configuration every source-text front takes first: a grammar context and the component limits |
+| `CssParser::parse_sheet(source)` | Default features | `CssParseReport<CssSheet>` |
+| `CssDecodedStylesheetInput::decode(bytes, hints, limits)` | Default features | `Result<CssDecodedStylesheetInput, CssInputDecodeError>`, atomic bounded byte decoding |
+| `CssParser::parse_sheet_bytes(&input)` | Default features | `CssParseReport<CssSheet>` using the exact decoded snapshot |
+| `CssParseReport<CssSheet>::with_location(location)` | Default features | The same report with an optional symbolic location |
+| `CssParser::parse_block_contents(source)` | Default features | `CssParseReport<CssDeclarationList>`: Syntax 3 2026 block contents for style attributes, `cssText` and raw lists |
+| `CssParser::parse_page_block_contents(source)` | Default features | `CssParseReport<Option<CssPageDeclarationBlock>>` with raw block-contents recovery |
+| `CssParser::parse_font_face_block_contents(source)` | Default features | `CssParseReport<Option<CssFontFaceDescriptors>>` with raw block-contents recovery |
+| `CssStyleBlock::parse(parser, source, namespaces)` | Default features | `CssParseReport<Option<CssStyleBlock>>` |
+| `CssRule::parse(parser, source, namespaces)` | Default features | `CssParseReport<Option<CssRule>>` |
+| `CssDeclaration::parse(parser, source)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
+| `CssSelector::parse(parser, source, namespaces)` | Default features | `CssParseReport<Option<CssSelector>>` |
+| `CssRelativeSelectorList::parse(parser, source, namespaces)` | Default features | `CssParseReport<Option<CssRelativeSelectorList>>` |
+| `CssParsedStyleSelectors::parse(parser, source, namespaces, CssStyleSelectorContext)` | Default features | `CssParseReport<Option<CssParsedStyleSelectors>>` with cumulative component limits; `CssStyleSelectorContext::Ordinary` is an ordinary selector list |
+| `CssMediaQuery::parse(parser, source)` | Default features | `CssParseReport<CssMediaQuery>` |
+| `CssMediaQueryList::parse(parser, source)` | Default features | `CssParseReport<CssMediaQueryList>` |
+| `CssAuthoredFontFaceDescriptorValue::parse(parser, source, kind)` | Default features | `CssParseReport<Option<CssAuthoredFontFaceDescriptorValue>>` |
+| `CssBlockFragment::<B>::parse(parser, source, &CssBlockContext)` | Default features | `CssParseReport<Option<CssBlockFragment<B>>>` for each sealed `CssBlockBody` |
+| `CssParseReport::into_validation_result()` | Default features | `Result<T, CssValidationFailure>` accepting exactly a clean report |
+| `CssComponentValues::parse(parser, source)` | Default features | `Result<CssComponentValues, CssComponentValueError>` |
+| `CssParser::parse_property_value(source, target, importance)` | Default features | `CssParseReport<Option<CssDeclaration>>` |
+| `CssDeclaration::try_from_components(parser, target, components, importance)` | Default features | `Result<CssDeclaration, CssPropertyValueError>` |
+| `CssDeclaration::expand()` | Default features | `Result<CssExpansion, CssExpansionError>` |
 
 The [manifest](../Cargo.toml) declares package `surgeist-css`, library
 `surgeist_css`, version `0.1.0`, Rust edition 2024, and no default features.
@@ -47,9 +42,9 @@ Clean-report validation is always available. Production dependencies are pinned 
 `unicode-segmentation = 1.13.3`; test-only JSON support uses
 `serde = 1.0.228` and `serde_json = 1.0.145`.
 
-`parse_sheet` receives decoded Unicode text. A leading U+FEFF is preserved as
+`CssParser::parse_sheet` receives decoded Unicode text. A leading U+FEFF is preserved as
 identifier content, just like an interior U+FEFF. For byte streams, first use
-`decode_stylesheet_bytes`, then `parse_decoded_stylesheet`.
+`CssDecodedStylesheetInput::decode`, then `CssParser::parse_sheet_bytes`.
 For example, `\u{feff}a {}` retains the complete type-selector name,
 while a lone U+FEFF is an incomplete qualified rule and produces a diagnostic.
 
@@ -76,8 +71,9 @@ independently. Defaults follow component-input length policy, with no extra
 finite cap. Limit and checked-capacity failures return no partial input.
 `CssSheet::location()` is null by default. `CssStylesheetLocation` preserves
 host-supplied location text without URL parsing, canonicalization, resource URL
-resolution, loading or mutable CSSOM identity. `parse_sheet_with_options` supplies
-the same optional context to an already-decoded Unicode input.
+resolution, loading or mutable CSSOM identity. `CssParseReport::<CssSheet>::with_location`
+(or `CssSheet::with_location`) attaches the same optional context to a report of an
+already-decoded Unicode input.
 
 `CssParseReport` exposes `syntax()`, `diagnostics()`, `is_clean()`,
 `into_parts()`, and `into_validation_result()`. The consuming validation conversion
@@ -109,70 +105,72 @@ behavior and whether the move changed it.
 | §5.5.4 and §5.5.5 consume every block as block contents; a failed declaration is reconsumed as a qualified rule with a `;` stop token, and §7.1 makes rules invalid in a `<declaration-list>`. | Rule-list bodies moved under #1328. Declaration-list bodies (`@font-face`, keyframe blocks, `@font-palette-values`, `@color-profile`, `@font-feature-values` and its blocks) now drop a nested rule as one unit and keep the declarations around it; `@font-face` and keyframe blocks are no longer dropped whole. | Behavior change |
 | §5.5.6 rejects a non-custom declaration whose value holds a top-level `{}` block beside other tokens, and §5.5.5 keeps interleaved declarations as nested declaration runs. | Already implemented through the block-contents definition. | Unchanged |
 | §5.4.10 parse a comma-separated list of component values appends a group only while input remains, so a final comma followed by no token adds no group. | Media query lists, forgiving selector lists and `@font-face` `src` lists no longer report an empty final member; `@media screen,{}` keeps one clean query. Checked import and custom-media construction agree. | Behavior change |
-| §5.4.4 parse a stylesheet's contents and §5.4.5 parse a block's contents replace "parse a list of rules" and "parse a list of declarations". | `parse_declaration_list_text` still implements the removed 2021 list-of-declarations entry point; `parse_declaration_block_contents` already implements block contents. | Deferred: reconciling or removing the historical public front is a public API decision for #1353. |
-| §5.4.6 parse a rule, §5.4.7 parse a declaration (no trailing-input check; value stops at `;`), §5.4.8 and §5.4.9. | `parse_rule`, `parse_declaration`, `parse_component_values` and related fragment fronts keep their whole-input contracts; the conformance registry excludes these entry points (`excluded.O-SYNTAX3.fragment-api`). | Unchanged (outside the claimed boundary) |
-| §5.4.5 is the intended parser for style attributes, where a root `}` ends the block. | `parse_style_attribute` follows the selected CSS Style Attributes recommendation: a root `}` does not end the style data. Like any unit that starts with neither an identifier nor an at-keyword, it starts a malformed declaration whose remnants §5.5.6 consumes through the next root `;` (#1372). The value admits declarations only, so an identifier-started unit that is not a valid declaration, such as `a {} color: red`, is likewise one malformed declaration read through its `;` (CSS 2.1 §4.2, #1396), never a qualified rule ending at its `}`. CSSOM declaration-block parsing already uses `parse_declaration_block_contents`. | Deferred: ending the style attribute at a root `}` is a public contract decision for #1353. |
+| §5.4.4 parse a stylesheet's contents and §5.4.5 parse a block's contents replace "parse a list of rules" and "parse a list of declarations". | `CssParser::parse_block_contents` is the single declaration-list front: it implements §5.5.5 "consume a block's contents" for style attributes, CSSOM `cssText` and raw lists. | Behavior change |
+| §5.4.6 parse a rule, §5.4.7 parse a declaration (no trailing-input check; value stops at `;`), §5.4.8, §5.4.9 and §5.4.10. | `CssRule::parse`, `CssDeclaration::parse`, `CssComponentValues::parse` and related fragment fronts keep their whole-input contracts; the conformance registry excludes these entry points (`excluded.O-SYNTAX3.fragment-api`). | Unchanged (outside the claimed boundary) |
+| §5.4.5 is the intended parser for style attributes, where a root `}` ends the block. | `CssParser::parse_block_contents` parses a style attribute. A root `}` ends the contents, so `color: red } width: 1px` retains only `color`. A unit that is not a declaration is consumed as a nested rule, so `a {} color: red` retains `color`; a failed declaration is reconsumed as a qualified rule through its `;` stop token and reported as `DropDeclaration` with the `;` that ends it inside its span, while a unit that reached a `{}` block is a `DropQualifiedRule` whose span ends with that block. This supersedes the CSS Style Attributes recommendation's reading, in which a `}` is an ordinary invalid token (#1353 decision 1). Input nested past 256 levels refuses the whole contents with one resource diagnostic, as the block-contents front charges every component once. | Behavior change |
 | §5.5.2, §5.5.9 and §5.5.10 no longer mark EOF inside an at-rule, block or function as a parse error. | EOF closures keep their `ImplicitClosure` recovery diagnostics, which are this crate's report contract rather than a claim about parse errors. | Unchanged (report contract) |
 | §7.1 no longer states that `!important` is invalid on descriptors; validity is left to the owning rule's prose. | Descriptor grammars still reject an importance annotation. | Unchanged (owning rules define no important descriptors) |
 | §9 reuses preserved comments only when comments were originally between a token pair. | Component serialization already reuses authored comments and inserts `/**/` only where required. | Unchanged |
 | §8.1 style rules parse `<declaration-list>` contents with nested style rules. | Nesting was already implemented. | Unchanged |
 | §7 drops the 2021 §8 grammar-matching conventions (literal tokens, implicit whitespace between components, ASCII case-insensitive matching, an escaped ident ending in `(` not being a function, and an unclosed function or block still matching) and defers to Values 4 §2; the unclosed-construct rule remains as the non-normative Syntax 3 §2.2 example. | Grammars keep the same matching: EOF-closed functions and blocks match with `ImplicitClosure` diagnostics, keywords match ASCII case-insensitively, whitespace is implicit between components, and only a `<function-token>` is a function. | Unchanged (the convention owner is now Values 4) |
-| §5.5.7 makes a stray `}` in a non-nested component list an explicit parse error that is still appended. | `parse_component_values` and value fronts already reject an unmatched closer with a typed error, and top-level preludes keep it as invalid prelude content. | Unchanged |
+| §5.5.7 makes a stray `}` in a non-nested component list an explicit parse error that is still appended. | `CssComponentValues::parse` and value fronts already reject an unmatched closer with a typed error, and top-level preludes keep it as invalid prelude content. | Unchanged |
 | §12.1 records the `<foo()>` and `<@foo>` productions; §7.1 uses them, for example `<@font-face> = @font-face { <declaration-list> }`. | Rule and function grammars are implemented directly; the notation changes no accepted syntax. | Unchanged |
 | §5.2 and §5.5.6 give a custom property declaration an "original text", and §5.3 requires token streams to reproduce declaration text. | Every parsed declaration already keeps its original name and value source snapshots, and custom values keep their authored text. | Unchanged |
 
 The public conformance registry keeps the Snapshot-official Syntax 3 source
-identity `O-SYNTAX3`, which names the 2021 publication and its anchors, such as
-`#urange-syntax`; moving that public metadata is deferred to #1353.
+identity `O-SYNTAX3`, which names the selected 2026-10-01 publication and its
+anchors, such as `#consume-unicode-range-value`. The 2021 `<urange>` and
+`<declaration-rule-list>` anchors have no counterpart in the 2026 text: `<urange>` is
+anchored at the unicode-range re-parse and `<rule-list>`, `<declaration-list>` and
+`<style-block>` at `#typedef-rule-list`, `#typedef-declaration-list` and
+`#typedef-block-contents`.
 
-## Raw declaration lists
+## Block contents
 
-`parse_declaration_list_text` consumes unwrapped ordinary-property declaration-list
-text using [CSS Syntax 3 (2021-12-24) §§5.3.8 and 5.4.5](../../../references/css-syntax-3--CRD-css-syntax-3-20211224--413b27acb4e1.md),
-the historical "parse a list of declarations" entry point that the selected
-2026 edition removes; see [deferred differences](#css-syntax-3-edition-differences).
-Ident-started units extend through the next root semicolon or actual EOF and use
-the shared property/custom/substitution/importance grammar. Complete generic
-at-rules are consumed through their block or semicolon and rejected once in this
-ordinary-property consumer; nested qualified rules and descriptors are not admitted.
-Other initial tokens, including stray closing delimiters, consume one invalid
-unit through the next root semicolon or EOF. Semicolons inside components, strings
-or comments never split the unit.
+`CssParser::parse_block_contents` consumes unwrapped declaration text with
+[CSS Syntax 3 (2026-10-01) §5.5.5](../../../references/css-syntax-3--CRD-css-syntax-3-20261001--8dc3adcc2b4e.md),
+"consume a block's contents". It serves style attributes, CSSOM `cssText` and raw
+declaration lists. A root `}` ends the contents and nothing after it is read, so
+`color: red } width: 1px` retains only `color`. Root semicolons, trivia and EOF are
+empty slots. An at-keyword starts an at-rule, which is consumed through its block
+or its `;` and dropped with `DropAtRule`. Anything else is tried as a declaration
+and, when that returns nothing, reconsumed as a qualified rule with `;` as the stop
+token (§5.5.3): the rule ends at its `{}` block, or before a root `;`, `}` or EOF.
+It is dropped as `DropQualifiedRule` when it reached its block and as `DropDeclaration`
+when it did not, as for a failed declaration. A `DropDeclaration` span includes the `;` that ends the unit; a `DropQualifiedRule` span ends with its block.
+A root `}` before a rule's block ends the rule and then the contents. A failed custom
+property is consumed whole through its `;` and reported as `DropDeclaration`.
 
-For example, raw `} color: red; width: 2px;` retains only Width and reports one
-`DropDeclaration` for `} color: red`; the style-attribute front drops the same
-malformed declaration with the same diagnostic. Diagnostic spans for raw units
-exclude the recovery semicolon; responsible tokens and EOF diagnostics refer to
-the actual input. Tokenizer recovery and structural-limit diagnostics preserve
-the shared policies and actions. No surrounding braces or generated names are used.
-
-Retained declarations preserve duplicates, order, custom-name case, importance,
-and shared original name/value snapshots. Parsing does not perform specified-block
-winner selection or shorthand coalescing. The free function uses the default
-Standards context; `CssParserContext::parse_declaration_list_text` selects the
-existing Quirks or explicit SVG authored grammar. The parser uses existing internal
-resource policy, with no separate text-limit API. Empty input and empty slots are
-clean; discarded input is nonclean even if nothing survives.
-`validate_declaration_list_text` accepts exactly the same clean report and preserves
-all diagnostics on failure. A context-selected report has the same clean conversion
-through `into_validation_result()`.
+For example, `} color: red; width: 2px;` retains nothing and is clean, while
+`a {} color: red; width: 2px;` retains `color` and `width` and reports one
+`DropQualifiedRule` for `a {}`. Retained declarations use the ordinary
+property/custom/substitution/importance grammar and preserve duplicates, order,
+custom-name case, importance and shared original name/value snapshots. Parsing
+does not perform specified-block winner selection or shorthand coalescing.
+The parser's context selects the existing Quirks or explicit SVG authored grammar;
+its component limits charge every original component once, including trivia and
+source after a root `}`. Empty input and empty slots are clean; discarded input
+is nonclean even if nothing survives. `CssParseReport::into_validation_result()`
+accepts exactly the clean report and preserves all diagnostics on failure.
+`CssParser::parse_block_contents_utf16` parses shared original UTF16 through the
+same front.
 
 ## Raw Page and FontFace declaration contents
 
-`parse_page_declaration_block_contents` and
-`parse_font_face_declaration_block_contents` admit the exact supplied unbraced
+`CssParser::parse_page_block_contents` and
+`CssParser::parse_font_face_block_contents` admit the exact supplied unbraced
 input for the selected [CSSOM declaration cssText setter](../../../references/cssom-1--editor-capture-20261009--d42e145ec395.md)
 and [Fonts4 descriptor interface](../../../references/css-fonts-4--WD-css-fonts-4-20260907--03626a0c8565.md).
 They share the existing CSS Syntax block-contents traversal and the actual
 Page/FontFace declaration callbacks. A root `}` stops consumption; at-rules
 and qualified rules are dropped as complete units. Invalid declarations recover
 locally, retaining valid neighbors, duplicate order and original source origins.
-No containing punctuation or rule is generated. The historical raw declaration
-list and the real-brace fragment policies remain distinct.
+No containing punctuation or rule is generated. The real-brace fragment policies
+remain distinct.
 
 Page contents keep Page descriptors, applicable ordinary properties and custom
-declarations as separate typed occurrences. `CssParserContext` provides the Page
-counterparts for document mode. Declaration replacement supplies no margin child
+declarations as separate typed occurrences. The parser's context supplies the
+document mode. Declaration replacement supplies no margin child
 rules. `CssPageDeclarationBlock::try_specified` composes the admitted block with
 the existing selected-block formatter. FontFace uses its descriptor grammar,
 rejects importance and recovers valid `src` members; its real-brace fragment,
@@ -185,19 +183,19 @@ The optional report payload is the completion decision: `Some(empty)` denotes
 successful empty or wholly invalid recovered contents, while `None` with typed
 resource diagnostics denotes failed preparation. CSSOM must reject a failed
 preparation before publishing replacement; it must never treat it as clearing.
-Nonclean reports with `Some` are ordinary recovered input. Limited variants charge
-the complete original input, including trivia, descendants and text after the
-root stop token. Input and grammar resource failures discard the whole preparation,
+Nonclean reports with `Some` are ordinary recovered input. The parser's component
+limits charge the complete original input, including trivia, descendants and text
+after the root stop token. Input and grammar resource failures discard the whole preparation,
 retain their typed causes, and permit an unchanged larger-budget retry. Parsed
 occurrences keep the owning input snapshot after the caller drops its string.
 Live identity, child preservation, host guards and mutation remain with CSSOM.
 
 ## Detached Page margin insertion
 
-`parse_page_margin_rule` and its limits variant admit exactly one complete raw
-margin at-rule in a Page destination. `CssRuleSyntax::admit_page_margin_rule`
-provides the same admission after complete-input classification;
-`CssParserContext` and the candidate context method supply document mode.
+`CssMarginRule::parse` admits exactly one complete raw margin at-rule in a Page
+destination. `CssRuleSyntax::admit_page_margin_rule` provides the same admission
+after complete-input classification; the parser's `CssParserContext` and
+`CssRuleSyntax::admit_page_margin_rule_with_context` supply document mode.
 The actual Page callbacks decode the name, require an empty prelude, and recover
 applicable margin declarations locally. Extra nontrivia rejects preparation.
 No Page wrapper or shifted coordinates are introduced. The complete original
@@ -226,12 +224,12 @@ original occurrences. `CssDeclaration::with_importance` produces an immutable
 priority transition; existing handles retain their original importance and
 source payload. Custom property names remain case-sensitive.
 
-`serialize_cssom()` reconstructs eligible complete shorthands in the selected
+`serialize_cssom(limits)` reconstructs eligible complete shorthands in the selected
 CSSOM preference order, requiring uniform importance, exact representability
 and no intervening conflicting logical mapping. It emits each selected property
 once, joins declarations with one space, and emits an empty string for an empty
 block. For example, `margin: 1px 2px; color: red; margin-left: 3px` produces
-`margin: 1px 2px 1px 3px; color: red;`. `property_value(name)` returns an exact
+`margin: 1px 2px 1px 3px; color: red;`. `property_value(name, limits)` returns an exact
 supported terminal or reconstructed shorthand value, or `None` when it is absent
 or cannot represent the complete selected members. Equality uses the owning
 specified-value semantics, including retained math phases, rather than rounded
@@ -247,15 +245,16 @@ keyframe domain applies its existing animation-property exclusion.
 
 Unresolved pending inset, margin, padding, border-width, border-style,
 border-color, scroll-padding and scroll-margin substitutions may select either
-physical or logical members. Their projection returns
-`CssDeclarationBlockErrorKind::PendingFootprintUndetermined` atomically until
+physical or logical members. Their projection atomically returns a
+`CssDeclarationBlockError` whose `pending_footprint_property()` names the member until
 strict reentry establishes the selected footprint. Fixed-footprint pending
 members emit empty terminal values and reconstruct their original shorthand
 only with complete uniform-priority coverage from that same original occurrence.
 Completed uniform CSS-wide globals use semantic keyword equality.
 
-The explicit-limit counterparts use cumulative input, projection and byte
-budgets. Construction charges duplicate losers and generated members; inverse
+Every constructor, projection and serialization method takes `CssSerializationLimits`, whose
+input, projection and byte budgets are cumulative; read accessors such as `entries()`
+take none. Construction charges duplicate losers and generated members; inverse
 probes charge reached comparison work. A failure during member traversal retains
 that member's original source and ordinals. Requests permit an immutable retry
 without partial output. These operations project a supplied authored list;
@@ -267,43 +266,45 @@ variable substitution and live CSSOM object identity remain downstream.
 The selector and media fragment parsers consume the supplied source directly, with original
 UTF-8 byte offsets, zero-based lines and UTF-16 columns, and actual EOF. Callers do not need
 to synthesize a stylesheet rule around a selector or query. The single-item
-functions require exactly one complete grammar production; a root comma is an
+parsers require exactly one complete grammar production; a root comma is an
 error even when a second item would be valid.
 
-`parse_selector` and `parse_selector_list` accept ordinary selectors, including
+`CssSelector::parse` and `CssParsedStyleSelectors::parse` with
+`CssStyleSelectorContext::Ordinary` accept ordinary selectors, including
 explicit `&` anchors. Anchors remain authored and symbolic: with a parent selector
 list they use that complete list and its maximum specificity; without one they
 match the context's scope elements and contribute zero specificity. They are not
-rewritten into `:scope`. `parse_relative_selector_list` consumes a nonempty strict
+rewritten into `:scope`. `CssRelativeSelectorList::parse` consumes a nonempty strict
 general relative list, retaining each explicit leading `>`, `+`, `~` or `||`
 relationship or an implicit descendant relation. It admits legal terminal
 pseudo-elements and independent `:has()` selectors; attaching its result as
 `:has()` arguments rechecks that narrower context. One invalid outer member
 rejects the complete list, while forgiving inner `:is()`/`:where()` recovery
-retains its diagnostics. `into_validation_result()` accepts only a clean report.
+retains its diagnostics. `CssParseReport::into_validation_result()` accepts only a clean report.
 Detached relative anchors remain symbolic until an admitting consumer binds
 them. Normalized `ExplicitAnchors` bindings retain an optional
 parent through `CssSelectorContext::parent()` rather than manufacturing one.
 
-`parse_style_selector_list` admits raw selectorText in the actual destination
-grammar: `Ordinary` rejects leading combinators; `Nested` retains relative
+`CssParsedStyleSelectors::parse` admits raw selectorText in the actual destination
+grammar, selected by its `CssStyleSelectorContext`: `Ordinary` rejects leading combinators; `Nested` retains relative
 members and symbolic nesting anchors; `Scoped(CssStyleAncestor)` retains scope
 anchors even when a style ancestor exists through the scope. An intervening
-style rule starts ordinary nesting context. The result contains the existing
-ordinary/scoped checked carrier through `CssAdmittedStyleSelectors` and retains
+style rule starts ordinary nesting context. The result holds one
+`CssStyleSelectorList`, whose explicit anchors are nesting anchors in the `Ordinary`
+and `Nested` grammars and scope anchors in the `Scoped` grammar; it retains
 the complete original input occurrence through `CssParsedStyleSelectors::origin`.
-It feeds checked edited rule views without manufacturing an authored rule.
+It feeds `CssRuleGraphInput` without manufacturing an authored rule.
 One invalid outer member or trailing nontrivia rejects the whole input, while
 forgiving and implicit EOF recovery may retain a payload with diagnostics.
 Consumers implementing selectorText no-ops therefore inspect retention and
-typed failure causes separately from clean-report validation. The limits variant
-charges all original bytes and component nodes, including trivia and descendants,
-before invoking the existing selector grammar; resource failures publish no
+typed failure causes separately from clean-report validation. The parser's component
+limits charge all original bytes and component nodes, including trivia and descendants,
+before the existing selector grammar is invoked; resource failures publish no
 payload and allow unchanged retry. Later specified output has its own limits.
 
-`CssSelector::to_specified_css()` emits canonical authored selector text.
-`to_specified_css_with_limits()` applies cumulative semantic-node and final UTF-8
-byte limits, returning a typed error atomically while retaining the input graph.
+`CssSelector::serialize_specified(limits)` emits canonical authored selector text
+under cumulative semantic-node and final UTF-8 byte limits, returning a typed
+error atomically while retaining the input graph.
 Escapes, namespace prefixes, selector order and symbolic `&`/`:scope` identity
 remain meaningful. Reparse qualified output with the corresponding namespace
 bindings; emission does not resolve ancestry or match elements.
@@ -339,19 +340,17 @@ attaching the list to `CssPseudoClass::Has` still checks its narrower argument
 context. Every supplied member is checked, preserving order and duplicates.
 Invalid typed members are rejected atomically rather than silently filtered.
 
-The three `try_new_with_limits` methods use the existing
-`CssSpecifiedValueSerializationLimits` cumulatively over a list aggregate and all
-members. A relative additionally charges its leading carrier. Construction runs
+The three `try_new` constructors take `CssSerializationLimits` and apply it
+cumulatively over a list aggregate and all members. A relative additionally charges its leading carrier. Construction runs
 the same iterative, context-aware specified writer, discards its bounded output,
-and returns the unchanged value. The typed error distinguishes `EmptyList` from
-`Specified`, which preserves the original grammar/resource error and exposes it
-through `Error::source()`. `CssSelectorList` and `CssRelativeSelectorList` expose
-`to_specified_css` and `to_specified_css_with_limits`; later output is an independent
-atomic operation with its own cumulative budget. Parser assembly keeps its actual
+and returns the unchanged value. The typed error distinguishes `is_empty_list()`
+from `serialization_error()`, which preserves the original grammar/resource error
+and is also its `core::error::Error::source()`. `CssSelectorList` and
+`CssRelativeSelectorList` expose `serialize_specified(limits)`; later output is an
+independent atomic operation with its own cumulative budget. Parser assembly keeps its actual
 grammar checks, recovery/provenance and parse limits separately.
 
-`CssPseudoSelectorList::try_new_forgiving` and
-`try_new_forgiving_with_limits` admit an empty vector for Is/Where, while still
+`CssPseudoSelectorList::try_new_forgiving` admits an empty vector for Is/Where, while still
 rejecting invalid supplied members. An empty value costs one aggregate node and
 zero argument bytes. Not and nth-of attachment require nonempty arguments and
 reject that same empty container. This checked typed operation does not perform
@@ -383,9 +382,10 @@ An unsafe lexical boundary fails atomically instead of escaping into outer gramm
 
 Linguistic selectors preserve authored argument tokens. `CssPseudoClass::Dir`
 contains `CssDirectionality`; its checked `try_new` accepts a decoded identifier,
-including unknown direction names. `CssPseudoClass::Lang` now contains a nonempty
+including unknown direction names. `CssPseudoClass::Lang` contains a nonempty
 `CssLanguageRangeList`. Use `ranges()` to inspect each `CssLanguageRange`,
-`try_ident` for a decoded identifier, or `try_string` for a decoded string.
+`CssLanguageRange::try_ident` for a decoded identifier, or
+`CssLanguageRange::try_string` for a decoded string.
 Strings may be empty or contain spaces; identifiers may require escaping.
 No constructor evaluates directionality, BCP47 matching, or document inheritance.
 
@@ -399,11 +399,9 @@ token spans without manufacturing source positions for constructed values.
 serializes an argument or argument list canonically, escaping decoded values and
 using comma-space separators; it does not serialize an entire selector.
 
-Migration from the identifier-only language API changes `Lang(range)` to
-`Lang(list)` and `range.as_str()` to `list.ranges()[0].as_str()` for a known
-singleton. Replace `CssLanguageRange::try_new` with `try_ident`; the latter takes
-decoded values and escapes spaces or punctuation instead of treating them as raw
-CSS source. The old `Hash` implementation is removed. Equality now includes
+`CssLanguageRange::try_ident` and `try_string` take decoded values and escape
+spaces or punctuation instead of treating them as raw CSS source. Neither
+`CssLanguageRange` nor `CssLanguageRangeList` implements `Hash`. Equality includes
 component spelling and provenance, so identically decoded parsed and programmatic
 arguments need not compare equal. Canonical serialization preserves meaning and
 token form while intentionally normalizing escape spelling and string quotes.
@@ -420,8 +418,8 @@ Imported and sibling sheets start with their own empty bindings. Supplying a
 context to a fragment does not add declarations to that fragment or mutate the
 context.
 
-`parse_media_query` replaces a malformed complete query with `CssMediaQuery::Never`.
-`parse_media_query_list` recovers each root comma member independently, preserving
+`CssMediaQuery::parse` replaces a malformed complete query with `CssMediaQuery::Never`.
+`CssMediaQueryList::parse` recovers each root comma member independently, preserving
 valid neighbors. Members are split by
 [parse a comma-separated list of component values](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-separated-list-of-component-values),
 which appends a member only while input remains: `screen,` is one clean query,
@@ -434,7 +432,7 @@ valid and clean; an empty single query is malformed.
 supplied checked member in order through infallible construction.
 
 Media conditions preserve explicit grouping as
-`CssMediaConditionKind::Parenthesized`: the wrapper position identifies the outer
+`CssConditionKind::Parenthesized`: the wrapper position identifies the outer
 opening parenthesis and the child retains its own first non-trivia position.
 `not` takes one media operand, including a general-enclosed function;
 `and` and `or` each join a homogeneous
@@ -454,16 +452,17 @@ so ordinary callers need not allocate a larger stack. Stylesheets and style
 attributes deeper than 128 levels, and fragments or checked components 64 or
 more levels deep, need that thread. If the platform cannot start it, deep input
 is never parsed on the caller's stack: the parse is refused with a typed
-`NestingLimit` resource failure whose limit is the caller-stack depth (128 or 63),
-located at the first deeper opening and spanning the whole source; the front
-door may still append its tokenizer EOF and escape diagnostics. The refused
-report retains no syntax, or a `Never` query for media front doors; checked
-components report a component `NestingLimit` at that function or block.
+`ParserUnavailable` resource refusal whose `nesting_limit()` is the caller-stack
+depth (128 or 63), located at the first deeper opening and spanning the whole
+source; the front door may still append its tokenizer EOF and escape
+diagnostics. The refused report retains no syntax, or a `Never` query for media
+front doors; checked components report a component `ParserUnavailable` error at
+that function or block.
 Media condition depth also counts `not` and grouping levels, so
-`parse_cssom_media_query` can need the thread for shallow source; it then
+`CssMediaQuery::parse_medium` can need the thread for shallow source; it then
 returns `None` with the same refusal at the deep query. Media construction and
-serialization, custom-media and `@import` media output instead fail with their
-existing component `NestingLimit` error at the responsible component or query.
+serialization, custom-media and `@import` media output instead fail with a
+component `ParserUnavailable` error at the responsible component or query.
 Accepted EOF closures
 appear as recovery diagnostics; clean
 validation therefore rejects a report that needed them. Functions inside
@@ -532,7 +531,8 @@ comments. Structural EOF closures retain their separate diagnostics. Comment-lik
 bytes inside strings and URL tokens are payload and do not create comment errors.
 
 Backslash-newline and identifier-like EOF escapes produce `EscapeParseError`
-diagnostics with `CssEscapeError::Newline` or `EndOfInput`, respectively, and
+diagnostics whose `escape_failure()` is `CssEscapeFailure::Newline` or
+`EndOfInput`, respectively, and
 `RecoverEscape`. Newline recovery leaves a backslash delimiter and preserves the
 newline; EOF escape recovery retains U+FFFD. The error position is the backslash
 for newline recovery and the EOF cursor for an EOF escape. Both recovery spans
@@ -583,18 +583,19 @@ one token and rejects these two-character spellings. Attribute selectors retain
 their higher-level typed matcher semantics.
 
 ```rust
-use surgeist_css::{CssComponentValue, CssComponentValues};
+use surgeist_css::component::{CssComponentValue, CssComponentValueLimits, CssComponentValues};
 
+let limits = CssComponentValueLimits::default();
 let values = CssComponentValues::try_new(vec![
     CssComponentValue::try_number("10").unwrap(),
     CssComponentValue::try_ident("px").unwrap(),
-]).unwrap();
-assert_eq!(values.serialize().unwrap().as_css(), "10/**/px");
+], limits).unwrap();
+assert_eq!(values.serialize_tokens(limits).unwrap().as_css(), "10/**/px");
 ```
 
 Serialization preserves token representations and meaningful whitespace. It
 inserts boundary comments where adjacent tokens would otherwise combine, and
-returns an origin map for generated byte offsets. This values-only operation is
+returns an origin map for generated byte offsets. This values-only `serialize_tokens(limits)` operation is
 distinct from canonical property or CSSOM serialization. Parsed tokens carry an
 immutable source snapshot and original span; constructed tokens carry
 `Programmatic` provenance. Combining components from different inputs preserves
@@ -603,16 +604,16 @@ whether origins share the same immutable input allocation.
 
 EOF-implied delimiters and token endings are emitted explicitly with
 `ImplicitClosure` provenance. Bad strings, bad URLs, unmatched closing
-delimiters, and unrepresentable token boundaries return typed errors. Explicit
-`CssComponentValueLimits` bound input/output bytes, component count, and depth;
+delimiters, and unrepresentable token boundaries return typed errors. `CssComponentValueLimits` bound input/output bytes, component count, and depth;
 the shared structural ceiling is 256. Input exceeding the byte limit is rejected
 before copying or tokenizing it, with `UnretainedInput` provenance and its UTF-8
 length. These syntax limits do not promise a global memory budget.
 
 The [CSSOM §2.1 common idioms](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#common-serializing-idioms)
-are available as `serialize_css_identifier`, `serialize_css_string`,
-`serialize_css_comma_separated_list`, and `serialize_css_whitespace_separated_list`,
-each with a `_with_limits` counterpart. Identifier and string functions borrow
+are available in the `serialization` module as `serialize_css_identifier`,
+`serialize_css_string`, `serialize_css_comma_separated_list`, and
+`serialize_css_whitespace_separated_list`, each taking `CssSerializationLimits`.
+Identifier and string functions borrow
 arbitrary decoded text, reuse the shared escaping writer, and replace NUL with
 U+FFFD; an empty identifier emits empty text and an empty string emits `""`.
 List functions borrow already serialized item slices and preserve every item
@@ -625,8 +626,8 @@ operations leave strict `CssIdent` and property-list admission unchanged.
 
 ## Raw single rules
 
-`parse_rule(source, &CssNamespaceContext)` parses exactly one supported ordinary
-rule from the original source. A style rule retains its declarations, nested
+`CssRule::parse(parser, source, &CssNamespaceContext)` parses exactly one supported
+ordinary rule from the original source. A style rule retains its declarations, nested
 rules and later declaration runs inside that one node. At-rules use their owning
 CSS grammar. Imports and namespaces are parsed in isolation at the top level;
 this operation does not validate insertion order in an existing stylesheet.
@@ -637,7 +638,7 @@ over the complete source. This remains true when a stylesheet parser could
 recover one valid sibling. Apparent `@charset` rules are unrecognized and
 rejected with `UnknownAtRule`; they cannot produce a `CssRule`. The raw parser
 does not strip a BOM or stylesheet CDO/CDC sentinels. Top-level CDO/CDC tokens
-are cleanly ignored by `parse_sheet`, as required by
+are cleanly ignored by `CssParser::parse_sheet`, as required by
 [Syntax 3 §5.5.1](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents).
 Block contents reconsume them as qualified-rule input under the selected 2026
 [consume a block's contents](https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents),
@@ -657,7 +658,7 @@ matches selectors nor applies cascade, substitution or CSSOM mutation.
 
 ## Raw style blocks
 
-`parse_style_block(source, &CssNamespaceContext)` accepts exactly one real-brace
+`CssStyleBlock::parse(parser, source, &CssNamespaceContext)` accepts exactly one real-brace
 block and optional surrounding whitespace/comments. The selected grammar is an
 ordinary style body: initial declarations, nested rules, and subsequent declaration
 runs retain their authored order. Relative child selectors and explicit `&` stay
@@ -679,7 +680,7 @@ not a generic component block or a CSSOM mutation operation.
 
 ## Raw declaration fragments
 
-`parse_declaration` consumes exactly one ordinary declaration from the unmodified
+`CssDeclaration::parse(parser, source)` consumes exactly one ordinary declaration from the unmodified
 source, including its property name, colon, value, and optional terminal
 `!important` annotation. It validates recognized property grammar or custom-property
 grammar beyond CSS Syntax's generic consume-declaration algorithm. Surrounding CSS
@@ -687,7 +688,7 @@ whitespace and comments are accepted. Empty custom values are valid.
 
 Top-level semicolons, stray closing delimiters, multiple declarations, unknown
 properties, and invalid values reject the entire input. Thus `color:red;` belongs
-to `parse_style_attribute`, while `--x:{a:b;c:d}` is a valid singular declaration.
+to `CssParser::parse_block_contents`, while `--x:{a:b;c:d}` is a valid singular declaration.
 Rejection returns `None` and `RejectInput` over the original full input; resource
 exhaustion retains `StopAtNestingLimit`. Implicit EOF closure diagnostics appear
 only when the whole declaration survives grammar and full-consumption checks.
@@ -701,9 +702,10 @@ symbolic. No selector, brace, property name, or value is synthesized.
 
 ## Raw property values
 
-`parse_property_value_text(source, name, importance)` consumes the original value
-bytes with a supplied `CssPropertyNameRef` and `CssImportance`. The companion
-`parse_property_value_text_for_grammar` accepts `CssPropertyGrammar` to preserve
+`CssParser::parse_property_value(source, target, importance)` consumes the original
+value bytes with a supplied `CssPropertyTextTarget` and `CssImportance`.
+`CssPropertyTextTarget::Property` carries a `CssPropertyNameRef`;
+`CssPropertyTextTarget::Grammar` carries a `CssPropertyGrammar` to preserve
 canonical or legacy grammar selection. Both return
 `CssParseReport<Option<CssDeclaration>>` and share ordinary declaration grammar.
 Known global keywords and substitution-dependent values remain symbolic; custom
@@ -722,26 +724,24 @@ No property prefix, source wrapper or serialization is introduced.
 
 ## Checked declaration construction
 
-`parse_property_value` validates owned components against one property grammar.
-It accepts a canonical known-property identity or a checked custom-property name;
+`CssDeclaration::try_from_components` validates owned components against one property
+grammar. Its `CssPropertyTarget` is a canonical known-property identity or a checked
+custom-property name (`Property`), an explicit `CssPropertyGrammar` (`Grammar`), or a
+property in `@page` or margin-box context (`PageProperty`, `MarginProperty`);
 importance is supplied separately. Top-level annotations, declaration separators
 and trailing grammar tokens are errors. The result retains ordinary, CSS-wide
 and substitution-dependent values without resolving them.
 
 ```rust
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssImportance, CssKnownProperty,
-    CssPropertyNameRef, parse_property_value,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValueLimits, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
 
 let value = CssComponentValues::try_new(vec![
     CssComponentValue::try_dimension("2", "px").unwrap(),
-]).unwrap();
-let declaration = parse_property_value(
-    CssPropertyNameRef::Known(CssKnownProperty::Margin),
-    value,
-    CssImportance::Important,
-).unwrap();
+], CssComponentValueLimits::default()).unwrap();
+let declaration = CssDeclaration::try_from_components(&CssParser::default(), CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Margin)), value, CssImportance::Important).unwrap();
 assert_eq!(declaration.position(), None);
 assert!(declaration.same_occurrence(&declaration.clone()));
 ```
@@ -756,19 +756,19 @@ arbitrary-token contract.
 
 Factory-created declarations have no parsed property-name position. Their
 `value_components()` preserve the supplied token origins, including components
-combined from separate parsed inputs. `CssPropertyValueParseError` carries a typed
-grammar or component error and a `CssSerializedOrigin`; generated parsing offsets
+combined from separate parsed inputs. `CssPropertyValueError` carries a typed
+grammar or component failure and a `CssSerializedOrigin`; generated parsing offsets
 are mapped back to those original tokens or to programmatic provenance.
 
-For checked `parse_property_value` construction, a nested resource failure with
-`NestingLimit`, `ComponentLimit`, `ByteLimit`, or `CapacityOverflow` remains
-`CssPropertyValueErrorKind::Component` with the offending original token origin.
-Ordinary property-grammar rejection remains `CssPropertyValueErrorKind::Grammar`.
-This preserves the typed resource exception through the known-property parser;
-callers migrating from a generic invalid-property error can inspect `kind()` and
+For checked `CssDeclaration::try_from_components` construction, a nested resource failure with
+`NestingLimit`, `ComponentLimit`, `ByteLimit`, or `CapacityOverflow` remains a
+component failure, read through `component_error()`, with the offending original
+token origin. Ordinary property-grammar rejection reports its `code()` and grammar
+facts instead. This preserves the typed resource exception through the
+known-property parser; callers can inspect `code()`, `component_error()` and
 `origin()` without treating generated serialization coordinates as authored ones.
 
-Declarations read by `parse_sheet` and `parse_style_attribute` expose
+Declarations read by `CssParser::parse_sheet` and `CssParser::parse_block_contents` expose
 `parsed_name()` and `parsed_value()` with original spans and a shared input
 snapshot. The value span excludes the importance annotation and declaration
 delimiter. Structural recovery preserves that original snapshot even when it
@@ -780,16 +780,15 @@ declaration. Declaration equality continues comparing body, importance and
 optional position, while authored-value equality continues comparing its exact
 retained CSS text. Neither equality operation compares occurrence identity.
 
-Migration: `CssDeclaration::position()` now returns `Option<CssSourcePosition>`.
-Code inspecting a parsed declaration can require `Some`; constructed declarations
-have no invented coordinates. Declaration accessors are no longer `const fn`
-because their shared occurrence storage is allocated. Rule, descriptor and
-keyframe-declaration position APIs retain their existing contracts.
+`CssDeclaration::position()` returns `Option<CssSourcePosition>`: a parsed
+declaration yields `Some`, and constructed declarations have no invented
+coordinates. Declaration accessors are not `const fn` because their shared
+occurrence storage is allocated.
 
 ## Exact authored calculations
 
-Calculation roots accept checked component values through `try_from_components`
-and `try_from_components_with_limits`. Their `components()` accessor retains the
+`numeric::CssCalculation<Root>` roots accept checked component values through
+`try_from_components(values, limits)`. Their `components()` accessor retains the
 original graph, including independently originating children. `expression()`
 exposes borrowed exact numeric leaves, symbolic constants, groups, operators,
 and functions. A parsed `calc(...)` retains its outer `NestedCalc` node; inspect
@@ -797,22 +796,22 @@ and functions. A parsed `calc(...)` retains its outer `NestedCalc` node; inspect
 spelling, and decimal precision. `unit()` retains the decoded authored unit;
 `canonical_unit()` exposes its checked unit identity.
 
-The pure number, percentage, length, angle, time, frequency, and resolution
-wrappers check their named domains. `CssLengthPercentageCalculation` supplies the
-length percentage context. `numeric_type()` exposes dimensional exponents and
+The pure `CssNumber`, `CssPercentage`, `CssLength`, `CssAngle`, `CssTime`,
+`CssFrequency`, and `CssResolution` roots check their named domains.
+`CssCalculation<CssLengthPercentage>` supplies the length percentage context. `numeric_type()` exposes dimensional exponents and
 any percentage hint, including intermediate products and quotients. Integer
 calculations have numeric type `Number`; `requires_rounding()` records the
 integer consumer's deferred conversion requirement. No arithmetic is evaluated
 during admission: division by zero, symbolic infinity and NaN, range clamping,
 and integer rounding belong to later resolution.
 
-`CssHintedNumberCalculation` checks a Number result whose dimensional powers
+`CssCalculation<CssHintedNumber>` checks a Number result whose dimensional powers
 cancel while its percentage hint remains non-null. Color and opacity expose
 distinct `HintedNumberCalculation` branches for these percentage-permitting
 slots. Relative non-hue channels, profile expressions and alpha retain the same
 permission. Percentage-permitting scale operands, filter amounts,
 border-image slice/width and line-height also expose this distinct branch.
-Pure `CssNumberCalculation` and integer roots, hue, and legacy
+Pure `CssCalculation<CssNumber>` and integer roots, hue, and legacy
 number-only CMYK channels reject this payload. This follows
 [Typed OM's numeric matching rule](https://www.w3.org/TR/2024/WD-css-typed-om-1-20240321/#cssnumericvalue-match)
 and [Values 4's type checking](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-type-checking):
@@ -832,30 +831,30 @@ declarations remain pending upstream; exact constructors reject residual `var()`
 
 Construction errors distinguish component, grammar, arity, type, domain, and
 resource failures and retain responsible origins. Explicit byte, component, and
-depth limits apply before admission. `serialize()` emits canonical authored
+depth limits apply before admission. `serialize_tokens(limits)` emits canonical authored
 syntax with a map to original token and delimiter origins. Equality compares the
 authored graph and provenance, not evaluated numeric equivalence.
 
-Pure lengths use `CssLengthCalculation`; mixed length-percentages use
-`CssLengthPercentageCalculation`. Both retain the exact checked component and
+Pure lengths use `CssCalculation<CssLength>`; mixed length-percentages use
+`CssCalculation<CssLengthPercentage>`. Both retain the exact checked component and
 arithmetic graph. Borrowed leaf views expose numeric representations and unit
 identities. Programmatic components use checked exact-token constructors;
 relative units and percentages remain unresolved.
-`CssCalculationType::Integer` is removed: use `Number` with the integer wrapper
-and its `requires_rounding()` flag. `CssCalculationExpressionRef::Negate` is
-removed; signs belong to numeric tokens or the subtraction and product grammar.
-`CssIntegerCalculation::literal` now allocates and is no longer a `const fn`.
+`CssCalculationType` has no integer type: an integer calculation has type `Number`
+and carries its deferred conversion in `requires_rounding()`. Signs belong to
+numeric tokens or the subtraction and product grammar.
+`CssCalculation<CssInteger>::literal` allocates and is not a `const fn`.
 Calculation-root `result_type()`, sum and product `len()`, and sum-term and
-product-factor `operator()` accessors are also no longer `const fn`; call them
+product-factor `operator()` accessors are not `const fn` either; call them
 at runtime.
 
-`CssLengthPercentageCalculation::try_sum(first, rest)` assembles checked roots
-using a first operand and subsequent `(CssCalculationSumOperator, operand)`
-pairs. `try_sum_with_limits` applies aggregate depth, component-count and byte
-limits before cloning the assembled graph. These budgets include the new
+`CssCalculation::<CssLengthPercentage>::try_sum(first, rest, limits)` assembles
+checked roots using a first operand and subsequent `(CssCalculationSumOperator,
+operand)` pairs. Its `CssComponentValueLimits` apply aggregate depth,
+component-count and byte limits before cloning the assembled graph. These budgets include the new
 `calc()` wrapper and whitespace/operator separators, all original child trivia,
 and canonical numeric output. A single operand still receives the wrapper.
-Finite exhausted limits stop further iterator consumption; default unlimited
+Finite exhausted limits stop further iterator consumption; the default unlimited
 count and byte limits do not guarantee termination for an arbitrary iterator.
 
 Assembly preserves original child components, lexical spelling, snapshots and
@@ -868,11 +867,11 @@ whereas `0px` remains valid. Trusted checked children may retain recovered
 closures during assembly; direct public construction from recovered components
 continues to reject them.
 
-Construct compound calculations with `CssLengthPercentageCalculation::try_sum`
+Construct compound calculations with `CssCalculation::<CssLengthPercentage>::try_sum`
 and `CssCalculationSumOperator`, then admit the result through the scalar owner
-for its domain. For pure-length math, construct a `CssLengthCalculation` through
+for its domain. For pure-length math, construct a `CssCalculation<CssLength>` through
 its checked factories and pass that typed root to the scalar owner's
-`try_from_calculation`. Pure-length parsing selects a length root; scalar
+`CssNumeric::try_from_calculation`. Pure-length parsing selects a length root; scalar
 admission trusts the checked calculation's dimensional root without rechecking
 its contextual function support. The first operand has no binary operator;
 signed operand tokens remain valid. Checked construction owns grammar and
@@ -882,9 +881,9 @@ Positions, basic shapes, and `clip-path` use their typed authored graphs,
 including symbolic calculations.
 
 Ordinary lengths and length-percentages use the shared checked
-`CssSpecifiedLength`, `CssSpecifiedNonNegativeLength`,
-`CssSpecifiedLengthPercentage`, and
-`CssSpecifiedNonNegativeLengthPercentage` owners directly. Admission checks exact
+`numeric::CssNumeric<CssLength>`, `CssNumeric<CssLength, CssNonNegative>`,
+`CssNumeric<CssLengthPercentage>`, and
+`CssNumeric<CssLengthPercentage, CssNonNegative>` owners directly. Admission checks exact
 decimal spelling, units, and ordinary sign without floating-point conversion.
 Only true numeric zero permits an omitted length unit; tiny nonzero values do
 not become zero. Nonnegative domains admit negative lexical zero and defer the
@@ -896,11 +895,13 @@ and arithmetic structure while ignoring numeric source origins. This covers
 positions, transforms, shadows,
 filters, clipping and shapes, gradients, border-image, border-spacing, and
 typography. Variants, keywords, list order, authored arity, and omission remain
-distinct. Shared scalar and raw calculation equality still compares provenance;
-their `origin()` accessors retain parsed spans or programmatic origin. Applying
-this aggregate policy to symbolic AST branches follows the checked owner model;
-the retired raw math equality also compared origins. Equality does not evaluate
-or normalize mathematically equivalent spellings.
+distinct. Shared `CssNumeric`, `CssNumericLiteral` and `CssCalculation` equality
+follows CSS Typed OM 1 "equal numeric values": the same root and unit and the
+same exact value, ignoring source origin and spelling (`2`, `2.0` and `+2` are
+equal), with calculations compared structurally in operand order. Their
+`origin()` accessors retain parsed spans or programmatic origin. Equality does
+not convert units (`96px` differs from `1in`) or evaluate and reorder
+calculations.
 
 ## Canonical ordinary number output
 
@@ -924,21 +925,21 @@ The retained value remains exact. Construction and range checks use the original
 coefficient, so a tiny negative value cannot enter a nonnegative domain by
 rounding to zero, and a tiny nonzero number cannot enter a unitless-zero grammar.
 Source origins, units and equality also retain their authored meaning.
-`CssComponentValues::serialize()` preserves numeric token spelling; ordinary
+`CssComponentValues::serialize_tokens(limits)` preserves numeric token spelling; ordinary
 specified serialization deliberately produces rounded text.
 
 ```rust
-use surgeist_css::{
-    CssComponentValue, CssSpecifiedNumber, CssSpecifiedValueSerializationLimits,
-};
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::numeric::{CssNumber, CssNumeric};
+use surgeist_css::serialization::CssSerializationLimits;
 
 let component = CssComponentValue::try_number("0.9999996")?;
-let number = CssSpecifiedNumber::try_from_component(component.clone())?;
+let number = CssNumeric::<CssNumber>::try_from_component(component.clone())?;
 assert_eq!(
-    number.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 1))?,
+    number.serialize_specified(CssSerializationLimits::new(1, 1, 1))?,
     "1",
 );
-assert_eq!(number.literal_component(), Some(&component));
+assert_eq!(number.literal().map(|literal| literal.component()), Some(&component));
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
@@ -1117,20 +1118,23 @@ percentages remain symbolic. `sign(-2em)` also stays symbolic because a zero fon
 size changes its result; [sign operates on the resolved magnitude](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#sign-funcs).
 
 ```rust
-use surgeist_css::{
-    CssNumberCalculation, CssSpecifiedNumber, CssSpecifiedValueSerializationLimits,
-    parse_component_values,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{CssCalculation, CssNumber, CssNumeric};
+use surgeist_css::serialization::CssSerializationLimits;
 
-let calculation = CssNumberCalculation::try_from_components(
-    parse_component_values("calc(1 / 3)")?,
+let parser = CssParser::default();
+let limits = parser.component_limits();
+let calculation = CssCalculation::<CssNumber>::try_from_components(
+    CssComponentValues::parse(&parser, "calc(1 / 3)")?,
+    limits,
 )?;
-let number = CssSpecifiedNumber::try_from_calculation(calculation.clone())?;
+let number = CssNumeric::<CssNumber>::try_from_calculation(calculation.clone())?;
 assert_eq!(
-    number.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(4, 4, 14))?,
+    number.serialize_specified(CssSerializationLimits::new(4, 4, 14))?,
     "calc(0.333333)",
 );
-assert_eq!(calculation.serialize()?.as_css(), "calc(1 / 3)");
+assert_eq!(calculation.serialize_tokens(limits)?.as_css(), "calc(1 / 3)");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
@@ -1257,7 +1261,7 @@ these checked values downstream. Snapshot 2026 selects this bounded feature in
 [its pre-CR release exceptions](https://www.w3.org/TR/2026/NOTE-css-2026-20260622/#CR-exceptions),
 without selecting the entire Values 5 module.
 
-`CssUrl::serialize_specified()` reuses the existing URL provider and
+`CssUrl::serialize_specified(limits)` reuses the existing URL provider and
 [common string escaping](#owned-component-values). It emits the authored decoded
 target through `url()` or `src()`, retaining function identity and ordered
 symbolic modifiers. A relative target stays relative, a local fragment stays a
@@ -1292,7 +1296,7 @@ second formatter, evaluator, property registry or URL resolver.
 
 ### Declared color literal output
 
-`CssColor::to_specified_css()` applies the generic six-place number policy to
+`CssColor::serialize_specified(limits)` applies the generic six-place number policy to
 ordinary color literals embedded as origins and to direct relative-color
 literals. The retained literal spelling, category and source origin remain
 unchanged. The selected
@@ -1332,14 +1336,15 @@ operands; an omitted denominator means `1`. Zero numerators and denominators
 remain authored values. Number tokens retain their exact decimal spelling and
 origin, including magnitudes outside `f32`; typed number math stays symbolic.
 `CssAspectRatioValue::Ratio` and `AutoRatio` hold a `CssSpecifiedRatio`, whose
-private fields are composed from checked `CssRatioOperand` values. The property
+private fields are composed from checked `CssNumeric<CssNumber, CssNonNegative>` operands. The property
 is a non-inherited longhand with `Auto` initial value.
 
-`serialize_specified()` canonically places `auto` first and emits both ratio
+`serialize_specified(limits)` canonically places `auto` first and emits both ratio
 components, with one cumulative input, projection, and output budget. It does
-not divide the components or resolve whether a zero ratio is useful. Inspect ratio operands through
-`numerator()`, `denominator()`, `literal_component()`, and `calculation()`.
-The effective source revisions for `aspect-ratio` and `box-sizing` now name
+not divide the components or resolve whether a zero ratio is useful. Inspect ratio
+operands through `numerator()` and `denominator()`, then each operand's `literal()`
+and `calculation()`.
+The effective source revisions for `aspect-ratio` and `box-sizing` name
 their selected Sizing publications; historical provenance records and stable
 feature IDs retain their original identities.
 
@@ -1347,10 +1352,10 @@ feature IDs retain their original identities.
 
 The selected [Grid3 publication](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#placement-tolerance)
 defines `flow-tolerance: normal | <length-percentage> | infinite`, with no
-nonnegative restriction. `CssFlowTolerancePropertyValue::value()` exposes its
+nonnegative restriction. `CssPropertyValue<CssFlowTolerance>::value()` exposes its
 checked `CssFlowTolerance`; `as_ref()` returns `Normal`, `Infinite`, or a borrowed
 `LengthPercentage`. Construct the symbolic keywords with `normal()` and
-`infinite()`, or use `length_percentage(CssSpecifiedLengthPercentage)` for checked numeric values.
+`infinite()`, or use `length_percentage(CssNumeric<CssLengthPercentage>)` for checked numeric values.
 `Default` is symbolic `normal`. Its 1em used value in grid lanes and 0 used value
 in other layout modes require downstream context and are not computed here.
 
@@ -1360,7 +1365,7 @@ unrelated keywords and invalid calculation arities or types. Signed operands,
 later subtraction and typed calculations remain valid and symbolic; no
 contextual used-value evaluation occurs at this boundary.
 
-`serialize_specified()` emits canonical specified CSS: `normal` and `infinite`
+`serialize_specified(limits)` emits canonical specified CSS: `normal` and `infinite`
 stay keywords, ordinary numbers use
 [canonical rounding](#canonical-ordinary-number-output), and supported math uses
 the shared length-percentage projection. For example, `+02.500EM`
@@ -1368,9 +1373,9 @@ becomes `2.5em`, `calc(2px + 3px)` becomes `calc(5px)`, and `calc(-2px - 3%)`
 becomes `calc(-3% - 2px)`. Relative units and percentage bases remain unresolved.
 Determinate math retains a `calc()` wrapper under the shared numeric specified
 serialization policy, including folded `min()`, `max()`, and `clamp()` values.
-`serialize_specified_with_limits()` applies one cumulative input-node,
+The writer applies one cumulative input-node,
 projection-node, and output-byte budget, returning a typed
-`CssSpecifiedValueSerializationError` without partial public output or input
+`CssSerializationError` without partial public output or input
 mutation. A keyword or literal costs one input and one projection node;
 calculations use the scalar owner's existing costs.
 
@@ -1442,8 +1447,8 @@ all authored wrap states when defaults would otherwise erase a distinction.
 | `balance dense reverse -2px row` | `row reverse dense balance -2px` |
 | `calc(-2px - 3%)` | `auto auto normal calc(-3% - 2px)` |
 
-Each complete domain value exposes `serialize_specified()` and
-`serialize_specified_with_limits()`. Their writers share one cumulative context:
+Each complete domain value exposes `serialize_specified(limits)`. Their writers share
+one cumulative context:
 a direction, single wrap facet, `wrap-reverse` or single packing keyword costs
 one input and one projection node; a two-facet wrap or `dense balance` costs two.
 The shorthand directly composes its children, so its initial tuple costs four
@@ -1461,7 +1466,7 @@ remains independently defined by their own grammars.
 
 ## Intrinsic declaration expansion
 
-`expand_declaration` currently covers custom declarations, physical and logical
+`CssDeclaration::expand` currently covers custom declarations, physical and logical
 margin/padding longhands, their logical axis pairs, border width, style and color,
 the four side-border shorthands, `border`,
 the `background` shorthand and its eight longhands,
@@ -1501,7 +1506,7 @@ an empty list and color in a nonfinal layer through
 `CssBackgroundConstructionError`. Parsed values use the same checked boundaries
 while preserving precise authored diagnostic locations and child origins.
 
-`CssBackground::serialize_specified` and its bounded variant emit image,
+`CssBackground::serialize_specified(limits)` emits image,
 position, `/ size`, repeat, attachment, origin/clip, and final color in grammar
 order. Proved simple initials may be omitted; a remaining size retains its
 position, equal boxes compact to one, and an empty effective layer emits `none`.
@@ -1521,8 +1526,8 @@ Expansion projects supplied components and obtains omitted values from the schem
 The parent `border` shorthand continues to reset all five members.
 
 `CssBorderImage`, `CssBorderImageSlice`, `CssBorderImageWidth`,
-`CssBorderImageOutset`, and `CssBorderImageRepeat` expose `serialize_specified`
-and `serialize_specified_with_limits`. Scalars compress their expanded edges to
+`CssBorderImageOutset`, and `CssBorderImageRepeat` expose
+`serialize_specified(limits)`. Scalars compress their expanded edges to
 the shortest one-to-four canonical sequence; slice appends `fill` after its edges,
 and repeat emits one keyword for equal axes. Composition follows source,
 slice with slash width/outset, then repeat. Only exact ordinary literal initials
@@ -1553,11 +1558,11 @@ expand to one typed longhand each. `border-collapse` accepts `collapse | separat
 `empty-cells` accepts `show | hide` (initial `show`), and `table-layout` accepts
 `auto | fixed` (initial `auto`). The first four inherit by default; `table-layout`
 does not. The four keyword enums serialize canonically with bounded specified-value
-limits. Checked `CssSpecifiedNonNegativeLength` serializes one axis; the checked
-`CssBorderSpacing` serializes the full effective horizontal-then-vertical pair
-under one cumulative budget, repeating a single authored length without resolving
-relative units or typed math. This specified projection does not select CSSOM's
-minimal one-value spelling. The [selected Logical 1 caption-side definition](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#caption-side)
+limits. Checked `CssNumeric<CssLength, CssNonNegative>` serializes one axis; the checked
+`CssSidePair<CssNumeric<CssLength, CssNonNegative>>` retains whether the vertical length was
+authored and serializes the horizontal-then-vertical pair under one cumulative budget, without
+resolving relative units or typed math. Equal lengths are written once, which is CSSOM's
+minimal one-value spelling ("serialize a CSS value" step 2). The [selected Logical 1 caption-side definition](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#caption-side)
 adds `inline-start | inline-end` only with `left | right` support, which this profile has not
 selected. Caption positioning relative to writing mode remains for downstream
 style and layout interpretation; CSS retains the authored `top | bottom` value.
@@ -1586,18 +1591,18 @@ existing node budget, even when compression omits its text; the logical marker
 adds its own node charges and eight output bytes.
 
 ```rust
-use surgeist_css::{CssKnownPropertyValueRef, parse_style_attribute};
+use surgeist_css::CssParser;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
 
-let report = parse_style_attribute(
-    "scroll-padding-inline: .12345641px .12345642px",
-);
+let report = CssParser::default().parse_block_contents("scroll-padding-inline: .12345641px .12345642px");
 assert!(report.is_clean());
 let CssKnownPropertyValueRef::ScrollPaddingInline(value) = report.syntax()[0]
     .known().expect("known scroll padding")
     .property_value().expect("ordinary scroll padding")
 else { panic!("expected scroll-padding-inline") };
 assert_eq!(
-    value.value().serialize_specified()?,
+    value.value().serialize_specified(CssSerializationLimits::default())?,
     "0.123456px 0.123456px",
 );
 # Ok::<(), Box<dyn std::error::Error>>(())
@@ -1621,10 +1626,10 @@ Their intrinsic initials are respectively `Ltr`, `Normal`, `HorizontalTb`, and
 unicode-bidi does not. Each expands to one longhand. The `all` reset continues
 to exclude direction and unicode-bidi.
 
-Each enum exposes `serialize_specified()` and its bounded variant, emitting
+Each enum exposes `serialize_specified(limits)`, emitting
 canonical lowercase keywords with the shared one-input-node, one-projection-node
-and exact-byte budgets. Direction and WritingMode wrappers expose `value()`;
-UnicodeBidi keeps `bidi()`, and TextOrientation keeps `orientation()`. Authored
+and exact-byte budgets. The `CssPropertyValue` wrappers of all four expose the
+keyword through `value()`. Authored
 wrapper text and parsed/programmatic component origins remain unchanged.
 The selected [Writing Modes4 definition](https://www.w3.org/TR/2019/CR-css-writing-modes-4-20190730/#block-flow)
 includes both `sideways-rl` and `sideways-lr`; the other canonical keyword sets
@@ -1640,7 +1645,7 @@ glyph-orientation alias.
 grammar alongside `None` and `All`. `Digits(None)` preserves an omitted count;
 `Digits(Some(count))` preserves an explicit count. The checked
 `CssTextCombineDigitCount` admits literal integers from 2 through 4 through
-`try_literal`, or a checked `CssIntegerCalculation` through `from_calculation`.
+`try_literal`, or a checked `CssCalculation<CssInteger>` through `from_calculation`.
 Its `literal()` and `calculation()` accessors distinguish these cases. Parsed
 and checked declarations share this grammar and preserve component origins.
 The property inherits by default, has initial `None`, expands to one longhand,
@@ -1659,21 +1664,20 @@ the seven-byte `digits ` prefix before checking the child's residual limits.
 Keyword-only forms cost one node at each stage, and explicit literals cost two.
 Output is atomic and bounded by the shared serialization limits.
 
-Migration: `CssTextCombineUpright` now owns calculation data and no longer
-implements `Copy` or `Eq`. Borrow it through the unchanged `combine()` accessor,
-or call `clone()` when ownership is needed; use `PartialEq` for comparisons.
-The existing `None` and `All` variants retain their meaning.
+`CssTextCombineUpright` owns calculation data, so it implements neither `Copy` nor
+`Eq`. Borrow it through the `combine()` accessor, or call `clone()` when ownership
+is needed; use `PartialEq` for comparisons.
 
 Visibility uses the existing `CssVisibility::{Visible, Hidden, Collapse}` values.
 It is inherited by default and its ordinary initial value is `Visible`.
-`CssVisibilityPropertyValue::value()` exposes that typed value while `as_css()`
+`CssPropertyValue<CssVisibility>::value()` exposes that typed value while `as_css()`
 retains authored spelling. Its intrinsic
 expansion emits one longhand contribution; globals and unresolved substitutions
 keep their separate states. Expansion does not resolve inheritance or apply
 hidden/collapse rendering effects.
 
-`CssVisibility::serialize_specified()` emits `visible`, `hidden`, or `collapse`.
-The bounded variant charges one input node, one projection node and the exact
+`CssVisibility::serialize_specified(limits)` emits `visible`, `hidden`, or `collapse`.
+It charges one input node, one projection node and the exact
 canonical byte count before allocating output. The selected definition is
 [Display3 §4](https://www.w3.org/TR/2026/CRD-css-display-3-20260605/#visibility),
 which supersedes CSS2 for this property. Layout, painting and interaction effects
@@ -1682,7 +1686,7 @@ remain downstream.
 `content-visibility` follows the pinned
 [Containment 2 §4](https://www.w3.org/TR/2022/WD-css-contain-2-20220917/#content-visibility)
 authored grammar: exactly `visible`, `auto`, or `hidden`. It is a non-inherited
-longhand with intrinsic initial `visible`. `CssContentVisibilityPropertyValue`
+longhand with intrinsic initial `visible`. `CssPropertyValue<CssContentVisibility>`
 retains authored spelling through `as_css()` and exposes the checked enum through
 `value()`.
 Ordinary declarations expand to one terminal contribution. CSS-wide keywords
@@ -1691,8 +1695,8 @@ the same whole-value grammar while retaining the original occurrence.
 Checked construction and strict replacement reentry reject original implicit
 comment/function closures with their original EOF failures and source origins;
 browser parsing and recovered-report normalization retain recovery diagnostics.
-`CssContentVisibility::serialize_specified()` emits one canonical keyword; its
-bounded variant charges one input node, one projection node, and exact output
+`CssContentVisibility::serialize_specified(limits)` emits one canonical keyword and
+charges one input node, one projection node, and exact output
 bytes. Skipped-content state, user relevance, used containment, layout, painting,
 and interaction need downstream context and are not decided by this authored API.
 
@@ -1704,7 +1708,7 @@ unique `size`, `layout`, `style`, and `paint` components. This dated pin exclude
 uniqueness while retaining authored component order; specified output emits
 components in `size layout style paint` order. `strict` and `content` preserve
 their authored keyword identity rather than emitting computed component aliases.
-`CssContainPropertyValue::containment()` exposes the typed value, and `as_css()`
+`CssPropertyValue<CssContain>::value()` exposes the typed value, and `as_css()`
 retains authored spelling.
 
 Contain is a noninherited longhand with intrinsic initial `CssContain::None` and
@@ -1730,37 +1734,37 @@ provides a non-inherited longhand with intrinsic initial `auto`. Ordinary
 `auto` and integer values contribute one `CssLonghandValueRef::ZIndex` payload;
 CSS-wide values stay symbolic. Pending whole-value substitutions reenter the
 same strict grammar, preserving original importance and replacement origins.
-Normalization retains declaration order. `CssZIndexValue::serialize_specified()`
+Normalization retains declaration order. `CssZIndexValue::serialize_specified(limits)`
 emits canonical `auto` or delegates to the exact integer and specified math
-writer. Its bounded variant shares input, projection and UTF-8 byte budgets;
+writer. The writer shares input, projection and UTF-8 byte budgets;
 `auto` charges one input and one projection node. Errors return no partial CSS
 and leave the authored value unchanged. [Positioned Layout 3 §2.2](../../../references/css-position-3--WD-css-position-3-20251007--3c8a8120af2c.md#stacking)
 stacking contexts, painting order and contextual interpretation remain downstream.
 
-`CssIntegerValue` is shared by Order and the integer branch of ZIndex.
-`Literal(CssIntegerLiteral)` retains the complete checked integer token and its
-parsed or programmatic origin at every magnitude. Decimal points, exponent
+`numeric::CssNumeric<CssInteger>` is shared by Order and the integer branch of ZIndex.
+Its `literal()` view, a `CssNumericLiteral<CssInteger>`, retains the complete checked
+integer token and its parsed or programmatic origin at every magnitude. Decimal points, exponent
 notation, dimensions and other token kinds are rejected by literal construction.
-`CssIntegerLiteral::from_i32` constructs canonical programmatic tokens for
+`CssNumericLiteral::<CssInteger>::from_i32` constructs canonical programmatic tokens for
 machine integers. `is_zero` and `is_negative` classify the exact integer,
 including signed zero, without a machine-range bound. `compare_value` returns
 mathematical `Ordering` across signs and arbitrary magnitudes, ignoring explicit
 plus signs, leading zeros and provenance and equating signed zeros. It does not
 change lexical/provenance-sensitive equality or supply an incompatible `Ord`.
-`serialize_specified()`
+`serialize_specified(limits)`
 removes redundant signs and leading zeros without rounding the magnitude or
-changing the retained token. Its bounded variant charges one input and
+changing the retained token. It charges one input and
 projection node for an ordinary value, then checks canonical output bytes.
 Order and ZIndex wrappers expose their semantic models through `value()`;
 ZIndex `Auto` remains a distinct unresolved keyword. Positive ordinary counts
-use `CssPositiveIntegerValue::Literal(CssPositiveIntegerLiteral)`, whose checked
+use `CssNumeric<CssInteger, CssPositive>`, whose checked literal
 integer must be greater than zero. This transport does not determine stacking.
 
-`Calculation` retains the authored numeric expression and uses the shared
+A calculation, read through `calculation()`, retains the authored numeric expression and uses the shared
 binary64 specified math projection. Fractional results retain a math wrapper:
 `calc(1.5)` remains `calc(1.5)` without integer rounding. An explicitly constructed
-Calculation leaf `9007199254740993` retains those original digits but serializes
-as `calc(9007199254740992)` under that precision policy; an ordinary Literal
+calculation leaf `9007199254740993` retains those original digits but serializes
+as `calc(9007199254740992)` under that precision policy; an ordinary literal
 serializes exactly as `9007199254740993`. Serialization never mutates either
 representation. The output remains stable when reparsed and serialized again.
 Exact ordinary integer fidelity is a Surgeist contract; the selected Values4
@@ -1776,16 +1780,15 @@ values. Duplicate categories and combinations such as `list-item flex` or
 and produces one contribution. Generic CSS-wide and pending `var()` values use
 the same expansion and strict grammar-reentry boundary.
 
-`CssDisplayPropertyValue::value()` exposes the complete specified model;
+`CssPropertyValue<CssDisplayValue>::value()` exposes the complete specified model;
 `as_css()` retains the authored spelling.
 For example, `block flex` has the same specified value as `flex`, while
 `inline flex` stays distinct from legacy `inline-flex`. CSS Display3 §2.6
 requires that distinction at the specified stage even though computed values
 can agree.
 
-`CssDisplayValue::serialize_specified()` produces canonical specified text;
-`serialize_specified_with_limits()` uses the shared serialization limits and
-error types. It lowercases keywords, orders components, and omits equivalent
+`CssDisplayValue::serialize_specified(limits)` produces canonical specified text under
+the shared serialization limits and error types. It lowercases keywords, orders components, and omits equivalent
 defaults: `flow block` becomes `block`, `flex inline` becomes `inline flex`, and
 `list-item flow-root inline` becomes `inline flow-root list-item`. Legacy
 spellings remain legacy. One value consumes one input node and one projection
@@ -1807,8 +1810,7 @@ retains the case-sensitive name and either authored token text or a whole-value
 CSS-wide keyword. `source()` retains the original components, importance and
 occurrence identity. Even values containing `var()` remain completed symbolic
 custom contributions; variable substitution and cycle handling belong to style.
-Migration: replace matches on the removed `UnsupportedCustomProperty` error with
-the custom contribution branch. Custom computed values remain unresolved until
+Custom computed values remain unresolved until
 style supplies the required context.
 
 Completed longhand contributions expose a property-coupled `CssLonghandValueRef`,
@@ -1826,7 +1828,7 @@ downstream substitution owner supplies complete replacement components,
 `CssPendingSubstitution::reenter` returns `CssContributions` or a typed error,
 never another pending result. It rejects residual `var()`, `env()` or `attr()` at any nesting depth
 before applying the original property grammar. Grammar and component failures
-retain the same origin mapping as `parse_property_value`. Failure publishes no
+retain the same origin mapping as `CssDeclaration::try_from_components`. Failure publishes no
 partial contributions, and the pending handle remains available for another
 attempt.
 
@@ -1889,8 +1891,8 @@ rule that does not define a counter style, including a pending symbol value.
 system makes no ordinary algorithm claim. Font definitions join a decoded name to a checked value of their actual
 subsidiary kind, and blocks reject mismatched kinds.
 
-The three value carriers accept `try_from_components[_with_limits]` and
-`reparse_after_substitution[_with_limits]`. Checked construction preserves mixed
+The three value carriers accept `try_from_components(.., limits)` and
+`reparse_after_substitution(replacement, limits)`. Checked construction preserves mixed
 or programmatic component origins and rejects recovered closures. Reentry requires
 a pending receiver and rejects any residual decoded `var()` or `env()` before
 checking the completed ordinary grammar, including the selected index count.
@@ -1901,7 +1903,7 @@ return `None` for that whole window while retaining each supplied token origin.
 The family errors distinguish component limits, recovered components, grammar,
 residual substitution, and ordinary-receiver `NotPending` failures.
 
-`to_specified_css[_with_limits]` uses the same bounded providers as real rule
+`serialize_specified(limits)` uses the same bounded providers as real rule
 output. Pending output retains the component stream. Suppressed earlier pending
 occurrences still consume work under the shared rule budget, and failure returns
 no partial text. Source recovery and specified closure repair do not establish
@@ -1923,11 +1925,11 @@ admit syntactically valid `attr()` in ordinary known-property values. Such a
 declaration retains its original component tree, source origin and importance
 as a whole-value pending substitution. It remains symbolic: CSS does not read
 an element's attributes, parse an attribute value, choose a fallback, or
-produce a computed value. The context-free `parse_property_value` checked
+produce a computed value. The context-free `CssDeclaration::try_from_components` checked
 constructor uses the same admission rule. `CssPendingSubstitution::reenter`
 requires a complete replacement component tree and rejects residual `attr()`
 before checking the ordinary property grammar; it cannot return another
-pending value. Parsed `content` with a valid `attr()` now exposes
+pending value. Parsed `content` with a valid `attr()` exposes
 `substitution_dependent()` rather than typed `CssContentValue`; the existing checked
 typed content constructors remain available for concrete values.
 
@@ -1958,17 +1960,17 @@ does not select the rest of Values 5.
 it does not trim whitespace or parse escapes. Name-equivalent aliases share the
 canonical handle. `glyph-orientation-vertical` instead retains a distinct legacy
 shorthand handle targeting `TextOrientation`; its angle grammar remains active
-after substitution. `parse_property_value_for_grammar` uses that exact grammar
-with the same component limits, token boundaries and original-origin mapping as
-`parse_property_value`. `CssKnownDeclaration::grammar()` retains it for ordinary,
-CSS-wide and pending values. Migration: structural declaration equality now
-includes grammar identity. Occurrence identity and clone behavior are unchanged.
+after substitution. `CssPropertyTarget::Grammar` and `CssPropertyTextTarget::Grammar` use that exact
+grammar with the same component limits, token boundaries and original-origin mapping as
+`Property`. `CssKnownDeclaration::grammar()` retains it for ordinary,
+CSS-wide and pending values. Structural declaration equality includes grammar
+identity. Occurrence identity and clone behavior are unchanged.
 
 `grammar.metadata()` and `CssKnownProperty::metadata()` return intrinsic metadata
 for schema-annotated longhands and canonical shorthands, `all`, and the legacy
-glyph shorthand. An unannotated recognized property returns
-`CssPropertyMetadataError::Unavailable`; the support catalog remains independently
-available through `property_support_metadata`. Metadata kind is always meaningful:
+glyph shorthand. An unannotated recognized property returns a
+`CssPropertyMetadataError` naming its grammar; the support catalog remains independently
+available through `conformance::property_support_metadata`. Metadata kind is always meaningful:
 a longhand, shorthand, or universal reset. Shorthand members are terminal IDs in
 settable-then-reset-only order. Legacy grammars are listed by
 `CssKnownProperty::legacy_shorthands()`. A grammar's feature ID identifies support
@@ -1993,12 +1995,12 @@ is a name alias of the same property and accepts the same values; parsed
 declarations retain the original spelling and source coordinates. The selected
 support record cites the [14 August 2026 CSS Text 3 draft](https://www.w3.org/TR/2026/CRD-css-text-3-20260814/#propdef-overflow-wrap).
 
-`CssOverflowWrapPropertyValue::value()` exposes the exact checked keyword;
+`CssPropertyValue<CssOverflowWrap>::value()` exposes the exact checked keyword;
 Intrinsic
 expansion emits one `OverflowWrap` contribution, preserving importance and source
 occurrence. CSS-wide values remain symbolic, and substitution-dependent values
-reenter the same grammar after replacement. `CssOverflowWrap::serialize_specified`
-emits the canonical keyword under configurable resource limits. Line breaking,
+reenter the same grammar after replacement. `CssOverflowWrap::serialize_specified(limits)`
+emits the canonical keyword under the supplied resource limits. Line breaking,
 min-content sizing, cascade, and layout use these authored values downstream:
 `anywhere` creates opportunities counted in min-content size, while `break-word`
 does not. This crate leaves those contextual effects to their owning layers.
@@ -2008,16 +2010,16 @@ does not. This crate leaves those contextual effects to their owning layers.
 [Alignment 3 §8.1](https://www.w3.org/TR/2026/WD-css-align-3-20260130/#column-row-gap)
 defines `row-gap` and `column-gap` as `normal` or a nonnegative
 length-percentage. `CssGapValue::Normal` and
-`CssGapValue::LengthPercentage(CssSpecifiedNonNegativeLengthPercentage)` keep
+`CssGapValue::LengthPercentage(CssNumeric<CssLengthPercentage, CssNonNegative>)` keep
 those alternatives typed. Negative literal lengths and percentages are invalid;
 symbolic percentages and math retain their authored meaning for later contextual
 resolution. Both longhands start at `normal` and are not inherited.
 
 [Alignment 3 §8.2](https://www.w3.org/TR/2026/WD-css-align-3-20260130/#gap-shorthand)
-defines `gap` as one row value and an optional column value. `CssGapShorthand`
-preserves that authored arity: `row()` returns the first value,
-`authored_column()` reports whether a second was supplied, and `column()`
-returns the effective second value, repeating the row value when omitted.
+defines `gap` as one row value and an optional column value. `CssSidePair<CssGapValue>`
+preserves that authored arity: `first()` returns the row value,
+`authored_second()` reports whether a second was supplied, and `second()`
+returns the effective column value, repeating the row value when omitted.
 Intrinsic expansion emits `row-gap` then `column-gap`, with no reset-only
 members. CSS-wide keywords apply to both; a substitution-dependent value
 stays pending until strict reentry checks the same grammar and emits complete
@@ -2032,15 +2034,15 @@ original spelling and source origin. The value serializers are bounded and
 preserve one- versus two-value specified form; they do not serialize an entire
 stylesheet or resolve used gaps in grid, flex, or multicolumn layout.
 
-`CssGapPropertyValue::value()` exposes `CssGapShorthand`; the row and column
-wrappers expose `CssGapValue`. Their checked scalar branches retain exact
+The `gap` value is a `CssSidePair<CssGapValue>`; the `row-gap` and `column-gap` values are
+`CssGapValue`s. Their checked scalar branches retain exact
 literal components and symbolic calculations.
 
 ## Immutable stylesheet normalization
 
-`normalize_sheet` turns retained authored syntax into an immutable
-`CssNormalizedSheet`. `normalize_report` additionally preserves the original
-ordered recovery diagnostics in `CssNormalizedReport`; `is_clean()` still means
+`CssSheet::normalize` turns retained authored syntax into an immutable
+`CssNormalizedSheet`. `CssParseReport::<CssSheet>::normalize` additionally preserves the
+original ordered recovery diagnostics in `CssNormalizedReport`; `is_clean()` still means
 exactly that the original diagnostic slice was empty. Both operations are
 atomic: an unsupported emitted declaration or resource failure returns
 `CssNormalizationError` without changing the source or exposing partial output.
@@ -2083,7 +2085,7 @@ rules and equal anonymous layers are not interned together. These handles are
 not mutable CSSOM identities, revisions, or stable keys across normalizations.
 Rule and failure positions are optional and never manufacture coordinates.
 
-`normalize_sheet_with_limits` and `normalize_report_with_limits` take
+`CssSheet::normalize` and `CssParseReport::<CssSheet>::normalize` take
 `CssNormalizationLimits::try_new(max_rule_depth, max_rules, max_declarations,
 max_contributions)`. Top-level rule depth is zero; the depth ceiling cannot
 exceed 256. Every visited rule counts, including implicit nested-declaration
@@ -2117,8 +2119,8 @@ invalidation; cross-crate composition remains root-owned.
 ## Authored property inspection
 
 The [how-to guide](how-to.md#inspect-a-known-declaration) shows property/value
-inspection and exact authored text. Each ordinary wrapper exposes its sole
-checked semantic value through one intentional accessor. Downstream matches of
+inspection and exact authored text. Each ordinary `CssPropertyValue` wrapper exposes its
+sole checked semantic value through `value()`. Downstream matches of
 enums marked `#[non_exhaustive]` require a wildcard arm. Closed enums such as
 `CssImportance` and `CssSupportStatus` remain exhaustively matchable.
 The [authored-value explanation](explanation.md#symbolic-values-and-compatibility)
@@ -2127,25 +2129,23 @@ describes these symbolic boundaries.
 ## Numeric values, exact timing domains, and symbolic calculations
 
 Ordinary time values retain their exact decimal coefficient, `s` or `ms` unit,
-and original component provenance. `CssTimeLiteral` owns one dimension;
-`CssTimeValue` holds that literal or a checked symbolic time calculation.
-`CssDuration` applies the nonnegative range to an ordinary literal, while delay
-values use signed `CssTimeValue` directly. Signed zero is valid, and bare number
+and original component provenance. `numeric::CssNumericLiteral<CssTime>` owns one dimension;
+`CssNumeric<CssTime>` holds that literal or a checked symbolic time calculation.
+`CssNumeric<CssTime, CssNonNegative>` applies the nonnegative range to an ordinary literal,
+while delay values use the signed `CssNumeric<CssTime>` directly. Signed zero is valid, and bare number
 zero is not a time dimension. A well-typed calculation remains symbolic even
 when its eventual duration range belongs to computed-value processing.
 
 ```rust
-use surgeist_css::{
-    CssDuration, CssKnownPropertyValueRef, CssTimeLiteral, CssTimeUnit,
-    CssTimeValue, parse_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::numeric::{CssNonNegative, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
 
-let negative = CssTimeValue::from_literal(
-    CssTimeLiteral::try_new("-1", CssTimeUnit::Seconds).unwrap(),
-);
-assert!(CssDuration::try_new(negative).is_err());
+let negative = CssNumericLiteral::<CssTime>::try_new("-1", CssTimeUnit::Seconds).unwrap();
+assert!(CssNumeric::<CssTime, CssNonNegative>::try_from_literal(negative).is_err());
 
-let report = parse_style_attribute(concat!(
+let report = CssParser::default().parse_block_contents(concat!(
     "transition-duration: calc(-1s + 2s); ",
     "transition-delay: -250ms",
 ));
@@ -2159,7 +2159,7 @@ let CssKnownPropertyValueRef::TransitionDuration(duration) = report.syntax()[0]
 else {
     panic!("expected transition-duration");
 };
-assert!(duration.durations().values()[0].time().calculation().is_some());
+assert!(duration.value().values()[0].calculation().is_some());
 
 let CssKnownPropertyValueRef::TransitionDelay(delay) = report.syntax()[1]
     .known()
@@ -2169,18 +2169,19 @@ let CssKnownPropertyValueRef::TransitionDelay(delay) = report.syntax()[1]
 else {
     panic!("expected transition-delay");
 };
-let literal = delay.delays().values()[0].literal().unwrap();
+let delay_value = &delay.value().values()[0];
+let literal = delay_value.literal().unwrap();
 assert_eq!(literal.numeric().representation(), "-250");
 assert_eq!(literal.unit(), CssTimeUnit::Milliseconds);
-assert_eq!(literal.serialize_specified().unwrap(), "-0.25s");
+assert_eq!(delay_value.serialize_specified(CssSerializationLimits::default()).unwrap(), "-0.25s");
 ```
 
-Time literals, time values and durations provide `serialize_specified()` and
-`serialize_specified_with_limits()`. Ordinary output converts milliseconds
+Time values and durations provide `serialize_specified(limits)`. Ordinary output converts milliseconds
 exactly to seconds before applying
 [canonical number rounding](#canonical-ordinary-number-output). Signed or rounded
 zero emits `0s`; the stored coefficient, unit and original components remain
-unchanged. For example, `CssTimeLiteral::try_new("0.0001", CssTimeUnit::Milliseconds)`
+unchanged. For example, a value built from
+`CssNumericLiteral::<CssTime>::try_new("0.0001", CssTimeUnit::Milliseconds)`
 emits `0s` while retaining `0.0001ms`. Node or byte limits produce a typed error
 without partial CSS or input mutation.
 
@@ -2195,7 +2196,7 @@ resolution remains downstream.
 components as their property parsers. `CssAnimationComponents` is the animation
 constructor's input assembly. Public construction rejects recovered time
 components, empty aggregate items and empty lists. Recovering parsing can retain
-implicitly closed math with diagnostics; clean validators reject those reports.
+implicitly closed math with diagnostics; clean-report validation rejects those reports.
 Checked property construction rejects the first original implicit closure for
 all four time longhands and both timing shorthands, including pending envelopes.
 
@@ -2236,7 +2237,7 @@ and parsers retain absent shorthand fields; they do not insert initial values.
 Animation iteration counts and easing values use their own shared numeric models.
 This crate does not resolve relative units, evaluate computed ranges, run animation
 timelines, or lower values into sibling Surgeist crates. The represented transition and animation list types expose
-`serialize_specified` and `serialize_specified_with_limits`. They retain item
+`serialize_specified(limits)`. They retain item
 order. Following CSSOM's shortest serialization, a transition item omits an
 explicit initial (`all`, a literal zero duration, the `ease` keyword, a literal
 zero delay) when omission keeps the meaning: a duration stays whenever a delay
@@ -2367,7 +2368,7 @@ those operations.
 
 ### Exact frequency and ordinary resolution
 
-`CssFrequencyLiteral` and `CssResolutionLiteral` retain a checked dimension token
+`CssNumericLiteral<CssFrequency>` and `CssNumericLiteral<CssResolution>` retain a checked dimension token
 with its exact coefficient, decoded unit and original provenance. Their
 `try_new` constructors accept a coefficient string and a unit enum;
 `try_from_component` accepts one checked dimension. Borrowed `numeric()`,
@@ -2375,42 +2376,46 @@ with its exact coefficient, decoded unit and original provenance. Their
 it to a floating point value. Units are ASCII case-insensitive. Resolution's `x`
 alias selects `CssResolutionUnit::Dppx` while retaining the authored `x` token.
 
-Frequency accepts signed coefficients. Ordinary resolution accepts zero,
+Frequency accepts signed coefficients. Ordinary resolution, `CssNumeric<CssResolution, CssNonNegative>`, accepts zero,
 including signed or exponent zero, and rejects exact negative nonzero values.
 Very small negative coefficients remain negative even if a floating point
 conversion would underflow. Neither domain admits a bare number zero, a
 percentage, an unrelated dimension or a NaN/infinity identifier as an ordinary
 literal.
 
-`CssFrequencyValue` and `CssResolutionValue` hold an ordinary literal or a
-checked calculation in their named domain. `from_literal` retains a checked
+`CssNumeric<CssFrequency>` and `CssNumeric<CssResolution, CssNonNegative>` hold an ordinary
+literal or a checked calculation in their named domain. `try_from_literal` retains a checked
 literal; `try_from_calculation` rejects the first original implicit closure,
 then normalizes an ordinary dimension root. Actual math remains a calculation:
 `calc(-1dppx)` is symbolic, and its eventual range is not evaluated during
-admission. The signed `CssResolutionCalculation` root also continues to serve
+admission. The signed `CssCalculation<CssResolution>` root also serves
 media-query syntax, whose negative operands and separate `infinite` keyword are
 valid authored inputs.
 
 ```rust
-use surgeist_css::{
-    CssFrequencyLiteral, CssFrequencyUnit, CssResolutionLiteral, CssResolutionUnit,
+use surgeist_css::numeric::{
+    CssFrequency, CssFrequencyUnit, CssNonNegative, CssNumeric, CssNumericLiteral, CssResolution,
+    CssResolutionUnit,
 };
+use surgeist_css::serialization::CssSerializationLimits;
 
-let frequency = CssFrequencyLiteral::try_new("1.0000000000000001", CssFrequencyUnit::Kilohertz)
+let frequency = CssNumericLiteral::<CssFrequency>::try_new("1.0000000000000001", CssFrequencyUnit::Kilohertz)
     .unwrap();
 assert_eq!(frequency.numeric().representation(), "1.0000000000000001");
-assert_eq!(frequency.serialize_specified().unwrap(), "1khz");
+let frequency = CssNumeric::<CssFrequency>::try_from_literal(frequency).unwrap();
+assert_eq!(frequency.serialize_specified(CssSerializationLimits::default()).unwrap(), "1khz");
 
-let resolution = CssResolutionLiteral::try_new("-0e999", CssResolutionUnit::Dppx).unwrap();
+let resolution = CssNumericLiteral::<CssResolution>::try_new("-0e999", CssResolutionUnit::Dppx).unwrap();
 assert_eq!(resolution.numeric().representation(), "-0e999");
-assert!(CssResolutionLiteral::try_new("-1e-999", CssResolutionUnit::Dpi).is_err());
+assert!(CssNumeric::<CssResolution, CssNonNegative>::try_from_literal(resolution).is_ok());
+let negative = CssNumericLiteral::<CssResolution>::try_new("-1e-999", CssResolutionUnit::Dpi).unwrap();
+assert!(CssNumeric::<CssResolution, CssNonNegative>::try_from_literal(negative).is_err());
 ```
 
-Frequency literals and values provide bounded `serialize_specified()` and
-`serialize_specified_with_limits()` helpers. Ordinary output retains the
+Frequency values provide bounded `serialize_specified(limits)`. Ordinary output retains the
 selected unit with a lowercase `hz` or `khz` suffix and applies
 [canonical number rounding](#canonical-ordinary-number-output). Signed or rounded
-zero emits numeric zero. A value wrapper shares the same cumulative
+zero emits numeric zero. The writer uses one cumulative
 input-node, projection-node and byte budget; failures return a typed error with
 no partial CSS and leave the input unchanged. Raw equality preserves coefficient
 and unit spelling, ordinary versus math branches, and original provenance.
@@ -2425,7 +2430,7 @@ while retaining its exact authored coefficient. Frequency math uses
 after the shared simplifier, retaining its floating-point precision and range
 limits. This does not resolve the specified-versus-computed phase question.
 
-`CssResolutionLiteral` and `CssResolutionValue` expose bounded specified
+`CssNumeric<CssResolution, CssNonNegative>` exposes bounded specified
 serialization in `dppx`, as selected by the
 [CSSOM resolution component rule](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-component-value).
 Ordinary conversion precedes the shared six-place number rounding: `192dpi`
@@ -2444,23 +2449,23 @@ performing that conversion or evaluating their comparisons.
 
 Authored position values preserve symbolic offsets and expose both axes
 without resolving percentages, calculations, writing modes, positioning boxes,
-object sizes, layout, painting, or transforms. `CssSpecifiedLengthPercentage`
+object sizes, layout, painting, or transforms. `CssNumeric<CssLengthPercentage>`
 owns the checked numeric length-percentage domain. The enclosing horizontal and
 vertical position variants retain whether an offset was free or authored against
 a named edge.
 
 The property grammars and accessors are deliberately distinct:
 
-- `CssObjectPositionPropertyValue::position()` exposes one `CssPhysicalPosition`.
-- `CssMaskPositionPropertyValue::positions()` exposes a nonempty `CssPhysicalPositionList`.
-- `CssMaskPropertyValue::value()` exposes typed mask shorthand layers; each
-  layer exposes its optional physical position through `CssMaskLayer::position()`.
-- `CssBackgroundPositionPropertyValue::positions()` exposes a distinct
-  nonempty layer list that additionally admits the background-only
-  three-component form.
-- `CssTransformOriginPropertyValue::origin()` exposes explicit horizontal and
-  vertical axes plus an optional `CssSpecifiedLength`; the z component is a
-  checked authored length and cannot contain a percentage.
+- The `object-position` and `perspective-origin` values are one `CssPosition`, read through
+  `CssPropertyValue::value()`.
+- The `mask-position` value is a nonempty `CssPositionList` of `CssPosition`s.
+- The `mask` value is a `CssMaskList` of typed layers; each layer exposes its optional
+  `CssPosition` through `CssMaskLayer::position()`.
+- The `background-position` value is a distinct nonempty `CssBackgroundPositionList`
+  that additionally admits the background-only three-component form.
+- The `transform-origin` value is a `CssTransformOrigin`: explicit physical horizontal and
+  vertical axes plus an optional z component, a checked authored length that cannot
+  contain a percentage.
 
 `background-position` keeps the physical grammar
 ([#1379](https://github.com/bj-data-eng/surgeist/issues/1379)). Its Backgrounds 4
@@ -2473,11 +2478,11 @@ in [SOURCE-EDITIONS.md](../../../references/SOURCE-EDITIONS.md#importer-selected
 and revisited when #9690 resolves.
 
 `mask-position`, `object-position`, `perspective-origin` and the `mask`
-shorthand's layer position are decided to accept the shared Values 5
-`<position>` already used by `offset-position`, with flow-relative keywords left
-unresolved. Their current accessors expose `CssPhysicalPosition` and
-`CssPhysicalPositionList`, which cannot represent flow-relative keywords, so
-these consumers still reject them until that public accessor change lands.
+shorthand's layer position accept the shared Values 5 `<position>` already used by
+`offset-position`, with flow-relative keywords left unresolved
+([#1379](https://github.com/bj-data-eng/surgeist/issues/1379)). They hold `CssPosition` and
+`CssPositionList`, which keep the Cartesian, named-flow and relative-flow families apart.
+`transform-origin` keeps its physical grammar through `CssPhysicalPosition`.
 
 `background-position` expands to one noninherited longhand whose intrinsic initial
 is a single `0% 0%` layer. Ordinary contributions preserve the entire ordered
@@ -2486,7 +2491,7 @@ retain a pending handle whose strict reentry checks the same property grammar an
 preserves the original declaration's identity and importance.
 
 `CssBackgroundPosition` and `CssBackgroundPositionList` expose
-`serialize_specified()` and `serialize_specified_with_limits()`. They serialize
+`serialize_specified(limits)`. They serialize
 horizontal before vertical, make implied `center` explicit, and preserve the
 omitted offset in background's three-component form: `bottom 20% left` becomes
 `left bottom 20%`. Lists keep comma order. One cumulative input-node,
@@ -2495,12 +2500,12 @@ return no partial text. Offsets remain signed and symbolic. Matching lists to
 background image counts and resolving positioning geometry belong downstream.
 
 ```rust
-use surgeist_css::{
-    CssHorizontalPosition, CssKnownPropertyValueRef,
-    parse_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssValueTokenRef};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::position::{CssHorizontalPosition, CssPositionRef};
 
-let report = parse_style_attribute(concat!(
+let report = CssParser::default().parse_block_contents(concat!(
     "background-position: left 10px top; ",
     "object-position: right 5% bottom 2px; ",
     "transform-origin: left top 50px",
@@ -2512,17 +2517,20 @@ let CssKnownPropertyValueRef::BackgroundPosition(background) = report.syntax()[0
     .property_value().expect("ordinary background position")
 else { panic!("expected background-position") };
 assert!(matches!(
-    background.positions().positions()[0].horizontal(),
+    background.value().positions()[0].horizontal(),
     CssHorizontalPosition::LeftOffset(offset)
-        if matches!(offset.literal_component().unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
+        if matches!(offset.literal().unwrap().component().view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
 ));
 
 let CssKnownPropertyValueRef::ObjectPosition(object) = report.syntax()[1]
     .known().expect("known object position")
     .property_value().expect("ordinary object position")
 else { panic!("expected object-position") };
+let CssPositionRef::Cartesian(position) = object.value().view() else {
+    panic!("expected a Cartesian position")
+};
 assert!(matches!(
-    object.position().horizontal(),
+    position.horizontal(),
     CssHorizontalPosition::RightOffset(_)
 ));
 
@@ -2530,7 +2538,7 @@ let CssKnownPropertyValueRef::TransformOrigin(transform) = report.syntax()[2]
     .known().expect("known transform origin")
     .property_value().expect("ordinary transform origin")
 else { panic!("expected transform-origin") };
-assert!(matches!(transform.origin().z().unwrap().literal_component().unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "50" && unit == "px"));
+assert!(matches!(transform.value().z().unwrap().literal().unwrap().component().view(), CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) if number.representation() == "50" && unit == "px"));
 ```
 
 For `transform-origin`, one planar token or a valid planar pair is accepted;
@@ -2578,11 +2586,12 @@ as parsed `center`. `CssPositionConstructionError` distinguishes unpaired edge
 offsets from nonphysical keywords supplied to a physical-only constructor.
 
 ```rust
-use surgeist_css::{
-    CssBlockPosition, CssCircleRadius, CssCircleShape, CssHorizontalPosition,
-    CssInlinePosition, CssPhysicalPosition, CssPosition,
-    CssPositionConstructionError, CssPositionRef, CssVerticalPosition,
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::position::{
+    CssBlockPosition, CssHorizontalPosition, CssInlinePosition, CssPhysicalPosition,
+    CssPosition, CssPositionRef, CssVerticalPosition,
 };
+use surgeist_css::values::shape::{CssCircleRadius, CssCircleShape};
 
 let position = CssPosition::try_from_named_axes(
     CssBlockPosition::Start, CssInlinePosition::End,
@@ -2593,12 +2602,16 @@ let CssPositionRef::NamedFlow(flow) = position.view() else {
 assert_eq!(flow.block(), &CssBlockPosition::Start);
 assert_eq!(flow.inline(), &CssInlinePosition::End);
 let circle = CssCircleShape::new(CssCircleRadius::Default, Some(position));
-assert_eq!(circle.serialize_specified().unwrap(), "circle(at block-start inline-end)");
 assert_eq!(
+    circle.serialize_specified(CssSerializationLimits::default()).unwrap(),
+    "circle(at block-start inline-end)",
+);
+assert!(
     CssPhysicalPosition::try_new(
         CssHorizontalPosition::XStart, CssVerticalPosition::Bottom,
-    ).unwrap_err(),
-    CssPositionConstructionError::NonPhysicalKeyword,
+    )
+    .unwrap_err()
+    .is_non_physical_keyword(),
 );
 ```
 
@@ -2629,19 +2642,19 @@ failure returns no partial output or input/provenance mutation.
 ## Dedicated authored function grammars
 
 Property accessors expose dedicated typed function families. Timing-function
-wrappers expose the sole `CssEasingList` through `timing_functions()`.
+wrappers expose the sole `CssEasingList` through `value()`.
 `transform.value()` returns `CssTransform`, `filter.value()` and
 `backdrop-filter.value()` return `CssFilter`, `box-shadow.value()`
 returns `CssBoxShadow`, and `clip-path.value()` returns `CssClipPath`.
 
 ```rust
-use surgeist_css::{
-    CssBasicShape, CssClipPath, CssFilterFunction, CssFilter,
-    CssKnownPropertyValueRef, CssTransformFunction, CssTransform,
-    parse_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::effects::{CssClipPath, CssFilter, CssFilterFunction};
+use surgeist_css::values::shape::CssBasicShape;
+use surgeist_css::values::transform::{CssTransform, CssTransformFunction};
 
-let report = parse_style_attribute(concat!(
+let report = CssParser::default().parse_block_contents(concat!(
     "transform: translate3d(10%, 2px, 4em) rotate(45deg); ",
     "filter: blur(2px) drop-shadow(red 1px 2px 3px); ",
     "clip-path: polygon(round 2px, 0 0, 100% 0)",
@@ -2690,7 +2703,7 @@ checked matrix, rotation, scale, skew, and translation operands, preserving
 omitted second operands and symbolic calculations. `translate3d` keeps a pure
 length on Z while X and Y accept length-percentages; `perspective` keeps a
 checked nonnegative length or `none`. Matrix operands, rotate3d axes, scale
-numbers, and cubic-bezier coordinates use `CssSpecifiedNumber`. All scale
+numbers, and cubic-bezier coordinates use `CssNumeric<CssNumber>`. All scale
 functions and the independent scale property use `CssTransformScaleComponent`:
 Number, Percentage, or HintedNumberCalculation. The selected Transforms 2
 extension admits percentages in scale/scaleX/scaleY as well as scale3d/scaleZ.
@@ -2707,7 +2720,7 @@ Transform evaluation remains downstream.
 
 The individual `rotate` property exposes `CssRotate::None` or
 `CssRotate::Value(CssRotateValues)`. `CssRotateValues::new` takes a checked
-`CssAngleValue` and an optional `CssRotateAxis`: X, Y, Z, or an exact three-number
+`CssNumeric<CssAngle>` and an optional `CssRotateAxis`: X, Y, Z, or an exact three-number
 vector. Omission retains the implicit positive z axis; zero vectors remain valid
 authored syntax. Parsed keyword axes retain their original provenance through
 `keyword_axis_origin()`, while checked keyword construction uses programmatic
@@ -2717,8 +2730,8 @@ ignores source origins and preserves the authored axis choice and numeric struct
 The property admits its axis group before or after the angle, including typed
 angle and number calculations. Its strict angle grammar accepts `0deg` and
 rejects bare `0`; transform-function zero-angle grammar retains its separate
-`CssAngleOrZero` contract. This authored model replaces the former String payload.
-`CssRotate::serialize_specified` and `serialize_specified_with_limits` follow
+`CssAngleOrZero` contract.
+`CssRotate::serialize_specified(limits)` follows
 [Transforms 2 §5.1](https://www.w3.org/TR/2021/WD-css-transforms-2-20211109/#individual-transform-serialization).
 Authored `none` remains `none`.
 [#1298](https://github.com/bj-data-eng/surgeist/issues/1298) revises
@@ -2735,7 +2748,8 @@ Calculated angles use the [calculation output policy](#calculated-number-output)
 so the property agrees with the `transform: rotate()` function path.
 Identity classification for rendering or interpolation belongs to the
 downstream computed and used-value owner. This revision covers the `rotate`
-property only: the `rotate3d()` function path still replaces a full-turn angle
+property only: the `rotate3d()` function path still replaces a zero or whole-turn angle
+(literal, or a calculation whose projected degrees are a multiple of 360)
 or an unnormalizable zero axis with `0, 0, 1, 0deg`, pending a separate
 decision. Both paths share axis classification, so an operation-free calculated
 axis leaf is classified from its exact coefficient (#1297):
@@ -2768,9 +2782,9 @@ numeric work and formats surviving operands through the same cumulative context.
 Failures preserve operands and provenance and return no partial CSS. Translate,
 scale, declaration traversal and contextual execution retain their own owners.
 
-`CssAngleLiteral` retains an exact decimal dimension, its authored unit, and
-original component provenance. `CssAngleValue` holds a checked literal or symbolic
-`CssAngleCalculation`; it excludes bare number zero. Transforms, hue-rotate
+`CssNumericLiteral<CssAngle>` retains an exact decimal dimension, its authored unit, and
+original component provenance. `CssNumeric<CssAngle>` holds a checked literal or symbolic
+`CssCalculation<CssAngle>`; it excludes bare number zero. Transforms, hue-rotate
 filters, and linear-gradient directions use `CssAngleOrZero`, whose zero branch
 holds a checked `CssZeroLiteral`. Image orientation uses the strict angle type.
 Tiny nonzero numbers never qualify as zero. Raw scalar equality retains
@@ -2785,24 +2799,27 @@ Contextual resolution remains downstream. Each context retains its grammar and
 omission rules.
 
 ```rust
-use surgeist_css::{
-    CssAngleLiteral, CssAngleOrZero, CssAngleUnit, CssAngleValue,
-    CssComponentValue, CssFilterFunction, CssFilterHueRotate, CssZeroLiteral,
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssAngleUnit, CssNumeric, CssNumericLiteral, CssZeroLiteral,
 };
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::effects::{CssFilterFunction, CssFilterHueRotate};
 
-let literal = CssAngleLiteral::try_new("0.10000000000000000001", CssAngleUnit::Degrees)?;
+let limits = CssSerializationLimits::default();
+let literal = CssNumericLiteral::<CssAngle>::try_new("0.10000000000000000001", CssAngleUnit::Degrees)?;
 assert_eq!(literal.numeric().representation(), "0.10000000000000000001");
-let angle = CssAngleValue::from_literal(literal);
+let angle = CssNumeric::<CssAngle>::try_from_literal(literal)?;
 let rotation = CssFilterFunction::HueRotate(CssFilterHueRotate::new(
     CssAngleOrZero::Angle(angle),
 ));
-assert_eq!(rotation.serialize_specified()?, "hue-rotate(0.1deg)");
+assert_eq!(rotation.serialize_specified(limits)?, "hue-rotate(0.1deg)");
 
 let zero = CssZeroLiteral::try_from_component(CssComponentValue::try_number("-0e999")?)?;
 let rotation = CssFilterFunction::HueRotate(CssFilterHueRotate::new(
     CssAngleOrZero::Zero(zero),
 ));
-assert_eq!(rotation.serialize_specified()?, "hue-rotate(0)");
+assert_eq!(rotation.serialize_specified(limits)?, "hue-rotate(0)");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
@@ -2811,8 +2828,8 @@ Easing values distinguish keywords, `cubic-bezier()`, `steps()`, and `linear()`.
 including signed zero and exponent spelling. A bare calculation root reenters
 that check, while genuine function calculations remain symbolic. Y coordinates
 remain unrestricted signed numbers; coordinate order is preserved.
-`steps()` stores its count as the shared `CssPositiveIntegerValue`: an exact
-`CssPositiveIntegerLiteral` or symbolic `CssIntegerCalculation`.
+`steps()` stores its count as `CssNumeric<CssInteger, CssPositive>`: an exact
+literal or a symbolic `CssCalculation<CssInteger>`.
 `CssSteps::try_new` validates bare calculation tokens as ordinary literals and
 rejects literal one only with `JumpNone`. Genuine function calculations remain
 symbolic even when their authored expression is `calc(1)`. Ordinary zero,
@@ -2821,7 +2838,7 @@ remains distinct from explicit `end` or `JumpEnd`.
 
 `CssEasing`, `CssEasingList`, `CssCubicBezier`, `CssSteps`, `CssLinearEasing`,
 and `CssLinearStop` expose
-`serialize_specified()` and `serialize_specified_with_limits()`. Their canonical
+`serialize_specified(limits)`. Their canonical
 output follows [CSS Easing Functions Level 1 §2.4](https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#serialization):
 the five non-step keywords remain keywords, `step-start` becomes
 `steps(1, start)`, and `step-end` becomes `steps(1)`. Explicit `end` and
@@ -2832,8 +2849,8 @@ Specified calculations remain calculations, without coordinate clamping,
 positive-count clamping, integer rounding, or an assumed relative-unit basis.
 Transitions 1 imports [Easing 2's dated `linear()` definition](https://www.w3.org/TR/2024/WD-css-easing-2-20240829/#linear-easing-function-syntax).
 `CssLinearEasing` retains at least two authored `CssLinearStop` values. Each
-stop has one unrestricted `CssSpecifiedNumber` output and zero, one, or two
-`CssSpecifiedPercentage` inputs, admitted as a contiguous group on either side
+stop has one unrestricted `CssNumeric<CssNumber>` output and zero, one, or two
+`CssNumeric<CssPercentage>` inputs, admitted as a contiguous group on either side
 of the output. Canonical specified output writes the output first, followed by
 the retained inputs. Omissions, two-position stops, symbolic calculations and
 descending inputs remain authored values. Endpoint assignment, point expansion,
@@ -2860,15 +2877,15 @@ property expansion use the shared schema and declaration engine described in
 [exact timing domains](#numeric-values-exact-timing-domains-and-symbolic-calculations).
 
 Filter amounts use `CssFilterAmount::Default`, `Number` or `Percentage`.
-The scalar branches hold `CssSpecifiedNonNegativeNumber` and
-`CssSpecifiedNonNegativePercentage` directly, preserving ordinary spelling,
+The scalar branches hold `CssNumeric<CssNumber, CssNonNegative>` and
+`CssNumeric<CssPercentage, CssNonNegative>` directly, preserving ordinary spelling,
 numeric token kind, signed zero and origins. Tiny negative nonzero literals are
 rejected exactly; amounts above one or 100% remain authored without clamping.
 Genuine function math stays symbolic. All seven amount-function identities,
 omission and list order are preserved for both filter properties.
 
 Animation iteration counts use `Infinite` or
-`Number(CssSpecifiedNonNegativeNumber)`, including symbolic number math.
+`Number(CssNumeric<CssNumber, CssNonNegative>)`, including symbolic number math.
 Fractional and zero ordinary counts remain valid, and an omitted shorthand count
 stays omitted. The nonempty count list retains order.
 
@@ -2885,7 +2902,7 @@ rules; the shorthand retains coupled member requirements and omission. Intrinsic
 initials are programmatic `0` for outset, `100%` for slice and `1` for width.
 The model retains four effective edges rather than original edge arity.
 `CssBorderImage` and its slice, width, outset, and repeat components provide
-`serialize_specified()` and `serialize_specified_with_limits()`.
+`serialize_specified(limits)`.
 
 Following [CSSOM's component selection order](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-value),
 slice, width, and outset select one to four edges by exact ordinary values before
@@ -2898,27 +2915,26 @@ Every effective edge consumes its existing node budget, including compressed
 edges; byte limits apply to the selected output.
 
 ```rust
-use surgeist_css::{CssKnownPropertyValueRef, parse_style_attribute};
+use surgeist_css::CssParser;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
 
-let report = parse_style_attribute(
-    "border-image: .12345641 .12345642 .12345643 .12345644",
-);
+let report = CssParser::default().parse_block_contents("border-image: .12345641 .12345642 .12345643 .12345644");
 assert!(report.is_clean());
 let CssKnownPropertyValueRef::BorderImage(value) = report.syntax()[0]
     .known().expect("known border image")
     .property_value().expect("ordinary border image")
 else { panic!("expected border-image") };
 assert_eq!(
-    value.border_image().serialize_specified()?,
+    value.value().serialize_specified(CssSerializationLimits::default())?,
     "0.123456 0.123456 0.123456 0.123456",
 );
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 These scalar aggregates compare exact numeric structure while ignoring numeric
-origins. Direct shared nonnegative Number equality retains provenance; direct
-shared nonnegative Percentage equality retains its established origin-insensitive
-policy, including font-width and font-face consumers. Branches, nonnumeric fields,
+origins. Direct shared nonnegative Number and Percentage equality use the same
+numeric value equality, including font-width and font-face consumers. Branches, nonnumeric fields,
 order and omission remain part of aggregate identity.
 
 `CssShadow` retains two signed offsets, optional nonnegative `blur_radius()`,
@@ -2942,8 +2958,7 @@ or follow the complete group. Both filter and backdrop-filter use this grammar.
 Drop shadows cannot contain inset or spread. Filter lists preserve URL/function
 order and typed function-specific operands.
 
-All four shadow models provide `serialize_specified()` and
-`serialize_specified_with_limits(CssSpecifiedValueSerializationLimits)`.
+All four shadow models provide `serialize_specified(limits)`.
 A bare shadow emits `[color] x y [blur [spread]] [inset]`; a list separates
 members with comma-space, `None` emits `none`, and a drop shadow emits the full
 `drop-shadow([color] x y [standard_deviation])` function. Authored omissions
@@ -2962,18 +2977,18 @@ aggregate plus every member; `CssBoxShadow::Shadows` delegates transparently.
 explicit default, uses its existing numeric or color provider's charges.
 Wrappers and separators cost bytes only. One cumulative context owns the entire
 call: dropping a child math arena does not refund work. Limit failures use
-`CssSpecifiedValueSerializationError` and return no partial text or input
+`CssSerializationError` and return no partial text or input
 mutation.
 
 `CssFilterHueRotate::new(angle)` retains an explicit shared angle.
 `CssFilterHueRotate::omitted()` stores an effective `0deg`; `angle()` borrows that
 effective value and `authored_angle()` returns `None` only for omission. Omission,
 unitless zero and explicit `0deg` are distinct. Its equality preserves the shared
-angle's provenance-sensitive calculation equality. `CssFilterBlur` exposes the
+angle's numeric value equality. `CssFilterBlur` exposes the
 parallel `length()` and `authored_length()` contract, with effective omitted `0px`.
 
 `CssFilter`, `CssFilterFunctionList` and `CssFilterFunction` provide
-`serialize_specified()` and `serialize_specified_with_limits(...)`. Lists retain
+`serialize_specified(limits)`. Lists retain
 their authored order and separate complete functions with one space; `None`
 emits `none`. Omitted blur, hue and amount arguments emit empty parentheses;
 explicit defaults remain present. Drop shadows reuse their complete function
@@ -3012,7 +3027,7 @@ programmatic provenance; `try_from_component(token)` requires a complete
 quoted-string token and retains its exact spelling and original origin.
 `as_str()`, `component()` and `origin()` borrow that information, including empty
 Strings, escapes and Unicode. Wrong tokens or implicitly recovered terminations
-return `CssComponentValueErrorKind::InvalidToken` at their supplied token or EOF
+return a `CssComponentValueError` with `is_invalid_token()` at their supplied token or EOF
 origin; NUL construction uses the shared `InvalidString` failure.
 `CssFilterImageInput::from_string` preserves this branch, `from_image` takes a
 checked `CssImage`, and `try_from_image` admits an image value through the canonical
@@ -3031,8 +3046,8 @@ interpretation. The frozen WebKit witness has an explicit FIXME for its wider
 options. That discrepancy supplies no missing String execution meaning. Resource
 loading, geometry, filtering execution and interpolation remain downstream.
 
-The new String, input and filter-image models provide `serialize_specified()`
-and a limits variant. Strings emit quoted escaped text; Images use their existing
+The String, input and filter-image models provide `serialize_specified(limits)`.
+Strings emit quoted escaped text; Images use their existing
 provider. The shared iterative image writer charges one input/projection node
 for a filter-image aggregate and one for a String leaf. It delegates Image
 operands without a new carrier tariff; the ordered filter list charges one
@@ -3056,12 +3071,18 @@ This source refinement preserves the historical repository snapshot as evidence;
 it selects no full Level 2 module, rendering or backdrop-root algorithm.
 
 ```rust
-use surgeist_css::{CssFilter, CssFilterFunction, CssFilterFunctionList, CssFilterHueRotate};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::effects::{
+    CssFilter, CssFilterFunction, CssFilterFunctionList, CssFilterHueRotate,
+};
 
 let hue = CssFilterHueRotate::omitted();
 assert!(hue.authored_angle().is_none());
 let functions = CssFilterFunctionList::try_new(vec![CssFilterFunction::HueRotate(hue)]).unwrap();
-assert_eq!(CssFilter::Functions(functions).serialize_specified().unwrap(), "hue-rotate()");
+assert_eq!(
+    CssFilter::Functions(functions).serialize_specified(CssSerializationLimits::default()).unwrap(),
+    "hue-rotate()",
+);
 ```
 
 ### Authored SVG filter color properties
@@ -3143,13 +3164,13 @@ components, including inside pending values, before serialized repair can hide t
 `shape-outside.value()` exposes `CssShapeOutside`: `None`, a standalone
 `ShapeBox(CssShapeBox)`, `BasicShape(CssShapeOutsideShape)`, or `Image(CssImage)`.
 `CssShapeBox` admits only content-box, padding-box, border-box and margin-box;
-`from_keyword()` checks a decoded keyword, and `as_css_str()` emits its canonical
+`from_keyword()` checks a decoded keyword, and `as_str()` emits its canonical
 spelling. It imports the direct Box 4 visual-box production plus margin-box.
 The broader SVG boxes used by clipping are excluded from this Shapes boundary.
 The image branch uses the shared Images 3/selected Images 4 provider, including URL, gradients
 and the adopted symbolic `light-dark()` image/none branches. `CssImage::try_new`
-checks the complete retained graph and returns `CssImageConstructionError::NotImage`
-for a bare image `none`, which belongs to the outside keyword branch.
+checks the complete retained graph and returns a `CssImageConstructionError` for which
+`is_not_image()` holds for a bare image `none`, which belongs to the outside keyword branch.
 
 `CssShapeOutsideShape::new(shape, reference_box)` composes the existing eight
 basic-shape functions with an optional narrow box. `shape()` and `reference_box()`
@@ -3157,8 +3178,7 @@ expose the checked children. Parsed pairs accept either order and emit the shape
 before the box. An omitted box stays distinct from an explicit margin-box;
 the implicit margin reference geometry is assigned downstream. Duplicate shapes,
 duplicate boxes, image/box combinations and foreign shape-box keywords are invalid.
-The three new models provide `serialize_specified()` and
-`serialize_specified_with_limits()`. Box and `none` cost one semantic node;
+The three models provide `serialize_specified(limits)`. Box and `none` cost one semantic node;
 shape/box composition adds one aggregate plus the shared shape children and
 one node for an explicit box. Images keep the shared provider's node costs.
 
@@ -3167,7 +3187,7 @@ one node for an explicit box. Images keep the shared provider's node costs.
 pure Number, Percentage or hinted Number calculations. The authored range is
 unrestricted: `150%` emits `1.5` and `-25%` emits `-0.25` without clamping.
 `shape-margin.value()` and its terminal view borrow
-`CssSpecifiedNonNegativeLengthPercentage`. Exact negative ordinary values fail,
+`CssNumeric<CssLengthPercentage, CssNonNegative>`. Exact negative ordinary values fail,
 even when too small for floating-point caches; signed zero is valid. Actual math
 retains its graph for deferred range handling, so `calc(1px - 2px)` is valid and
 emits `calc(-1px)` through the existing numeric projection owner.
@@ -3179,14 +3199,20 @@ pixel threshold extraction, float wrapping and interpolation execution belong
 to downstream owners.
 
 ```rust
-use surgeist_css::{CssBasicShape, CssCircleRadius, CssCircleShape,
-    CssShapeBox, CssShapeOutside, CssShapeOutsideShape};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::shape::{
+    CssBasicShape, CssCircleRadius, CssCircleShape, CssShapeBox, CssShapeOutside,
+    CssShapeOutsideShape,
+};
 
 let shape = CssBasicShape::Circle(CssCircleShape::new(CssCircleRadius::Default, None));
 let outside = CssShapeOutside::BasicShape(CssShapeOutsideShape::new(
     shape, Some(CssShapeBox::MarginBox),
 ));
-assert_eq!(outside.serialize_specified().unwrap(), "circle() margin-box");
+assert_eq!(
+    outside.serialize_specified(CssSerializationLimits::default()).unwrap(),
+    "circle() margin-box",
+);
 ```
 
 ### Authored clipping shapes
@@ -3215,7 +3241,7 @@ rounding length and a nonempty ordered point list. The fill rule must precede
 specified rounding lengths remain authored values. Used rounding geometry and
 its clamp require downstream shape context.
 
-`CssRectShape` stores four independent `CssRectShapeEdge` values in
+`CssRectShape` stores four independent `CssAutoOr<CssNumeric<CssLengthPercentage>>` values in
 top/right/bottom/left order. Each is `Auto` or a checked signed
 length-percentage. Its constructor composes those edges and optional
 `CssBorderRadiusShorthand`; `top()`, `right()`, `bottom()`, `left()` and `round()`
@@ -3261,8 +3287,9 @@ corroborated by the pinned WebKit SVG path consumer. Arc flags remain single ASC
 requirements within the pinned SVG publication without taking absolute radii,
 converting arcs or importing drawing-prefix recovery. Geometry remains downstream.
 
-`CssPathDataConstructionError` distinguishes `ExpectedString`, `RecoveredInput`,
-`EmptyPath` and `InvalidPathData`. Grammar failures report a decoded-byte offset,
+`CssShapeConstructionError` distinguishes `is_expected_string()`,
+`is_recovered_input()`, `is_empty_path()` and `is_invalid_path_data()`. Grammar
+failures report a `decoded_byte_offset()`,
 including decoded length for an incomplete suffix; that offset is separate from
 the original CSS token's source coordinates. There is no path-specific constructor
 byte or command-count cap. Component parsing and output retain their existing
@@ -3302,10 +3329,9 @@ values; radius correction, reflection and path construction require geometry
 context.
 
 ```rust
-use surgeist_css::{
-    CssPosition, CssRelativeAxisPosition, CssShapeCommand, CssShapeCommandList,
-    CssShapeFunction,
-};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::position::{CssPosition, CssRelativeAxisPosition};
+use surgeist_css::values::shape::{CssShapeCommand, CssShapeCommandList, CssShapeFunction};
 
 let start = CssPosition::try_from_relative_axes(
     CssRelativeAxisPosition::Start, CssRelativeAxisPosition::End,
@@ -3314,11 +3340,14 @@ let commands = CssShapeCommandList::try_new(vec![CssShapeCommand::Close]).unwrap
 let shape = CssShapeFunction::new(None, start, commands);
 assert!(shape.fill_rule().is_none());
 assert_eq!(shape.commands().commands().len(), 1);
-assert_eq!(shape.serialize_specified().unwrap(), "shape(from start end, close)");
+assert_eq!(
+    shape.serialize_specified(CssSerializationLimits::default()).unwrap(),
+    "shape(from start end, close)",
+);
 ```
 
 Ordinary CSS parsing can retain a missing string quote or function parenthesis
-with recovery diagnostics. Clean validation rejects that report. Checked
+with recovery diagnostics. `CssParseReport::into_validation_result` rejects that report. Checked
 `clip-path` construction and replacement reentry reject recovered components
 before reserialization can conceal the missing delimiter; the same rule applies
 to every clip-path alternative.
@@ -3330,7 +3359,7 @@ This operational choice follows the pinned WebKit Shapes consumer
 (`CSSPropertyParserConsumer+Shapes.cpp`, revision
 `73aa6c89e2cb77c46184a81aec944e4ab99d114d`). It resolves a source
 discrepancy: [CSS Shapes 1](https://www.w3.org/TR/2025/CRD-css-shapes-1-20250612/#funcdef-basic-shape-circle)
-imports Images 3 `<radial-size>` and excludes its two-radius branch, while that
+imports Images 3 `<radial-size>` as the circle's single radius, while that
 imported [Images 3 production](https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#typedef-radial-size)
 does not itself provide a single percentage branch. The source discrepancy
 remains tracked separately from this authored parser behavior.
@@ -3356,7 +3385,7 @@ serialization clauses, plus the SVG path grammar and parsing definitions.
 These imports select neither Values 5 nor SVG in full.
 
 `CssClipPath`, `CssClipPathShape`, `CssBasicShape` and each supported shape struct
-provide `serialize_specified()` and `serialize_specified_with_limits(...)`.
+provide `serialize_specified(limits)`.
 Canonical output uses lowercase function names, spaces and comma-space point
 separators. A shape precedes its optional reference-box keyword regardless of
 parsed order. Authored offset and radius arities, optional fields, explicit
@@ -3368,10 +3397,10 @@ Path output uses a canonical double-quoted CSS string with required escaping,
 preserving the internal decoded SVG text, whitespace and numeric spelling.
 
 ```rust
-use surgeist_css::{
-    CssBasicShape, CssBoxEdgeKeyword, CssCircleRadius, CssCircleShape,
-    CssClipPath, CssClipPathShape, CssSpecifiedValueSerializationLimits,
-};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssBoxEdgeKeyword;
+use surgeist_css::values::effects::{CssClipPath, CssClipPathShape};
+use surgeist_css::values::shape::{CssBasicShape, CssCircleRadius, CssCircleShape};
 
 let circle = CssCircleShape::new(CssCircleRadius::Default, None);
 let shape = CssClipPathShape::new(
@@ -3380,43 +3409,45 @@ let shape = CssClipPathShape::new(
 assert_eq!(shape.reference_box(), Some(CssBoxEdgeKeyword::BorderBox));
 let clip = CssClipPath::BasicShape(shape);
 let expected = "circle() border-box";
-let limits = CssSpecifiedValueSerializationLimits::new(3, 3, expected.len());
-assert_eq!(clip.serialize_specified_with_limits(limits).unwrap(), expected);
+let limits = CssSerializationLimits::new(3, 3, expected.len());
+assert_eq!(clip.serialize_specified(limits).unwrap(), expected);
 ```
 
 ```rust
-use surgeist_css::{
-    CssComponentValue, CssRectShape, CssRectShapeEdge,
-    CssSpecifiedLengthPercentage, CssSpecifiedValueSerializationLimits,
-};
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::numeric::{CssLengthPercentage, CssNumeric};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssAutoOr;
+use surgeist_css::values::shape::CssRectShape;
 
-fn edge(css: &str) -> CssRectShapeEdge {
-    let value = CssSpecifiedLengthPercentage::try_from_component(
+fn edge(css: &str) -> CssAutoOr<CssNumeric<CssLengthPercentage>> {
+    let value = CssNumeric::<CssLengthPercentage>::try_from_component(
         CssComponentValue::try_token(css).unwrap(),
     ).unwrap();
-    CssRectShapeEdge::LengthPercentage(value)
+    CssAutoOr::Value(value)
 }
 
 let rect = CssRectShape::new(
-    CssRectShapeEdge::Auto, edge("1px"), edge("2%"), edge("0"), None,
+    CssAutoOr::Auto, edge("1px"), edge("2%"), edge("0"), None,
 );
-assert_eq!(rect.top(), &CssRectShapeEdge::Auto);
+assert_eq!(rect.top(), &CssAutoOr::Auto);
 assert!(rect.round().is_none());
 let expected = "rect(auto 1px 2% 0)";
-let limits = CssSpecifiedValueSerializationLimits::new(5, 5, expected.len());
-assert_eq!(rect.serialize_specified_with_limits(limits).unwrap(), expected);
+let limits = CssSerializationLimits::new(5, 5, expected.len());
+assert_eq!(rect.serialize_specified(limits).unwrap(), expected);
 ```
 
 ```rust
-use surgeist_css::{CssPathData, CssPathShape, CssSpecifiedValueSerializationLimits};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::shape::{CssPathData, CssPathShape};
 
 let data = CssPathData::try_new("M0 0L1 2").unwrap();
 let path = CssPathShape::new(None, data);
 assert!(path.fill_rule().is_none());
 assert_eq!(path.data().as_str(), "M0 0L1 2");
 let expected = "path(\"M0 0L1 2\")";
-let limits = CssSpecifiedValueSerializationLimits::new(2, 2, expected.len());
-assert_eq!(path.serialize_specified_with_limits(limits).unwrap(), expected);
+let limits = CssSerializationLimits::new(2, 2, expected.len());
+assert_eq!(path.serialize_specified(limits).unwrap(), expected);
 ```
 
 Each shape function charges one input and projection aggregate. Inset additionally
@@ -3447,7 +3478,7 @@ separators cost bytes only.
 
 All siblings share one cumulative input, projection and UTF-8 byte budget,
 including numeric math arenas, positions and border radii. Limit failure returns
-`CssSpecifiedValueSerializationError`, no partial CSS and no input or provenance
+`CssSerializationError`, no partial CSS and no input or provenance
 mutation. `clip-path` is a noninherited terminal with intrinsic `None` initial;
 central expansion, pending substitution reentry and normalization retain
 importance, order, source occurrence and replacement provenance.
@@ -3472,7 +3503,7 @@ wrappers expose the sole `CssFilter` function list through `value()`.
 
 Ordinary number, percentage, and angle components hold checked
 `CssColorNumberLiteral`, `CssColorPercentageLiteral`, and the shared
-`CssAngleLiteral` values. Each keeps the exact finite decimal token and
+`numeric::CssNumericLiteral<CssAngle>` values. Each keeps the exact finite decimal token and
 origin, even when its magnitude overflows or underflows a binary32 cache. The
 angle also retains its authored unit. `CssColorComponent` has number,
 percentage, `none`, and typed calculation branches; `CssColorHue` has number,
@@ -3536,7 +3567,7 @@ whose numerical meaning may also be fixed. Absence means outside this keyword
 projection, not invalid or unresolvable. The method preserves the graph and
 does not select a host palette, bind a profile, or evaluate contextual colors.
 
-`CssColor::to_specified_css()` and `to_specified_css_with_limits()` emit one
+`CssColor::serialize_specified(limits)` emits one
 canonical specified string under cumulative input-node, projection-node, and
 UTF-8 byte limits. Failure is atomic and leaves the graph and origins intact.
 This serializer preserves unresolved context and performs only selected pure
@@ -3553,8 +3584,9 @@ missing-preserving form. RGB NaN and negative infinity become zero; positive
 infinity becomes the upper endpoint.
 HSL saturation has a zero minimum and no upper bound. The selected eager
 normalization also applies to resolved negative, NaN and negative-infinite
-saturation calculations, following the
-[frozen WebKit parser interpretation](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSPropertyParserConsumer%2BColor.cpp#L187).
+saturation calculations, extending the
+[parsed-value clamp of negative saturation](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#the-hsl-notation)
+in line with the [frozen WebKit parser interpretation](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSPropertyParserConsumer%2BColor.cpp#L187).
 Named HSL lightness and HWB whiteness/blackness remain unbounded; NaN becomes
 zero, while dimensional infinities retain valid `calc(infinity * 1%)` or
 `calc(-infinity * 1%)` text. Numeric hue normalizes to degrees modulo 360,
@@ -3564,12 +3596,12 @@ turn hue retains its exact decimal in degrees; a direct radian or gradian hue
 is a canonical degree number rounded to six decimals, as CSSOM serializes a
 <number>, with a rounded 360 again written as zero. A literal number or angle
 hue beyond binary64 is the nearest supported multiple of 360deg (Values 4
-§10.12) and serializes as 0 in both phases. RGB conversion uses the
+§5) and serializes as 0 in both phases. RGB conversion uses the
 normalized unrounded hue.
 When HSL/HWB convert to RGB, surgeist-color performs the Color 4 conversion on
 the same binary64 channel values that used-value resolution reads, so
 specified and used serialization agree. In both phases a finite literal beyond
-binary64 is the closest finite value (Values 4 §10.12), and a channel whose
+binary64 is the closest finite value (Values 4 §5), and a channel whose
 conversion overflows is likewise the signed closest finite value before
 clipping. The final converted and clipped binary64 channels
 use the same six-place positive-tie policy.
@@ -3617,7 +3649,8 @@ describe declared, computed and used values after L/C/H clamping, whereas
 excludes specified calculations from range clamping. Frozen WebKit's non-eager
 Lab/OK parsing preserves calculations while bounding direct siblings, and its
 specified serializer keeps their wrappers. This selects the authored range
-phase; it does not adopt WebKit's exact percentage text, float narrowing or
+phase, in which direct components are bounded and calculations keep their
+wrappers; it does not adopt WebKit's exact percentage text, float narrowing or
 computed color conversion.
 
 The serializer selects clipped direct endpoints from borrowed exact lexical
@@ -3631,8 +3664,8 @@ must still fit before composition. Authored token kinds, coefficients and
 provenance remain unchanged.
 
 `border-color` accepts one to four colors and an optional leading `logical`
-marker. `CssBorderColorShorthand` retains authored arity and role mode;
-`assigned_values()` applies shorthand repetition. Logical axis pairs retain
+marker. `CssFourSides<CssColor>` retains authored arity and role mode;
+`assigned()` applies shorthand repetition. Logical axis pairs retain
 optional end values independently. Expansion follows the
 [mode-selected membership policy](#four-side-shorthand-membership).
 
@@ -3663,11 +3696,10 @@ The [catalog's relative calculated-alpha phase](../specs/catalog.json) selects
 this retained form because
 [Color 5 §11.3](https://www.w3.org/TR/2026/WD-css-color-5-20260908/#serial-relative-color)
 calls declared alpha specified but clamped, while Values 4 reserves calculation
-clamping and scalar-wrapper removal for computed or later serialization.
-Frozen WebKit retains stored relative alpha and specified calculation trees;
-its separate resolvers evaluate an origin before typed normalization. That
-evidence supports the phase choice, without establishing identical percentage
-text, custom-profile support or browser results. Profile binding, origin
+clamping for computed or used values. Frozen WebKit retains stored relative alpha
+and specified calculation trees; its separate resolvers evaluate an origin before
+typed normalization. That evidence supports the phase choice, without establishing
+identical percentage text, custom-profile support or browser results. Profile binding, origin
 evaluation and computed-value clamping belong downstream. Mathematical precision
 and range remain unfinished.
 
@@ -3708,29 +3740,30 @@ serialization remain separate unfinished work.
 
 ### Pure HSL and HWB coordinates
 
-`CssHslColorCoordinates::try_new(Option<H>, S, L)` and
-`CssHwbColorCoordinates::try_new(Option<H>, W, B)` construct concrete coordinates
-for the [Color 4 HSL](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#hsl-to-rgb)
+The numerical owner, `surgeist_color`, supplies concrete coordinate carriers and
+conversions for the [Color 4 HSL](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#hsl-to-rgb)
 and [HWB](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#hwb-to-rgb)
-algorithms. Hue uses degrees; saturation, lightness, whiteness and blackness
-use number units with a `0..100` reference range. Every present coordinate must
-be finite. HSL saturation must be nonnegative, following the forward algorithm's
-already-clamped input precondition. Extended lightness and saturation above 100,
-and negative or extended HWB coordinates, remain mathematical inputs.
+algorithms. `HslCoordinates::new(Option<Finite>, S, L)` and
+`HwbCoordinates::new(Option<Finite>, W, B)` take `surgeist_color::Finite`
+values, finite binary64 proofs, so construction is infallible. Hue uses degrees;
+saturation, lightness, whiteness and blackness use number units with a `0..100`
+reference range. Extended lightness and saturation above 100, and negative or
+extended HWB coordinates, remain mathematical inputs.
 
-Both private-field carriers expose `hue_degrees()` and their named coordinates.
-Constructors check H, then the second and third coordinate before rejecting
-negative saturation. They normalize present hue to `[0, 360)` with positive
-zero, canonicalize saturation zero, and preserve lightness, whiteness and
-blackness bits. A manually supplied present hue stays present at a powerless
-coordinate, and missing hue stays missing at any other coordinates.
+Both carriers expose `hue_degrees()` and their named coordinates. They normalize
+present hue to `[0, 360)` and preserve lightness, whiteness and blackness bits.
+HSL construction treats a negative saturation as the same color at the opposite
+hue: the hue, missing as zero degrees, rotates by 180 degrees and the saturation
+keeps its magnitude. HSL saturation zero is canonical positive zero. A manually
+supplied present hue stays present at a powerless coordinate, and missing hue
+stays missing at any other coordinates.
 
 | Operation | Concrete result |
 | --- | --- |
-| `convert_hsl_to_srgb(&coordinates)` | Fallible encoded `[r, g, b]`, with a `0..1` reference range |
-| `convert_hwb_to_srgb(&coordinates)` | Infallible encoded `[r, g, b]` after checked construction |
-| `convert_srgb_to_hsl([r, g, b])` | Fallible HSL carrier with optional hue |
-| `convert_srgb_to_hwb([r, g, b])` | Fallible HWB carrier with optional hue |
+| `convert_hsl_to_srgb(&coordinates)` | Encoded `[r, g, b]` of `Finite`, with a `0..1` reference range |
+| `convert_hwb_to_srgb(&coordinates)` | Encoded `[r, g, b]` of `Finite` |
+| `convert_srgb_to_hsl([r, g, b])` | HSL carrier with optional hue |
+| `convert_srgb_to_hwb([r, g, b])` | HWB carrier with optional hue |
 
 Every finite extended RGB sample is admitted; the operations do not clip a
 display gamut. Missing forward hue uses zero degrees. HWB's white-plus-black
@@ -3746,39 +3779,34 @@ algorithms' inclusive thresholds and retained-coordinate interpretation selected
 from frozen WebKit; the catalog records their conflicts with generic
 [powerless-component cleanup](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#powerless).
 
-`CssHslHwbConversionError` distinguishes the first `NonFiniteInput` index in
-H/S/L, H/W/B or R/G/B order, `NegativeSaturation`, and `UnrepresentableResult`
-when a required result exceeds finite `f64`. Percent scaling bounds every
-checked HWB forward intermediate, making that direction infallible. The other
-directions can overflow for extended inputs. Ordinary binary64 rounding,
-underflow and loss of powerless hue apply; exact round trips are not promised.
-These helpers are independent of authored CSS, alpha, profiles, contextual
-evaluation, interpolation and computed CSS serialization.
+The operations are total. A required result beyond finite `f64` becomes the
+signed closest finite value (Values 4 §10.12) rather than an error. Ordinary
+binary64 rounding, underflow and loss of powerless hue apply; exact round trips
+are not promised. These helpers are independent of authored CSS, alpha,
+profiles, contextual evaluation, interpolation and computed CSS serialization.
 
 ### Pure rectangular color-space conversion
 
-`CssRectangularColorCoordinates` couples three concrete numerical channels with
-their `CssRectangularColorSpace`. The space is `Predefined` with an existing
-`CssPredefinedColorSpace`, `Lab`, or `Oklab`: seven RGB spaces, XYZ D50/D65,
-and the two rectangular Lab families. These coordinates are independent of the
-authored `CssColor` graph and its specified serialization.
+`surgeist_color::RectangularCoordinates` couples three concrete numerical
+channels with their `RectangularSpace`. The space is `Predefined` with a
+`surgeist_color::PredefinedColorSpace`, `Lab`, or `Oklab`: seven RGB spaces,
+XYZ D50/D65, and the two rectangular Lab families. These coordinates are
+independent of the authored `CssColor` graph and its specified serialization.
 
-`try_new(space, [Option<f64>; 3])` accepts every finite extended channel and
-explicit missing values. It preserves input bits, including negative zero,
-and rejects the first present nonfinite channel in zero-based index order.
-`space()` and `channels()` inspect the immutable value. RGB and XYZ channels
-use number reference units where `100%` means `1`; Lab uses native `[L, a, b]`
-units with ordinary lightness `0..100`, and Oklab uses native units with ordinary
-lightness `0..1`. These usual ranges are not constructor bounds.
+`RectangularCoordinates::new(space, [Option<Finite>; 3])` accepts every finite
+extended channel and explicit missing values. It preserves input bits, including
+negative zero. `space()` and `channels()` inspect the immutable value. RGB and
+XYZ channels use number reference units where `100%` means `1`; Lab uses native
+`[L, a, b]` units with ordinary lightness `0..100`, and Oklab uses native units
+with ordinary lightness `0..1`. These usual ranges are not constructor bounds.
 
 `convert_to(destination)` follows
 [Color 4's intrinsic conversion algorithm](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#color-convert-algorithm).
 Same-space conversion preserves every bit and missing value. Different-space
 conversion substitutes zero for missing input channels locally, converts
 through linear light and XYZ, adapts differing whitepoints with linear Bradford,
-and returns three present channels. The source remains unchanged, including
-when conversion fails. Results retain negative, out-of-gamut and extended
-lightness values without range clipping.
+and returns three present channels. The source remains unchanged. Results retain
+negative, out-of-gamut and extended lightness values without range clipping.
 
 ProPhoto RGB, Lab and XYZ D50 use D50; the other RGB spaces, Oklab and XYZ D65
 use D65. RGB matrices derive from the normative primary chromaticities and
@@ -3802,11 +3830,9 @@ It prevents avoidable intermediate range loss when large encoded channels or
 tiny linear-light channels produce representable destination channels. Ordinary
 rounding and cancellation still apply; final underflow to zero is permitted.
 This is neither exact-real arithmetic nor a correctly rounded conversion
-guarantee. `CssRectangularColorConversionError::UnrepresentableResult` identifies
-the first computed destination channel that cannot become finite `f64`.
-`NonFiniteInput` identifies an invalid constructor channel. Both indices use
-the selected space's three-channel order. Cross-space round trips are
-approximate and cannot recover missingness replaced by zero.
+guarantee. A destination channel beyond finite `f64` becomes the signed closest
+finite value. Cross-space round trips are approximate and cannot recover
+missingness replaced by zero.
 
 Alpha, profiles, gamut mapping, physical output and interpolation remain outside
 this helper. Callers compose the existing HSL/HWB and Lab-family polar helpers
@@ -3817,12 +3843,12 @@ expression is evaluated or converted implicitly.
 
 `convert_lab_to_lch([L, a, b])` and `convert_oklab_to_oklch([L, a, b])`
 implement [Color 4 CRD 2026-09-08 §9.5](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#lab-to-lch).
-The concrete `f64` inputs use each space's number units: typical Lab lightness
+The concrete `Finite` inputs use each space's number units: typical Lab lightness
 is `0..100`, while typical Oklab lightness is `0..1`. Finite extended values are
 accepted without clamping. Lightness is copied bit-for-bit, and stable hypot
 calculates chroma without intermediate squaring overflow or underflow.
 
-The resulting `CssPolarColorCoordinates` exposes `lightness()`, `chroma()` and
+The resulting `surgeist_color::PolarCoordinates` exposes `lightness()`, `chroma()` and
 `hue_degrees()`. Hue is normalized atan2(b, a) in degrees when chroma is strictly
 greater than `0.0015` for Lab or `0.000004` for Oklab; at equality and below,
 it is `None` and chroma becomes positive zero, applying
@@ -3831,22 +3857,22 @@ The inclusive thresholds come from Color 4 §§9.3–9.4 and its conversion
 algorithm. Their discrepancy with the generic less-than wording is recorded
 individually in the catalog using frozen WebKit's inclusive behavior.
 
-`CssPolarColorCoordinates::try_new(L, C, Option<H>)` checks finite values in
-L/C/H order before rejecting negative chroma. It preserves lightness bits,
-canonicalizes chroma zero to positive zero, and normalizes present hue into
-`[0, 360)`, including positive zero at the rounded 360° endpoint. The constructor
-does not apply either space's threshold: missing hue stays missing at any
-chroma, and present hue stays present below the thresholds. Its fields are
-private. `CssPolarColorConversionError` distinguishes `NonFiniteInput` with the
-first invalid component index, `NegativeChroma`, and `UnrepresentableResult`
-when required forward chroma overflows finite `f64` arithmetic.
+`PolarCoordinates::new(L, C, Option<H>)` is infallible over `Finite` values. It
+preserves lightness bits, canonicalizes chroma zero to positive zero, and
+normalizes present hue into `[0, 360)`, including positive zero at the rounded
+360° endpoint. A negative chroma is the same point at the opposite hue: the
+hue, missing as zero degrees, rotates by 180 degrees and the chroma keeps its
+magnitude. The constructor does not apply either space's threshold: missing hue
+stays missing at any nonnegative chroma, and present hue stays present below the
+thresholds. Its fields are private. A chroma beyond finite `f64` arithmetic is
+the closest finite value, `f64::MAX`.
 
 `convert_lch_to_lab(&coordinates)` and `convert_oklch_to_oklab(&coordinates)`
-implement [Color 4 §9.6](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#lch-to-lab)
-infallibly. Present hue gives C cos(H) and C sin(H); missing hue sets both axes
+implement [Color 4 §9.6](https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#lch-to-lab).
+Present hue gives C cos(H) and C sin(H); missing hue sets both axes
 to positive zero regardless of chroma. Lightness retains its bits. For example,
 Lab `[50, 3, 4]` gives C = 5 and H approximately 53.13010235415598°, whereas
-`try_new(50.0, 5.0, None)` converts to `[50.0, 0.0, 0.0]`.
+`PolarCoordinates::new(50.0, 5.0, None)` converts to `[50.0, 0.0, 0.0]`.
 
 Ordinary `f64` rounding applies; neutral forward conversion intentionally loses
 the opponent axes on inversion, and exact round trips are not promised. These
@@ -3859,20 +3885,20 @@ and contextual evaluation.
 `naively_convert_srgba_to_cmyk([r, g, b, a])` implement the two pure numerical
 fallback formulas in
 [Color 5 WD 2026-09-08 §6.1](https://www.w3.org/TR/2026/WD-css-color-5-20260908/#cmyk-rgb).
-Their `f64` arrays contain concrete normalized coordinates; RGB channels are
-sRGB-encoded, rather than 0–255 or linear-light channels. These APIs are
-independent from the authored `CssColor` and `CssDeviceCmykColor` models.
+Their arrays of `surgeist_color::Finite` contain concrete normalized
+coordinates; RGB channels are sRGB-encoded, rather than 0–255 or linear-light
+channels. These APIs are independent from the authored `CssColor` and
+`CssDeviceCmykColor` models.
 
-Every input, including alpha, must be finite. Extended coordinates and alpha
-outside `[0, 1]` are accepted without a range clamp. Alpha is copied bit-for-bit,
-including negative zero. `CssNaiveColorConversionError::NonFiniteInput` identifies
-the first invalid array index before arithmetic; `UnrepresentableResult` reports
-a required result that overflows finite `f64` arithmetic. No source coordinates
-are fabricated for numerical inputs.
+Every input, including alpha, is a `Finite` value, so the operations are total.
+Extended coordinates and alpha outside `[0, 1]` are accepted without a range
+clamp. Alpha is copied bit-for-bit, including negative zero. A result that
+overflows finite `f64` arithmetic is the signed closest finite value. No source
+coordinates are fabricated for numerical inputs.
 
 The forward formula evaluates each channel as
 `max(0, (1 - ink) * (1 - black))`. Opposite factor signs saturate to zero before
-multiplication can overflow; a positive product overflow returns an error.
+multiplication can overflow; a positive product overflow returns `f64::MAX`.
 This zero saturation belongs to the specified formula. The inverse uses the
 original maximum RGB channel `v`: black is `1 - v`, and inks are zero for
 `v == 0`, otherwise `1 - channel / v`. There is no epsilon cutoff or shortcut
@@ -3910,13 +3936,13 @@ duplicates, case-distinct names and escaped punctuation are accepted. Existing
 `effective(kind)` returns the last valid occurrence, including a pending one.
 It does not choose between duplicate profile definitions. Invalid descriptors
 and child rules recover independently with diagnostics while valid siblings and
-following rules survive. Clean validation rejects every diagnostic. Ordinary
+following rules survive. `into_validation_result` rejects every diagnostic. Ordinary
 group lists, including scopes, retain global profiles with their parent contexts;
 a style-rule ancestor forbids them. Normalization exposes an intact
 `CssRuleContextKindRef::ColorProfile` payload and produces no style declarations
 from its descriptors.
 
-`parse_color_profile_descriptor_value` and
+`rule::color_profile::CssColorProfileDescriptorValue::parse` and
 `CssColorProfileDescriptorValue::try_new` share the whole-value grammar.
 Valid `env()` qualifies for whole-grammar deferral under
 [Env 1 §3](https://www.w3.org/TR/2025/WD-css-env-1-20250923/#env-function),
@@ -3929,7 +3955,7 @@ reject recovered implicit closures with their original closing origin; browser
 parsing can retain them with recovery diagnostics. CSS performs no substitution.
 
 Descriptor values, descriptor occurrences, and profile rules expose
-`to_specified_css` and bounded variants. The generic `CssRule` and `CssSheet`
+`serialize_specified(limits)`. The generic `CssRule` and `CssSheet`
 writers compose profile, palette and named-supports leaves under one cumulative
 input/projection/UTF-8 budget. Style rules, ordinary groups and scopes reuse
 these providers through the [complete authored graph writer](#authored-rule-and-stylesheet-specified-output).
@@ -4016,8 +4042,8 @@ symbolic percentage math root. `CssColorMixComponent::new` takes a color and
 optional weight; `CssColorMix::try_new` checks the list and composed depth.
 `CssColorInterpolationMethod::try_new(space, hue)` checks predefined methods:
 an explicit hue strategy requires HSL, HWB, LCH or Oklch. Rectangular spaces
-accept an omitted hue; rejected combinations return
-`CssColorInterpolationMethodConstructionError::HueRequiresPolarSpace`.
+accept an omitted hue; rejected combinations return a
+`CssColorConstructionError` with `is_hue_requires_polar_space()`.
 `CssColorInterpolation::from_predefined(method)` wraps a checked method.
 The method's `space()` and `hue()` preserve authored identity, including omitted
 hue versus explicit `Shorter`. `effective_hue()` supplies the
@@ -4049,11 +4075,11 @@ or overflows. Scalar construction accepts only number and percentage components.
 `NumberCalculation` and `PercentageCalculation` retain domain-checked symbolic
 math roots. Authored transport does not clamp opacity.
 
-`CssOpacityValue::serialize_specified()` produces canonical specified text;
-`serialize_specified_with_limits()` supplies independent input-node, cumulative
-projection-node, and output-byte limits. Defaults are 65,536, 262,144, and
-1,048,576 respectively; zero limits are valid. Failures return a typed
-`CssSpecifiedValueSerializationError` without partial text or input mutation.
+`CssOpacityValue::serialize_specified(limits)` produces canonical specified text
+under `CssSerializationLimits`, which supplies independent input-node, cumulative
+projection-node, and output-byte limits. `CssSerializationLimits::default()` uses
+65,536, 262,144, and 1,048,576 respectively; zero limits are valid. Failures return a typed
+`CssSerializationError` without partial text or input mutation.
 These logical bounds do not guarantee allocator availability.
 
 Ordinary scalars use their exact retained magnitude. Percentages divide by 100
@@ -4102,9 +4128,9 @@ repeats and auto-fit are not subgrid name-repeat alternatives. `count()`,
 
 `grid-auto-flow` accepts six authored meanings: `normal`, `dense`, `row`,
 `row dense`, `column`, and `column dense`. The axis and `dense` keywords may be
-authored in either order; `CssGridAutoFlow::serialize_specified()` emits
+authored in either order; `CssGridAutoFlow::serialize_specified(limits)` emits
 the canonical order. `normal` and bare `dense` leave direction unspecified, and
-the `CssGridAutoFlowPropertyValue::value()` accessor preserves that difference.
+the `CssPropertyValue<CssGridAutoFlow>::value()` accessor preserves that difference.
 The `ExplicitAxis` branch contains a `CssGridAutoFlowMode`, the explicit axis
 and dense selection. The intrinsic
 initial is `normal`, and the longhand is not inherited. CSS-wide values,
@@ -4135,7 +4161,7 @@ digits and CSS-wide keyword spellings remain valid within a string. The
 decoded area name is the sole typed representation, including names that
 would be reserved in ordinary custom identifiers.
 
-`serialize_specified_with_limits()` emits canonical quoted rows with one space
+`CssGridTemplateAreas::serialize_specified(limits)` emits canonical quoted rows with one space
 between cells and one period for each empty cell under cumulative input-node,
 projection-node, and CSS-byte budgets. The property wrapper's `as_css()` retains
 the authored source. CSS-wide values, `all`, and pending substitutions use the
@@ -4169,25 +4195,24 @@ otherwise `auto`. In `grid-area`, the member order is row start, column start,
 row end, column end, and an omitted column end follows the effective column
 start. These accessors do not resolve conflicting line placements; that needs
 layout context. Canonical
-`serialize_specified_with_limits()` applies one cumulative resource budget to
+`serialize_specified(limits)` applies one cumulative resource budget to
 the complete line or shorthand.
 
 The six Grid repetition consumers expose their authored value through `value()`.
 Grid track lists distinguish general lists from lists containing exactly
 one automatic repetition. Integer and automatic repetitions are non-recursive.
-Integer track, fixed and name repeats retain `CssPositiveIntegerValue` counts.
-Their checked `try_new` constructors normalize a bare integer calculation root
-to an exact positive literal, retaining its origin and rejecting bare zero or
-negative values. Function roots retain their symbolic graphs: `calc(1.5)`,
+Integer track, fixed and name repeats retain `numeric::CssNumeric<CssInteger, CssPositive>`
+counts. `CssNumeric::try_from_calculation` sends a bare calculation root back
+through literal admission, so a bare zero or negative integer root is rejected as out of range. Function roots retain their symbolic graphs: `calc(1.5)`,
 `calc(0)` and `calc(-1)` are authored math, with integer rounding and range
 handling deferred to computed or used values under
 [Values 4](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-range).
-The shared positive-integer owner supplies this check to repeats and `steps()`.
+The same positive-integer numeric type supplies this check to repeats and `steps()`.
 `count()` borrows the retained literal or calculation; it does not evaluate it.
 Canonical literal serialization removes redundant plus signs and leading zeros
 without narrowing the magnitude, and charges every count through the enclosing
-cumulative input, projection and output budgets. The old literal-only `new`
-constructors are replaced by `try_new`; no compatibility constructor remains.
+cumulative input, projection and output budgets. The integer repeat constructors
+take the checked count.
 
 The [selected Grid 3 publication](https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#intrinsic-auto-repeat)
 admits general track sizes inside automatic repetition, including intrinsic
@@ -4197,10 +4222,9 @@ and integer repetitions retain the fixed-size restrictions of Grid 2's
 `grid-auto-rows` and `grid-auto-columns` still accept track sizes without
 `repeat()`. Each explicit axis has its own limit of one automatic repetition.
 
-`CssGridAutoRepeat::content()` now returns
+`CssGridAutoRepeat::content()` returns
 `&CssGridTrackRepeatContent`. Consumers inspect its ordered `LineNames`
-and `TrackSize` members; the former fixed-body return type no longer describes
-the selected grammar. Surrounding integer fixed repeats continue to expose
+and `TrackSize` members. Surrounding integer fixed repeats continue to expose
 `CssGridFixedRepeatContent`. Typed calculations retain their symbolic
 structure. Historical captured inputs
 and observations remain unchanged; semantic witnesses apply the selected grammar.
@@ -4229,26 +4253,27 @@ is infallible. Constructed NUL remains observable as a specified-serialization
 failure. The frozen WebKit empty-name restriction is narrower than this selected
 publication, so it does not constrain this string domain.
 
-`CssKeyframesRuleView::try_new[_with_limits]` borrows a checked current
+`CssKeyframesRuleView::try_new(name, rules, limits)` borrows a checked current
 `CssKeyframesName` and an ordered slice of checked `CssKeyframeRuleView` children.
 It expresses renamed, reordered, appended, removed and empty current sequences
 without rebuilding an authored rule or re-expanding retained shorthand sources.
 Equivalent and duplicate children remain separate. Name classification, keyText,
 declaration scheduling and whole-rule punctuation reuse the selected
 [CSSOM keyframes branch](../../../references/cssom-1--editor-capture-20261009--d42e145ec395.md#serialize-a-css-rule).
-`CssEditedRuleView::try_keyframes[_with_limits]` embeds the same payload in the
+`CssRuleGraphInput::keyframes` embeds the same payload in the
 shared recursive writer. Limits accumulate across the name, each child, and all
 ancestors; failures retain the current keyframe-block index and recursive rule
 path, publish no partial string, and permit unchanged retry. Borrowed declaration
 entries and selector/value origins retain actual authored observations; a
 programmatic name/container has no fabricated source coordinates. Matching,
 append/delete decisions, placement, live identity and revisions belong to CSSOM.
-Edited Page and keyframes payloads retain these selected wrappers when requested
-through the edited view's specified-output phase; surrounding group punctuation
-still follows that phase's existing compact provider.
+`CssRuleGraphInput` Page and keyframes payloads retain these selected wrappers when
+requested through `CssRuleGraphInput::serialize_specified`; surrounding group
+punctuation still follows the same compact provider.
 
 Literal keyframe percentages use binary64 conversion of the original coefficient,
-then finite inclusive `[0,100]` admission. This selected precision follows frozen
+then finite inclusive `[0,100]` admission, the range of the Animations 1
+`<percentage [0,100]>` selector. This selected precision follows frozen
 [WebKit's tokenizer](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSTokenizer.cpp#L552-L599)
 and [percentage consumer](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSPropertyParserConsumer%2BAnimations.cpp#L42-L80).
 [Values 4](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types)
@@ -4271,11 +4296,14 @@ remain symbolic. `literal_value()` returns an optional `f64`; `calculation()`
 borrows the retained percentage calculation. Neither the percentage owner nor
 its selector is `Copy`. `offset(&self)` clones the authored domain value, with
 proved zero and hundred endpoints for `from` and `to`; it performs no evaluation.
-Calculation equality includes authored origins and does not establish resolved
-offset equivalence.
+Calculation equality compares structure and exact values, ignoring authored
+origins, and does not establish resolved offset equivalence.
 
-`CssKeyframeSelectorList::matches_normalized[_with_limits]` supplies the separate
-specified-phase comparison needed by CSSOM find/delete. It preserves sequence
+`CssKeyframeSelectorList::matches_normalized(other, limits)` supplies the separate
+specified-phase comparison needed by CSSOM find/delete. Animations 1
+[`findRule`](https://www.w3.org/TR/2023/WD-css-animations-1-20230302/#interface-csskeyframesrule-findrule)
+returns the last declared rule matching the specified selector without defining
+the match, so this comparison is the crate's own. It preserves sequence
 count, order and duplicates, maps from/to to literal zero/hundred, and keeps
 literal percentages distinct from calculations. The adopted
 [WebKit matching phase](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/values/primitives/CSSUnevaluatedCalc.cpp#L141-L170)
@@ -4322,7 +4350,7 @@ same-sign infinities match, and NaN does not match itself, following the pinned
 [native numeric leaf relation](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/calc/CSSCalcTree.h#L94-L110).
 Specified roots receive no computed-value range clamping or NaN/zero censorship.
 
-`CssKeyframeSelectorMatcher::try_new[_with_limits]` prepares one borrowed query
+`CssKeyframeSelectorMatcher::try_new(query, limits)` prepares one borrowed query
 once; its mutable `matches(candidate)` shares a monotonic native budget across
 all candidates in a search. Pair methods delegate to this owner. CSSOM owns
 reverse iteration, last-match selection and live identities. Both complete lists
@@ -4347,11 +4375,11 @@ name lookup belong to animation execution. Invalid selector diagnostics identify
 the responsible token after trivia while dropping the complete owning block.
 
 ```rust
-use surgeist_css::{CssKeyframesName, CssRule, parse_sheet};
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::CssKeyframesName;
 
-let report = parse_sheet(
-    r#"@keyframes "" { calc(120%) { opacity: .5; animation-timing-function: ease; } }"#,
-);
+let report = CssParser::default().parse_sheet(r#"@keyframes "" { calc(120%) { opacity: .5; animation-timing-function: ease; } }"#);
 assert!(report.is_clean());
 let [CssRule::Keyframes(rule)] = report.syntax().rules() else { panic!("keyframes") };
 assert!(matches!(rule.name(), CssKeyframesName::String(name) if name.as_str().is_empty()));
@@ -4435,7 +4463,7 @@ does not replace that separately adopted projection policy or supply a layout
 basis to authored CSS.
 
 `length_percentage()`, `flex()` and `fit_content()` expose the retained checked
-scalar without floating-point narrowing. `serialize_specified()` on typed track
+scalar without floating-point narrowing. `serialize_specified(limits)` on typed track
 sizes and lists emits bounded canonical CSS from retained values, whereas
 declaration `as_css()` preserves authored text. Neither operation performs Grid
 layout or resolves contextual track magnitudes.
@@ -4537,8 +4565,8 @@ string component's origin and exposes both decoded text and the authored
 fallback. Its constructors reject empty and multiple-cluster strings.
 `CssTextAlignValue`, `CssTextAlignAllValue`, and `CssTextAlignLastValue` expose
 the three distinct grammars and bounded canonical specified-value
-serialization. `CssTextAlignPropertyValue::value()` and
-`CssTextAlignLastPropertyValue::value()` provide these checked semantic values.
+serialization. `CssPropertyValue<CssTextAlignValue>::value()` and
+`CssPropertyValue<CssTextAlignLastValue>::value()` provide these checked semantic values.
 `text-align-all` likewise exposes its checked value through `value()`.
 Character search, font selection,
 directional resolution, and line layout remain downstream concerns.
@@ -4550,13 +4578,13 @@ and the seven variant longhands. `font-family`, explicit-font family lists, the
 September 7, 2026 Fonts 4 grammar. Other typography records retain their
 individual dated sources.
 
-`CssFontFamilyPropertyValue::families()` and `CssFontPropertyValue::font()` expose
+`CssPropertyValue<CssFontFamilyList>::value()` and `CssPropertyValue<CssFontValue>::value()` expose
 `CssFontFamilyList` and `CssFontValue`, with exact authored text available through
 `as_css()`. Each font wrapper retains one checked semantic value; explicit
 shorthand components belong to `CssExplicitFont`.
 
-`CssFontFamilyName` and `CssFontFamilyList` expose `serialize_specified()` and
-`serialize_specified_with_limits()`. These retain the authored quoted,
+`CssFontFamilyName` and `CssFontFamilyList` expose `serialize_specified(limits)`.
+These retain the authored quoted,
 identifier-sequence, or generic branch, including identifier token boundaries,
 case, and list order. For example, one identifier containing a space emits
 `A\ B`, while two identifiers emit `A B`; a quoted `"serif"` remains distinct
@@ -4572,9 +4600,9 @@ names. Emitting a family does not provide a complete font-face or feature-rule
 writer. The existing font shorthand and palette descriptor/rule writers share
 these family helpers and the common CSSOM escaping writer.
 
-`parse_font_feature_values_family_list()` and its bounded variant admit an
-actual raw, nonempty nongeneric literal-family prelude through the same grammar
-as `@font-feature-values`. `CssParserContext` exposes both fronts. They require
+`rule::font_feature_values::CssFontFeatureValuesFamilyList::parse(&parser, source)`
+admits an actual raw, nonempty nongeneric literal-family prelude through the same
+grammar as `@font-feature-values`; the parser carries the component limits. It requires
 full consumption, retain the complete original source and per-member occurrences
 (excluding surrounding trivia), and distinguish syntax rejection from typed
 resource diagnostics. Valid native EOF recovery can retain a list with notes;
@@ -4583,7 +4611,7 @@ report cleanliness and list retention are separate decisions for callers.
 without inventing source coordinates or reparsing decoded literal names.
 
 The checked list's specified serializer and
-`serialize_font_face_family_list[_with_limits]()` emit actual ordered literal
+`rule::font_face::serialize_font_face_family_list(families, limits)` emit actual ordered literal
 families with comma-space separators through one native writer. The slice
 formatter accepts an empty slice as empty text, independently of the feature
 prelude's nonempty requirement. Input/projection limits accumulate across every
@@ -4603,8 +4631,8 @@ numeric, East Asian, position, and emoji groups in either longhand declarations
 or the full shorthand. `CssFontVariantValue` retains the authored groups;
 intrinsic expansion contributes all seven inherited longhands, using `normal`
 for omitted groups. `none` contributes ligatures `none` and six `normal` values.
-The shorthand and its longhand wrappers expose borrowed current values and no
-longer offer an `i01_subset()` projection. The separate CSS2 `font` prefix
+The shorthand and its longhand wrappers expose borrowed current values through
+`CssPropertyValue::value()`. The separate CSS2 `font` prefix
 continues to accept only `normal` or `small-caps` as its variant component.
 
 In the shorthand each bracketed group is one operand of the outer `||`, so the
@@ -4618,48 +4646,45 @@ also accept such split values; that is a witness divergence, not the grammar.
 and a nonempty combination. `CssFontVariantAlternateNames` checks nonempty name
 lists while retaining case, order, and repeated names. Names use the decoded
 `CssFontFeatureValueName` identifier model and remain unresolved until a font is
-selected. All seven longhand value types and `CssFontVariantValue` provide bounded
-`serialize_specified()` and `serialize_specified_with_limits()` methods. These
+selected. All seven longhand value types and `CssFontVariantValue` provide a bounded
+`serialize_specified(limits)` method. These
 emit grammar order and escaped names without resolving glyph selection.
 
-Code constructing `CssFontVariantValues` must append `alternates` and `emoji`
-arguments to `try_new`, passing `None` for either omitted group. The aggregate
-and `CssFontVariantValue` now own optional name collections, so they implement
-`Clone` rather than `Copy`; callers needing another owned value must clone it.
-`CssFontVariantValues::try_new` is no longer `const`, and its `caps()` and
-`position()` getters now borrow `&self` while still returning the same copied
-enum choices. Migrate `CssFontVariantPropertyValue::i01_subset()` consumers to
-`variant()` and inspect the `Normal`, `None`, or checked `Values` branch directly.
+`CssFontVariantValues::try_new` takes the ligatures, position, caps, numeric,
+East Asian, alternates and emoji groups in that order, passing `None` for an omitted group. The
+aggregate and `CssFontVariantValue` own optional name collections, so they implement
+`Clone` rather than `Copy`. Inspect the `Normal`, `None`, or checked `Values` branch of
+`CssPropertyValue<CssFontVariantValue>::value()` directly.
 
 ```rust
-use surgeist_css::{
-    CssFontValue, CssKnownPropertyValueRef, CssSystemFont,
-    parse_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::font::{CssFontValue, CssSystemFont};
 
-let report = parse_style_attribute("font: menu; font-weight: 725");
+let report = CssParser::default().parse_block_contents("font: menu; font-weight: 725");
 assert!(report.is_clean());
 let CssKnownPropertyValueRef::Font(font) = report.syntax()[0]
     .known().expect("known font")
     .property_value().expect("ordinary font")
 else { panic!("expected font") };
-assert!(matches!(font.font(), CssFontValue::System(CssSystemFont::Menu)));
+assert!(matches!(font.value(), CssFontValue::System(CssSystemFont::Menu)));
 assert_eq!(font.as_css(), "menu");
 ```
 
 The selected Fonts 4 `font-weight` property accepts absolute `normal`, `bold`
 and exact numeric values from 1 through 1000, plus relative `bolder` and
-`lighter`. `CssFontWeight::Absolute(CssAbsoluteFontWeight)` now distinguishes
-these branches. `CssFontWeightNumber` retains an exact number token or symbolic
+`lighter`. `CssFontWeight::Absolute(CssAbsoluteFontWeight)` distinguishes
+these branches. The numeric branch is `numeric::CssNumeric<CssNumber, CssFontWeightRange>`,
+which retains an exact number token or symbolic
 number calculation, with its original parsed or programmatic origin;
 `try_from_component` and `try_from_calculation` check the literal bounds and
-numeric domain. Symbolic math remains unresolved. Its `literal_component()`,
-`calculation()`, `origin()` and bounded `serialize_specified()` methods replace
-the old integer `value()` projection. `CssFontWeightPropertyValue::value()`
+numeric domain. Symbolic math remains unresolved. Its `literal()`,
+`calculation()`, `origin()` and bounded `serialize_specified(limits)` methods
+expose the retained value. `CssPropertyValue<CssFontWeight>::value()`
 returns a borrowed `&CssFontWeight`. Explicit `font` shorthand values also
 borrow their optional weight through `CssExplicitFont::weight()` and accept the
 same absolute and relative weight components, including fractions and number
-math. Intrinsic shorthand expansion now contributes seven settable terminals and
+math. Intrinsic shorthand expansion contributes seven settable terminals and
 resets twelve more to their initials.
 
 The selected Fonts 4 `font-style` property accepts `normal`, `italic`, `left`,
@@ -4670,7 +4695,7 @@ Specified `font-style` serialization omits an explicit literal angle exactly equ
 to `14deg` (Fonts 4 §2.4 with CSSOM's shortest serialization), so `oblique 14deg`
 serializes as `oblique`; calculations stay explicit. Chromium 152 keeps
 `oblique 14deg`; the specification governs this divergence.
-`CssFontObliqueAngle` accepts literal `deg`, `grad`, and `turn` angles at exact
+The oblique angle, `numeric::CssNumeric<CssAngle, CssObliqueAngleRange>`, accepts literal `deg`, `grad`, and `turn` angles at exact
 lexical bounds of ±90deg, ±100grad, and ±0.25turn. Radian admission compares
 the exact authored decimal with π/2, using its first 1000 significant digits:
 `1.5707963267948966rad` is admitted and `1.57079632679489665rad` is rejected
@@ -4686,12 +4711,11 @@ or oblique with zero, one, or two checked angle endpoints. The optional
 `CssFontFaceObliqueRange` end preserves authored arity and order, including
 descending and mixed-unit pairs. Its `new(start, end)`, `start()`, and `end()`
 methods operate on checked angles without a floating-point degree projection.
-The old property variants such as `CssFontStyle::Italic` become
-`CssFontStyle::Keyword(CssFontStyleKeyword::Italic)`; the old descriptor variants
-become `CssFontFaceStyle::Keyword(...)` or `Oblique { range }`. The property
+Property keywords are `CssFontStyle::Keyword(CssFontStyleKeyword::Italic)`
+and its siblings; descriptor values are `CssFontFaceStyle::Keyword(...)` or
+`Oblique { range }`. The property
 wrapper's `value()` returns a borrowed `&CssFontStyle`, and
-`CssExplicitFont::style()` returns `Option<&CssFontStyle>`; the old property
-`i01_subset()` projection is removed. The inherited property initial is
+`CssExplicitFont::style()` returns `Option<&CssFontStyle>`. The inherited property initial is
 `normal`, and expansion preserves importance and source provenance. The
 explicit `font` shorthand accepts this selected style component, including
 optional oblique angle math, while retaining its other documented component
@@ -4703,18 +4727,18 @@ The selected Fonts 4 `font-size` property accepts the eight absolute keywords
 from `xx-small` through `xxx-large`, the relative `larger` and `smaller`
 keywords, dedicated `math`, and nonnegative lengths or percentages. `math` is
 a keyword with MathML-related downstream behavior, distinct from a numeric
-calculation. `CssFontSize::LengthPercentage` now contains
-`CssSpecifiedNonNegativeLengthPercentage` directly. Use the shared checked value's
-`try_from_component`, `try_from_calculation`, `literal_component`,
+calculation. `CssFontSize::LengthPercentage` contains
+`numeric::CssNumeric<CssLengthPercentage, CssNonNegative>` directly. Use the shared checked value's
+`try_from_component`, `try_from_calculation`, `literal`,
 `calculation`, and `origin` methods to preserve exact authored tokens and
 symbolic math. Exact negative nonzero literals fail even when their magnitude
 underflows a floating-point field; unitless zero and signed zero remain valid.
 `CssFontSize` equality compares authored structure without comparing origins;
-the shared scalar's own equality continues to include provenance.
+the shared scalar's own equality likewise ignores origin and spelling.
 Huge positive exponents remain authored without expansion during admission,
 while bounded serialization can reject output that exceeds its byte budget.
 
-`CssFontSizePropertyValue::size()` borrows `&CssFontSize`.
+`CssPropertyValue<CssFontSize>::value()` borrows `&CssFontSize`.
 `CssExplicitFont::size()` also continues to borrow. The shorthand accepts the
 same size grammar, including `xxx-large`, `math`, and typed size math, while
 preserving the following font-family boundary and optional slash line height.
@@ -4727,7 +4751,7 @@ missing-preference fallback belong to downstream resolution.
 
 `line-height` and the optional `font` slash component share one exact authored
 grammar: `normal`, a nonnegative number, or a nonnegative length-percentage.
-`CssLineHeight::Number` retains a checked `CssSpecifiedNonNegativeNumber`;
+`CssLineHeight::Number` retains a checked `numeric::CssNumeric<CssNumber, CssNonNegative>`;
 `CssLineHeight::LengthPercentage` retains the corresponding checked scalar.
 `CssLineHeight::HintedNumberCalculation` retains a Number result with an unresolved
 percentage basis. It uses the same grammar in the `font` slash component,
@@ -4737,18 +4761,18 @@ Unitless zero stays a number, while `0px` and `0%` retain their own domain.
 Ordinary negative nonzero values are rejected before floating-point narrowing;
 bare checked calculation roots reenter literal admission, while actual math
 functions remain symbolic. Line-height equality ignores source origin
-while preserving authored structure, whereas the shared number scalar's own
-equality retains provenance. Both support bounded specified serialization.
-`CssLineHeightPropertyValue::line_height()` borrows the checked line height;
+while preserving authored structure, and the shared number scalar's own
+equality ignores origin and spelling. Both support bounded specified serialization.
+`CssPropertyValue<CssLineHeight>::value()` borrows the checked line height;
 numeric payloads retain exact ordinary tokens or symbolic calculations. Construct
-the number payloads with `CssSpecifiedNonNegativeNumber::try_from_component`
-or `try_from_calculation`, then inspect them with `literal_component()`,
+the number payloads with `CssNumeric::<CssNumber, CssNonNegative>::try_from_component`
+or `try_from_calculation`, then inspect them with `literal()`,
 `calculation()`, and `origin()`.
 Its inherited initial is `normal`, and intrinsic longhand expansion produces one
 contribution with the declaration's importance and provenance. Font metrics,
 percentage resolution, and actual line box computation remain downstream.
 
-The six selected font reset longhands now have current typed values and intrinsic
+The six selected font reset longhands have typed values and intrinsic
 longhand contributions: `font-feature-settings`, `font-kerning`,
 `font-size-adjust`, `font-language-override`, `font-optical-sizing`, and
 `font-variation-settings`. The two settings lists retain ordered and repeated
@@ -4760,16 +4784,17 @@ including the empty string, while `normal` remains distinct. The selected
 `font-feature-settings` and `font-variation-settings` `@font-face` descriptors
 share these settings grammars and retain ordered occurrences.
 
-Migration from the former feature API: `CssFontFeatureSettings`,
-`CssFontFeatureList`, `CssFontFeature`, and `CssFontFeatureValue` are removed.
-Use `CssAuthoredFontFeatureSettings`, `CssAuthoredFontFeatureList`,
-`CssAuthoredFontFeature`, and `CssAuthoredFontFeatureValue`; the property wrapper
-exposes `settings()` instead of `i01_subset()`. Feature values and indices are
-no longer `Copy`; borrow through `value()` and inspect exact indices with
-`literal_component()`, `calculation()`, or `i32_value()` when representable.
-`CssFontSizeAdjust::Number` now holds `CssSpecifiedNonNegativeNumber`; inspect
-its exact component or calculation instead of a float. The new signed
-`CssSpecifiedNumber` serves variation values. All these scalars and settings
+`font-feature-settings` values are `CssAuthoredFontFeatureSettings`, holding
+`CssAuthoredFontFeatureList`, `CssAuthoredFontFeature` and
+`CssAuthoredFontFeatureValue` members; the property wrapper exposes the settings
+through `value()`. Feature indices are
+`numeric::CssNumeric<CssInteger, CssNonNegative>`, which is not `Copy`; borrow through
+`value()` and inspect exact indices with
+`literal()` and `calculation()`, or `CssNumericLiteral::value()` when the integer
+is representable as `i32`.
+`CssFontSizeAdjust::Number` holds `numeric::CssNumeric<CssNumber, CssNonNegative>`; inspect
+its exact literal or calculation. The signed
+`numeric::CssNumeric<CssNumber>` serves variation values. All these scalars and settings
 offer bounded specified serialization. `CssFontValue` and `CssExplicitFont` also
 serialize canonically under one cumulative input, projection, and byte budget.
 Their family serializer preserves quoted versus identifier representation and
@@ -4778,12 +4803,10 @@ do not alter shorthand expansion; authored optional nodes still count against th
 input budget even when omitted from the output. Font matching and computed value
 resolution remain downstream.
 
-The `@font-face` weight descriptor now uses
+The `@font-face` weight descriptor uses
 `CssFontFaceWeight::Auto` or `Range { start, end }`, where each endpoint is a
 checked `CssAbsoluteFontWeight` and `end: None` preserves a single authored
-value. This replaces the old float-backed `CssFontFaceWeightValue` and
-`CssFontFaceWeightKeyword` types and
-start/end/keyword projection methods. Descending and mixed keyword/numeric
+value. Descending and mixed keyword/numeric
 ranges retain their authored order; computed endpoint ordering and font
 matching belong downstream. The property, descriptor and numeric/range
 historical conformance IDs now cite the September 7, 2026 Fonts 4 source and
@@ -4819,8 +4842,7 @@ Generic branches are valid in property lists and explicit-font family tails,
 but invalid in the face-family descriptor and `local()`.
 
 `CssFontLocalName`, `CssFontFaceUrlSource`, `CssFontFaceSource`, and
-`CssFontFaceSourceList` expose `serialize_specified()` and
-`serialize_specified_with_limits()`. Following the
+`CssFontFaceSourceList` expose `serialize_specified(limits)`. Following the
 [CSSOM LOCAL idiom](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-local),
 a local source always contains a serialized string: `local(Gentium Bold)` emits
 `local("Gentium Bold")`. The checked nonempty source list emits members in
@@ -4852,7 +4874,7 @@ literal family named `menu`, as specified in
 [Fonts 4 §2.7](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-prop).
 Whole-value CSS-wide keywords use the declaration's global-value branch.
 These distinctions preserve decoded meaning and identifier boundaries.
-`CssFontFaceFamily::serialize_specified()` and its limits variant emit a decoded
+`CssFontFaceFamily::serialize_specified(limits)` emits a decoded
 literal name as a bare identifier sequence when that preserves its meaning;
 empty, reserved or otherwise unsuitable names use string serialization.
 Property-family serializers retain the quoted, identifier-sequence or generic
@@ -4860,7 +4882,7 @@ branch and escape each identifier token independently, keeping quoted reserved
 names distinct from generic families. Rejecting decoded U+0000 avoids claiming
 preservation of a character that CSS replaces with U+FFFD.
 
-`parse_font_face_descriptor_value(source, kind)` parses a complete raw value
+`rule::font_face::CssAuthoredFontFaceDescriptorValue::parse(&parser, source, kind)` parses a complete raw value
 using the selected `CssFontFaceDescriptorKind` grammar. It returns an owned
 `CssAuthoredFontFaceDescriptorValue::Ordinary` or `Pending` without an invented
 descriptor-name position.
@@ -4874,7 +4896,7 @@ A partially valid `src` list retains valid sources and reports
 published only when the enclosing value is retained. These typed values require
 no surrounding family/source descriptors and do not perform font matching or
 loading. This raw-source parser is distinct from component-based
-`parse_property_value`, whose errors use component origins; descriptor values
+`CssDeclaration::try_from_components`, whose errors use component origins; descriptor values
 carry no parsed occurrence provenance.
 
 `@font-feature-values` retains a nonempty ordered family list and an ordered
@@ -4897,7 +4919,7 @@ stores exact normalized decimal digits without a machine-integer maximum.
 negative nonzero values, and normalizes leading zeros and negative zero.
 `to_u32` returns `None` on overflow. Parsed index origins identify the whole
 original token; constructors produce no source coordinates. This type is
-separate from the older `CssFontFeatureIndex` used by `font-feature-settings`.
+separate from the `numeric::CssNumeric<CssInteger, CssNonNegative>` used by `font-feature-settings`.
 
 The [pinned Fonts 4 section 6.9.1](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-feature-values-syntax)
 conflicts with [section 6.9.2](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/).
@@ -4940,12 +4962,12 @@ rejects any residual, including nested or escaped, substitution function before
 checking the ordinary descriptor grammar. No substitution environment, font
 lookup, palette execution, or root-element evaluation is supplied here.
 
-`CssFontPaletteDescriptorValue::to_specified_css` and
-`CssFontPaletteValuesRule::to_specified_css` produce canonical specified text
+`CssFontPaletteDescriptorValue::serialize_specified(limits)` and
+`CssFontPaletteValuesRule::serialize_specified(limits)` produce canonical specified text
 without changing their retained component syntax. They preserve duplicate
 descriptors and override pairs, normalize keywords and exact integers, and use
 the shared numeric and color serializers; pending values keep their complete
-token stream. Their `_with_limits` forms charge input, projection, and bytes
+token stream. They charge input, projection, and bytes
 across the whole value or rule. The shared `CssRule` and `CssSheet` specified
 writers compose palette rules with every represented ordinary and scoped rule
 under one cumulative budget, joining top-level sheet rules with a newline.
@@ -4975,7 +4997,7 @@ Neither string descriptor performs language-tag validation or font matching.
 
 The [§4.11 metric descriptors](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-metrics-override-desc)
 `ascent-override`, `descent-override` and `line-gap-override` each contain
-`CssFontMetricOverride`: `Normal` or a checked `CssSpecifiedNonNegativePercentage`.
+`CssFontMetricOverride`: `Normal` or a checked `numeric::CssNumeric<CssPercentage, CssNonNegative>`.
 Zero and percentages above 100 are valid; negative ordinary percentages and
 unitless numbers are invalid. Percentage-typed math stays authored, including
 `calc(-10%)`; [Values 4 range checking](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-range)
@@ -4990,8 +5012,8 @@ and strict substituted reentry. Standalone `var()`, CSS-wide keywords and
 `!important` are invalid descriptor grammar. Normalization preserves these
 payloads, their original positions and recovery diagnostics.
 
-The new named-instance string/enum and metric payloads expose
-`serialize_specified()` and `_with_limits()`; language emission uses its existing
+The named-instance string/enum and metric payloads expose
+`serialize_specified(limits)`; language emission uses its existing
 provider. Keywords emit lowercase and strings use shared CSSOM escaping.
 Metrics reuse the exact percentage/calculation provider. Keyword/string payloads
 charge one input and projection node; metric percentages reuse their provider's
@@ -5002,7 +5024,7 @@ providers serve [checked Fonts rule composition](#checked-fonts-rule-composition
 `@font-face` retains every valid descriptor occurrence in authored order;
 `effective(kind)` returns the last admitted ordinary or pending occurrence.
 Source-list grammar follows the selected Fonts 4 edition. Weight and style
-property and descriptor grammars now cite its September 7, 2026 edition; other
+property and descriptor grammars cite its September 7, 2026 edition; other
 descriptor and property records retain their individual dated sources. An invalid
 or unknown descriptor is dropped
 with a `DropDescriptor` diagnostic without erasing valid neighbors. Empty rules
@@ -5039,7 +5061,7 @@ Under the selected Fonts 4 source-list processing rules, each comma-separated
 order. If every member is invalid, or the enclosing descriptor has an invalid
 declaration annotation, the descriptor receives one `DropDescriptor` diagnostic;
 earlier valid descriptor occurrences remain available. Any such recovery makes
-the report unclean, so `validate_sheet` rejects it.
+the report unclean, so `into_validation_result()` rejects it.
 
 Empty URL strings remain valid authored sources. `url()` and `url("")`
 retain the empty string, while `url("  ")` preserves its quoted whitespace.
@@ -5077,7 +5099,7 @@ remains available for historical source records. These immutable identities
 must not be repointed when adopting a newer production.
 
 The historical `baseline.property.font-stretch` and
-`baseline.descriptor.font-stretch` IDs now identify canonical `font-width`;
+`baseline.descriptor.font-stretch` IDs identify canonical `font-width`;
 `font-stretch` is a name-equivalent legacy alias in each separate namespace.
 The historical `ext.descriptor.font-stretch-range` ID is `Complete` for its
 ordinary width-range subproduction. The property accepts all nine width keywords and
@@ -5092,28 +5114,24 @@ retains its complete component stream and original token origins. CSS does not
 perform environment lookup or substitution. Computed endpoint ordering and face
 selection remain downstream. Direct
 specified-value serializers cover these width values and feed the shared
-Fonts rule writer. The `font` shorthand continues to accept
-only the Fonts 3 width keywords. The breaking public property migration replaces
-`CssKnownProperty::FontStretch` and `CssKnownPropertyValueRef::FontStretch` with
-their `FontWidth` variants; the wrapper's `value()` returns `CssFontWidth`.
+Fonts rule writer. The `font` shorthand accepts
+only the Fonts 3 width keywords. The property is
+`CssKnownProperty::FontWidth`, read through `CssKnownPropertyValueRef::FontWidth`;
+the wrapper's `value()` returns `CssFontWidth`.
 The shorthand uses the nine-keyword `CssFontWidthKeyword` model.
-The descriptor migration replaces `CssFontFaceDescriptorKind::FontStretch` with
-`CssFontFaceDescriptorKind::FontWidth` and the ordinary
-`CssFontFaceDescriptorValue::FontStretch` with
-`CssFontFaceDescriptorValue::FontWidth`. `CssFontFaceDescriptorRef` and
-all eight per-kind aggregate getters, including `font_stretch()`/`font_width()`,
-are removed. `CssFontFaceDescriptors::occurrences()` now borrows ordered
+The descriptor kind is `CssFontFaceDescriptorKind::FontWidth` and the ordinary
+value is `CssFontFaceDescriptorValue::FontWidth`.
+`CssFontFaceDescriptors::occurrences()` iterates the ordered
 `CssFontFaceDescriptor` records; `effective(kind)` returns the last admitted
 record of that kind, including a pending value rather than an earlier ordinary
 one. Each record exposes `value()` and an optional descriptor-name `position()`;
 checked programmatic records have no fabricated name position.
-`CssFontFaceWidth::Auto` and `CssFontFaceWidth::Range` with exact checked values
-replace the old f32-backed `CssFontFaceStretch`, `CssFontFaceStretchValue`, and
-`CssFontFaceStretchKeyword` models. CSS owns authored width values and intrinsic
+`CssFontFaceWidth::Auto` and `CssFontFaceWidth::Range` hold exact checked values.
+CSS owns authored width values and intrinsic
 keyword mapping; style and text own contextual font use, and the root facade
-owns cross-crate lowering. Raw descriptor-value parsing now returns
-`CssAuthoredFontFaceDescriptorValue::Ordinary` or `Pending`; the existing
-`CssFontFaceDescriptorValue` now includes the variation-settings ordinary variant.
+owns cross-crate lowering. Raw descriptor-value parsing returns
+`CssAuthoredFontFaceDescriptorValue::Ordinary` or `Pending`; the ordinary
+`CssFontFaceDescriptorValue` includes the variation-settings variant.
 `CssAuthoredFontFaceDescriptorValue::try_from_components` checks a whole value
 while preserving supplied parsed, programmatic or mixed origins. Only a pending
 value exposes `reparse_after_substitution`, which checks caller-supplied
@@ -5138,7 +5156,7 @@ lower into another Surgeist crate. Checked composed Fonts rules use the
 
 The selected [Font Loading 3 constructor](../../../references/css-font-loading-3--WD-css-font-loading-3-20230406--1a443ea0a7f6.md#font-face-constructor)
 references individual `@font-face` descriptor grammars. Use
-`parse_font_face_descriptor_value` for original-string reports and
+`CssAuthoredFontFaceDescriptorValue::parse` for original-string reports and
 `CssAuthoredFontFaceDescriptorValue::try_from_components` for strict checked
 values. The latter rejects recovered `src` members and implicit closures;
 pending descriptor reentry rejects residual substitution and invalid ordinary
@@ -5146,10 +5164,10 @@ grammar. Raw parsing preserves valid recovery syntax and diagnostics, including
 EOF-ended strings. A bare source URL is invalid; the `src` descriptor accepts
 source lists containing `url()`, `src()` or `local()` branches.
 
-Every ordinary `CssFontFaceDescriptorValue` exposes `serialize_specified()` and
-`serialize_specified_with_limits()`. These dispatch all fourteen concrete kinds,
+Every ordinary `CssFontFaceDescriptorValue` exposes `serialize_specified(limits)`.
+It dispatches all fourteen concrete kinds,
 including display and unicode range, through the same Fonts writer used by
-checked rule composition. They produce individual attribute-value strings
+checked rule composition. It produces an individual attribute-value string
 without constructing a synthetic rule. String/numeric/URL payloads reuse their
 existing providers, including equal-range shortening and authored URL function
 identity. Input and projection visits accumulate across every retained child;
@@ -5159,9 +5177,9 @@ their existing component and substitution-reentry owner rather than acquiring
 an ordinary serializer.
 
 For the [font-query algorithm](../../../references/css-font-loading-3--WD-css-font-loading-3-20230406--1a443ea0a7f6.md#find-the-matching-font-faces),
-call `parse_property_value_text` with
-`CssPropertyNameRef::Known(CssKnownProperty::Font)` and `CssImportance::Normal`,
-then inspect `known().declared_value()`. This parses
+call `CssParser::parse_property_value` with
+`CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Font))`
+and `CssImportance::Normal`, then inspect `known().declared_value()`. This parses
 the original value without adding a declaration-name prefix. Ordinary `Font`
 values expose the existing explicit or system branch and bounded authored
 serialization. Relative sizes and weights stay symbolic. CSS-wide keywords
@@ -5209,7 +5227,6 @@ accepts `none` or a nonempty set of nonrepeated `weight`, `style`, `small-caps`,
 and `position` keywords in any order. `CssFontSynthesisValues::try_new` takes
 four booleans in that order and rejects an empty set; use `CssFontSynthesis::None`
 for `none`. Its getters expose each capability without computing a font result.
-Existing two-argument callers must supply the `small_caps` and `position` arguments.
 
 | Property | Checked value | Keywords | Intrinsic initial | Inherited |
 | --- | --- | --- | --- | --- |
@@ -5225,8 +5242,8 @@ Its initial is the full four-capability set. `oblique-only` is a style-longhand
 choice and cannot be expressed by this shorthand. The `font` shorthand leaves
 synthesis properties independent.
 
-`CssFontSynthesis` and each longhand type expose `serialize_specified()` and
-`serialize_specified_with_limits()`. They emit lowercase keywords, with shorthand
+`CssFontSynthesis` and each longhand type expose `serialize_specified(limits)`.
+They emit lowercase keywords, with shorthand
 capabilities in grammar order. Each emitted keyword charges one input node and
 one projection node; spaces and keywords share one cumulative byte budget.
 An exhausted budget returns a typed error with no partial CSS and preserves the
@@ -5234,12 +5251,16 @@ checked model and declaration occurrence. Authored text and exact origins remain
 available through the property wrappers and declaration components.
 
 ```rust
-use surgeist_css::{CssFontSynthesis, CssFontSynthesisValues};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::{CssFontSynthesis, CssFontSynthesisValues};
 
 let value = CssFontSynthesis::Values(
     CssFontSynthesisValues::try_new(true, false, false, true).unwrap(),
 );
-assert_eq!(value.serialize_specified().unwrap(), "weight position");
+assert_eq!(
+    value.serialize_specified(CssSerializationLimits::default()).unwrap(),
+    "weight position",
+);
 ```
 
 All five properties use the shared CSS-wide and whole-value pending lifecycle.
@@ -5270,8 +5291,8 @@ duplicates, interpolation omission, nested mixes and supplied numeric origins.
 Construction rejects empty lists and complete palette/math graphs exceeding
 the shared 256-level structural ceiling.
 
-`CssFontPalette::serialize_specified()` and `serialize_specified_with_limits()`
-emit canonical authored CSS. Omitted interpolation denotes Oklab;
+`CssFontPalette::serialize_specified(limits)`
+emits canonical authored CSS. Omitted interpolation denotes Oklab;
 omits an explicit default Oklab method from output, and emits each palette before
 its percentage. It shares interpolation, exact percentage formatting and omitted
 weight handling with `color-mix()`: equal effective `100/N` shares can be omitted;
@@ -5292,13 +5313,17 @@ implicit closures while retaining the original occurrence, importance and
 replacement origins.
 
 ```rust
-use surgeist_css::{CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::{CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent};
 
 let value = CssFontPalette::Mix(Box::new(CssFontPaletteMix::try_new(None, vec![
     CssFontPaletteMixComponent::new(CssFontPalette::Light, None),
     CssFontPaletteMixComponent::new(CssFontPalette::Dark, None),
 ]).unwrap()));
-assert_eq!(value.serialize_specified().unwrap(), "palette-mix(light, dark)");
+assert_eq!(
+    value.serialize_specified(CssSerializationLimits::default()).unwrap(),
+    "palette-mix(light, dark)",
+);
 ```
 
 See the [executable palette example](../examples/font_palette.rs). Palette lookup,
@@ -5311,12 +5336,12 @@ The conformance source registry assigns every selected dated specification or
 preserved repository baseline a stable `CssSpecificationSourceId`, module,
 level, and `CssSpecificationTier`. The tier classifies provenance only; it does
 not imply parser support. A source has exactly one immutable URL or repository
-provenance value. `specification_source`, `feature_metadata`, and
+provenance value. `conformance::specification_source`, `feature_metadata`, and
 `conformance_exclusion` perform exact, case-sensitive lookup without trimming
 or aliasing.
 
 ```rust
-use surgeist_css::{
+use surgeist_css::conformance::{
     CssExclusionReason, CssFeatureKind, CssSpecificationTier, CssSupportStatus,
     conformance_exclusion, feature_metadata, specification_source,
 };
@@ -5357,8 +5382,7 @@ partial records. The latter names scope not claimed as supported: it can be a
 known-valid implementation gap or explicitly unresolved applicability in the
 selected standard. Consumers must not infer validity from `Partial` or a
 nonempty remainder. Use parsing for implemented acceptance and the cited
-standard for normative validity. This is a semantic migration for consumers
-that previously treated every remainder as valid-but-unimplemented syntax.
+standard for normative validity.
 
 ## Namespaces and complete Selectors 3 syntax
 
@@ -5368,7 +5392,7 @@ optional decoded, case-sensitive `CssNamespacePrefix`, literal
 authored string or `url()` token value, including empty strings and strings that
 are not valid URIs. The crate does not normalize, resolve, or load the value.
 
-`CssNamespacePrefix::try_new()` checks a decoded identifier value through the
+`CssNamespacePrefix::try_new` checks a decoded identifier value through the
 component-value identifier owner. Values such as `"1"` and `"a b"` are valid
 because CSS identifier escaping can represent them; an empty value or a value
 containing NUL is rejected. `CssNamespaceRule::new(prefix, name)` consumes these
@@ -5380,11 +5404,12 @@ that optional authored origin.
 Namespace declarations precede ordinary rules, following any imports and
 permitted layer statements. Within a sheet, each repeated decoded prefix or
 default declaration produces `CssErrorCode::NamespaceRedeclaration` with
-`CssRecoveryAction::RetainNonconformingRule`. The error's typed detail exposes
-the prefix and preceding retained declaration's position. Both declarations
+`CssRecoveryAction::RetainNonconformingRule`. The diagnostic's `CssError` exposes
+the prefix through `namespace_prefix()` and the preceding retained declaration's
+position through `previous_position()`. Both declarations
 remain in authored order, and the last binding is effective even when its name
 is empty or agrees with the preceding name. Normalization preserves the
-diagnostics and retained rules; clean-report validation rejects the
+diagnostics and retained rules; `into_validation_result` rejects the
 nonconforming sheet.
 
 Selector type, universal, and attribute names expose
@@ -5397,11 +5422,13 @@ active. Without an active default, an unqualified type or universal selector is
 `local_name()` from universal `*` reported by `is_universal()`.
 
 ```rust
-use surgeist_css::{
-    CssNamespaceConstraint, CssPseudoElement, CssPseudoElementSegment, CssRule, CssSelector, parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceConstraint, CssPseudoElement, CssPseudoElementSegment, CssSelector,
 };
 
-let report = parse_sheet(concat!(
+let report = CssParser::default().parse_sheet(concat!(
     "@namespace svg \"urn:svg\";",
     "svg|a#first#second[|lang]::first-line { color: red; }",
 ));
@@ -5439,11 +5466,10 @@ assert!(matches!(
 
 `CssPseudoElementSequence::segments()` returns the complete ordered sequence of
 `CssPseudoElementSegment::PseudoElement` and `PseudoClass` entries. A pseudo-class
-entry applies to the most recent pseudo-element. This replaces the old
-`pseudo_elements()` slice accessor; migrate consumers by matching both segment
-variants. `CssPseudoElement` now owns functional arguments, so it implements
-`Clone` and `PartialEq` instead of `Copy` and `Eq`. The checked plain-element
-`try_new` constructor remains available; `try_from_segments` checks complete
+entry applies to the most recent pseudo-element; consumers match both segment
+variants. `CssPseudoElement` owns functional arguments, so it implements
+`Clone` and `PartialEq` rather than `Copy` and `Eq`. The checked plain-element
+`try_new` constructor checks a list of pseudo-elements; `try_from_segments` checks complete
 sequences.
 
 `CssCompoundSelectorArgument` preserves one checked compound for `:host()`,
@@ -5470,10 +5496,9 @@ established containing unit. Malformed, block-form, nested, or late namespace
 rules recover as one `DropAtRule` and leave later siblings eligible.
 
 Style rules preserve one authored node for their complete selector list.
-`CssStyleRule::selectors()` returns `CssStyleSelectorList`; its `selectors()` slice contains
+`CssStyleRule::selectors()` returns `selector::CssStyleSelectorList`; its `selectors()` slice contains
 `CssStyleSelector::Selector` or, in nested contexts, `CssStyleSelector::Relative` with its
-leading combinator. This replaces the former singular `CssStyleRule::selector()` accessor.
-Read each list member explicitly instead of assuming a separate rule for each selector.
+leading combinator. Read each list member explicitly instead of assuming a separate rule for each selector.
 
 `CssStyleRule::declarations()` contains only leading declarations. `rules()` preserves child
 rules and later `CssRule::NestedDeclarations` runs in source order. A nested declarations
@@ -5493,7 +5518,7 @@ limit `&` refers to the introduced scope. An ordinary root inside another scope
 uses that enclosing scope, while a root without either ancestor retains a
 parentless nesting anchor. Repeated anchors remain distinct, including within
 functional selector arguments. Boundary lists exclude pseudo-elements. A
-`CssScopeSelectorList` preserves each `CssScopeSelector::Selector` or
+`CssScopeSelectorList` preserves each `CssStyleSelector::Selector` or
 `Relative(CssRelativeSelector)` member, including its leading combinator without
 an invented explicit anchor. Limits admit relatives in every context, relative
 to the introduced scope. Roots admit relatives with a style or scope ancestor;
@@ -5509,10 +5534,16 @@ to the nearest enclosing style or scope in the normalized rule-parent chain;
 the limit binds to the introduced scope. No parent
 selector list is expanded during parsing. Shared canonical scope output remains
 with the unfinished rule/stylesheet serializer.
-`CssScopedStyleRule` follows the same
+A scope body is an ordinary `CssRuleList` of `CssRule`s; placement, declaration
+admission, the no-pseudo-element boundary invariant and the `@page` exclusion are checks
+of the construction and assembly context, as is the anchor domain of a style rule's
+explicit `&`: a scope anchor (the scoping root, Cascade 6 section 2.5) in a scope body
+and in the groups inside it, a nesting anchor everywhere else, including the body of a
+style rule inside a scope. Construction rejects a style rule whose anchors belong to
+the other domain as an invalid boundary anchor. A style rule in a scope body follows the same
 leading-declarations and ordered-child contract: its `rules()` returns ordinary `CssRule`
 nesting children relative to the scoped style parent. A scope with a style ancestor retains
-its direct declaration runs as `CssScopedRule::NestedDeclarations`, including runs inside
+its direct declaration runs as `CssRule::NestedDeclarations`, including runs inside
 its conditional and layer groups. Ordinary scope/group bodies without style ancestry
 continue to use their rule-list grammar. Scoped runs reuse the exact ancestor style
 selector handle, including pseudo-elements, while their independent rule-parent chain
@@ -5558,8 +5589,8 @@ ASCII-insensitive `-webkit-` retains
 authored syntax with symbolic match-nothing meaning. The payload's private name
 has a checked `try_new(decoded_name)` constructor returning
 `Result<_, CssSelectorConstructionError>` and an `as_str()` accessor. Admission
-uses the shared genuine identifier boundary and rejects NUL or a wrong prefix
-with `InvalidUnknownWebkitPseudoElementName`. The prefix alone is valid; decoded
+uses the shared genuine identifier boundary and rejects NUL or a wrong prefix;
+`CssSelectorConstructionError::is_invalid_unknown_webkit_pseudo_element_name()` reports it. The prefix alone is valid; decoded
 punctuation and non-ASCII suffix characters can be preserved through CSS escaping.
 Only ASCII letters are lowercased. The shared selector writer emits the escaped
 canonical name after `::` under its existing node and byte budget; the leaf has
@@ -5679,7 +5710,7 @@ retains the None or Custom branch; `CssViewTransitionIdent::try_new` checks a
 `CssCustomIdent` and excludes decoded `none` and `auto` in every ASCII case.
 Generic custom identifiers already exclude CSS-wide keywords and `default`.
 Names preserve decoded case and symbolic identity. The schema owns the ordinary
-`CssViewTransitionNamePropertyValue::name()` wrapper, global and pending
+`CssPropertyValue<CssViewTransitionName>::value()` wrapper, global and pending
 alternatives, initial None and noninheritance. Component construction, strict
 pending reentry, longhand expansion, normalization and specified declaration/rule
 output share the existing property lifecycle. The source additionally specifies
@@ -5776,10 +5807,10 @@ Descriptor admission, duplicate recovery, unresolved references and checked
 construction are exercised in
 [`counter_style_lifecycle.rs`](../tests/css/rules/counter_style/counter_style_lifecycle.rs).
 
-The optional `fixed` starting value is `Option<CssIntegerValue>`, preserving
+The optional `fixed` starting value is `Option<numeric::CssNumeric<CssInteger>>`, preserving
 omission separately from explicit literals and calculations. Finite range bounds,
-pad lengths and additive weights use the same shared integer owner. Its `Literal`
-variant retains exact tokens such as `+0009007199254740993`; `Calculation` retains
+pad lengths and additive weights use the same shared integer type. Its `literal()`
+retains exact tokens such as `+0009007199254740993`; `calculation()` retains
 a checked Number-result graph, including fractional and negative values. Parsed
 and checked descriptor fronts admit these same branches and preserve original
 components and origins.
@@ -5831,8 +5862,8 @@ beneath a style-rule ancestor drop the smallest established at-rule unit and
 leave later siblings eligible.
 
 Ordinary scope bodies also retain `@font-face` and `@keyframes` definitions.
-`CssScopedRule::{CounterStyle, FontFace, Keyframes}` carries the same payload as
-its ordinary `CssRule` counterpart. Normalization records each definition once
+`CssRule::{CounterStyle, FontFace, Keyframes}` in a scope body is the same value as
+anywhere else. Normalization records each definition once
 under its authored parent context; scope does not create a new definition
 identity or localize these names. Counter-style names retain their tree-scoped
 semantics. Conditional application, font loading and name lookup belong
@@ -5849,7 +5880,7 @@ The selected [Paged Media 3 grammar](../../../references/css-page-3--WD-css-page
 admits named pages, repeated compound pseudos and comma selector lists. A compound
 has no whitespace between its name and pseudos. `CssPagePseudo` includes `left`,
 `right`, `first`, `blank`, and the selected Logical 1 `recto`/`verso` additions.
-`parse_page_selector_list` consumes the whole raw input, preserving original
+`rule::page::CssPageSelectorList::parse(&parser, source)` consumes the whole raw input, preserving original
 UTF-8/UTF-16 coordinates; it never fabricates an enclosing `@page` rule.
 `CssPageSelector::specificity()` returns the lexicographic Page vector
 (named selectors, first/blank pseudos, side pseudos). Matching and contradictory
@@ -5858,7 +5889,7 @@ pseudo combinations belong downstream.
 `CssPageDeclarationBlock` separates Page descriptors from applicable shared
 property occurrences. The descriptor domain contains `size`, `page-orientation`,
 `marks` and `bleed`; ordinary Surgeist's `Size` property is a different domain.
-`parse_page_descriptor_value` consumes a single complete value, including CSS-wide
+`rule::page::CssPageDescriptorValue::parse(&parser, source, kind)` consumes a single complete value, including CSS-wide
 and qualifying substitution-dependent values. `size` retains nonnegative one/two
 lengths or a named sheet size and/or orientation; output orientation follows the bounded
 [Page3 §7.1.2 clause witness](../../../references/css-page-3-page-orientation--editor-capture-20261010--48ec99cd3a58.md#page-orientation-prop):
@@ -5876,12 +5907,13 @@ lengths remain invalid, including Quirks mode. The earlier CSS2-only Page margin
 profile and its `em`/`ex` exclusion are historical admission evidence; they do not
 restrict this selected Page3 consumer domain.
 
-`parse_page_property_value`, `parse_margin_property_value` and context variants
-check detached components with honest component origins. Pending property reentry
+`CssDeclaration::try_from_components` with `CssPropertyTarget::PageProperty` or
+`CssPropertyTarget::MarginProperty` checks detached components with honest
+component origins. Pending property reentry
 uses the same selected domain; the caller supplies a complete replacement and
-owns variable lookup. `parse_page_block` returns `CssPageBody`, retaining the
+owns variable lookup. `rule::CssBlockFragment::<CssPageBody>::parse` yields a `CssPageBody`, retaining the
 ordered descriptor/property inventory and a separate ordered sequence of
-`CssMarginRule` children. `parse_margin_block` admits applicable properties and
+`CssMarginRule` children. `CssBlockFragment::<CssMarginDeclarationBlock>::parse` admits applicable properties and
 custom values, excluding Page-only descriptors and nested margin children.
 `CssMarginBox` supplies all sixteen canonical names without arbitrary IDL members.
 Checked authored reconstruction preserves genuine occurrences or raw value
@@ -5898,12 +5930,12 @@ property reconstruction uses explicit domain constructors; a borrowed
 survive edits. A shared unresolved mode-switch footprint remains a typed failure
 until a completed replacement establishes it.
 
-`CssEditedRuleView::try_page[_with_limits]` embeds that same selected Page
+`CssRuleGraphInput::page` embeds that same selected Page
 payload in recursive edited group output. Margin children remain inside the
 Page payload, with their actual Margin domain and supplied order. All ancestors
 and descendants spend one shared writer budget; a margin failure extends the
-ancestor rule path with its current child index. Construction establishes
-formatting capability, while contextual insertion permission uses the existing
+ancestor rule path with its current child index. The graph checks formatting
+capability when it is serialized, while contextual insertion permission uses the existing
 rule-admission owner. Ordinary conditional/layer ancestry permits Page; style
 ancestry does not. Programmatic edited wrappers have no authored coordinates.
 
@@ -5919,8 +5951,8 @@ remains historical syntax evidence; no variable lookup or printing claim is made
 
 Block-form page rules are accepted at
 the stylesheet top level and inside ordinary conditional and layer rule lists.
-Inside scope, ordinary conditional and layer bodies retain the same payload as
-`CssScopedRule::Page`; page selectors do not become scoped element selectors.
+Inside scope, ordinary conditional and layer bodies retain the same `CssRule::Page`
+payload; page selectors do not become scoped element selectors.
 A directly enclosing scope body rejects a page under the selected Syntax 3 and
 Cascade 6 content-category interpretation. Entering another scope restores that
 body restriction. Pages remain invalid in style-rule bodies, including all group
@@ -5968,9 +6000,12 @@ selector. Style bodies retain their declaration grammar, where extra semicolons
 are valid separators.
 
 ```rust
-use surgeist_css::{CssCounterStyleSystem, CssPagePseudo, CssRule, parse_sheet};
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::{CssCounterStyleDescriptorValueRef, CssCounterStyleSystem};
+use surgeist_css::rule::page::CssPagePseudo;
 
-let report = parse_sheet(concat!(
+let report = CssParser::default().parse_sheet(concat!(
     "@counter-style digits { system: numeric; symbols: \"0\" \"1\"; suffix: \".\"; } ",
     "@page :left { margin-left: -12mm; margin-right: 10%; }",
 ));
@@ -5981,7 +6016,7 @@ let [CssRule::CounterStyle(counter), CssRule::Page(page)] = report.syntax().rule
 assert_eq!(counter.name().as_str(), "digits");
 assert!(matches!(
     counter.descriptors().system().map(|value| value.value().view()),
-    Some(surgeist_css::CssCounterStyleDescriptorValueRef::System(&CssCounterStyleSystem::Numeric))
+    Some(CssCounterStyleDescriptorValueRef::System(&CssCounterStyleSystem::Numeric))
 ));
 assert_eq!(counter.descriptors().occurrences().count(), 3);
 assert_eq!(page.selectors().selectors()[0].pseudos(), &[CssPagePseudo::Left]);
@@ -6014,8 +6049,8 @@ semantics, blending, or writing-mode resolution.
 supersedes CSS2 §11.1.2 for `clip` while retaining required support for the
 deprecated property. Its noninherited initial is `auto`. A `rect()` has four
 top, right, bottom, left edges, each `auto` or a signed length; both comma-only
-and whitespace-only authored separators are accepted. `CssSpecifiedLength`,
-`CssClipEdge`, `CssClipRect`, and `CssClip` serialize their checked specified
+and whitespace-only authored separators are accepted. `numeric::CssNumeric<CssLength>`,
+`values::common::CssAutoOr<CssNumeric<CssLength>>`, `CssClipRect`, and `CssClip` serialize their checked specified
 values under one cumulative budget, with commas in canonical rectangles and
 symbolic calculations left unresolved. Applying a clipping region and the
 separate `clip-path` property remain outside this authored-value contract.
@@ -6035,7 +6070,7 @@ content items, and permits a separate nonempty alternative of strings and
 counter functions. `CssCounterStyleValue` retains checked named styles or
 `symbols()` with string/image symbols; all predefined style names normalize to
 lowercase while custom names keep their case. Use
-`CssContentPropertyValue::value()` for the complete authored grammar. A valid `attr()` keeps the whole declaration pending, as
+`CssPropertyValue<CssContentValue>::value()` for the complete authored grammar. A valid `attr()` keeps the whole declaration pending, as
 described above.
 
 Specified serialization uses one cumulative input-node, projection-node, and
@@ -6063,7 +6098,7 @@ counter or content functions as resolved string-set leaves. A named entry
 `CssBookmarkLevel` retains `none`, an exact positive ordinary integer without a
 machine magnitude bound, or a genuine integer function calculation with deferred
 computed range and rounding. Its checked constructor routes bare calculation
-tokens through the same positive literal boundary. `CssBookmarkLabelPropertyValue`
+tokens through the same positive literal boundary. `CssPropertyValue<CssContentList>`
 uses `CssContentList`, the shared nonempty full Content item-list provider;
 a sole image stays a list item here. Property keywords and slash alternatives
 belong to `content` and are excluded from this list. `CssBookmarkState` retains
@@ -6123,10 +6158,9 @@ defines `word-spacing` and `letter-spacing` as inherited longhands with
 symbolic math, and serializes under a bounded resource budget. Percentages
 inherit intact and resolve against used font size downstream. The historical
 pure-length spacing models have no remaining grammar owner.
-`CssWordSpacingPropertyValue::spacing()` and
-`CssLetterSpacingPropertyValue::value()` borrow the shared checked value.
+`CssPropertyValue<CssTextSpacingAdjustment>::value()` borrows the shared checked value.
 
-Ordinary free parsing and a newly constructed `CssParserContext` interpret
+Ordinary parsing under a newly constructed `CssParserContext` interprets
 `glyph-orientation-vertical` as the selected Writing Modes legacy shorthand,
 not a name-equivalent schema alias. Its implemented compatibility subset admits
 decoded `auto`, unitless integer-flag `0` and `90`, and exact degree-valued
@@ -6154,7 +6188,7 @@ fronts keep their finite Writing Modes meaning, even in an SVG-selected context.
 The explicit `CssPropertyNameRef::SvgGlyphOrientationVertical` handle selects
 SVG through checked/raw-value fronts even in a default context.
 
-`CssSvgGlyphOrientationVerticalValue` retains Auto, an existing `CssAngleValue`,
+`CssSvgGlyphOrientationVerticalValue` retains Auto, an existing `numeric::CssNumeric<CssAngle>`,
 or exactly one checked Number token with implied degrees. Standards CSS admits
 finite raw angle dimensions and binary64-zero raw Numbers; Quirks also admits
 finite nonzero Numbers. Raw overflow rejects, while Angle-root calculations,
@@ -6162,11 +6196,11 @@ including typed nonfinite constants, retain their authored tree. Number-root
 math receives no literal exception. The private binary64 conversion decides
 raw literal eligibility only; no floating value is stored or evaluated.
 Native constructors report existing typed numeric failures at the original
-origin. Equality follows the retained providers' origin-bearing equality rather
+origin. Equality follows the retained providers' numeric value equality rather
 than computed orientation or canonical text.
 
-The fixed `parse_svg_glyph_orientation_vertical_attribute_value` and
-`parse_svg_glyph_orientation_vertical_attribute_components` context methods
+The fixed `property::CssSvgGlyphOrientationVerticalDeclaration::parse_attribute` and
+`try_attribute_from_components` constructors
 admit finite nonzero Numbers independently of the document mode and selected
 lookup definition. They always construct Normal importance and reject root
 annotations or declaration delimiters before globals or pending syntax. These
@@ -6176,21 +6210,30 @@ keyframe views. `CssDeclaration::svg_glyph_orientation_vertical()` borrows it;
 `known()` and `custom()` return None for this independent body.
 
 ```rust
-use surgeist_css::{CssParserContext, CssParserMode, CssPropertyNameRef};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::property::{CssPropertyNameRef, CssSvgGlyphOrientationVerticalDeclaration};
+use surgeist_css::serialization::CssSerializationLimits;
 
 let svg = CssParserContext::new(CssParserMode::Standards)
     .with_svg_glyph_orientation_vertical();
-let report = svg.parse_declaration("glyph-orientation-vertical: 180deg");
+let report = CssDeclaration::parse(&CssParser::new(svg, Default::default()), "glyph-orientation-vertical: 180deg");
 assert!(report.is_clean());
 let declaration = report.syntax().as_ref().unwrap();
 assert_eq!(declaration.property_name(), CssPropertyNameRef::SvgGlyphOrientationVertical);
 assert!(declaration.svg_glyph_orientation_vertical().unwrap().value().unwrap().angle().is_some());
-assert_eq!(declaration.to_specified_css().unwrap(), "glyph-orientation-vertical: 180deg;");
+assert_eq!(
+    declaration.serialize_specified(CssSerializationLimits::default()).unwrap(),
+    "glyph-orientation-vertical: 180deg;",
+);
 
-let attribute = svg.parse_svg_glyph_orientation_vertical_attribute_value("90.0");
+let attribute = CssSvgGlyphOrientationVerticalDeclaration::parse_attribute(&CssParser::new(svg, Default::default()), "90.0");
 let attribute = attribute.syntax().as_ref().unwrap();
 assert!(attribute.svg_glyph_orientation_vertical().unwrap().is_presentation_attribute());
-assert_eq!(attribute.to_specified_css().unwrap(), "glyph-orientation-vertical: 90deg;");
+assert_eq!(
+    attribute.serialize_specified(CssSerializationLimits::default()).unwrap(),
+    "glyph-orientation-vertical: 90deg;",
+);
 ```
 
 SVG expansion produces one `CssSvgGlyphOrientationVerticalContribution`, with
@@ -6201,14 +6244,15 @@ residual substitutions fail before grammar and failures permit retry. Symbolic
 `all` includes this terminal as a potential target without enumerating writes.
 Normalization preserves source order, duplicates and cumulative limits.
 
-Context rule-supports fronts retain mode and definition. Context
-`parse_css_supports_condition` and `parse_css_supports_declaration` method fronts
+Rule-supports parsing through `CssCondition::<CssSupportsLeaf>::parse` retains the
+parser's mode and definition. `CssCondition::<CssSupportsLeaf>::parse_condition_text(&parser, source)` and
+`CssSupportsDeclaration::parse(&parser, property, value)`
 force Standards while retaining the definition choice. They preserve
 complete-condition-first parsing and grammar-only parentheses retry, literal
 two-argument property validation, separate argument snapshots and the
 two-argument-only root importance exclusion. Unsupported declarations retain
 lexical tests with no typed SVG view; `CssSupportsDeclaration` has the same
-borrowed SVG accessor. Free method fronts keep Standards and the finite alias.
+borrowed SVG accessor. A parser built from a default `CssParserContext` keeps Standards and the finite Writing Modes `glyph-orientation-vertical` definition.
 
 Specified output delegates to the existing Angle/math and six-fraction-place
 CSSOM decimal writers. Unitless Numbers write explicit `deg` syntax using one
@@ -6228,12 +6272,12 @@ imported. The finite alias remains Partial, and both genuine CSSWG8032 conflicts
 remain unresolved; operational SVG support does not establish normative consensus.
 
 ```rust
-use surgeist_css::{
-    CssBlendMode, CssFeatureKind, CssKnownProperty, CssKnownPropertyValueRef,
-    CssSupportStatus, feature_metadata, parse_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::background::CssBlendMode;
 
-let report = parse_style_attribute(concat!(
+let report = CssParser::default().parse_block_contents(concat!(
     "border-spacing: 2px 3px; ",
     "glyph-orientation-vertical: 90; ",
     "background-blend-mode: multiply, luminosity",
@@ -6248,7 +6292,7 @@ let CssKnownPropertyValueRef::BackgroundBlendMode(blending) = report.syntax()[2]
     .property_value().expect("ordinary value")
 else { panic!("expected background blend modes") };
 assert_eq!(
-    blending.modes().modes(),
+    blending.value().modes(),
     &[CssBlendMode::Multiply, CssBlendMode::Luminosity],
 );
 let alias = feature_metadata("official.property-alias.glyph-orientation-vertical")
@@ -6263,7 +6307,7 @@ the independent `official.value.box-edge-keywords` and
 legacy shorthand is `Partial`. This activation does not inflate the immutable
 ledger or promote later work: it remains 162 property units (161 canonical
 properties plus the custom property family), one normative legacy shorthand,
-and 167 non-property units.
+and 167 non-property units. (The ledger review is recorded in the `dead_code` reasons of `OFFICIAL_PROPERTY_COVERAGE` and `OFFICIAL_NON_PROPERTY_COVERAGE` in `src/conformance/catalog.rs`; the record lists behind them hold 193 and 184 active records today.)
 The exclusion registry includes exactly 50 superseded
 CSS2 property definitions, 20 informative CSS2 Appendix A properties, and the
 two current-production-less `glyph-orientation-horizontal` and `ime-mode`
@@ -6299,10 +6343,10 @@ preserve their source, slice, width, outset, and repeat components without
 loading an image or resolving any geometry.
 
 The `background-size` and `mask-size` wrappers expose their ordered
-`CssBackgroundSizeList` through `sizes()`; `background-repeat` and `mask-repeat`
-expose `CssBackgroundRepeatList` through `repeats()`. `background-origin` and
-`background-clip` expose the full `CssBackgroundBoxList` through `boxes()`, and
-`background-attachment` exposes its ordered list through `attachments()`.
+`CssBackgroundSizeList` through `value()`, whose `sizes()` borrows the entries; `background-repeat` and `mask-repeat`
+expose `CssBackgroundRepeatList` through `value()` and `repeats()`. `background-origin` and
+`background-clip` expose the full `CssBackgroundBoxList` through `value()` and `boxes()`, and
+`background-attachment` exposes its ordered list through `value()` and `attachments()`.
 The five background longhands each contribute one noninherited terminal value,
 preserving the authored list without aligning it to the image count. Their
 single-layer initials are `auto`, `repeat`, `padding-box`, `border-box`, and
@@ -6311,13 +6355,13 @@ reenter their original property grammar with unchanged occurrence and importance
 
 `background-color` also contributes one noninherited terminal, retaining its
 checked `CssColor` with transparent intrinsic initial. Its existing
-`to_specified_css()` provider preserves symbolic color dependencies. CSS-wide
+`serialize_specified(limits)` provider preserves symbolic color dependencies. CSS-wide
 keywords remain symbolic; pending replacements reenter the selected color grammar
 with the original occurrence and importance. This lifecycle support does not
 extend the color grammar or the `background` shorthand.
 
-The five list longhands' scalar and list owners expose `serialize_specified()` and
-`serialize_specified_with_limits()`. Specified size serialization emits the
+The five list longhands' scalar and list owners expose `serialize_specified(limits)`.
+Specified size serialization emits the
 effective `auto` height after a non-auto width, whether the authored height is
 absent or explicit; `auto auto` collapses to `auto`. Repeat serialization collapses
 equal axes and uses `repeat-x`/`repeat-y` for the equivalent directional pairs.
@@ -6336,8 +6380,8 @@ global keywords and substitution-dependent declarations remain separate branches
 
 `CssImage::try_new` returns `Result<CssImage, CssImageConstructionError>` and
 checks the complete retained image graph. It rejects the property keyword
-`CssImageValue::None` with `NotImage`, and reports `NestingLimit` or
-`CapacityOverflow` for structural failures. Its borrowed `value()` retains a
+`CssImageValue::None` (`is_not_image()`), and reports `is_nesting_limit()` or
+`is_capacity_overflow()` for structural failures. Its borrowed `value()` retains a
 URL, gradient, checked `light-dark()` pair or filter image. Every retained color, numeric and
 URL-modifier subtree contributes to the shared 256-level function-depth ceiling;
 the checked image carrier adds no function level of its own.
@@ -6357,7 +6401,7 @@ group, a nonempty stop list, and zero, one, or two positions on each stop.
 positions; `CssAngularColorStop` and `CssAngularColorStopList` check conic stop
 cardinality and hint order. Angular positions use `CssAngularColorStopPosition`
 with checked angle, percentage, exact bare zero, or
-`CssAnglePercentageCalculation`; its percentage basis remains symbolic.
+`numeric::CssCalculation<CssAnglePercentage>`; its percentage basis remains symbolic.
 `CssConicGradient::new` retains optional `from`, full `at`, interpolation, and
 stops. Linear and radial `with_interpolation` retain an explicitly selected
 method separately from omission, using the existing Color 4/5 owner.
@@ -6390,7 +6434,7 @@ separate LaterStandard provenance.
 
 The selected [Images 3 specified serialization](https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#serialization)
 is available on `CssImage`, `CssImageValue`, `CssGradient`, and
-`CssImageValueList` through `serialize_specified()` and a limits variant.
+`CssImageValueList` through `serialize_specified(limits)`.
 They write lowercase gradient function names, checked colors, symbolic numeric
 values, and URL functions without loading resources or resolving layout.
 Only context-independent defaults are omitted: a linear direction of `to bottom`
@@ -6404,7 +6448,7 @@ budget; an exhausted budget returns an error without a partial CSS result.
 The selected Backgrounds 3 `background-image` and Masking 1 `mask-image`
 longhands each contribute one ordered `CssImageValueList`. Both are
 noninherited and initially contain one `CssImageValue::None`. Their parsed
-wrappers expose that list through `images()`. Intrinsic expansion and
+wrappers expose that list through `value()`. Intrinsic expansion and
 normalization preserve source occurrence, importance, and pending replacement
 components; they do not load images or match layers with sibling properties.
 
@@ -6416,12 +6460,12 @@ and mode fields. See [authored Masking](#authored-masking) for their composed
 lifecycle and the mask-border domains.
 
 ```rust
-use surgeist_css::{
-    CssGradient, CssImageValue, CssKnownPropertyValueRef, CssSupportStatus,
-    feature_metadata, parse_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::image::{CssGradient, CssImageValue};
 
-let report = parse_style_attribute(concat!(
+let report = CssParser::default().parse_block_contents(concat!(
     "background-image: linear-gradient(to right, red 0%, 40%, blue); ",
     "border-image: url(frame.png) 10 fill / 2 / 1 round",
 ));
@@ -6432,7 +6476,7 @@ let CssKnownPropertyValueRef::BackgroundImage(images) = report.syntax()[0]
     .property_value().expect("ordinary background image")
 else { panic!("expected background-image") };
 assert!(matches!(
-    images.images().images(),
+    images.value().images(),
     [CssImageValue::Gradient(CssGradient::Linear(_))]
 ));
 
@@ -6440,7 +6484,7 @@ let CssKnownPropertyValueRef::BorderImage(border) = report.syntax()[1]
     .known().expect("known border image")
     .property_value().expect("ordinary border image")
 else { panic!("expected border-image") };
-assert!(border.border_image().slice().expect("slice").fill());
+assert!(border.value().slice().expect("slice").fill());
 
 let gradient = feature_metadata("official.value.linear-gradient")
     .expect("linear-gradient metadata");
@@ -6453,10 +6497,11 @@ eighteen shared values. Its Backgrounds 3 property grammars previously carried
 Partial metadata and are now catalogued as Complete. The already-Complete
 `background-position`, `object-position`, and `box-shadow` rows remain Complete.
 That earlier catalog expansion brought the public support catalog to 456
-records; the current catalog inventory is described below. Activation and
+records; the current catalog inventory is described below (`FEATURE_CATALOG` in
+`src/conformance/catalog.rs` holds 794 records today). Activation and
 promotion do not add official ledger units: the inventory remains 162 property
 units (161 canonical properties plus the custom-property family), one normative
-legacy shorthand, and 167 non-property units.
+legacy shorthand, and 167 non-property units. (The ledger review is recorded in the `dead_code` reasons of `OFFICIAL_PROPERTY_COVERAGE` and `OFFICIAL_NON_PROPERTY_COVERAGE` in `src/conformance/catalog.rs`; the record lists behind them hold 193 and 184 active records today.)
 
 These models do not fetch or decode images, resolve URLs, apply cascade or
 substitution, compute background or border geometry, paint, serialize CSSOM, or
@@ -6506,7 +6551,7 @@ nine Multicolumn 1 properties expose typed authored values. `flex-direction`
 and `flex-wrap` are noninherited terminals with `row` and `nowrap` initials.
 `flex-flow` expands to those two terminals in direction-then-wrap order, with
 an omitted component taking its initial value and no reset-only members.
-`CssFlexFlow::new()` constructs the pair directly; all three values serialize
+`CssFlexFlow::new(direction, wrap)` constructs the pair directly; all three values serialize
 specified keywords with bounded output, and `flex-flow` serializes both
 effective components in that order. The direction and wrap wrappers retain
 their checked keyword values. The twelve deprecated `-webkit-` property spellings in
@@ -6529,17 +6574,16 @@ The shorthand's specified serializer omits initial components and emits
 the complete rule. `column-fill` and `column-span` have noninherited `balance`
 and `none` initials. This authored model does not perform column balancing,
 spanner layout, rule painting, or style-dependent width computation. The
-breaking public rule migration makes `CssLineWidth` an alias of
-`CssBorderWidth`, so its `Length` variant contains
-`CssSpecifiedNonNegativeLength`. `CssColumnRule::color()` now returns the exact
-`CssColor`, and the `column-rule-color` wrapper exposes the same value through `value()`.
+`CssLineWidth` `Length` variant contains
+`numeric::CssNumeric<CssLength, CssNonNegative>`. `CssColumnRule::color()` returns the exact
+optional `CssColor`, and the `column-rule-color` wrapper exposes the same value through `value()`.
 
 `flex-basis` accepts the width sizing grammar plus `content`, including
 `calc-size(content, …)`; the generic `CssCalcSize` graph retains that flex-only
 basis. Box properties use `CssBoxCalcSize`, whose checked conversion rejects
 `content` even when nested in another `calc-size()`. `CssFlexBasisValue` keeps
 `content`, an ordinary size, or a root `calc-size()` in one canonical form, and
-`CssFlexBasisRef` exposes a borrowed view. `CssFlexComponents::try_new()` stores
+`CssFlexBasisRef` exposes a borrowed view. `CssFlexComponents::try_new` stores
 authored optional grow, shrink, and basis components; its accessors return
 `Option`; the constructor rejects an empty or shrink-only value. Grow and shrink use exact
 nonnegative specified numbers. The shorthand expands to grow, shrink, and basis
@@ -6557,35 +6601,35 @@ Multicolumn 1 defines `column-width` as `auto | <length [0,∞]>`, `column-count
 as `auto | <integer [1,∞]>`, and the unordered `columns` shorthand. The selected
 [Sizing 4 §5.6](https://www.w3.org/TR/2026/WD-css-sizing-4-20260904/#column-sizing)
 adds `<box-size>` to `column-width`; `columns` consumes that expanded width
-grammar. `CssColumnWidth` is now an alias of `CssSizeValue`, so callers migrate
-`CssColumnWidth::Length` to `CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(...))`.
-The `width()` and `count()` accessors remain; `CssColumns::serialize_specified()`
+grammar. `column-width` holds a `values::box_model::CssSizeValue`, so a length is
+`CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(...))`.
+The `width()` and `count()` accessors read the parts; `CssColumns::serialize_specified(limits)`
 emits both effective values in width-then-count order. Ordinary positive
-column counts use `CssPositiveIntegerValue::Literal`, preserving
+column counts are `CssColumnCount::Count` of `numeric::CssNumeric<CssInteger, CssPositive>`, whose `literal()` preserves
 their digits without clamping. Integer calculations and box-size math stay
 symbolic until their computed-value owners resolve them. Shorthand expansion
 sets only `column-width` and `column-count`, with no reset-only members.
 
 ```rust
-use surgeist_css::{
-    CssColumnCount, CssFlexDirection, CssKnownPropertyValueRef, CssSupportStatus,
-    feature_metadata, parse_style_attribute,
-};
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::layout::{CssColumnCount, CssFlexDirection};
 
-let report = parse_style_attribute("flex-flow: column wrap; columns: 3 12em");
+let report = CssParser::default().parse_block_contents("flex-flow: column wrap; columns: 3 12em");
 assert!(report.is_clean(), "{:?}", report.diagnostics());
 
 let CssKnownPropertyValueRef::FlexFlow(flow) = report.syntax()[0]
     .known().expect("known flex-flow")
     .property_value().expect("ordinary flex-flow")
 else { panic!("expected flex-flow") };
-assert_eq!(flow.flow().direction(), CssFlexDirection::Column);
+assert_eq!(flow.value().direction(), CssFlexDirection::Column);
 
 let CssKnownPropertyValueRef::Columns(columns) = report.syntax()[1]
     .known().expect("known columns")
     .property_value().expect("ordinary columns")
 else { panic!("expected columns") };
-assert!(matches!(columns.columns().count(), CssColumnCount::Count(_)));
+assert!(matches!(columns.value().count(), CssColumnCount::Count(_)));
 
 let metadata = feature_metadata("official.property.flex-flow")
     .expect("public Flexbox metadata");
@@ -6639,7 +6683,7 @@ font activation remain downstream. Generic group output is a separate boundary.
 The public support catalog includes grammar-specific rule, descriptor and value
 records, including four palette and four color-profile records. Its current
 cardinality comes from
-[`feature_catalog()`](../src/conformance.rs). That
+[`conformance::feature_catalog()`](../src/conformance/mod.rs). That
 catalog cardinality is distinct from the immutable official inventory of
 exactly 162 property units (161 canonical properties plus the custom-property
 family), one normative legacy shorthand, and 167 non-property units. The
@@ -6671,16 +6715,15 @@ grammar.
 
 `CssContainerName::try_from_decoded` accepts decoded names that need escapes;
 `try_new` retains its existing exact unescaped identifier contract. Semantic
-values expose `to_components_with_limits` and `serialize_with_limit`.
+values expose `to_components(limits)` and `serialize_tokens(limits)`.
 Canonical output escapes names, emits size-axis before scroll-state, and omits
 `/ normal`. Limits include escapes and separators. Canonical components have
-programmatic origins and can enter the existing `parse_property_value` checked
+programmatic origins and can enter the existing `CssParser::parse_property_value` checked
 declaration boundary. Parsed wrapper `as_css()` and occurrence components retain
 the original spelling, comments, order and source origins independently of this
 semantic canonical output. See `examples/container_property_semantic_consumer.rs`.
-The same values also expose `serialize_specified` and
-`serialize_specified_with_limits` for cumulative input/projection/byte limits.
-They reuse the canonical visitor used by the component APIs. Each keyword or
+The same values also expose `serialize_specified(limits)` for cumulative
+input/projection/byte limits. It reuses the canonical visitor used by the component APIs. Each keyword or
 decoded name costs one input and projection node; a nonempty names list adds
 one aggregate node, and the shorthand adds one aggregate node. A combined
 size-axis/scroll-state type therefore costs two nodes. Omitted `Normal` still
@@ -6691,17 +6734,17 @@ Container selection, containment effects and style evaluation remain downstream.
 
 ## Conditional rules and import preludes
 
-`CssContainerRule::prelude()` and `CssScopedContainerRule::prelude()` expose a
-checked `CssContainerPrelude`. Its nonempty `entries()` retain each comma-separated
+`rule::CssContainerRule::prelude()` exposes a
+checked `query::container::CssContainerPrelude`. Its nonempty `entries()` retain each comma-separated
 alternative in authored order, including duplicates. Each `CssContainerQueryEntry`
 has a name, a query, or both; `name()` and `query()` expose those optional parts.
 Name-only entries remain distinct from an unnamed query. Comma alternatives are
 never lowered to Boolean `or`, since each entry selects its own container.
 
-`CssContainerPrelude::try_from_components[_with_limits]` uses the same complete
+`CssContainerPrelude::try_from_components(values, limits)` uses the same complete
 prelude grammar as parsing. Invalid or empty entries reject the whole prelude.
 Limits cover all entries, separators and nested components together. Prelude and
-entry `components()`, `origin()`, `position()` and serializers retain the selected
+entry `components()`, `origin()`, `position()` and `serialize_tokens(limits)` retain the selected
 lexical regions and their origins; the prelude includes commas and surrounding
 trivia. Detached entry/query clones remain usable after their parent is dropped.
 Normalized `CssRuleContextKindRef::Container { prelude }` retains the entire
@@ -6717,14 +6760,14 @@ names requiring escapes, such as names containing spaces or leading digits.
 
 Container conditions retain explicit parentheses, homogeneous `and` or `or`
 lists, `not`, recognized size, style and scroll-state features, and opaque
-operands. `CssContainerCondition` has private fields; inspect its
-`CssContainerConditionKind` through `kind()`. A `Parenthesized` node retains each
+operands. `CssCondition<CssContainerLeaf>` has private fields; inspect its
+`CssConditionKind` through `kind()`. A `Parenthesized` node retains each
 explicit group around a recognized condition, including redundant groups.
-`GeneralEnclosed(CssContainerGeneralEnclosed)` retains complete unrecognized
-functions and parenthesized operands. Recognized grammar takes precedence over
-this fallback.
+`CssContainerLeaf::GeneralEnclosed(CssContainerGeneralEnclosed)` retains complete
+unrecognized functions and parenthesized operands. Recognized grammar takes
+precedence over this fallback.
 
-`try_from_components` and `try_from_components_with_limits` admit a complete
+`try_from_components(values, limits)` admits a complete
 condition through the same immutable component grammar as parsing.
 `try_from_enclosed` retains its checked single-enclosure entry point. Construct
 component values with the checked component builders; constructing an inspectable
@@ -6736,14 +6779,14 @@ identifier tokens, preserving escaped spaces, punctuation and case.
 
 `components()`, `origin()` and `position()` expose the selected authored region.
 Nodes share immutable lexical ownership, so a retained child remains valid after
-its parent is dropped. `serialize()` and `serialize_with_limit()` produce the
+its parent is dropped. `serialize_tokens(limits)` produces the
 existing deterministic component serialization, preserving grouping, operator
 order, numeric spelling, symbolic operands and meaningful token boundaries.
-They return the serialized origin map and typed resource errors. They do not
+It returns the serialized origin map and typed resource errors. It does not
 promise lossless formatting or CSSOM whitespace normalization.
 
-`CssContainerStyleQuery` is a checked wrapper with `kind()` exposing
-`CssContainerStyleQueryKind`. Its feature, explicit group, `not`, homogeneous
+`CssCondition<CssStyleQueryLeaf>` is a checked wrapper with `kind()` exposing
+`CssConditionKind`. Its feature, explicit group, `not`, homogeneous
 `and`/`or`, and general-enclosed nodes each retain their own component region.
 Boolean and plain features carry `CssContainerStyleFeatureName`: ordinary
 `CssPropertyGrammar` identity (including aliases) or a custom-property name.
@@ -6770,11 +6813,10 @@ style-feature production rather than applying declaration parsing and its
 whitespace trimming to the function contents. Query/value serialization preserves
 lexical spelling and origins, including whitespace-only parsed operands.
 See `examples/container_style_semantic_consumer.rs` for inspection without
-reparsing serialized text. The former `CssContainerStyleQuery` enum's presence
-and value variants migrate to `query.kind()` and `CssContainerStyleFeature`.
+reparsing serialized text.
 
-`CssContainerConditionKind::ScrollState` carries a checked
-`CssContainerScrollQuery`. Its `kind()` exposes feature, explicit parentheses,
+`CssContainerLeaf::ScrollState` carries a checked
+`CssCondition<CssScrollStateLeaf>`. Its `kind()` exposes feature, explicit parentheses,
 negation, homogeneous lists and general-enclosed inner operands. The four
 `CssContainerScrollFeatureKind` identities are stuck, snapped, scrollable and
 scrolled. Bare features carry that identity without an invented comparison.
@@ -6833,8 +6875,8 @@ The narrow Values5 tree-counting import admits `sibling-count()` and
 `sibling-index()` in the container's numeric context. Their explicit
 `CssCalculationExpressionRef::TreeCounting` view retains function identity and
 origin; they remain symbolic. Container length/number calculations may therefore
-have context-dependent leaves that pure `CssLengthCalculation` or
-`CssNumberCalculation` constructors and media queries do not admit. Reconstruct
+have context-dependent leaves that pure `CssCalculation<CssLength>` or
+`CssCalculation<CssNumber>` constructors and media queries do not admit. Reconstruct
 such values through checked container construction. Relative units, query
 container selection, substitution and tree-function evaluation belong to the
 contextual owner. See `examples/container_size_semantic_consumer.rs` for typed
@@ -6848,23 +6890,24 @@ Invalid outer conditions drop their container rule while later siblings remain
 eligible. Explicit construction limits apply to the complete condition;
 serialization separately bounds its output bytes.
 
-Migration: replace direct `CssContainerCondition` enum construction with checked
-component admission, and match `condition.kind()` against
-`CssContainerConditionKind`. Replace `CssContainerGeneralEnclosed::enclosed()`
-with `component()` when inspecting its original lexical operand. Use the
-condition serializer for the complete query, including recognized groups.
-Size-feature payloads now use `CssMediaRange<CssContainerLength>` and
-`CssMediaRange<CssContainerRatio>` views, including typed pending values;
+Container conditions are built only through checked component admission and
+inspected by matching `condition.kind()` against `CssConditionKind` and
+`CssContainerLeaf`. `CssContainerGeneralEnclosed::component()` exposes the
+original lexical operand of a general-enclosed leaf. The condition's
+`serialize_tokens(limits)` covers the complete query, including recognized
+groups. Size-feature payloads are `query::media::CssMediaRange<CssContainerLength>`
+and `CssMediaRange<CssContainerRatio>` views, including typed pending values;
 orientation uses `CssContainerOrientation`. `CssRangeFeature`, `CssQueryLength`
-and `CssRatio` no longer describe parsed container features. Their older scalar
-contracts are not relaxed as part of this migration. Inspect exact numeric
-expressions and retain their context instead of projecting into legacy floats.
-The singular rule `name()` and `condition()` accessors have been replaced by
-`prelude()`: iterate its entries and explicitly handle `entry.query() == None`.
-Consumers that know they expect one entry should verify that cardinality before
-projecting its name or query. Normalized Container matches now borrow `prelude`
-instead of a singular name/condition pair. `InvalidPreludeGrammar` reports checked
-prelude rejection separately from a checked Boolean condition failure.
+and `CssRatio` do not describe parsed container features, and their scalar
+contracts are not relaxed for them. Inspect exact numeric expressions and
+retain their context instead of projecting into floats.
+A container rule exposes its entries through `prelude()`: iterate them and
+explicitly handle `entry.query() == None`. Consumers that expect exactly one
+entry should verify that cardinality before projecting its name or query.
+Normalized Container matches borrow `prelude`.
+`CssContainerConstructionError::is_invalid_prelude_grammar()` reports checked
+prelude rejection separately from `is_invalid_condition_grammar()`, which
+reports that the checked components do not form a container condition.
 
 These contracts use the selected
 [Conditional Rules 5 edition](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule),
@@ -6893,17 +6936,17 @@ normative, while the adopted profile defines an explicit bounded grammar. No
 selected source defines a literal When/Else CSSOM algorithm. Evaluation belongs
 downstream.
 
-`parse_when_condition` and `parse_when_condition_with_limits` return a checked
-`CssWhenCondition` or `CssWhenConstructionError`; the matching parser-context
-methods preserve the selected property context. `try_from_components` and
-`try_from_components_with_limits` validate the actual complete components. The
+`CssCondition<CssWhenLeaf>::parse(&parser, source)` returns a checked
+`CssCondition<CssWhenLeaf>` or `CssConditionConstructionError`; the parser supplies
+the selected property context and the component limits.
+`try_from_components(values, limits)` validates the actual complete components. The
 private condition owns its lexical spelling and origin; inspecting or constructing
-`CssWhenConditionKind` does not permit forging a checked condition.
+`CssConditionKind` does not permit forging a checked condition.
 
 The grammar admits one `not` term, or terms joined by homogeneous `and` or `or`.
 A term is a parenthesized condition, `media()` containing exactly one media
 feature, `supports()` containing exactly one declaration, or MQ4 general-enclosed
-syntax. `CssWhenConditionKind` exposes explicit grouping, negation, ordered
+syntax. `CssConditionKind<CssWhenLeaf>` exposes explicit grouping, negation, ordered
 conjunction/disjunction lists, typed media features, supports declarations and
 opaque enclosures. `media(--name)` is an unknown boolean feature. It does not
 reference a custom-media definition. The media leaf shares the media feature and
@@ -6915,13 +6958,13 @@ operators, bare identifiers and unconsumed tokens reject the condition. Bad
 lexical tokens, unmatched delimiters and resource exhaustion stay terminal;
 checked construction also rejects recovered implicit closures. Construction
 errors expose the responsible original `origin()`, with a component error as
-the typed error source when applicable. Lexical `serialize` preserves trivia,
-spelling and grouping; `serialize_with_limit` separately bounds output bytes.
+the typed error source when applicable. Lexical `serialize_tokens(limits)`
+preserves trivia, spelling and grouping and bounds output bytes through `limits`.
 
-`CssWhenRule`, `CssElseRule`, `CssScopedWhenRule` and `CssScopedElseRule` are checked
+`CssWhenRule` and `CssElseRule` are checked
 group fragments with immutable condition and ordered children. When requires a
-condition; Else accepts `Option<CssWhenCondition>`. Their `try_new` and
-`try_new_in_style` take the condition, an ordinary or scoped child vector, and
+condition; Else accepts `Option<CssCondition<CssWhenLeaf>>`. Their `try_new` and
+`try_new_in_style` take the condition, a child vector, and
 `&CssNamespaceContext`. The latter checks descendants under an explicit style
 ancestor. Enclosing sheet/group assembly rechecks actual sibling placement,
 style ancestry and namespace context atomically. Programmatic at-keywords have
@@ -6936,7 +6979,7 @@ adjacency even when recovery removes them from the retained list. This check run
 after structural reconstruction over the original source. A free Else drops its
 whole unit with `InvalidAtRulePlacement` and `DropAtRule`; rejected bodies produce
 no retained children or child-parser diagnostics. Independently published lexical
-escape/comment diagnostics survive. An isolated `parse_rule` free Else rejects
+escape/comment diagnostics survive. An isolated free Else passed to `rule::CssRule::parse` rejects
 the requested input with `RejectInput`. An invalid condition uses
 `InvalidAtRulePrelude`; both diagnostic details expose the owning production.
 Checked assembly instead uses actual supplied adjacency, so mixed-source nodes
@@ -6947,10 +6990,11 @@ Shared specified graph output emits compact `@when CONDITION { CHILDREN }`,
 share one cumulative input/projection/UTF-8 budget, including retained components
 whose surrounding whitespace is omitted. Normalization preserves ordered `When`
 and `Else` contexts and the nearest complete style-selector context without
-choosing a branch. Direct or composed ordinary literal CSSOM output returns
-`SourceUndefined(When)` or `SourceUndefined(Else)`: no selected literal algorithm
+choosing a branch. Direct or composed ordinary literal CSSOM output returns a
+`CssRuleSerializationError` whose `undefined_source()` is
+`CssRuleCssomKind::When` or `CssRuleCssomKind::Else`: no selected literal algorithm
 is claimed. A scoped group reached through the current Scope literal front
-reports the earlier `FormatUnavailable(Scope)` boundary; scoped specified output
+reports the earlier `unavailable_format()` boundary of `CssRuleCssomFormat::Scope`; scoped specified output
 and normalization remain available through the enclosing authored graph.
 
 ### Media, supports and imports
@@ -6968,7 +7012,7 @@ or `infinite`, and number-valued ratios. Calculations use the shared numeric
 grammar and remain symbolic. A syntactically valid empty range is retained;
 parsing does not evaluate its bounds or match a device environment.
 
-`CssMediaRange::view()` distinguishes plain, min/max, feature-first, value-first,
+`query::media::CssMediaRange::view()` distinguishes plain, min/max, feature-first, value-first,
 ascending and descending forms. Chained ranges preserve both operands in source
 order and each comparison's inclusivity. Ratios retain an explicit denominator
 or a programmatic default of one; zero denominators are valid authored syntax.
@@ -6976,36 +7020,36 @@ Ratio calculations carry a deferred nonnegative constraint. Grid literals admit
 zero or one, including negative zero, while grid calculations retain integer
 rounding and the deferred closed interval `[0,1]` constraint.
 
-For migration, media numeric variants of `CssMediaFeatureQuery` now contain
-`CssMediaRange<T>` instead of `CssRangeFeature<T>`. Match the borrowed range view
-and inspect a length or integer operand's `calculation()` to access exact lexical
-values and origins. Resolution and grid operands expose their own borrowed
-views. `CssMediaRatio::numerator()` and `denominator()` return shared number
-calculations; `denominator_is_omitted()` distinguishes an authored denominator
-from its default. The former integer-pair `CssMediaRatio::try_new` constructor
-and `Copy` implementation are removed; obtain the checked ratio through a parsed
-or component-constructed media query and borrow or clone it. Container-query
-range, length and ratio types retain their existing contracts.
+The media numeric variants of `CssMediaFeatureQuery` contain `CssMediaRange<T>`.
+Match the borrowed range view and inspect a length or integer operand's
+`calculation()` to access exact lexical values and origins. Resolution and grid
+operands expose their own borrowed views. `CssMediaRatio::numerator()` and
+`denominator()` return shared number calculations; `denominator_is_omitted()`
+distinguishes an authored denominator from its default. A `CssMediaRatio` is not
+constructed from integer pairs and is not `Copy`; obtain the checked ratio through
+a parsed or component-constructed media query and borrow it. Container-query
+range, length and ratio types have their own contracts.
 
-`CssMediaConditionKind::UnknownFeature` replaces the former `DefinedFalse`
-condition. It retains a validated generic feature expression and distinguishes
+`CssMediaLeaf::UnknownFeature` retains a validated generic feature expression and distinguishes
 an unknown name, invalid value and forbidden operation. General-enclosed syntax
 has its own variant. Both have unknown truth, including under negation; style
 owns eventual evaluation. Unknown media types remain a separate nonmatching
 type class. Neither class is a malformed-query sentinel.
 
-`CssMediaQuery::Never` replaces a reserved or structurally malformed comma member
+`CssMediaQuery::Never` stands in for a reserved or structurally malformed comma member
 and is paired with `ReplaceMediaQueryWithNever`. The replacement is comma-local,
 so later query members and the containing `@media` rule remain eligible.
 Bad strings, bad URLs and unmatched delimiters preserve their typed component
 errors and original coordinates.
 
 ```rust
-use surgeist_css::{
-    CssMediaConditionKind, CssMediaQuery, CssRecoveryAction, CssRule, parse_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery};
+use surgeist_css::rule::CssRule;
 
-let report = parse_sheet("@media (future-mode: active), ???, print {}");
+let report = CssParser::default().parse_sheet("@media (future-mode: active), ???, print {}");
 let [CssRule::Media(media)] = report.syntax().rules() else {
     panic!("expected retained media rule");
 };
@@ -7015,7 +7059,10 @@ assert!(matches!(
         CssMediaQuery::Condition(condition),
         CssMediaQuery::Never(_),
         CssMediaQuery::Typed(_),
-    ] if matches!(condition.kind(), CssMediaConditionKind::UnknownFeature(_))
+    ] if matches!(
+        condition.kind(),
+        CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(_))
+    )
 ));
 assert_eq!(
     report.diagnostics()[0].action(),
@@ -7024,23 +7071,22 @@ assert_eq!(
 ```
 
 `CssMediaQuery::try_from_components` and
-`CssMediaCondition::try_from_components` validate checked Rust components through
-the same grammar. Their `try_from_components_with_limits` variants accept
-`CssComponentValueLimits` and retain distinct byte, component-count and nesting
-failures. The byte budget also covers canonical expansion, such as an omitted
+`CssCondition::<CssMediaLeaf>::try_from_components` validate checked Rust components through
+the same grammar. Both take the values and `CssComponentValueLimits`, and retain
+distinct byte, component-count and nesting failures. The byte budget also covers canonical expansion, such as an omitted
 ratio denominator. Recovered components, including implicit EOF closures, are
 rejected.
-Media query, condition and typed-query positions are now optional: use `origin()`
+Media query, condition and typed-query positions are optional: use `origin()`
 for parsed or programmatic provenance and inspect `position()` only when present.
 Cloned parsed components keep their original source coordinates inside
 programmatically constructed parents.
 
-Media query, condition and list `serialize()` methods return `CssSerializedValue`.
+Media query, condition and list `serialize_tokens(limits)` methods return `CssSerializedValue`.
 Canonical output normalizes recognized names and grammar separators, preserves
 operand order and symbolic value spelling, and emits both ratio components.
 Opaque enclosures preserve their meaningful token boundaries and comments.
-Serialization fails with `RecoveredNever` if any list member is a recovery
-sentinel; it produces no partial list. Clean authored `not all` remains ordinary
+Serialization fails with an error whose `is_unserializable_boundary()` is true
+if any list member is a recovery sentinel; it produces no partial list. Clean authored `not all` remains ordinary
 serializable syntax. These are authored-syntax contracts.
 
 Custom-media definitions retain their name and explicit boolean or media-list
@@ -7069,9 +7115,9 @@ the ambiguous grammar. An enclosure that matches no feature production, such
 as `(--x:)`, remains general-enclosed.
 
 `CssCustomMediaName::try_new` accepts a decoded identifier and escapes it as
-needed. `CssCustomMediaRule::try_new` combines a checked name with a
-`CssCustomMediaBody`; `try_from_components` instead admits the name/body prelude.
-Both rule constructors have explicit-limit variants. A constructed prelude has
+needed. `CssCustomMediaRule::try_new(name, body, limits)` combines a checked name with a
+`CssCustomMediaBody`; `try_from_components(values, limits)` instead admits the
+name/body prelude. A constructed prelude has
 no authored at-keyword, so the containing rule has programmatic origin while its
 supplied name and body tokens retain their origins.
 
@@ -7119,14 +7165,14 @@ scoped and style-body groups, and import `supports()` clauses. Function names an
 font keywords match without ASCII case sensitivity; original spelling, escapes,
 comments, grouping and delimiter origins remain in the condition's lexical root.
 
-`CssSupportsConditionKind::FontTech` holds one `CssFontTechHint`. The shared
+`CssSupportsLeaf::FontTech` holds one `CssFontTechHint`. The shared
 [Fonts 4 technology vocabulary](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-tech-values)
 admits `features-opentype`, `features-aat`, `features-graphite`, `color-COLRv0`,
 `color-COLRv1`, `color-SVG`, `color-sbix`, `color-CBDT`, `variations`, `palettes`
 and `incremental`. A predicate accepts exactly one technology; the comma-list
 policy of a font source's `tech()` hint remains separate.
 
-`CssSupportsConditionKind::FontFormat` holds the shared `CssFontFormat`.
+`CssSupportsLeaf::FontFormat` holds the shared `CssFontFormat`.
 The [format grammar](https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-format-values)
 admits one of `collection`, `embedded-opentype`, `opentype`, `svg`, `truetype`,
 `woff` or `woff2` as a `Keyword`, or one string as a `String`. Empty, unknown,
@@ -7137,7 +7183,7 @@ it does not convert the predicate to a keyword or evaluate support.
 separately prevents a string format from satisfying support. That truth rule,
 font availability and loading belong to consumers.
 
-`CssSupportsConditionKind::AtRule` holds a private-field `CssSupportsAtRule`.
+`CssSupportsLeaf::AtRule` holds a private-field `CssSupportsAtRule`.
 Its `component()` borrows the genuine argument token, `name()` borrows its
 decoded name without the `@`, and `origin()` and `position()` retain that token's
 provenance. Decoded authored case remains intact. Any genuine at-keyword,
@@ -7196,14 +7242,14 @@ definition. Parseable implicit EOF closures remain retained with diagnostics.
 `CssSupportsTestBody::recovery_origin()` identifies recovered input, distinct
 from whether a feature is supported. Strict body and rule construction reject
 recovered input and enforce aggregate component limits. The typed
-`CssNamedSupportsConstructionError` separates invalid names, invalid body
+`CssSupportsConstructionError` separates invalid names, invalid body
 grammar, recovered input, and component failures. This authored recovery policy
 reconciles the selected generic Syntax block consumer with Conditional 5's
 feature-test purpose; the specification does not specify each malformed-item
 result.
 
 An ordinary `@supports (--name)` operand retains
-`CssSupportsConditionKind::Named` with its checked name, even when no definition
+`CssSupportsLeaf::Named` with its checked name, even when no definition
 exists. `@import url(theme.css) supports(--name)` and its parenthesized
 alternative also retain the named reference; import serialization preserves the
 valid bare function-body spelling, while a standalone condition adds the
@@ -7216,15 +7262,17 @@ with the narrow [extension-name import](../specs/catalog.json) and the selected
 #### Checked supports values
 
 Supports conditions and declarations can also be constructed from checked
-component values. `CssSupportsCondition::try_from_components` takes an explicit
-`CssNamespaceContext`; `CssSupportsDeclaration::try_from_components` takes the
-bare declaration contents. Both have explicit-limit variants. They share the
+component values. `CssCondition::<CssSupportsLeaf>::try_from_components(values, context, limits)`
+takes an explicit `&CssNamespaceContext`;
+`CssSupportsDeclaration::try_from_components(values, limits)` takes the bare
+declaration contents. They share the
 authored grammar with stylesheet parsing and reject recovered component input.
 Unknown properties, empty values, CSS-wide keywords and pending substitutions
 retain their authored meaning; a known-property view never evaluates support.
 `CssSupportsConstructionError` distinguishes grammar rejection, recovered input,
 component resource limits and failure to start the bounded deep-construction
-worker. Serialization also accepts an explicit output byte limit.
+worker. `serialize_tokens(limits)` takes the component limits that bound the
+output bytes.
 
 `components()` borrows the original lexical slice, including grouping and
 importance tokens. Declaration `property_component()` and `value_components()`
@@ -7248,17 +7296,19 @@ construction rejects those same recovered inputs. A standalone condition obtaine
 from an import's bare declaration gains programmatic parentheses when serialized
 as a condition. The import rule keeps its original clause syntax.
 
-Migration: `CssSupportsCondition::position()` and
-`CssSupportsDeclaration::position()` now return `Option<CssSourcePosition>`;
-`CssSupportsDeclaration::authored()` returns `Option<&str>`. Consumers must handle
-programmatic construction rather than assuming a single source location or text
-slice. Existing stylesheet parsing still supplies the original positions and
-authored declaration text.
+`CssCondition::position()` and `CssSupportsDeclaration::position()` return
+`Option<CssSourcePosition>`, and `CssSupportsDeclaration::authored()` returns
+`Option<&str>`. Consumers must handle programmatic construction rather than
+assuming a single source location or text slice. Stylesheet parsing supplies the
+original positions and authored declaration text.
 
 ```rust
-use surgeist_css::{CssRule, CssSupportsConditionKind, parse_sheet};
+use surgeist_css::CssParser;
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::CssRule;
 
-let report = parse_sheet(concat!(
+let report = CssParser::default().parse_sheet(concat!(
     "@supports (display: grid) and (color: red) {}",
     "@supports selector(.card > .item:hover) {}",
     "@supports future-layout(mode) {}",
@@ -7274,15 +7324,15 @@ else {
 };
 assert!(matches!(
     declarations.condition().kind(),
-    CssSupportsConditionKind::And(_)
+    CssConditionKind::And(_)
 ));
 assert!(matches!(
     selector.condition().kind(),
-    CssSupportsConditionKind::Selector(_)
+    CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
 ));
 assert!(matches!(
     fallback.condition().kind(),
-    CssSupportsConditionKind::GeneralEnclosed(value)
+    CssConditionKind::Leaf(CssSupportsLeaf::GeneralEnclosed(value))
         if value.authored() == Some("future-layout(mode)")
 ));
 ```
@@ -7296,11 +7346,11 @@ EOF-unclosed input, or `None` for programmatic enclosures. Parsed children under
 programmatic delimiters keep their individual origins. Cloning and reconstructing
 from `component()` preserves the same authored slice and equality.
 
-`serialize()` preserves token spelling and maps emitted delimiters, including
-EOF-implied closures, to their real origins. Structural equality includes exact
-lexemes and source-text/span provenance; it does not compare runtime meaning or
-require source snapshot identity. The optional `authored()` and `position()`
-accessors replace the earlier parser-only, unconditional accessors.
+`serialize_tokens(limits)` preserves token spelling and maps emitted delimiters,
+including EOF-implied closures, to their real origins. Structural equality includes
+exact lexemes and source-text/span provenance; it does not compare runtime meaning
+or require source snapshot identity. The optional `authored()` and `position()`
+accessors return `None` for programmatic enclosures.
 
 An `@import` prelude is retained in exact target, optional `layer` or
 `layer(name)`, optional `supports(...)`, optional media-list order. A successful
@@ -7320,19 +7370,20 @@ with their original error categories and source positions. EOF-implied closures
 remain diagnostics on the selected interpretation; speculative alternatives do
 not add diagnostics.
 
-`CssImportRule::serialize()` returns canonical `CssSerializedValue` output with
-the same optional-clause interpretation. It preserves target spelling, checked
-clause components, symbolic media and original token origins. An added EOF
-semicolon has programmatic provenance. Any recovered `Never` member returns
-`CssImportSerializationError::Media` without producing a partial rule. This does
-not emit output if the shared grammar cannot preserve its interpretation:
-`InterpretationChanged` reports that failure. `serialize_with_limit` additionally
-bounds the complete canonical output, including inserted separators and the
-terminating semicolon. This is an output limit, not a bound on temporary
+`CssImportRule::serialize_tokens(limits)` returns canonical `CssSerializedValue`
+output with the same optional-clause interpretation. It preserves target spelling,
+checked clause components, symbolic media and original token origins. An added EOF
+semicolon has programmatic provenance. Any recovered `Never` member fails with a
+`CssSerializationError` whose `is_unserializable_boundary()` is true, without
+producing a partial rule. It does not emit output if the shared grammar cannot
+preserve its interpretation: `is_unrepresentable_value()` reports that failure.
+`limits` additionally bound the complete canonical output, including inserted
+separators and the terminating semicolon. This is an output limit, not a bound on temporary
 allocations used to verify the clause interpretation.
 
-`CssImportRule::try_from_components` constructs one complete import from checked
-component values and an explicit `CssNamespaceContext`. Include the `@import`
+`CssImportRule::try_from_components(values, context, limits)` constructs one
+complete import from checked component values, an explicit `&CssNamespaceContext`
+and `CssComponentValueLimits`. Include the `@import`
 at-keyword and an explicit semicolon; surrounding trivia is accepted. Additional
 rules, nontrivia after the terminator, and malformed complete media lists are
 rejected. Checked construction never creates recovered `Never` media members.
@@ -7340,15 +7391,15 @@ It uses the same optional-clause selection as parsing, so a malformed optional
 clause can still be retained as an opaque media operand when that complete
 alternative is valid.
 
-The explicit-limits constructor validates all supplied components, including
-trivia, before rejecting recovered input and checking the rule grammar. Limits
-also apply to canonical output: a media value's canonical expansion can exceed
+The constructor validates all supplied components, including
+trivia, against `limits` before rejecting recovered input and checking the rule
+grammar. Limits also apply to canonical output: a media value's canonical expansion can exceed
 the byte budget even when its input fits. Construction failures distinguish
 grammar rejection, recovery, component limits and errors from the supports,
 media, serialization or deep-worker boundaries. Errors retain original origins
 and nested error sources. No partially constructed rule is returned.
 
-The rule's `origin()` belongs to its original at-keyword. `position()` now returns
+The rule's `origin()` belongs to its original at-keyword. `position()` returns
 `Option<CssSourcePosition>`; handle `None` for programmatic at-keywords. Parsed
 at-keywords retain their original positions even when combined with programmatic
 children. Target, supports and media components keep their original snapshots;
@@ -7356,8 +7407,8 @@ temporary grammar transport never becomes their public source provenance.
 Canonical output omits surrounding trivia. Normalization preserves the optional
 rule position and intact import payload without loading its target.
 
-`CssImportRuleView::try_new[_with_limits]` borrows a checked original import and
-a supplied current `CssMediaQueryList`. Its CSSOM output uses that supplied list,
+`rule::CssImportRuleView::try_new(rule, media, limits)` borrows a checked original
+import and a supplied current `CssMediaQueryList`. Its CSSOM output uses that supplied list,
 including an empty list, while retaining the original checked target, layer,
 supports clauses and source observations. It assigns no live identity or source
 position and does not reconstruct an authored rule. `rule()` and `media()` expose
@@ -7379,15 +7430,14 @@ not part of CSSOM import text. This is a recorded spec gap: CSSOM's serialize a 
 on the rule's location predates the Values 5 `<url-modifier>`, and the pinned
 WebKit witness also drops modifiers. Revisit if CSSOM defines modifier
 serialization. The typed target accessors and specified output keep the function
-and modifiers. The authored `serialize()` and
+and modifiers. The authored `serialize_tokens(limits)` and
 specified output keep the authored target form.
 
-`CssEditedRuleView::try_import[_with_limits]` embeds the current import view in
+`serialization::CssRuleGraphInput::import(rule, media)` embeds the current import view in
 the existing recursive formatting graph. The original target/clause components
 and supplied media share the enclosing operation's input, projection and output
 budgets, interpretation protection and typed failures. Retired authored media is
-not charged or emitted. Constructors validate formatting under their supplied
-limits, while a later whole-graph request applies one cumulative budget across
+not charged or emitted. A whole-graph request applies one cumulative budget across
 all children; errors return no partial text and permit unchanged retry. CSSOM
 owns live list edits, placement, parent links and publication. In particular,
 being representable in a formatting graph does not authorize an import in an
@@ -7420,7 +7470,7 @@ token origins from parsed or checked input. The `arguments().as_css()` view
 preserves authored argument text, and URL equality continues to use
 that text and the decoded modifier name rather than source coordinates.
 
-`CssUrl::serialize_specified()` and its limits variant emit quoted `url()` or
+`CssUrl::serialize_specified(limits)` emits quoted `url()` or
 `src()` text without resolving the target. Ordered modifiers retain their names
 and checked token boundaries, including syntax closed implicitly at EOF.
 Opaque modifier arguments retain meaningful whitespace and comments. One
@@ -7458,9 +7508,9 @@ Values 5 (2024-11-11) §10 `calc-size()` grammar.
 
 The six physical wrappers expose `value()` as `CssSizeValue` or
 `CssMaxSizeValue`.
-Call `literal_component()` for an exact ordinary token or `calculation()` for
-checked math within a `CssBoxSize::LengthPercentage`. The wrapper's `as_css()`
-returns the original authored spelling. `serialize_specified()` produces the
+Match the `CssNumeric` within a `CssBoxSize::LengthPercentage` and call
+`literal()` for an exact ordinary token or `calculation()` for checked math. The wrapper's `as_css()`
+returns the original authored spelling. `serialize_specified(limits)` produces the
 canonical specified value and may simplify math without changing the retained
 typed expression.
 
@@ -7474,7 +7524,7 @@ their normalized checked kinds. Property wrappers still retain original
 ## Authored positioning and insets
 
 The selected [Values 4 generic `<position>` serialization](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#position-serialization)
-is available on `CssPhysicalPosition::serialize_specified()` and its limits variant.
+is available on `CssPhysicalPosition::serialize_specified(limits)`.
 It writes the checked horizontal and vertical axes in that order: a parsed
 `top` becomes `center top`, while `bottom 2% right 1px` becomes
 `right 1px bottom 2%`. Paired edge offsets retain their edge keywords and
@@ -7501,12 +7551,12 @@ inline-start, block-end and inline-end. Three values repeat the second on
 both inline edges. Expansion follows the
 [mode-selected membership policy](#four-side-shorthand-membership).
 
-`CssInsetValue`, `CssInsetPair`, and `CssInsetShorthand` preserve exact checked
+`CssInsetValue`, `CssSidePair<CssInsetValue>`, and `CssFourSides<CssInsetValue>` preserve exact checked
 numbers, authored arity and mode. Their typed equality compares retained
 structure without diagnostic origins; wrappers retain original `as_css()`
 spelling. Physical `inset`, `top`, `right`, `bottom`, and `left` wrappers expose
 `value()` with the exact checked semantic value.
-`serialize_specified()` gives bounded canonical text, distinct from `as_css()`.
+`serialize_specified(limits)` gives bounded canonical text, distinct from `as_css()`.
 
 ## Authored box spacing
 
@@ -7520,14 +7570,14 @@ axis pairs accept one or two values and expand to their two longhands, retaining
 the authored component count and source occurrence.
 
 The four-side `margin` and `padding` values preserve authored arity and
-physical or logical mode. Their `assigned_values()` accessors apply quad
+physical or logical mode. Their `assigned()` accessors apply quad
 repetition; expansion and normalization use the
 [mode-selected membership policy](#four-side-shorthand-membership).
 
 The ten physical wrappers expose `value()` for `CssMarginValue`, `CssPaddingValue`,
-`CssMarginShorthand`, or `CssPaddingShorthand`; inspect exact literals or
+`CssFourSides<CssMarginValue>`, or `CssFourSides<CssPaddingValue>`; inspect exact literals or
 calculations through their checked length-percentage values. `as_css()` retains
-the authored spelling, while `serialize_specified()` renders a bounded
+the authored spelling, while `serialize_specified(limits)` renders a bounded
 canonical specified value.
 
 ## Authored sizing controls
@@ -7537,7 +7587,7 @@ defines `size`, `min-size`, and `max-size` as one- or two-value physical
 shorthands. They set width then height, minimum width then height, or maximum
 width then height, copying the complete first value when the second is omitted.
 They accept the same exact checked values as their member longhands, including
-symbolic math. `CssSizePair` and `CssMaxSizePair` retain the optional authored
+symbolic math. `CssSidePair<CssSizeValue>` and `CssSidePair<CssMaxSizeValue>` retain the optional authored
 height; their expansion contributes only the two physical members in order.
 The ordinary `size` property is rejected in `@page` context. The distinct
 page-size descriptor and CSSOM's preferred shorthand ordering remain outside
@@ -7550,7 +7600,7 @@ defines noninherited `min-intrinsic-sizing`, starting at `legacy`; either
 `zero-if-scroll` or `zero-if-extrinsic`, or both, can be authored. The typed
 combined state serializes in scroll-then-extrinsic order. Internal layout size
 and min-content contribution effects remain downstream. These finite values
-and both pair types offer bounded `serialize_specified()` separately from the
+and both pair types offer bounded `serialize_specified(limits)` separately from the
 property wrappers' original `as_css()` spelling.
 
 ## Authored contained intrinsic sizes
@@ -7565,12 +7615,12 @@ width then height and repeating the complete first value when the second is
 omitted. Its expansion has no reset-only members; the logical longhands keep
 their own identities.
 
-`CssSpecifiedNonNegativeLength` retains exact ordinary tokens and symbolic
-length math without narrowing through a floating-point value. The checked
-`CssContainIntrinsicSizeValue` and `CssContainIntrinsicSize` models expose the
+`numeric::CssNumeric<CssLength, CssNonNegative>` retains exact ordinary tokens
+and symbolic length math without narrowing through a floating-point value. The checked
+`CssContainIntrinsicSizeValue` and `CssSidePair<CssContainIntrinsicSizeValue>` models expose the
 fallback, `auto` intent, and authored second component through `value()` on
-their property wrappers. `as_css()` retains original spelling;
-`serialize_specified()` gives bounded canonical output. Remembered sizes,
+their property wrappers; equal axes are written once. `as_css()` retains original spelling;
+`serialize_specified(limits)` gives bounded canonical output. Remembered sizes,
 containment state, writing-mode mapping, and used box dimensions belong to
 downstream style and layout.
 
@@ -7610,39 +7660,35 @@ element's writing mode belong downstream.
 The selected [Fragmentation 3 break definitions](https://www.w3.org/TR/2018/CR-css-break-3-20181204/#break-between)
 define `break-before`, `break-after`, and `break-inside` as noninherited
 longhands with `auto` initials. Their `value()` accessors expose finite typed
-keyword domains and bounded canonical serialization. The former canonical
+keyword domains and bounded canonical serialization. The
 `page-break-before`, `page-break-after`, and `page-break-inside` spellings are
-now distinct [legacy shorthand grammars](https://www.w3.org/TR/2018/CR-css-break-3-20181204/#page-break-properties)
+distinct [legacy shorthand grammars](https://www.w3.org/TR/2018/CR-css-break-3-20181204/#page-break-properties)
 that set one modern longhand, have no reset members, and preserve the original
 authored spelling and declaration occurrence. `always` maps to `page` for the
 before/after aliases; the aliases reject modern-only values. [Logical 1 §3](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#page)
 also admits `recto` and `verso` for those two aliases. Look up a legacy spelling
-through `CssPropertyGrammar::from_name`; `CssKnownProperty::from_name` and
-`property_support_metadata` identify canonical properties and name-equivalent
+through `property::CssPropertyGrammar::from_name`; `CssKnownProperty::from_name` and
+`conformance::property_support_metadata` identify canonical properties and name-equivalent
 aliases, excluding distinct legacy grammars. The legacy feature IDs remain
-`official.property.page-break-*`, now classified as `PropertyAlias`; retrieve
-their support records with `feature_metadata(grammar.feature_id().as_str())`
-and their intrinsic metadata with `grammar.metadata()`. Code using the
-old `CssPageBreak*` types or `.page_break()` accessors should use the
-`CssBreakBetween`/`CssBreakInside` values returned by modern wrappers'
-`.value()` accessors. Fragmentation and flow-relative page mapping remain
+`official.property.page-break-*`, classified as `PropertyAlias`; retrieve
+their support records with `conformance::feature_metadata(grammar.feature_id().as_str())`
+and their intrinsic metadata with `grammar.metadata()`. The modern wrappers'
+`.value()` accessors return `CssBreakBetween` and `CssBreakInside` values.
+Fragmentation and flow-relative page mapping remain
 downstream behavior.
 
 The [Fragmentation 3 line-minimum definitions](https://www.w3.org/TR/2018/CR-css-break-3-20181204/#widows-orphans)
 make `orphans` and `widows` inherited longhands with initial value `2`.
-`CssPageLineMinimum` retains an exact positive integer token without a machine
-integer magnitude limit, or deferred integer math. `literal()` returns an `i32`
-only when the exact count fits; `exact_literal()` and `origin()` preserve the
-authored token and its provenance. Checked construction rejects zero, negative,
-and noninteger literals, including bare calculation roots, while math functions
-remain symbolic. `serialize_specified_with_limits()` applies the shared bounded
-specified-value projection. Line counting and fragmentation decisions belong to
-layout and text.
-Callers constructing a count from `CssIntegerCalculation` now use
-`try_from_calculation()` and handle its typed error; the former infallible
-`from_calculation()` could admit invalid bare roots. `try_literal()`, `literal()`,
-and `calculation()` now inspect or construct exact token-backed values and are
-no longer `const fn`.
+Each is a `numeric::CssNumeric<CssInteger, CssPositive>`, which retains an exact
+positive integer token without a machine integer magnitude limit, or deferred
+integer math. `literal()` returns the `CssNumericLiteral<CssInteger>` of a literal
+count, whose `value()` returns an `i32` only when the exact count fits; `origin()` preserves
+the provenance of the authored token. Checked construction through
+`try_from_literal`, `try_from_calculation` or `try_from_component` rejects zero,
+negative, and noninteger literals, including bare calculation roots, while math
+functions remain symbolic; each returns a typed `CssNumericConstructionError`.
+`serialize_specified(limits)` applies the shared bounded specified-value
+projection. Line counting and fragmentation decisions belong to layout and text.
 
 ## Authored overflow controls
 
@@ -7680,7 +7726,7 @@ containers and animates by computed value; it accepts an exact ordered
 thumb/track pair from the shared checked `CssColor` grammar.
 
 `CssScrollbarWidth` writes a lowercase keyword through
-`serialize_specified[_with_limits]()`. `CssScrollbarColor::auto()` and
+`serialize_specified(limits)`. `CssScrollbarColor::auto()` and
 `CssScrollbarColor::new(thumb, track)` construct the two valid forms;
 `thumb()` and `track()` return `None` for automatic coloring. Its specified
 writer emits both colors in role order, including equal colors, and delegates
@@ -7736,7 +7782,7 @@ implementation details do not narrow the selected specification. Its
 [scheme consumer](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/Source/WebCore/css/parser/CSSPropertyParserConsumer%2BColorAdjust.cpp)
 corroborates separate scheme entries and the `only` modifier.
 
-Each type provides `serialize_specified[_with_limits]()`. Keyword values and
+Each type provides `serialize_specified(limits)`. Keyword values and
 `normal` charge one input and projection node. A scheme list charges its root,
 every entry, and its optional modifier under one cumulative byte budget. Failure
 returns no partial CSS and does not mutate values or source components.
@@ -7780,24 +7826,24 @@ operations.
 
 The selected [Backgrounds 3 border-width definitions](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-width)
 and [Logical 1 logical width definitions](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#propdef-border-block-start-width)
-provide exact `thin | medium | thick | <length [0,∞]>` widths for four physical and four logical longhands, with noninherited `medium` initials. The logical block/inline pairs retain one or two authored values and contribute their respective two longhands. `CssBorderWidth` retains exact numeric spelling and symbolic math, and `CssBorder` retains each authored width, style, and color component of the five physical and six logical border triples; omitted components contribute their defined initials. `CssBorder::color()` borrows the authored color.
+provide exact `thin | medium | thick | <length [0,∞]>` widths for four physical and four logical longhands, with noninherited `medium` initials. The logical block/inline pairs retain one or two authored values and contribute their respective two longhands. `CssLineWidth` retains exact numeric spelling and symbolic math, and `CssBorder` retains each authored width, style, and color component of the five physical and six logical border triples; omitted components contribute their defined initials. `CssBorder::color()` borrows the authored color.
 
 The four-side `border-width` grammar accepts one to four values and an optional
-leading `logical` switch. `assigned_values()` exposes side assignments;
+leading `logical` switch. `assigned()` exposes side assignments;
 expansion follows the [mode-selected membership policy](#four-side-shorthand-membership).
 Physical border triples retain their defined defaults and border-image resets.
 
 The [Logical 1 side and axis border shorthands](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#border-shorthands) accept the same unordered width, style, and color triple. `border-block-start`, `border-block-end`, `border-inline-start`, and `border-inline-end` contribute only their three matching flow-relative longhands. `border-block` and `border-inline` contribute both sides of their axis in width, style, color order, with no border-image reset. Their wrappers expose `CssBorder` through `value()`; omitted width, style, and color contribute `medium`, `none`, and `currentcolor` respectively. No physical-side projection or writing-mode mapping occurs in this crate.
 
-The affected physical wrappers expose `value()` for exact checked border triples. `as_css()` retains authored spelling, while bounded `serialize_specified()` emits the checked canonical value. Layout, writing-mode mapping, and cascade remain downstream.
+The affected physical wrappers expose `value()` for exact checked border triples. `as_css()` retains authored spelling, while bounded `serialize_specified(limits)` emits the checked canonical value. Layout, writing-mode mapping, and cascade remain downstream.
 
 ## Authored border styles
 
 The selected [Backgrounds 3 line-style definitions](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-style) and [Logical 1 flow-relative styles](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#border-style) provide ten style keywords for four physical and four logical longhands. Their noninherited initial is `none`. `border-block-style` and `border-inline-style` retain one or two authored values, assigning start then end and repeating the first when the second is omitted. The four-side `border-style` retains one to four authored values and an optional leading `logical` switch. Its assignments are top/right/bottom/left in physical mode and block-start/inline-start/block-end/inline-end in logical mode; it does not map logical sides to physical sides.
 
-`CssBorderStylePropertyValue::value()` returns `CssBorderStyleShorthand`,
-preserving authored arity and role mode. Inspect `assigned_values()` with `kind()`
-for the authored roles. `CssBorderStyle` is the checked scalar keyword domain.
+`CssPropertyValue<CssFourSides<CssLineStyle>>::value()` returns `CssFourSides<CssLineStyle>`,
+preserving authored arity and role mode. Inspect `assigned()` with `kind()`
+for the authored roles. `CssLineStyle` is the checked scalar keyword domain.
 Each scalar, pair, and shorthand has bounded specified serialization under one
 cumulative budget per value.
 
@@ -7810,9 +7856,9 @@ mapping, computed width zeroing and painting remain downstream.
 
 The selected [Backgrounds 3 radius definitions](https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-radius)
 and [Logical 1 corner definitions](https://www.w3.org/TR/2025/WD-css-logical-1-20251204/#border-radius-properties)
-cover the four physical and four flow-relative corner longhands. Each accepts one or two exact nonnegative length-percentages, with a noninherited zero initial. The first value is the horizontal radius and the second is the vertical radius, even for a logical corner name; an omitted second value repeats the first. `CssCornerRadiusValue` preserves that omission, exact ordinary spelling, deferred math, and numeric origins.
+cover the four physical and four flow-relative corner longhands. Each accepts one or two exact nonnegative length-percentages, with a noninherited zero initial. The first value is the horizontal radius and the second is the vertical radius, even for a logical corner name; an omitted second value repeats the first. A corner is a `CssSidePair` of exact radii: it preserves that omission, exact ordinary spelling, deferred math, and numeric origins, and writes equal radii once.
 
-The physical `border-radius` shorthand accepts one to four horizontal values and an optional slash followed by one to four vertical values. `CssBorderRadiusShorthand` retains the authored lists and supplies the four physical corners in top-left, top-right, bottom-right, bottom-left order. Without a slash, each contributed corner retains an omitted vertical radius; an explicit slash retains its authored vertical value. Intrinsic expansion has four physical longhand members and no reset-only members. Bounded specified serialization shares one resource budget across the aggregate and its authored children.
+The physical `border-radius` shorthand accepts one to four horizontal values and an optional slash followed by one to four vertical values. `CssBorderRadiusShorthand` retains the authored lists as `CssFourSides` values, so the one-to-four corner assignment is the side assignment of `margin`, and supplies the four physical corners in top-left, top-right, bottom-right, bottom-left order. The `border-radius` property writes each list in its shortest form and omits a vertical list equal to the horizontal one with its slash; the `round` radii of `inset()`, `xywh()` and `rect()` are written as authored. Without a slash, each contributed corner retains an omitted vertical radius; an explicit slash retains its authored vertical value. Intrinsic expansion has four physical longhand members and no reset-only members. Bounded specified serialization shares one resource budget across the aggregate and its authored children.
 
 Physical property wrappers expose the exact checked `value()`. Basic-shape `inset()` round values use `CssBorderRadiusShorthand`, preserving horizontal and vertical arity and whether the vertical list was omitted. Flow-relative wrappers do not invent a physical corner mapping. Writing-mode and direction mapping, percentage basis, overlapping-radii reduction, geometry, and painting remain downstream.
 
@@ -7829,7 +7875,7 @@ order follows the grammar. Strengths remain symbolic; their absolute duration
 is implementation-dependent.
 
 `CssSpeechBreak` retains `None`, `Strength(CssSpeechBreakStrength)`, or
-`Time(CssDuration)`. `try_time(CssTimeValue)` uses the existing duration owner
+`Time(CssNumeric<CssTime, CssNonNegative>)`. `try_time(CssNumeric<CssTime>)` uses the existing duration owner
 for exact rejection of negative ordinary times (including negative underflow)
 and original recovered closure. Signed zero remains allowed. Valid authored
 time calculations retain their math branch and defer computed range handling.
@@ -7837,17 +7883,16 @@ time calculations retain their math branch and defer computed range handling.
 wrappers expose this model through `value()` and retain authored case, escapes,
 comments, spelling and provenance through `as_css()` and declaration components.
 
-`pause` and `rest` use `CssSpeechBreakPair`. Its checked `try_new(before, after)`
+`pause` and `rest` use `CssSidePair<CssSpeechBreak>`. Its checked `try_new(before, after)`
 retains an optional second authored value and rejects recovered time children.
-`before()` and `after()` borrow the effective assignments; `authored_after()`
+`first()` and `second()` borrow the effective assignments; `authored_second()`
 reveals the optional authored second value. Intrinsic expansion emits exactly
 before then after, assigning one value to both when the second is omitted. There
 are no reset-only members. Whole-value CSS-wide keywords expand at the shorthand
 boundary, and substitution reentry validates the original grammar atomically
 while retaining source occurrence, importance and replacement origins.
 
-Both models provide `serialize_specified()` and
-`serialize_specified_with_limits(CssSpecifiedValueSerializationLimits)`. Times
+Both models provide `serialize_specified(limits)`. Times
 use the existing canonical seconds provider and its six-place rounding policy.
 Following [CSSOM value serialization](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-value),
 pair output omits a demonstrably equivalent second component without discarding
@@ -7888,21 +7933,22 @@ diagnostics, and enclosing rule source positions.
 
 The checked qualified-name constructors take typed decoded local names and an
 explicit `CssNamespaceContext`. Missing or case-mismatched named bindings return
-`CssQualifiedNameError::UndeclaredNamespacePrefix`. An empty named namespace is
+a `CssSelectorConstructionError` whose `undeclared_namespace_prefix()` names the
+prefix. An empty named namespace is
 still a binding. Unqualified types and universals use the active default when
 present; unqualified attributes always have no namespace. `CssIdent` and
 `CssAttributeName` share the component identifier owner, preserving escaped
 spaces, punctuation, digits and case without treating decoded strings as raw CSS.
 
-The name models provide `serialize_with_limit(max_css_bytes)`, using the shared
+The name models provide `serialize_tokens(limits)`, using the shared
 component token writer to preserve authored prefixes and decoded identifiers.
-The bound includes escaping and necessary token separators; failure returns no
+The byte limit includes escaping and necessary token separators; failure returns no
 partial output. These generated name tokens have programmatic origins. Parsed
 enclosing rule positions remain separate. Complete CSSOM selector, style and
 media rule serialization is tracked by
 [#834](https://github.com/bj-data-eng/surgeist/issues/834).
 
-`CssNamespaceRule::to_specified_css()` and `to_specified_css_with_limits()` use
+`CssNamespaceRule::serialize_specified(limits)` uses
 [CSSOM's namespace rule format](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serialize-a-css-rule):
 `@namespace [prefix ]url("literal");`. The shared specified rule writer owns
 identifier/string escaping and cumulative input-node, projection-node and
@@ -8014,8 +8060,8 @@ components; checked property construction rejects it, while browser recovery
 can retain the cue and its shared EOF diagnostics.
 
 [Speech 1 §10.3](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#cue-props-cue)
-defines the ordered one/two-value `cue` shorthand. `CssCuePair` retains `before`
-and optional `authored_after`; `after` borrows the first cue when omitted.
+defines the ordered one/two-value `cue` shorthand. `CssSidePair<CssCue>` retains `first`
+and optional `authored_second`; `second` borrows the first cue when omitted.
 Its checked constructor rejects retained modifier-argument closure in either
 child. Intrinsic expansion supplies `cue-before` and `cue-after` in that order
 and retains source occurrence, importance and replacement component origins.
@@ -8046,7 +8092,7 @@ resolution and audio rendering remain downstream. Behavioral evidence is in
 ## Authored Speech prosody
 
 The pinned [Speech 1 §12.1](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#mixing-props-voice-duration)
-`voice-duration` model distinguishes `auto` from `CssDuration`. Ordinary time
+`voice-duration` model distinguishes `auto` from `CssNumeric<CssTime, CssNonNegative>`. Ordinary time
 must be nonnegative; typed time calculations retain their authored range.
 Duration does not inherit and has the intrinsic initial `auto`. A fixed
 subtree duration can coexist with authored descendant duration/rate declarations;
@@ -8054,7 +8100,7 @@ applying precedence to a live speech subtree belongs downstream.
 
 [Speech 1 §§11.3–11.4](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#voice-props-voice-pitch)
 `voice-pitch` and `voice-range` share `CssVoicePitchRange`. Its checked absolute
-branch requires a strictly positive ordinary `CssFrequencyValue`; an actual
+branch requires a strictly positive ordinary `CssNumeric<CssFrequency>`; an actual
 Frequency-root calculation retains its range for later processing. Its relative
 branch is a nonempty composition of an optional `CssVoiceLevel` and one optional
 `CssVoiceOffset`. Frequency and percentage offsets are signed. `CssSemitoneLiteral`
@@ -8072,7 +8118,7 @@ synthesizer limits remain downstream.
 
 Relative frequency and percentage occupy the same grammar position and represent
 an inherited frequency quantity. [Values 4 §5.6](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#mixed-percentages)
-permits their combination in math. `CssFrequencyPercentageCalculation` reuses the
+permits their combination in math. `CssCalculation<CssFrequencyPercentage>` reuses the
 shared hint/type algebra and projection, retaining the unresolved frequency basis
 and reporting `CssCalculationType::FrequencyPercentage` when hinted. Absolute
 frequency remains a pure Frequency root. The selected
@@ -8081,7 +8127,7 @@ provides no semitone dimension, so `calc(1st)` is rejected.
 
 [Speech 1 §11.2](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#voice-props-voice-rate)
 `CssVoiceRate` retains an optional symbolic rate keyword and an optional
-`CssSpecifiedNonNegativePercentage` in a nonempty checked composition. Ordinary
+`CssNumeric<CssPercentage, CssNonNegative>` in a nonempty checked composition. Ordinary
 percentages must be nonnegative, including exact tiny coefficients; values above
 100% are valid. Typed percentage math retains its specified phase. Rate inherits
 and has the intrinsic initial `normal`. Omitted keyword is not replaced with
@@ -8100,7 +8146,7 @@ All serializers share cumulative input, projection and byte limits with existing
 time/frequency/percentage owners. Ordinary frequency output retains its selected
 unit and rounds to at most six fractional places under the shared precision policy.
 Consequently, a positive `1e-999Hz absolute` model retains its exact admitted input
-but returns `CssSpecifiedValueSerializationErrorKind::UnrepresentableValue` rather
+but returns a `CssSerializationError` with `is_unrepresentable_value()` rather
 than emitting invalid ordinary `0hz absolute`. This is Surgeist's fail-closed
 emission policy. The pinned sources leave the reconciliation between
 [Values 4 supported precision](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types)
@@ -8115,10 +8161,10 @@ rounds to zero, while that exact halfway value rounds to `0.000001`, in either H
 or kHz. No epsilon frequency, invented calculation or computed voice clamping is
 introduced.
 
-Generic rule errors distinguish `Value(UnrepresentableValue)` and
-`Value(UnserializableBoundary)` from the four actual node/byte/capacity `Resource`
-errors. The original value error remains available as the error source, alongside
-any enclosing stylesheet rule index.
+`CssSerializationError` distinguishes `is_unrepresentable_value()` and
+`is_unserializable_boundary()` from the actual node, byte and capacity limit errors
+(`is_resource_limit()`). The original value error remains available as the error
+source, alongside any enclosing stylesheet `rule_index()`.
 
 Checked constructors reject original recovered numeric closures. Browser recovery
 can retain such calculations with diagnostics. The shared property lifecycle owns
@@ -8133,7 +8179,7 @@ Behavioral evidence is in
 The selected [Speech 1 §6.2](https://www.w3.org/TR/2023/CRD-css-speech-1-20230214/#mixing-props-voice-balance)
 defines `voice-balance` as a number or `left`, `center`, `right`, `leftwards` or
 `rightwards`. `CssVoiceBalance` retains one keyword or the existing pure
-`CssSpecifiedNumber` domain. Its `from_keyword`, `try_number`, `keyword` and
+`CssNumeric<CssNumber>` domain. Its `from_keyword`, `try_number`, `keyword` and
 `number` methods preserve those branches separately. Ordinary coefficients have
 no specified magnitude bound; typed Number calculations remain authored.
 Percentages, percentage-hinted calculations and other numeric roots are not
@@ -8182,16 +8228,16 @@ and [`speech_balance_volume_models.rs`](../tests/css/properties/speech/speech_ba
 
 ## CSSOM media-query text
 
-[`parse_cssom_media_query`](../src/parser/fragments.rs) delegates to the existing
+[`CssMediaQuery::parse_medium`](../src/query/media/construction.rs) delegates to the existing
 Media Queries 5 list parser. Exactly one member produces `Some`, including a
 diagnosed ignored grammar member; empty and multiple-member lists produce `None`.
 The original diagnostics, recovery actions and spans remain available on the
-report. This nullable boundary is separate from `parse_media_query`, whose
+report. This nullable boundary is separate from `CssMediaQuery::parse`, whose
 authored fragment contract always retains a query or recovery sentinel.
 
 `CssMediaQuery::serialize_cssom` and `CssMediaQueryList::serialize_cssom` use the
 same owning emitter as authored serialization. They project malformed ignored
-members to `not all` in their original list positions. The authored `serialize`
+members to `not all` in their original list positions. The authored `serialize_tokens(limits)`
 methods still reject recovered `Never` members. Neither operation mutates a
 query, removes diagnostics, evaluates media conditions or resolves custom media.
 
@@ -8207,8 +8253,8 @@ negated. No step emits `only`, so CSSOM output drops it: `only screen` becomes
 `PRINT, ALL and (COLOR), ONLY SCREEN` becomes `print, (color), screen`, while
 `not all and (color)` keeps its type. Media Queries 4 defines `only` solely to
 hide queries from legacy user agents, so dropping it changes no evaluation
-result. Authored `serialize` keeps the authored `only` prefix, and so does the
-specified rule-graph projection (`to_specified_css` for `@media`, `@import` and
+result. Authored `serialize_tokens(limits)` keeps the authored `only` prefix, and so does the
+specified rule-graph projection (`serialize_specified(limits)` for `@media`, `@import` and
 `@custom-media`, top level and scoped), which otherwise shares the CSSOM `not all`
 recovery projection; both kinds of output omit
 an unprefixed `all and`, and lone `all` and `not all` retain their type. Lists
@@ -8230,8 +8276,8 @@ from malformed grammar recovery; its truth belongs to the downstream evaluator.
 preserving syntactic ordering rather than claiming semantic query equivalence.
 Derived authored model equality continues to include content and provenance.
 
-The `*_with_limits` operations consume the shared specified-value resource
-policy. Each query, condition and backing component charges one input and one
+The `serialize_cssom(limits)` and `cssom_equals(other, limits)` operations consume
+the shared specified-value resource policy. Each query, condition and backing component charges one input and one
 projection node; a list charges its aggregate too. A recovered query adds two
 projected keyword nodes. Omitted default-type and CSSOM-dropped `only` components still consume their
 visited nodes. Comparison shares one budget across both operands, including
@@ -8240,7 +8286,7 @@ explicit programmatic origin, and no partial output is returned. The crate-owned
 capture boundary accepts the same cumulative context used by enclosing rule
 writers; final emitted bytes are charged once by that writer.
 
-`CssMediaQueryList::serialize_cssom_members_with_limits` returns a distinct
+`CssMediaQueryList::serialize_cssom_members(limits)` returns a distinct
 owned capture for each member, preserving order, duplicates and origins.
 It uses the same query writer with one collection-wide input, projection and
 output allowance. Output bytes include every member's text without list
@@ -8296,9 +8342,9 @@ parsed descriptor and child origins remain unchanged. `CssSheet::try_from_rules`
 checks ordered existing rules and derives namespace bindings from valid leading
 declarations. `try_new` on ordinary and scoped media/supports/container/layer
 blocks and scope rules uses the existing namespace context and typed preludes.
-Scoped constructors accept ordered `Vec<CssScopedRule>` children and validate
-that actual body role directly; a direct scope constructor additionally rejects
-page definitions. The rule-list wrapper remains internally assembled, without
+The scope constructor accepts ordered `Vec<CssRule>` children and validates
+that actual body role directly, additionally rejecting page, import and namespace
+definitions and declaration runs without a style ancestor. The rule-list wrapper remains internally assembled, without
 public collection mutation or a rule-list builder.
 
 One iterative validator checks import/namespace phases, duplicate decoded
@@ -8318,7 +8364,7 @@ new wrappers and existing descendants but not the stylesheet. Selector functiona
 depth is checked separately against the existing structural ceiling. Validation
 uses checked iterative stacks before constructing a new enclosing tree.
 
-`CssRule::to_specified_css` and the stylesheet front door dispatch both Fonts
+`CssRule::serialize_specified(limits)` and the stylesheet front door dispatch both Fonts
 rule kinds through one cumulative writer. Font-face output emits only present
 effective descriptors and permits an empty body. Fonts 4 §4.1 selects the last
 occurrence, and §13.2 shortens semantically equal range endpoints. Equality uses
@@ -8359,7 +8405,7 @@ the selected Fonts 4 §13.2 example. Authored occurrences and provenance remain
 unchanged; reparsing compares effective semantics rather than duplicate identity.
 Live CSSOM maps, font activation, matching, and cross-rule cascade stay downstream.
 
-`CssFontFaceDescriptorValue::serialize_specified` and `_with_limits` expose the
+`CssFontFaceDescriptorValue::serialize_specified(limits)` exposes the
 same descriptor dispatch for all fourteen concrete kinds, including display and
 unicode ranges, without a synthetic rule. Existing authored pending values use
 the shared pending-component owner in full rules. URL/source values stay in the
@@ -8390,7 +8436,7 @@ the existing overflow-controls owner. It applies to all elements and has discret
 animation semantics. Anchor selection and scroll adjustment remain downstream.
 [Fragmentation 3 §5.4](https://www.w3.org/TR/2018/CR-css-break-3-20181204/#break-decoration)
 supplies `box-decoration-break: slice | clone`; its existing
-`CssBoxDecorationBreak` now has bounded canonical specified output in the
+`CssBoxDecorationBreak` has bounded canonical specified output in the
 fragmentation-controls owner. Each keyword charges one input node, one projection
 node, and its canonical bytes; geometry and painting remain downstream.
 
@@ -8406,7 +8452,7 @@ The catalog adds two feature records and two pinned specification sources;
 
 ## Authored selector emission and cumulative value composition
 
-`CssSelector::to_specified_css()` and `to_specified_css_with_limits()` emit
+`CssSelector::serialize_specified(limits)` emits
 checked selector grammar without resolving its symbolic ancestry. The provider
 retains authored qualified prefixes, universal selectors, ID/class identity,
 logical-list order, relative combinators in `:has()`, and ordered pseudo-element
@@ -8415,7 +8461,7 @@ order, so `.class&` emits `.class&`; compound equality includes that order,
 so `.a#b` and `#b.a` are distinct values with the same specificity. Nesting
 and scope anchors remain `&`; explicit `:scope` remains a pseudo-class. Identifier and string escaping use the same bounded CSS escaping
 owner as the existing namespace writer. An unchecked empty or NUL-containing
-scalar name returns `UnrepresentableValue` rather than changing its identity.
+scalar name fails with `is_unrepresentable_value()` rather than changing its identity.
 
 The selected [CSSOM selector algorithms](https://www.w3.org/TR/2021/WD-cssom-1-20210826/#serializing-selectors)
 supply identifier/string escaping, attribute-value strings, quoted `:lang()`
@@ -8560,8 +8606,7 @@ strict replacement. Original grammar, importance, order, source occurrence and
 replacement origins remain observable, including reusable failure. Browser
 recovery retains its diagnostics independently of strict checked admission.
 
-All seven models expose `serialize_specified` and
-`serialize_specified_with_limits`. Canonical output emits authored mode/style,
+All seven models expose `serialize_specified(limits)`. Canonical output emits authored mode/style,
 collapse/mode/trim and trim flags before/after/inner. Special forms retain their
 spelling. White-space's component order is an explicit Surgeist choice: the
 selected source lists canonical order as n/a. Each emitted keyword charges one
@@ -8619,8 +8664,8 @@ output places the base before `auto-phrase`, as specified per grammar.
 An absent flag stays absent. Phrase detection and replacement of separators
 with U+0020 or U+3000 belong to later text processing.
 
-`CssTabSize` retains `Number(CssSpecifiedNonNegativeNumber)` or
-`Length(CssSpecifiedNonNegativeLength)`. The selected
+`CssTabSize` retains `Number(CssNumeric<CssNumber, CssNonNegative>)` or
+`Length(CssNumeric<CssLength, CssNonNegative>)`. The selected
 [tab-size grammar](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#propdef-tab-size)
 accepts nonnegative literals in those two domains, preserving exact coefficients,
 units and origins. Bare `0` selects Number; explicit `0px` selects Length.
@@ -8658,11 +8703,10 @@ implicit comment or function closures before ordinary/global/pending admission.
 Reentry uses the same check and remains reusable after failure. Contributions
 retain the original declaration's importance and occurrence alongside the
 replacement components' own origins. Normalization preserves duplicate order,
-contexts and recovery diagnostics; clean validators still reject recovered
-reports. Cascade, substitution and inheritance execution remain downstream.
+contexts and recovery diagnostics; `CssParseReport::into_validation_result()` still
+rejects recovered reports. Cascade, substitution and inheritance execution remain downstream.
 
-These values expose `serialize_specified` and
-`serialize_specified_with_limits` and participate in generic declaration/rule
+These values expose `serialize_specified(limits)` and participate in generic declaration/rule
 output. Each emitted transform or word-space keyword costs one input and
 projection node; their carriers add no work. Singletons cost 1/1, word-space
 pairs and transform pairs 2/2, and transform triples 3/3. Each finite wrap/line
@@ -8718,8 +8762,9 @@ space-all, normal, space-first, trim-start, trim-both, trim-all and auto.
 
 The checked public constructors preserve those distinctions:
 `CssHyphenateString::try_from_component` retains an original string token;
-`CssHyphenateLimitInteger::try_new` admits the selected range through the
-existing integer owner; and `CssHyphenateLimitChars::try_new(total, before,
+`CssHyphenateLimitCharsComponent::Integer` and `CssHyphenateLimitLines::Integer`
+hold a `CssNumeric<CssInteger, CssNonNegative>`, which admits the selected range
+through the existing integer owner; and `CssHyphenateLimitChars::try_new(total, before,
 after)` rejects an after slot without a before slot. `authored_len()` reports
 specified arity, while `effective_components()` supplies only symbolic defaults.
 `CssTextJustify::try_new(base, no_compress)` rejects the all-absent aggregate.
@@ -8784,8 +8829,7 @@ are in [hyphenation](../tests/css/properties/text/hyphenation_authored_contract.
 
 `CssWordBreak`, `CssTextDecorationStyle`, `CssImageRendering`, `CssObjectFit`,
 `CssPointerEvents`, `CssUserSelect`, `CssResize`, `CssTransformBox`,
-`CssIsolation` and `CssBlendMode` expose `serialize_specified` and
-`serialize_specified_with_limits`. Each currently represented alternative emits
+`CssIsolation` and `CssBlendMode` expose `serialize_specified(limits)`. Each currently represented alternative emits
 its canonical CSS keyword and costs one input and projection node, plus final
 UTF-8 bytes. The same algorithm accepts a partially consumed rule writer;
 suppression preserves semantic costs without spending output bytes.
@@ -8799,29 +8843,29 @@ selected [Text 4](https://www.w3.org/TR/2026/WD-css-text-4-20260814/),
 [Transforms 1](https://www.w3.org/TR/2019/CR-css-transforms-1-20190214/) and
 [Compositing 1](https://www.w3.org/TR/2024/CRD-compositing-1-20240321/) references.
 
-Shared `UnrepresentableValue` errors describe a value outside the owning
-serializer's capability, including invalid retained identity or a precision
+Shared errors whose `is_unrepresentable_value()` is true describe a value outside the
+owning serializer's capability, including invalid retained identity or a precision
 limit. Their message does not attribute every failure to numeric precision.
-Resource exhaustion keeps its distinct error kind and message.
+Resource exhaustion keeps its distinct error kind (`is_resource_limit()`) and message.
 
 
 ## Signed text values and represented aggregate output
 
 `CssTextIndent`, `CssVerticalAlign`, `CssTextDecorationLine`,
-`CssTextDecorationThickness` and `CssTextDecoration` expose `serialize_specified`
-and `serialize_specified_with_limits`. They emit retained authored values before
+`CssTextDecorationThickness` and `CssTextDecoration` expose `serialize_specified(limits)`.
+They emit retained authored values before
 indentation geometry, line alignment or decoration painting. Numeric and color
 children use their owning providers under one cumulative writer; serialization
 does not change exact coefficients, units, source origins or authored fields.
 
 `CssTextDecorationThickness::Length` holds the signed
-`CssSpecifiedLengthPercentage` owner. Negative lengths and percentages are valid
+`CssNumeric<CssLengthPercentage>` owner. Negative lengths and percentages are valid
 authored thicknesses. Selected [Decoration 4 §2.4](https://www.w3.org/TR/2022/WD-css-text-decor-4-20220504/#text-decoration-thickness-property)
 floors the actual value at one device pixel downstream; the authored parser and
 serializer perform no such flooring. Percentages refer to `1em`, and mixed
 length/percentage calculations stay symbolic under the existing numeric hint
 policy. The [frozen WebKit valid-value cases](https://github.com/WebKit/WebKit/blob/73aa6c89e2cb77c46184a81aec944e4ab99d114d/LayoutTests/imported/w3c/web-platform-tests/css/css-text-decor/text-decoration-thickness-valid.html)
-also admit negative values. The former nonnegative payload is replaced directly.
+also admit negative values.
 
 The [Text 4 indent grammar](https://www.w3.org/TR/2026/WD-css-text-4-20260814/#text-indent-property)
 admits exactly one signed length-percentage and distinct optional `hanging` and
@@ -8844,7 +8888,7 @@ downstream. This authored property uses CSS2 rather than the Inline 3 shorthand.
 Decoration line output uses `underline overline line-through blink` grammar
 order while preserving the original component order in the value. `none`,
 `spelling-error` and `grammar-error` are exclusive alternatives; error lines are
-represented by `CssTextDecorationError`, never combinable flags. The [Decoration 4 shorthand grammar](https://www.w3.org/TR/2022/WD-css-text-decor-4-20220504/#text-decoration-property)
+represented by `CssTextDecorationErrorLine`, never combinable flags. The [Decoration 4 shorthand grammar](https://www.w3.org/TR/2022/WD-css-text-decor-4-20220504/#text-decoration-property)
 orders present fields as line, thickness, style and color. Optional fields remain
 omitted; explicit initial keywords remain explicit. Thus an authored
 `currentcolor wavy -1px overline underline` emits
@@ -8993,7 +9037,7 @@ projection and UTF-8 byte limits across child providers and enclosing graphs;
 failure returns no partial output and leaves authored values and origins intact.
 
 `CssCaretColor`, `CssContain` and `CssBlendModeList` also expose
-`serialize_specified` and `serialize_specified_with_limits`. Caret output emits
+`serialize_specified(limits)`. Caret output emits
 `auto` or delegates to Color without resolving its rendering context or adding a
 carrier node. Authored containment emits `none`, `strict`, `content`, or the
 stored component subset in `size layout style paint` grammar order, leaving the stored
@@ -9052,8 +9096,8 @@ escapes and original token provenance. `CssNavigationTargetName` admits the empt
 string and rejects underscore-leading strings. Browser parsing retains those
 nonconforming strings as `CssNavigationTarget::LegacyName`, emits typed
 `CssErrorCode::LegacyNavigationTarget` with `RetainLegacyNavigationTarget`, and
-keeps both the original string and its decoded case. Clean validators and checked
-property/reentry fronts reject them. Normalization retains that symbolic
+keeps both the original string and its decoded case. Clean validation
+(`into_validation_result()`) and checked property/reentry fronts reject them. Normalization retains that symbolic
 recovered occurrence and its diagnostics; CSS performs no frame navigation.
 The same retention/report contract applies in ordinary and keyframe declarations
 and raw-value fragments. Navigation computes as specified and animates discretely
@@ -9091,8 +9135,8 @@ one input/projection node plus the retained child costs.
 
 `CssInteractivity` admits Auto/Inert, inherits with initial Auto, computes as
 specified and has discrete later animation. `CssInterestDelayValue` is Normal or
-the shared signed `CssTimeValue`; Normal stays symbolic and no Duration range is
-imported. `CssInterestDelay` retains a required first and optional second value.
+the shared signed `CssNumeric<CssTime>`; Normal stays symbolic and no Duration range is
+imported. `CssSidePair<CssInterestDelayValue>` retains a required first and optional second value.
 It sets exactly start/end, repeating the first for omitted end, with no reset-only
 member. Both longhands inherit and initially use Normal; later animation follows
 the computed value type. A repeated retained second value can be omitted from
@@ -9133,8 +9177,8 @@ the Images3 baseline with the selected Images4 authored additions.
 `CssStripes` owns a nonempty ordered stripe list; `CssStripe` requires one complete
 color component and optional `CssStripeThickness`. Length-percentage literals
 require nonnegative lengths and percentages in 0..100; calculations retain the
-shared deferred range phase. Flex uses shared unrestricted `CssSpecifiedFlex`,
-while Grid retains its separate `CssSpecifiedNonNegativeFlex` constraint.
+shared deferred range phase. Flex uses shared unrestricted `CssNumeric<CssFlex>`,
+while Grid retains its separate `CssNumeric<CssFlex, CssNonNegative>` constraint.
 Admission of signed bare fr and Flex-root math is the explicit composed-source
 inference from Images4's unannotated flex import, Values4 math roots and Grid2's
 bare flex definition; Grid's nonnegative track-breadth annotation is not imported.
@@ -9145,8 +9189,8 @@ grammar. `CssStripe::try_new` checks the original color component and thickness;
 `CssStripes::try_new` checks nonemptiness, all retained children and aggregate
 depth. Parsed stripes retain the original function (including any recovered
 closure), color components and exact origins. Checked construction cannot
-certify recovered components as clean. `CssImage1DConstructionError` keeps
-component, numeric, grammar, recovered-origin and list/depth failures distinct.
+certify recovered components as clean. `CssImageConstructionError` keeps
+component, grammar, recovered-origin and list/depth failures distinct.
 
 Canonical output uses color/thickness order and comma spacing. Omitted thickness
 means 1fr; an explicit exact ordinary 1fr is omitted only in output and still
@@ -9175,7 +9219,7 @@ not compute them or animate them.
 | --- | --- | --- | --- |
 | `offset-position` | `CssOffsetPosition`: normal, auto or `CssPosition` | normal | Keyword or position; containing-block dimensions |
 | `offset-path` | `CssOffsetPath`: none, box-only or one path and optional box | none | As specified; omitted box and implicit box path require context |
-| `offset-distance` | Signed `CssSpecifiedLengthPercentage` | programmatic number zero | Length-percentage; offset-path length, no effect without a path |
+| `offset-distance` | Signed `CssNumeric<CssLengthPercentage>` | programmatic number zero | Length-percentage; offset-path length, no effect without a path |
 | `offset-rotate` | Checked nonempty `CssOffsetRotate` modifier/angle | auto, absent angle | Angle optionally preceded by auto; tangent and reverse's 180 degrees require context |
 | `offset-anchor` | `CssOffsetAnchor`: auto or `CssPosition` | auto | Auto or position; element reference-box dimensions, auto uses transform-origin |
 
@@ -9197,7 +9241,7 @@ records a URL/box parser limitation and restricts path fill-rule. These browser
 divergences do not enlarge or narrow the selected authored grammar. An omitted
 box remains absent; an explicit border-box remains explicit in output.
 
-`CssRay::new()` requires one already checked `CssAngleValue` and retains optional
+`CssRay::new()` requires one already checked `CssNumeric<CssAngle>` and retains optional
 size, contain and optional `CssPosition`. The five sizes are closest-side,
 closest-corner, farthest-side, farthest-corner and sides. Its bearing is zero up
 and positive clockwise, without modulo or geometric evaluation. Ordinary angle
@@ -9242,8 +9286,7 @@ values, pending substitution, residual-first strict reusable reentry, original
 closure checks, occurrence/source/importance retention, all-reset inclusion and
 normalization use the common property engine.
 
-Every new aggregate exposes `serialize_specified()` and
-`serialize_specified_with_limits()`. One path/box pair, ray, rotate and offset
+Every new aggregate exposes `serialize_specified(limits)`. One path/box pair, ray, rotate and offset
 each cost one input and projection node. Provided size, contain, coordinate box
 and rotate modifier each cost one; angle, length-percentage, full positions,
 URL and BasicShape retain their existing provider tariffs. None, box-only and
@@ -9275,8 +9318,8 @@ one `match-source`, `border-box`, `border-box` and `add`. The existing noninheri
 position, size and repeat lists initially contain `0% 0%`, `auto` and `repeat`.
 The initial image list contains `none`.
 
-`CssMaskBox` narrows the shared geometry keyword to content, padding, border,
-fill, stroke and view boxes. `margin-box` is rejected by mask-origin and mask-clip;
+`CssCoordBox`, the Box 4 `<coord-box>` shared with Motion, narrows the geometry keyword to
+content, padding, border, fill, stroke and view boxes. `margin-box` is rejected by mask-origin and mask-clip;
 clip-path keeps its independent seven-box domain. The pin's generic geometry-box
 cross-reference imports shape-box, which includes margin-box, while its
 property-specific six value definitions and change list remove margin-box from
@@ -9369,7 +9412,7 @@ resolution calculations retain the shared numeric owner's range policy.
 Cursor output preserves image and option order, emits Resolution before `type()`,
 and canonicalizes the standard `-webkit-image-set()` alias to `image-set()`.
 It neither loads resources nor clamps hotspots. Explicit zero hotspots remain
-distinct from omission. The previous URL-list carrier is replaced directly.
+distinct from omission.
 Keywords cost one input and projection node. Image lists, entries, sets and
 options each cost one aggregate node; source, descriptor and hotspot-pair
 carriers add no charge. URL and numeric children retain their costs; a string
@@ -9450,9 +9493,9 @@ post-substitution computed-value contract, grammar order, discrete animation and
 all media. `initial_value()` returns a `CssGuaranteedInvalidInitial` marker;
 valid empty authored tokens remain distinct from an authored `initial` keyword.
 The metadata does not perform substitution or contextual resolution, and custom
-names remain outside the built-in `property_support_metadata` inventory.
+names remain outside the built-in `conformance::property_support_metadata` inventory.
 
-`CssDeclaration::to_specified_css` and `to_specified_css_with_limits` serialize
+`CssDeclaration::serialize_specified(limits)` serializes
 one retained occurrence as `name: value[ !important];`. Ordinary values dispatch
 directly from the property schema into their owning semantic providers, under
 one cumulative writer. Known names and global keywords are canonicalized;
@@ -9485,12 +9528,12 @@ and the existing detached nested-declaration rule contract.
 
 ## Counter-style specified output and descriptor getters
 
-`CssCounterStyleRule::to_specified_css` and `to_specified_css_with_limits` emit
+`CssCounterStyleRule::serialize_specified(limits)` emits
 the checked name and present effective descriptors. Custom names retain case;
 predefined names use the name owner's canonical identity.
-`name_specified_css` and its limits variant apply CSS identifier serialization.
-`descriptor_specified_css` and its limits variant take a
-`CssCounterStyleDescriptorKind` and return that field's specified value, or an
+`name_specified_css(limits)` applies CSS identifier serialization.
+`descriptor_specified_css(kind, limits)` takes a
+`CssCounterStyleDescriptorKind` and returns that field's specified value, or an
 empty string when it is omitted. They never materialize implicit initial values.
 
 The pinned [Counter Styles 3 rule](https://www.w3.org/TR/2021/CR-css-counter-styles-3-20210727/#the-counter-style-rule)
@@ -9516,8 +9559,8 @@ and its private shared-writer checks.
 
 ## Authored rule and stylesheet specified output
 
-`CssRule::to_specified_css` and `CssSheet::to_specified_css`, with their
-`_with_limits` forms, serialize the complete represented authored graph. The
+`CssRule::serialize_specified(limits)` and `CssSheet::serialize_specified(limits)`
+serialize the complete represented authored graph. The
 writer traverses ordinary and scoped rules in order and reuses owning providers
 for selectors, declarations, descriptors, names, values and query preludes.
 It emits compact blocks with single spaces between contents and newlines between
@@ -9537,8 +9580,8 @@ the retained rules while the original report keeps that recovery provenance.
 Media lists use the existing bounded CSSOM projection provider. Invalid
 recovered members become `not all` in place, preserving valid sibling order and
 the original reports and origins. The generic Import and CustomMedia bridges
-use this projection; their direct authored `serialize` methods keep their
-existing rejection of recovered members. Import optional-clause interpretation
+use this projection; their direct authored `serialize_tokens(limits)` methods keep their
+rejection of recovered members. Import optional-clause interpretation
 uses the same owning protection grammar. Supports, Container and When/Else conditions use their
 lexical owners, preserving authored operator spelling, grouping, case and
 internal trivia while omitting root-edge whitespace. The
@@ -9583,7 +9626,7 @@ Selector output applies intrinsic grammar restrictions as part of its iterative
 traversal. Public logical lists cannot emit pseudo-element members; `:not()` and
 an nth `of` list must be nonempty, and a `:has()` argument cannot contain another
 `:has()` through logical, nth or shadow arguments. Invalid constructed graphs
-return `CssSpecifiedValueSerializationErrorKind::UnrepresentableValue` atomically.
+return a `CssSerializationError` with `is_unrepresentable_value()` atomically.
 Logical arguments inherit compound and pseudo-element suffix restrictions.
 Selected shadow functions keep compound outer arguments and independent relative
 `:has()` arguments. Grammar checks share the syntax owner used by checked
@@ -9598,8 +9641,8 @@ and [`selector_column_lifecycle.rs`](../tests/css/selectors/selector_column_life
 
 ## Authored literal CSSOM rule and sheet output
 
-`CssRule::serialize_cssom` and `CssSheet::serialize_cssom`, with their bounded
-forms, compose selected literal rule formats over the retained authored model.
+`CssRule::serialize_cssom(limits)` and `CssSheet::serialize_cssom(limits)`
+compose selected literal rule formats over the retained authored model.
 Style rules normalize each declaration run through the shared specified-block
 core. Leading declarations and later runs retain their positions around nested
 rules; coalescing stays within one run. Original parsed syntax, diagnostics and
@@ -9657,13 +9700,14 @@ therefore provides the selected safe canonicalization, rather than a general
 shortest-selector search. Standalone selector and compact rule output preserve
 the authored explicit universals.
 
-The bounded standalone `serialize_cssom[_with_limits]` methods on
-`CssSelectorList`, `CssRelativeSelectorList`, `CssStyleSelectorList` and
-`CssScopedStyleSelectorList` share this same selector visitor. Supply the actual
+The bounded standalone `serialize_cssom` methods, which take the namespace bindings
+and `limits`, on `CssSelectorList`, `CssRelativeSelectorList` and
+`CssStyleSelectorList` share this same selector visitor. Supply the actual
 `CssNamespaceContext`; style lists also require `CssStyleSelectorContext`.
 `CssParsedStyleSelectors` delegates using its retained admission context and
-preserves its original occurrence. Incompatible ordinary/scoped anchor domains
-and ordinary roles receiving leading relatives return `UnrepresentableValue`.
+preserves its original occurrence. A typed anchor outside the role's anchor domain
+(nesting anchors in a scoped role, scope anchors in an ordinary or nested one)
+and ordinary roles receiving leading relatives fail with `is_unrepresentable_value()`.
 General relatives keep their leading relationships; literal nested members emit
 their implied `&`, including implicit descendants. Explicit/repeated anchors
 and exact retained invalid forgiving members keep their owning representation.
@@ -9686,7 +9730,7 @@ is distinct. Named aliases compare their namespace names, not their prefix
 spelling. Unprefixed attributes never inherit the default. Any stays raw `*|`;
 the protected universal-node omission policy above still applies. All logical
 arguments share the same namespace input while retaining protected universals.
-Missing required named/default bindings return `NamespaceBindingUnavailable`,
+Missing required named/default bindings fail with `is_namespace_binding_unavailable()`,
 distinct from resource exhaustion or invalid domain/context. An incompatible
 supplied binding environment cannot silently change an unqualified Any constraint
 into Default. Bindings supplied to these methods must be the associated
@@ -9695,23 +9739,23 @@ Contextless detached whole-rule output conservatively preserves unresolved
 symbolic namespace spelling; compact output always preserves it. URI resolution,
 loading, imports and live CSSOM state remain outside this operation.
 
-`CssScopeSelectorList` takes `CssScopeSelectorCssomContext::Start` or `End` and
+`CssScopeSelectorList::serialize_cssom` takes `CssScopeSelectorCssomContext::Start` or `End` and
 formats a bound without parentheses or a whole-rule wrapper. `CssScopeRule`'s
-`serialize_cssom_start[_with_limits]` and `serialize_cssom_end[_with_limits]`
-return `Option<String>`: an omitted bound stays `None`, including at zero limits.
+`serialize_cssom_start(namespaces, nesting, limits)` and
+`serialize_cssom_end(namespaces, limits)` return `Option<String>`: an omitted bound stays `None`, including at zero limits.
 The start role includes the actual enclosing `CssScopeNestingContext`;
 end relatives bind to the introduced scope. Whole Scope formatting can still
-report its existing `FormatUnavailable(Scope)` independently of these bound
+report its existing `unavailable_format()` of `CssRuleCssomFormat::Scope` independently of these bound
 operations. All present lists/bounds use one cumulative input/projection/byte
 context and return no partial text on failure. See the independent
 [context-formatting tests](../tests/css/cssom/cssom_selector_context_formatting.rs).
 
 The pinned CSSOM source has no normative Page wrapper; the selected Page/margin
 consumer uses the bounded adopted Blink format described above. The adopted
-When/Else profile has no selected literal algorithm and reports `SourceUndefined`
+When/Else profile has no selected literal algorithm and reports `undefined_source()`
 at its actual rule path. A scoped When/Else inside the
-current Scope front encounters `FormatUnavailable(Scope)` before descendants. Other represented modern wrappers
-without a selected literal byte format report `FormatUnavailable`; their defined
+current Scope front encounters `unavailable_format()` of `CssRuleCssomFormat::Scope` before descendants. Other represented modern wrappers
+without a selected literal byte format report `unavailable_format()`; their defined
 name/value providers and compact authored output remain usable. These limits
 preserve the source boundary explicitly. The eight unresolved mode-dependent
 pending shorthand families retain the shared block's
@@ -9732,7 +9776,7 @@ selector scope, typed capabilities, original error causes and cumulative limits.
 The adopted conditional profile is also covered by
 [`when_else_public_contract.rs`](../tests/css/rules/conditional/when_else_public_contract.rs).
 
-The compact `to_specified_css` operations preserve authored duplicates and their
+The compact `serialize_specified(limits)` operations preserve authored duplicates and their
 existing rule/provider behavior. The literal operation's selected formats and
 explicit limits are separate contracts.
 
@@ -9748,22 +9792,24 @@ inside the defined FontFace wrapper, including empty membership and retained
 pending values. The original parsed FontFace whole-rule fixed-kind order stays
 independent.
 
-`serialize_cssom[_with_limits]` takes actual namespace bindings and enclosing
-`CssStyleAncestor`. One native graph visitor admits the assembled domains and
+`CssRuleGraphInput::serialize_cssom(namespaces, ancestor, limits)` takes actual
+namespace bindings, the enclosing `CssStyleAncestor` and
+`CssRuleSerializationLimits`. One native graph visitor admits the assembled domains and
 spends cumulative input, projection and output allowances for the complete
 request. A mismatched Style or NestedDeclarations block fails at its actual child
 path. No intermediate descendant strings or independently reset writers are
 created. Assembly does not establish placement validity or change origins;
 the consumer owns its live relationships and stable child buffers. Existing
-`CssEditedRuleView` checked constructors retain their eager validation contracts.
+`serialize_specified` writes the compact specified form of the same graph under the same
+limits and depth bound.
 
-`from_rule` and `from_scoped_rule` borrow original parsed payloads. A consumer
+`from_rule` borrows an original parsed payload, including one in a scope body. A consumer
 must use current typed inputs for edited fields. Unsupported whole wrappers keep
 their lazy typed capability failures before descendant output; the graph route
 does not invent Scope, When/Else or CounterStyle literal algorithms. Independently
 defined partial reads remain usable.
 
-`CssLayerName::serialize_specified[_with_limits]` exposes the existing native
+`CssLayerName::serialize_specified(limits)` exposes the existing native
 name writer for a checked named layer. The name aggregate and every component
 share the same work meter; each identifier is escaped and dots are punctuation.
 Empty or reserved names remain excluded by the checked type. Import absence and
@@ -9808,11 +9854,14 @@ flattening and rendering/backface decisions belong to downstream owners.
 ## Explicit document parser context
 
 `CssParserContext::new(CssParserMode::Quirks)` selects the authored document
-grammar. The default and existing free parsing functions use Standards. Context
-methods cover sheets, style attributes, single declarations, rules, style blocks,
-checked property-name/grammar components and their raw-text fronts. Namespace
+grammar, and `CssParser::new(context, limits)` builds the parser that carries it.
+`CssParser::default()` uses Standards. The parser's fronts cover sheets
+(`parse_sheet`), style attributes and declaration lists (`parse_block_contents`),
+property values (`parse_property_value`) and, through the `parse` constructors of
+the checked types, rules and queries such as `rule::CssRule::parse`. Namespace
 bindings remain a separate argument where selector grammar needs them. Reports
-retain normal browser recovery; `into_validation_result()` accepts only clean reports.
+retain normal browser recovery; `CssParseReport::into_validation_result()` accepts
+only clean reports.
 
 Selected [Values4 Appendix C](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#deprecated-quirky-length)
 permits Number tokens as pixel lengths only in its 33 named property owners:
@@ -9827,9 +9876,9 @@ and all mathematical roots; only clip's rect() admits quirky lengths at its four
 Length/auto edges. Ordinary exact unitless zero retains its ordinary spelling.
 Nonnegative destination domains still reject negative nonzero coefficients.
 
-The four specified length owners expose `is_quirky_length()` for a retained
-nonzero Number with contextual pixel interpretation. Their `literal_component()`
-returns the unchanged Number token, including exact coefficient spelling,
+The `numeric::CssNumeric` length and length-percentage values expose
+`is_quirky_length()` for a retained nonzero Number with contextual pixel
+interpretation. The `component()` of their `literal()` returns the unchanged Number token, including exact coefficient spelling,
 Integer/Number flag and parsed or programmatic origin. Specified serialization
 emits that coefficient under the shared number-formatting policy followed by px,
 with the same one-leaf input/projection tariff as an ordinary literal. Raw
@@ -9878,10 +9927,10 @@ replacement checks, including immutable failed/successful retry. Canonical
 converted output is ordinary Color or pixel-length syntax and can be parsed in Standards.
 
 Authored @supports rule conditions and children use document mode, including
-conditions parsed with `CssParserContext::parse_supports_condition`. The free
-`parse_css_supports_condition` and `parse_css_supports_declaration` functions
-model CSS.supports method syntax in mandatory Standards mode and accept no parser
-context. The condition overload first checks a complete condition, then checks
+conditions parsed with `CssCondition::<CssSupportsLeaf>::parse(&parser, source, &namespaces)`.
+`CssCondition::<CssSupportsLeaf>::parse_condition_text(&parser, source)` and
+`CssSupportsDeclaration::parse(&parser, property, value)` model CSS.supports method
+syntax in mandatory Standards mode whatever mode the parser carries. The condition overload first checks a complete condition, then checks
 implicit parentheses only after a grammar mismatch. Added punctuation has
 programmatic origin; its children retain their original argument source and
 positions. Recovered-input and component/resource errors are never retried as
@@ -9902,7 +9951,7 @@ inert direct-child projection and canonical specified bytes where the selected
 Conditional Rules and CSSOM editions leave this live extension undefined. This
 is a Surgeist product contract, not a browser or standards interoperability claim.
 
-`parse_supports_test_contents` admits complete genuine unbraced input through
+`CssSupportsTestBody::parse(&parser, source)` admits complete genuine unbraced input through
 native Syntax partitioning. Declaration runs flatten through `body.children()`;
 qualified and at-rule tests each retain their complete immutable nested body.
 `CssSupportsTestChild` and its borrowed `CssSupportsTestChildRef` have Declaration,
@@ -9911,17 +9960,17 @@ structural tests; no rendering grammar, import loading or namespace registration
 is selected. Empty semicolons are ignored recursively. An actual leading `{`
 remains a qualified candidate, never an invented enclosing block.
 
-`parse_supports_test_child` requires exactly one projected child with no discarded
+`CssSupportsTestChild::parse(&parser, source)` requires exactly one projected child with no discarded
 candidate or recovery. Statement EOF without a semicolon is allowed; empty,
-multiple, trailing or implicitly closed input rejects. Both raw front doors have
-`_with_limits` variants taking `CssComponentValueLimits`. Whole original source,
+multiple, trailing or implicitly closed input rejects. Both raw front doors take
+their `CssComponentValueLimits` from the parser. Whole original source,
 including trivia and discarded/trailing units, shares the native byte, component
 and depth allowance. Recovered raw contents return `Some(body)` and diagnostics;
 resource failure returns `None` with the actual typed diagnostic cause. Consumers
 must reject `None` rather than interpret it as successful clearing. Successful
 empty contents are `Some(empty)`.
 
-`body.recompose_children_with_limits(&refs, limits)` borrows checked occurrences,
+`body.recompose_children(&refs, limits)` borrows checked occurrences,
 coalesces adjacent declarations into maximal runs and retains genuine payload
 origins. Its receiver supplies the retained body-local recovery baseline; removed
 children lose their owned descendant recovery. `local_recovery_origins()` exposes
@@ -9936,16 +9985,16 @@ sink bound reconstruction. The sink retains no output or provenance map and is
 used only for resource measurement; payloads are never rebuilt from text or
 reparsed. Failure preserves the original body and all supplied occurrences.
 
-`CssRuleGraphInput::named_supports(&name, &current_body)` and
+`serialization::CssRuleGraphInput::named_supports(&name, &current_body)` and
 `supports_test_child(child_ref)` explicitly select this product's canonical
 specified policy. They compose current bodies under ordinary rendering ancestors
 through one final native graph writer. Standard parsed SupportsCondition CSSOM
-serialization retains its source-qualified FormatUnavailable result.
-`serialize_cssom_with_graph_limits` takes `CssRuleGraphSerializationLimits` with
+serialization retains its source-qualified unavailable-format result
+(`unavailable_format()`). `CssRuleGraphInput::serialize_cssom` takes `CssRuleSerializationLimits` with
 public `values` and `max_depth` fields. The values budget owns the complete input,
 projection and UTF-8 output allowance, without per-child resets or concatenated
 separately formatted strings. Failure returns no partial CSS and permits an
-unchanged larger-budget retry. `DepthLimit` is a typed resource failure; its
+unchanged larger-budget retry. `is_depth_limit()` identifies a typed resource failure; its
 specified error exposes an optional genuine owning/component `origin()` and the
 graph error keeps the actual ordinary rule path. Opaque nested tests never gain
 invented live rule indices or source positions.
@@ -9960,8 +10009,8 @@ candidate body adds no child level. A consumer with root-one depth must admit it
 root first, then subtract the actual root/subtree depth from its allowance before
 calling the native graph operation. It must not reset the allowance per child.
 Standalone body formatting has direct children at depth zero;
-`ChildRef::to_specified_css_with_graph_limits` has the selected child at depth
-zero. Existing value-only specified formatting remains a separate domain
+`CssRuleGraphInput::supports_test_child`, as the graph root, has the selected
+child at depth zero. Existing value-only specified formatting remains a separate domain
 operation without a structural graph-depth bound. Ordinary semantic property,
 math and selector internal shapes retain their owning writers' selected value
 quotas; this graph operation measures rule edges and named-test opaque payload

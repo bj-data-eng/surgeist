@@ -1,6 +1,6 @@
 //! Fixed ancestry observation from the actual current/returning typed frame.
 
-use super::CssColorPathStep;
+use crate::color::CssColorPathStep;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct Position {

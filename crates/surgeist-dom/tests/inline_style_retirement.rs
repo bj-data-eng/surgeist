@@ -1,6 +1,8 @@
 //! Atomic bound-inline retirement, exact live identities and historical captures.
 use std::sync::atomic::AtomicBool;
-use surgeist_css::*;
+use surgeist_css::property::CssPropertyGrammar;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParserContext, CssParserMode};
 use surgeist_cssom::*;
 use surgeist_dom::*;
 

@@ -1,15 +1,28 @@
 //! Independent specified-value tables from Display 3 §2 and Grid 3 §2.2.
 //! Legacy spellings remain distinct from modern outside/inside pairs (§2.6).
-use surgeist_css::*;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyValue,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{
+    CssDisplayBox, CssDisplayInside, CssDisplayInternal, CssDisplayLegacy,
+    CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,
+};
 
 fn declaration(input: &str) -> CssDeclaration {
-    let report = parse_style_attribute(&format!("display:{input}!important"));
+    let report = CssParser::default().parse_block_contents(format!("display:{input}!important"));
     assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     report.syntax()[0].clone()
 }
 
-fn value(declaration: &CssDeclaration) -> &CssDisplayPropertyValue {
+fn value(declaration: &CssDeclaration) -> &CssPropertyValue<CssDisplayValue> {
     let CssKnownPropertyValueRef::Display(value) =
         declaration.known().unwrap().property_value().unwrap()
     else {
@@ -103,11 +116,20 @@ fn every_constructed_specified_value_has_independent_canonical_text_and_payload(
     assert_eq!(cases.len(), 44);
     for (expected, text) in cases {
         // The constructed enum and literal output are independent expectations.
-        assert_eq!(expected.serialize_specified().unwrap(), text);
+        assert_eq!(
+            expected.serialize_specified(Default::default()).unwrap(),
+            text
+        );
         let parsed = declaration(text);
         assert_eq!(*value(&parsed).value(), expected);
         let before = parsed.clone();
-        assert_eq!(value(&parsed).value().serialize_specified().unwrap(), text);
+        assert_eq!(
+            value(&parsed)
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
+            text
+        );
         assert_eq!(parsed, before);
         assert_eq!(value(&parsed).as_css(), text);
 
@@ -118,9 +140,10 @@ fn every_constructed_specified_value_has_independent_canonical_text_and_payload(
             }
             tokens.push(CssComponentValue::try_token(word).unwrap());
         }
-        let components = CssComponentValues::try_new(tokens).unwrap();
-        let constructed = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Display),
+        let components = CssComponentValues::try_new(tokens, Default::default()).unwrap();
+        let constructed = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
             components.clone(),
             CssImportance::Normal,
         )
@@ -140,7 +163,7 @@ fn every_constructed_specified_value_has_independent_canonical_text_and_payload(
             (&constructed, CssImportance::Normal),
         ] {
             let CssExpansion::Contributions(CssContributions::Longhands(contributions)) =
-                expand_declaration(source).unwrap()
+                source.expand().unwrap()
             else {
                 panic!("one ordinary longhand")
             };
@@ -180,7 +203,10 @@ fn defaults_permutations_case_and_comments_preserve_specified_meaning_and_raw_te
         let parsed = declaration(input);
         let before = parsed.clone();
         assert_eq!(
-            value(&parsed).value().serialize_specified().unwrap(),
+            value(&parsed)
+                .value()
+                .serialize_specified(Default::default())
+                .unwrap(),
             canonical
         );
         assert_eq!(
@@ -189,13 +215,12 @@ fn defaults_permutations_case_and_comments_preserve_specified_meaning_and_raw_te
         );
         assert_eq!(value(&parsed).as_css(), input);
         assert_eq!(parsed, before);
-        assert_eq!(
+        assert!(
             value(&parsed)
                 .value()
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 0))
+                .serialize_specified(CssSerializationLimits::new(1, 1, 0))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(parsed, before);
         assert_eq!(value(&parsed).as_css(), input);
@@ -247,49 +272,33 @@ fn legacy_specified_identity_is_distinct_and_all_domains_are_preserved() {
 
 #[test]
 fn all_display_values_obey_atomic_projection_and_byte_limits() {
-    use CssSpecifiedValueSerializationErrorKind as K;
+    use crate::css::support::failure_classes::SerializationFailure as K;
     for (value, text) in cases() {
         let before = value;
         for (limits, kind) in [
+            (CssSerializationLimits::new(1, 1, 0), K::ByteLimit),
+            (CssSerializationLimits::new(0, 0, 0), K::InputNodeLimit),
+            (CssSerializationLimits::new(1, 0, 0), K::ProjectionNodeLimit),
             (
-                CssSpecifiedValueSerializationLimits::new(1, 1, 0),
-                K::ByteLimit,
-            ),
-            (
-                CssSpecifiedValueSerializationLimits::new(0, 0, 0),
-                K::InputNodeLimit,
-            ),
-            (
-                CssSpecifiedValueSerializationLimits::new(1, 0, 0),
-                K::ProjectionNodeLimit,
-            ),
-            (
-                CssSpecifiedValueSerializationLimits::new(1, 1, text.len() - 1),
+                CssSerializationLimits::new(1, 1, text.len() - 1),
                 K::ByteLimit,
             ),
         ] {
             assert_eq!(
-                value
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&value.serialize_specified(limits).unwrap_err()),
                 kind
             );
             assert_eq!(value, before);
         }
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    1,
-                    1,
-                    text.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(1, 1, text.len()))
                 .unwrap(),
             text
         );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     usize::MAX,
                     usize::MAX,
                     usize::MAX

@@ -8,15 +8,10 @@ pub use surgeist_html_parser::HtmlParseScriptReadySteps
 pub use surgeist_html_parser::HtmlParseScriptResult
 pub use surgeist_html_parser::HtmlScriptKind
 pub enum surgeist_html_parser::HtmlColorProcessingError
-pub surgeist_html_parser::HtmlColorProcessingError::Facts(surgeist_css::color::bounded::CssColorFactError)
-pub surgeist_html_parser::HtmlColorProcessingError::Numerical
-pub surgeist_html_parser::HtmlColorProcessingError::Numerical::error: surgeist_color::value::ColorError
-pub surgeist_html_parser::HtmlColorProcessingError::Numerical::input: surgeist_css::color::bounded::CssColorInputRange
-pub surgeist_html_parser::HtmlColorProcessingError::Protocol(surgeist_css::color::protocol::CssColorProtocolError)
+pub surgeist_html_parser::HtmlColorProcessingError::Facts(surgeist_css::color::bounded::CssColorFactDefect)
 pub surgeist_html_parser::HtmlColorProcessingError::Unavailable(surgeist_css::color::bounded::CssColorUnavailable)
 pub surgeist_html_parser::HtmlColorProcessingError::Unsupported(surgeist_css::color::bounded::CssColorUnsupported)
 impl core::error::Error for surgeist_html_parser::HtmlColorProcessingError
-pub fn surgeist_html_parser::HtmlColorProcessingError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html_parser::HtmlColorProcessingError
 pub fn surgeist_html_parser::HtmlColorProcessingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html_parser::HtmlInputImageSource<'a>
@@ -438,7 +433,7 @@ pub surgeist_html_parser::HtmlParseStop::CspProcessing
 pub surgeist_html_parser::HtmlParseStop::CspProtocol(surgeist_html::csp_policy::HtmlCspProtocolError)
 pub surgeist_html_parser::HtmlParseStop::CssPropertyAllocationFailed
 pub surgeist_html_parser::HtmlParseStop::CssPropertyLimit
-pub surgeist_html_parser::HtmlParseStop::CssPropertyLimit::resource: &'static str
+pub surgeist_html_parser::HtmlParseStop::CssPropertyLimit::resource: surgeist_css::source::utf16_input::CssUtf16Resource
 pub surgeist_html_parser::HtmlParseStop::InternalInvariant(surgeist_html_parser::HtmlParseInvariant)
 pub surgeist_html_parser::HtmlParseStop::InvalidAssociatedFacts
 pub surgeist_html_parser::HtmlParseStop::LimitExceeded
@@ -874,7 +869,7 @@ pub fn surgeist_html_parser::HtmlParseDocumentInteraction<'a>::document(&self) -
 pub struct surgeist_html_parser::HtmlParseDocumentMeta<'a>
 impl<'a> surgeist_html_parser::HtmlParseDocumentMeta<'a>
 pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::base_policy_association(&self) -> core::option::Option<&'a surgeist_html::csp_policy::transition::HtmlCspAssociation>
-pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::color_scheme(&self) -> core::option::Option<&'a alloc::sync::Arc<surgeist_css::utf16_value::CssColorSchemeParseReport>>
+pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::color_scheme(&self) -> core::option::Option<&'a alloc::sync::Arc<surgeist_css::values::color_adjust::utf16_value::CssColorSchemeParseReport>>
 pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::csp_association(&self) -> core::option::Option<&'a surgeist_html::csp_policy::transition::HtmlCspAssociation>
 pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::disposition(&self, domain: surgeist_html_parser::HtmlParseMetaDomain) -> surgeist_html_parser::HtmlParseMetaDisposition<'a>
 pub fn surgeist_html_parser::HtmlParseDocumentMeta<'a>::document(&self) -> surgeist_html::construction::HtmlNode<'a>

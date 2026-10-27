@@ -1,9 +1,9 @@
 //! Syntax 3 §5.5.2 returns an at-rule with an EOF fault. These cases compose
 //! that contract with existing ordinary/scoped structural recovery boundaries.
-use surgeist_css::{
-    CssErrorCode, CssLayerNameList, CssParseReport, CssRecoveryAction, CssRule, CssScopedRule,
-    CssSheet, CssSourcePosition, ErrorKind, parse_sheet, validate_sheet,
-};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::{CssLayerNameList, CssRule, CssSheet};
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::{CssParseReport, CssParser};
 
 const DEPTHS: [usize; 6] = [63, 64, 65, 127, 128, 129];
 
@@ -65,12 +65,12 @@ fn assert_scoped_chain(sheet: &CssSheet, depth: usize, source: &str, start: usiz
     };
     let mut parent = first;
     for _ in 1..depth {
-        let [CssScopedRule::Scope(nested)] = parent.rules().rules() else {
+        let [CssRule::Scope(nested)] = parent.rules().rules() else {
             panic!("every enclosing scoped group survives")
         };
         parent = nested;
     }
-    let [CssScopedRule::LayerStatement(statement)] = parent.rules().rules() else {
+    let [CssRule::LayerStatement(statement)] = parent.rules().rules() else {
         panic!("named layer survives at the exact innermost scoped depth")
     };
     assert_layer(statement.names());
@@ -110,11 +110,14 @@ fn assert_local_eof(report: &CssParseReport<CssSheet>, source: &str, start: usiz
         diagnostic.action(),
         CssRecoveryAction::RetainNonconformingRule
     );
-    let ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-        panic!("statement EOF diagnostic")
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "statement EOF diagnostic"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_original_position(diagnostic.error().position(), source, end);
@@ -122,7 +125,11 @@ fn assert_local_eof(report: &CssParseReport<CssSheet>, source: &str, start: usiz
     assert_original_position(diagnostic.span().end(), source, end);
     assert!(!report.is_clean());
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_eq!(
@@ -141,8 +148,8 @@ fn check_depths(scoped: bool) {
         .map(|depth| {
             let (source, start, end) = specimen(depth, scoped, false);
             let (terminated, control_start, _) = specimen(depth, scoped, true);
-            let report = parse_sheet(&source);
-            let control = parse_sheet(&terminated);
+            let report = CssParser::default().parse_sheet(&source);
+            let control = CssParser::default().parse_sheet(&terminated);
             (
                 depth,
                 source,
@@ -164,7 +171,13 @@ fn check_depths(scoped: bool) {
             "terminated control at depth {depth}: {:?}",
             control.diagnostics()
         );
-        assert_eq!(validate_sheet(&terminated).unwrap(), *control.syntax());
+        assert_eq!(
+            CssParser::default()
+                .parse_sheet(&terminated)
+                .into_validation_result()
+                .unwrap(),
+            *control.syntax()
+        );
         assert_local_eof(&report, &source, start, end);
     }
 }

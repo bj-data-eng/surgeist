@@ -9,6 +9,7 @@ mod motion_position_construction;
 mod motion_typed_lifecycle;
 mod position_construction;
 mod position_families_construction_serialization;
+mod position_flow_relative_consumers;
 mod position_grammars;
 mod position_serialization;
 mod z_index_lifecycle;

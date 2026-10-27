@@ -3,12 +3,16 @@
 
 use crate::css::support::color_and_selector_fixtures::assert_selector_input_rejected as assert_whole_input_rejected;
 use crate::css::support::color_and_selector_fixtures::assert_strict_validation_rejects;
-use surgeist_css::{
-    CssAttributeCaseSensitivity as Case, CssAttributeMatcher as Matcher,
-    CssNamespaceConstraint as Namespace, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
-    CssQualifiedNamePrefix as Prefix, CssRecoveryAction, CssRule, CssSelector,
-    CssSelectorCombinator, parse_relative_selector_list, parse_selector, parse_selector_list,
-    parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule};
+use surgeist_css::selector::CssAttributeCaseSensitivity as Case;
+use surgeist_css::selector::CssAttributeMatcher as Matcher;
+use surgeist_css::selector::CssNamespaceConstraint as Namespace;
+use surgeist_css::selector::CssQualifiedNamePrefix as Prefix;
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssRelativeSelectorList, CssSelector,
+    CssSelectorCombinator, CssStyleSelectorContext,
 };
 
 type AttributeOperator = (&'static str, fn(String) -> Matcher);
@@ -41,27 +45,36 @@ fn retained(
     let rejected = || format!("{front:?}: {source:?}");
     match front {
         Front::Selector => {
-            let report = parse_selector(source, context);
+            let report = CssSelector::parse(&CssParser::default(), source, context);
             if !report.is_clean() {
                 return Err(rejected());
             }
             Ok(report.into_validation_result().unwrap().unwrap())
         }
         Front::List => {
-            let report = parse_selector_list(&format!(".Lead, {source}"), context);
+            let report = CssParsedStyleSelectors::parse(
+                &CssParser::default(),
+                format!(".Lead, {source}"),
+                context,
+                CssStyleSelectorContext::Ordinary,
+            );
             if !report.is_clean() {
                 return Err(rejected());
             }
             let list = report.into_validation_result().unwrap().unwrap();
-            assert_eq!(list.selectors().len(), 2);
+            assert_eq!(list.selectors().selectors().len(), 2);
             assert_eq!(
-                list.selectors()[0].selector(),
+                list.selectors().selectors()[0].selector(),
                 &CssSelector::Class("Lead".into())
             );
-            Ok(list.selectors()[1].selector().clone())
+            Ok(list.selectors().selectors()[1].selector().clone())
         }
         Front::Relative => {
-            let report = parse_relative_selector_list(&format!("> .Lead, + {source}"), context);
+            let report = CssRelativeSelectorList::parse(
+                &CssParser::default(),
+                format!("> .Lead, + {source}"),
+                context,
+            );
             if !report.is_clean() {
                 return Err(rejected());
             }
@@ -82,7 +95,7 @@ fn retained(
             Ok(list.selectors()[1].selector().clone())
         }
         Front::Sheet => {
-            let report = parse_sheet(&format!(".Lead, {source} {{}}"));
+            let report = CssParser::default().parse_sheet(format!(".Lead, {source} {{}}"));
             if !report.is_clean() {
                 return Err(rejected());
             }
@@ -124,7 +137,10 @@ fn check(
     assert_eq!(attribute.case_sensitivity(), case);
     assert_eq!(attribute.namespace(), namespace);
     assert_eq!(attribute.qualified_name().prefix(), prefix);
-    assert_eq!(selector.to_specified_css().unwrap(), literal);
+    assert_eq!(
+        selector.serialize_specified(Default::default()).unwrap(),
+        literal
+    );
 }
 
 fn comments(front: Front) {
@@ -212,24 +228,29 @@ fn reject(front: Front, attribute: &str) {
     let context = CssNamespaceContext::default();
     match front {
         Front::Selector => {
-            let report = parse_selector(attribute, &context);
+            let report = CssSelector::parse(&CssParser::default(), attribute, &context);
             assert_whole_input_rejected(attribute, report);
         }
         Front::List => {
             let source = format!(".Lead, {attribute}, .Tail");
-            let report = parse_selector_list(&source, &context);
+            let report = CssParsedStyleSelectors::parse(
+                &CssParser::default(),
+                &source,
+                &context,
+                CssStyleSelectorContext::Ordinary,
+            );
             assert_whole_input_rejected(&source, report);
         }
         Front::Relative => {
             let source = format!("> .Lead, + {attribute}, ~ .Tail");
-            let report = parse_relative_selector_list(&source, &context);
+            let report = CssRelativeSelectorList::parse(&CssParser::default(), &source, &context);
             assert_whole_input_rejected(&source, report);
         }
         Front::Sheet => {
             let source = format!(
                 ".Before {{}} .Lead, {attribute} {{ color:red; .Never {{ color:blue }} }} .After {{}}"
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             let [CssRule::Style(before), CssRule::Style(after)] = report.syntax().rules() else {
                 panic!("only surrounding complete rules survive: {attribute:?}");
             };
@@ -324,7 +345,7 @@ fn namespace_cases(gap: &str) {
         }
         let sheet_source =
             format!("@namespace \"urn:default\"; @namespace Svg \"urn:svg\"; {source} {{}}");
-        let report = parse_sheet(&sheet_source);
+        let report = CssParser::default().parse_sheet(&sheet_source);
         if !report.is_clean() {
             failures.push(format!("Sheet namespace: {source:?}"));
             continue;
@@ -347,7 +368,7 @@ fn namespace_cases(gap: &str) {
             &prefix,
             &literal,
         );
-        let canonical = parse_sheet(&format!(
+        let canonical = CssParser::default().parse_sheet(format!(
             "@namespace \"urn:default\"; @namespace Svg \"urn:svg\"; {literal} {{}}"
         ));
         assert!(canonical.is_clean());

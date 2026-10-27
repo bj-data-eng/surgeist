@@ -1,5 +1,4 @@
 //! Numerical space identities and checked interpolation policy.
-use crate::ColorError;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -70,32 +69,18 @@ impl InterpolationMethod {
         self.hue
     }
 }
+/// An interpolation method that cannot exist: a hue interpolation method
+/// applies only to a polar space.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum InterpolationError {
-    InvalidProgress,
     HueRequiresPolarSpace,
-    Numerical(ColorError),
-}
-impl From<ColorError> for InterpolationError {
-    fn from(e: ColorError) -> Self {
-        Self::Numerical(e)
-    }
 }
 impl std::fmt::Display for InterpolationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidProgress => f.write_str("interpolation progress is outside zero to one"),
             Self::HueRequiresPolarSpace => f.write_str("hue interpolation requires a polar space"),
-            Self::Numerical(e) => e.fmt(f),
         }
     }
 }
-impl std::error::Error for InterpolationError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Numerical(e) => Some(e),
-            _ => None,
-        }
-    }
-}
+impl std::error::Error for InterpolationError {}

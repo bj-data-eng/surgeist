@@ -1,6 +1,17 @@
 //! Detached Page declaration construction through the checked Page front.
+use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssDeclarationList, CssImportance,
+};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::page::CssPageBody;
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 const MARGINS: [CssKnownProperty; 5] = [
     CssKnownProperty::Margin,
@@ -11,15 +22,15 @@ const MARGINS: [CssKnownProperty; 5] = [
 ];
 
 fn checked(property: CssKnownProperty, value: &str, context: CssParserContext) -> CssDeclaration {
-    let components = parse_component_values(value).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let original = components.clone();
-    let declaration = context
-        .parse_page_property_value(
-            CssPropertyNameRef::Known(property),
-            components,
-            CssImportance::Important,
-        )
-        .unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::new(context, Default::default()),
+        CssPropertyTarget::PageProperty(CssPropertyNameRef::Known(property)),
+        components,
+        CssImportance::Important,
+    )
+    .unwrap();
     assert_eq!(declaration.known().unwrap().property(), property);
     assert_eq!(declaration.value_components(), &original);
     assert_eq!(declaration.parser_context(), context);
@@ -54,11 +65,19 @@ fn checked_page_front_admits_symbolic_values_with_both_modes_and_preserved_origi
                 "var(--m, 1em)",
             ] {
                 let declaration = checked(property, value, context);
-                let text = declaration.to_specified_css().unwrap();
-                assert!(context.parse_page_block(&format!("{{{text}}}")).is_clean());
+                let text = declaration.serialize_specified(Default::default()).unwrap();
+                assert!(
+                    CssBlockFragment::<CssPageBody>::parse(
+                        &CssParser::new(context, Default::default()),
+                        format!("{{{text}}}"),
+                        &CssBlockContext::default()
+                    )
+                    .is_clean()
+                );
                 if mode == CssParserMode::Standards {
-                    let free = parse_page_property_value(
-                        CssPropertyNameRef::Known(property),
+                    let free = CssDeclaration::try_from_components(
+                        &CssParser::default(),
+                        CssPropertyTarget::PageProperty(CssPropertyNameRef::Known(property)),
                         declaration.value_components().clone(),
                         CssImportance::Important,
                     )
@@ -76,21 +95,22 @@ fn checked_page_restrictions_preserve_original_offending_component() {
         let context = CssParserContext::new(mode);
         for property in MARGINS {
             for value in ["1zz", "1yy", "0zz", "0yy", r"1\7a z", "7"] {
-                let components = parse_component_values(value).unwrap();
+                let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
                 let origin = components.items()[0].origin().clone();
                 let original = components.clone();
-                let error = context
-                    .parse_page_property_value(
-                        CssPropertyNameRef::Known(property),
-                        components.clone(),
-                        CssImportance::Normal,
-                    )
-                    .unwrap_err();
+                let error = CssDeclaration::try_from_components(
+                    &CssParser::new(context, Default::default()),
+                    CssPropertyTarget::PageProperty(CssPropertyNameRef::Known(property)),
+                    components.clone(),
+                    CssImportance::Normal,
+                )
+                .unwrap_err();
                 assert!(
-                    matches!(error.kind(), CssPropertyValueErrorKind::Grammar(ErrorKind::InvalidPropertyValue(detail)) if detail.property() == property),
+                    (error.code() == Some(CssErrorCode::InvalidPropertyValue)
+                        && error.known_property().unwrap() == property),
                     "{value}: {error:?}"
                 );
-                assert_eq!(error.origin(), &CssSerializedOrigin::Token(origin));
+                assert_eq!(error.origin(), CssSerializedOrigin::Token(origin));
                 assert_eq!(components, original);
             }
         }
@@ -104,23 +124,27 @@ fn page_reentry_maps_nested_invalid_unit_and_matches_direct_checked_grammar() {
         "var(--m)",
         CssParserContext::default(),
     );
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("Page pending")
     };
     for value in ["calc(1px + 2zz)", "calc(0 * 1yy)", "calc(1px + (0 * 1zz))"] {
-        let replacement = parse_component_values(&format!("/*😀*/{value}")).unwrap();
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), format!("/*😀*/{value}")).unwrap();
         let before = replacement.clone();
-        let direct = parse_page_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::MarginLeft),
+        let direct = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::PageProperty(CssPropertyNameRef::Known(
+                CssKnownProperty::MarginLeft,
+            )),
             replacement.clone(),
             CssImportance::Important,
         )
         .unwrap_err();
         let error = handle.reenter(replacement.clone()).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+        let Some(actual) = error.replacement_error() else {
             panic!("typed Page replacement failure")
         };
-        assert_eq!(actual.kind(), direct.kind());
+        assert_eq!(property_value_facts(actual), property_value_facts(&direct));
         assert_eq!(actual.origin(), direct.origin());
         let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = actual.origin() else {
             panic!("original dimension token")
@@ -134,7 +158,7 @@ fn page_reentry_maps_nested_invalid_unit_and_matches_direct_checked_grammar() {
     }
     assert!(
         handle
-            .reenter(parse_component_values("calc(1cqw + 2%)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "calc(1cqw + 2%)").unwrap())
             .is_ok()
     );
 }
@@ -146,20 +170,26 @@ fn checked_page_pending_context_survives_priority_clones_list_assembly_and_retri
         "var(--m)",
         CssParserContext::new(CssParserMode::Quirks),
     );
-    let ordinary = CssParserContext::new(CssParserMode::Quirks)
-        .parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::Margin),
-            source.value_components().clone(),
-            CssImportance::Important,
-        )
-        .unwrap();
+    let ordinary = CssDeclaration::try_from_components(
+        &CssParser::new(
+            CssParserContext::new(CssParserMode::Quirks),
+            Default::default(),
+        ),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Margin)),
+        source.value_components().clone(),
+        CssImportance::Important,
+    )
+    .unwrap();
     assert_ne!(source, ordinary);
     let changed = source.with_importance(CssImportance::Normal);
     assert!(!source.same_occurrence(&changed));
-    let list = CssDeclarationList::try_new(vec![source.clone(), changed.clone(), changed.clone()])
-        .unwrap();
+    let list = CssDeclarationList::try_new(
+        vec![source.clone(), changed.clone(), changed.clone()],
+        Default::default(),
+    )
+    .unwrap();
     for (index, declaration) in list.iter().enumerate() {
-        let CssExpansion::Pending(handle) = expand_declaration(declaration).unwrap() else {
+        let CssExpansion::Pending(handle) = declaration.expand().unwrap() else {
             panic!("checked Page pending")
         };
         assert!(
@@ -178,20 +208,19 @@ fn checked_page_pending_context_survives_priority_clones_list_assembly_and_retri
                 ("1px 2px 3px 4px 5px", "5px"),
             ] {
                 let error = handle
-                    .reenter(parse_component_values(invalid).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                     .unwrap_err();
-                let CssExpansionErrorKind::InvalidReplacement(replacement) = error.kind() else {
+                let Some(replacement) = error.replacement_error() else {
                     panic!("{invalid}: invalid replacement: {error:?}")
-                };
-                let CssPropertyValueErrorKind::Grammar(detail) = replacement.kind() else {
-                    panic!("{invalid}: grammar failure: {replacement:?}")
                 };
                 ExpectedRejection::new(CssErrorCode::InvalidPropertyValue)
                     .named("margin")
                     .at(token)
-                    .assert_kind(detail);
+                    .assert_checked(replacement);
             }
-            let replacement = parse_component_values("1Q 2ch 3rem calc(1cqmin + 2%)").unwrap();
+            let replacement =
+                CssComponentValues::parse(&CssParser::default(), "1Q 2ch 3rem calc(1cqmin + 2%)")
+                    .unwrap();
             let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap()
             else {
                 panic!("all physical terminals")
@@ -204,12 +233,12 @@ fn checked_page_pending_context_survives_priority_clones_list_assembly_and_retri
             }
         }
     }
-    let CssExpansion::Pending(handle) = expand_declaration(&ordinary).unwrap() else {
+    let CssExpansion::Pending(handle) = ordinary.expand().unwrap() else {
         panic!("ordinary pending")
     };
     assert!(
         handle
-            .reenter(parse_component_values("1em").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "1em").unwrap())
             .is_ok()
     );
 }
@@ -218,9 +247,10 @@ fn checked_page_pending_context_survives_priority_clones_list_assembly_and_retri
 fn checked_page_custom_values_retain_own_tokens_without_margin_restrictions() {
     let name = CssCustomPropertyName::try_new("--M").unwrap();
     for value in ["", "1em", "var(--other,)", "{[var(--x)]}", "initial"] {
-        let components = parse_component_values(value).unwrap();
-        let declaration = parse_page_property_value(
-            CssPropertyNameRef::Custom(&name),
+        let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::PageProperty(CssPropertyNameRef::Custom(&name)),
             components.clone(),
             CssImportance::Important,
         )
@@ -228,7 +258,7 @@ fn checked_page_custom_values_retain_own_tokens_without_margin_restrictions() {
         assert_eq!(declaration.value_components(), &components);
         assert_eq!(declaration.custom().unwrap().name(), &name);
         assert!(matches!(
-            expand_declaration(&declaration).unwrap(),
+            declaration.expand().unwrap(),
             CssExpansion::Contributions(CssContributions::Custom(_))
         ));
     }
@@ -239,18 +269,20 @@ fn checked_page_custom_values_retain_own_tokens_without_margin_restrictions() {
         (CssKnownProperty::All, "initial"),
     ] {
         assert!(
-            parse_page_property_value(
-                CssPropertyNameRef::Known(property),
-                parse_component_values(value).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::PageProperty(CssPropertyNameRef::Known(property)),
+                CssComponentValues::parse(&CssParser::default(), value).unwrap(),
                 CssImportance::Normal
             )
             .is_err()
         );
     }
     assert!(
-        parse_page_property_value(
-            CssPropertyNameRef::SvgGlyphOrientationVertical,
-            parse_component_values("0deg").unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::PageProperty(CssPropertyNameRef::SvgGlyphOrientationVertical),
+            CssComponentValues::parse(&CssParser::default(), "0deg").unwrap(),
             CssImportance::Normal
         )
         .is_err()
@@ -260,17 +292,17 @@ fn checked_page_custom_values_retain_own_tokens_without_margin_restrictions() {
 #[test]
 fn checked_page_rejects_recovered_components_before_pending_or_intrinsic_grammar() {
     for value in ["calc(1px + 2%", "var(--m", "1px/*unfinished"] {
-        let components = parse_component_values(value).unwrap();
-        let error = parse_page_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::MarginLeft),
+        let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::PageProperty(CssPropertyNameRef::Known(
+                CssKnownProperty::MarginLeft,
+            )),
             components,
             CssImportance::Normal,
         )
         .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-        ));
+        assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
         assert!(matches!(
             error.origin(),
             CssSerializedOrigin::End(Some(CssValueOrigin::ImplicitClosure { .. }))

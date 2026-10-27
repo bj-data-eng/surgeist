@@ -4,6 +4,8 @@
 //! propagation. Exact child provenance, ordered intrinsic contributions and
 //! bounded atomic failures are Surgeist contracts, before contextual execution.
 
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::Responsible::{At, End};
 use crate::css::support::property_admission::eof_closure_origin as implicit_origin;
 use crate::css::support::property_admission::{
@@ -12,8 +14,32 @@ use crate::css::support::property_admission::{
 use crate::css::support::{
     checked_property_grammar_declaration as checked, sole_declaration as parsed,
 };
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssNumeric, CssRange, CssTime, CssTimeUnit};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::keyframes::CssKeyframesString;
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::animation::{
+    CssAnimationDirection, CssAnimationDirectionList, CssAnimationFillMode,
+    CssAnimationFillModeList, CssAnimationIterationCount, CssAnimationIterationCountList,
+    CssAnimationList, CssAnimationName, CssAnimationNameList, CssAnimationPlayState,
+    CssAnimationPlayStateList, CssDelayList, CssDurationList, CssEasing, CssEasingKeyword,
+    CssEasingList,
+};
 
 const MEMBERS: [P; 8] = [
     P::AnimationDuration,
@@ -28,8 +54,7 @@ const MEMBERS: [P; 8] = [
 const INITIALS: [&str; 8] = ["0s", "ease", "0s", "1", "normal", "none", "running", "none"];
 
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()
     else {
         panic!("ordinary longhands")
     };
@@ -113,21 +138,17 @@ fn lists(values: &CssLonghandContributions) -> Lists<'_> {
 }
 fn output(
     value: CssLonghandValueRef<'_>,
-    limits: CssSpecifiedValueSerializationLimits,
-) -> Result<String, CssSpecifiedValueSerializationError> {
+    limits: CssSerializationLimits,
+) -> Result<String, CssSerializationError> {
     match value {
-        CssLonghandValueRef::AnimationDuration(v) => v.serialize_specified_with_limits(limits),
-        CssLonghandValueRef::AnimationTimingFunction(v) => {
-            v.serialize_specified_with_limits(limits)
-        }
-        CssLonghandValueRef::AnimationDelay(v) => v.serialize_specified_with_limits(limits),
-        CssLonghandValueRef::AnimationIterationCount(v) => {
-            v.serialize_specified_with_limits(limits)
-        }
-        CssLonghandValueRef::AnimationDirection(v) => v.serialize_specified_with_limits(limits),
-        CssLonghandValueRef::AnimationFillMode(v) => v.serialize_specified_with_limits(limits),
-        CssLonghandValueRef::AnimationPlayState(v) => v.serialize_specified_with_limits(limits),
-        CssLonghandValueRef::AnimationName(v) => v.serialize_specified_with_limits(limits),
+        CssLonghandValueRef::AnimationDuration(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::AnimationTimingFunction(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::AnimationDelay(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::AnimationIterationCount(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::AnimationDirection(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::AnimationFillMode(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::AnimationPlayState(v) => v.serialize_specified(limits),
+        CssLonghandValueRef::AnimationName(v) => v.serialize_specified(limits),
         other => panic!("animation payload: {other:?}"),
     }
 }
@@ -151,8 +172,11 @@ fn origin_clone(actual: &CssValueOrigin, expected: &CssValueOrigin) {
         assert_eq!(actual.span(), expected.span());
     }
 }
-fn time_clone(actual: &CssTimeValue, expected: &CssTimeValue) {
-    assert_eq!(actual, expected); // Raw equality includes every component origin.
+fn time_clone<R: CssRange<CssTime>>(
+    actual: &CssNumeric<CssTime, R>,
+    expected: &CssNumeric<CssTime, R>,
+) {
+    assert_eq!(actual, expected); // Value equality ignores origins; checked below.
     origin_clone(actual.origin(), expected.origin());
     if let Some(actual) = actual.calculation() {
         assert_eq!(
@@ -168,9 +192,12 @@ fn count_clone(actual: &CssAnimationIterationCount, expected: &CssAnimationItera
         CssAnimationIterationCount::Number(expected),
     ) = (actual, expected)
     {
-        assert_eq!(actual, expected); // Numeric owner includes original components.
+        assert_eq!(actual, expected); // Numeric value equality ignores origins.
         origin_clone(actual.origin(), expected.origin());
-        assert_eq!(actual.literal_component(), expected.literal_component());
+        assert_eq!(
+            actual.literal().map(|literal| literal.component()),
+            expected.literal().map(|literal| literal.component())
+        );
         if let Some(actual) = actual.calculation() {
             assert_eq!(
                 actual.components(),
@@ -191,21 +218,24 @@ fn easing_clone(actual: &CssEasing, expected: &CssEasing) {
             ] {
                 assert_eq!(a, b);
                 origin_clone(a.origin(), b.origin());
-                assert_eq!(a.literal_component(), b.literal_component());
+                assert_eq!(
+                    a.literal().map(|literal| literal.component()),
+                    b.literal().map(|literal| literal.component())
+                );
                 if let Some(a) = a.calculation() {
                     assert_eq!(a.components(), b.calculation().unwrap().components());
                 }
             }
         }
-        (CssEasing::Steps(a), CssEasing::Steps(b)) => match (a.count(), b.count()) {
-            (CssPositiveIntegerValue::Literal(a), CssPositiveIntegerValue::Literal(b)) => {
-                assert_eq!(a.integer().component(), b.integer().component());
-                origin_clone(
-                    a.integer().component().origin(),
-                    b.integer().component().origin(),
-                );
+        (CssEasing::Steps(a), CssEasing::Steps(b)) => match (
+            (a.count().literal(), a.count().calculation()),
+            (b.count().literal(), b.count().calculation()),
+        ) {
+            ((Some(a), _), (Some(b), _)) => {
+                assert_eq!(a.component(), b.component());
+                origin_clone(a.component().origin(), b.component().origin());
             }
-            (CssPositiveIntegerValue::Calculation(a), CssPositiveIntegerValue::Calculation(b)) => {
+            ((_, Some(a)), (_, Some(b))) => {
                 assert_eq!(a.components(), b.components());
                 origin_clone(a.origin(), b.origin());
             }
@@ -221,12 +251,12 @@ fn animation(source: &CssDeclaration) -> &CssAnimationList {
     else {
         panic!("animation")
     };
-    value.animations()
+    value.value()
 }
 fn explicit_children(actual: &Lists<'_>, original: &CssAnimationList) {
     for (index, item) in original.values().iter().enumerate() {
         if let Some(value) = item.duration() {
-            time_clone(actual.durations.values()[index].time(), value.time());
+            time_clone(&actual.durations.values()[index], value);
         }
         if let Some(value) = item.delay() {
             time_clone(&actual.delays.values()[index], value);
@@ -267,16 +297,12 @@ fn eight_borrowed_initial_variants_have_exact_programmatic_scalar_contents() {
         };
         assert_eq!(length(value.view()), 1);
         assert_eq!(
-            output(
-                value.view(),
-                CssSpecifiedValueSerializationLimits::default()
-            )
-            .unwrap(),
+            output(value.view(), CssSerializationLimits::default()).unwrap(),
             expected
         );
         match value.view() {
             CssLonghandValueRef::AnimationDuration(v) => {
-                let time = v.values()[0].time();
+                let time = &v.values()[0];
                 assert_eq!(time.origin(), &CssValueOrigin::Programmatic);
                 assert_eq!(time.literal().unwrap().numeric().representation(), "0");
                 assert_eq!(time.literal().unwrap().unit(), CssTimeUnit::Seconds);
@@ -294,7 +320,7 @@ fn eight_borrowed_initial_variants_have_exact_programmatic_scalar_contents() {
                 };
                 assert_eq!(v.origin(), &CssValueOrigin::Programmatic);
                 assert_eq!(
-                    v.literal_component(),
+                    v.literal().map(|literal| literal.component()),
                     Some(&CssComponentValue::try_number("1").unwrap())
                 );
             }
@@ -357,12 +383,12 @@ fn direct_children(values: &CssLonghandContributions, source: &CssDeclaration) {
             CssLonghandValueRef::AnimationDuration(a),
             CssKnownPropertyValueRef::AnimationDuration(b),
         ) => {
-            for (a, b) in a.values().iter().zip(b.durations().values()) {
-                time_clone(a.time(), b.time());
+            for (a, b) in a.values().iter().zip(b.value().values()) {
+                time_clone(a, b);
             }
         }
         (CssLonghandValueRef::AnimationDelay(a), CssKnownPropertyValueRef::AnimationDelay(b)) => {
-            for (a, b) in a.values().iter().zip(b.delays().values()) {
+            for (a, b) in a.values().iter().zip(b.value().values()) {
                 time_clone(a, b);
             }
         }
@@ -370,7 +396,7 @@ fn direct_children(values: &CssLonghandContributions, source: &CssDeclaration) {
             CssLonghandValueRef::AnimationTimingFunction(a),
             CssKnownPropertyValueRef::AnimationTimingFunction(b),
         ) => {
-            for (a, b) in a.values().iter().zip(b.timing_functions().values()) {
+            for (a, b) in a.values().iter().zip(b.value().values()) {
                 easing_clone(a, b);
             }
         }
@@ -378,24 +404,24 @@ fn direct_children(values: &CssLonghandContributions, source: &CssDeclaration) {
             CssLonghandValueRef::AnimationIterationCount(a),
             CssKnownPropertyValueRef::AnimationIterationCount(b),
         ) => {
-            for (a, b) in a.values().iter().zip(b.iteration_counts().values()) {
+            for (a, b) in a.values().iter().zip(b.value().values()) {
                 count_clone(a, b);
             }
         }
         (
             CssLonghandValueRef::AnimationDirection(a),
             CssKnownPropertyValueRef::AnimationDirection(b),
-        ) => assert_eq!(a.directions(), b.directions().directions()),
+        ) => assert_eq!(a.directions(), b.value().directions()),
         (
             CssLonghandValueRef::AnimationFillMode(a),
             CssKnownPropertyValueRef::AnimationFillMode(b),
-        ) => assert_eq!(a.modes(), b.fill_modes().modes()),
+        ) => assert_eq!(a.modes(), b.value().modes()),
         (
             CssLonghandValueRef::AnimationPlayState(a),
             CssKnownPropertyValueRef::AnimationPlayState(b),
-        ) => assert_eq!(a.states(), b.play_states().states()),
+        ) => assert_eq!(a.states(), b.value().states()),
         (CssLonghandValueRef::AnimationName(a), CssKnownPropertyValueRef::AnimationName(b)) => {
-            assert_eq!(a.names(), b.names().names())
+            assert_eq!(a.names(), b.value().names())
         }
         other => panic!("matching original longhand: {other:?}"),
     }
@@ -418,9 +444,10 @@ fn all_nine_properties_preserve_every_entry_of_twenty_item_lists_across_three_fr
             property.canonical_name()
         ));
         let grammar = checked(property, &css);
-        let named = parse_property_value(
-            CssPropertyNameRef::Known(property),
-            parse_component_values(&css).unwrap(),
+        let named = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+            CssComponentValues::parse(&CssParser::default(), &css).unwrap(),
             CssImportance::Important,
         )
         .unwrap();
@@ -437,7 +464,7 @@ fn all_nine_properties_preserve_every_entry_of_twenty_item_lists_across_three_fr
                     let view = item.ordinary_value().unwrap().view();
                     assert_eq!(length(view), 20);
                     assert_eq!(
-                        output(view, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+                        output(view, CssSerializationLimits::default()).unwrap(),
                         canonical_entries(slot)
                     );
                 }
@@ -447,7 +474,7 @@ fn all_nine_properties_preserve_every_entry_of_twenty_item_lists_across_three_fr
                 let view = values.items()[0].ordinary_value().unwrap().view();
                 assert_eq!(length(view), 20);
                 assert_eq!(
-                    output(view, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+                    output(view, CssSerializationLimits::default()).unwrap(),
                     canonical_entries(slot)
                 );
             }
@@ -476,7 +503,7 @@ fn sparse_items_use_scalar_defaults_and_preserve_explicit_child_origins() {
         let view = item.ordinary_value().unwrap().view();
         assert_eq!(length(view), 3);
         assert_eq!(
-            output(view, CssSpecifiedValueSerializationLimits::default()).unwrap(),
+            output(view, CssSerializationLimits::default()).unwrap(),
             expected
         );
     }
@@ -493,7 +520,7 @@ fn sparse_items_use_scalar_defaults_and_preserve_explicit_child_origins() {
         };
         assert_eq!(count.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(
-            count.literal_component(),
+            count.literal().map(|literal| literal.component()),
             Some(&CssComponentValue::try_number("1").unwrap())
         );
     }
@@ -526,7 +553,7 @@ fn explicit_initial_slots_retain_parsed_origins_while_omitted_defaults_are_progr
         assert_eq!(
             output(
                 list.ordinary_value().unwrap().view(),
-                CssSpecifiedValueSerializationLimits::default()
+                CssSerializationLimits::default()
             )
             .unwrap(),
             expected
@@ -534,14 +561,17 @@ fn explicit_initial_slots_retain_parsed_origins_while_omitted_defaults_are_progr
     }
     for times in [
         [
-            actual.durations.values()[0].time(),
-            actual.durations.values()[1].time(),
+            actual.durations.values()[0].clone().into_any_range(),
+            actual.durations.values()[1].clone().into_any_range(),
         ],
-        [&actual.delays.values()[0], &actual.delays.values()[1]],
+        [
+            actual.delays.values()[0].clone(),
+            actual.delays.values()[1].clone(),
+        ],
     ] {
         assert!(matches!(times[0].origin(), CssValueOrigin::Parsed(_)));
         assert_eq!(times[1].origin(), &CssValueOrigin::Programmatic);
-        assert_ne!(times[0], times[1]);
+        assert_eq!(times[0], times[1]);
     }
     let [
         CssAnimationIterationCount::Number(explicit),
@@ -552,7 +582,7 @@ fn explicit_initial_slots_retain_parsed_origins_while_omitted_defaults_are_progr
     };
     assert!(matches!(explicit.origin(), CssValueOrigin::Parsed(_)));
     assert_eq!(default.origin(), &CssValueOrigin::Programmatic);
-    assert_ne!(explicit, default);
+    assert_eq!(explicit, default);
     assert_eq!(actual.counts.values()[0], actual.counts.values()[1]);
 }
 
@@ -570,10 +600,28 @@ fn symbolic_count_and_easing_children_retain_original_graphs_and_numeric_precisi
         let values = completed(&source);
         let actual = lists(&values);
         explicit_children(&actual, animation(&source));
-        assert_eq!(actual.durations.serialize_specified().unwrap(), "calc(3s)");
-        assert_eq!(actual.delays.serialize_specified().unwrap(), "calc(-0.25s)");
-        assert_eq!(actual.counts.serialize_specified().unwrap(), "calc(2.5)");
-        assert!(actual.durations.values()[0].time().calculation().is_some());
+        assert_eq!(
+            actual
+                .durations
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "calc(3s)"
+        );
+        assert_eq!(
+            actual
+                .delays
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "calc(-0.25s)"
+        );
+        assert_eq!(
+            actual
+                .counts
+                .serialize_specified(Default::default())
+                .unwrap(),
+            "calc(2.5)"
+        );
+        assert!(actual.durations.values()[0].calculation().is_some());
         let CssAnimationIterationCount::Number(count) = &actual.counts.values()[0] else {
             panic!("count")
         };
@@ -584,14 +632,23 @@ fn symbolic_count_and_easing_children_retain_original_graphs_and_numeric_precisi
         } else {
             "steps(calc(3), jump-none)"
         };
-        assert_eq!(actual.easings.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            actual
+                .easings
+                .serialize_specified(Default::default())
+                .unwrap(),
+            expected
+        );
     }
 }
 
 #[test]
 fn mixed_programmatic_and_parsed_children_survive_checked_projection_and_reentry() {
-    let components =
-        parse_component_values("fade 1s ease-in -250ms 2.5 reverse both paused").unwrap();
+    let components = CssComponentValues::parse(
+        &CssParser::default(),
+        "fade 1s ease-in -250ms 2.5 reverse both paused",
+    )
+    .unwrap();
     let dimension = CssComponentValue::try_dimension("125", "ms").unwrap();
     let number = CssComponentValue::try_number("3.5").unwrap();
     let mut items = components.items().to_vec();
@@ -615,9 +672,10 @@ fn mixed_programmatic_and_parsed_children_survive_checked_projection_and_reentry
         .unwrap();
     items[duration] = dimension.clone();
     items[count] = number.clone();
-    let replacement = CssComponentValues::try_new(items).unwrap();
-    let source = parse_property_value_for_grammar(
-        P::Animation.grammar(),
+    let replacement = CssComponentValues::try_new(items, Default::default()).unwrap();
+    let source = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Grammar(P::Animation.grammar()),
         replacement.clone(),
         CssImportance::Important,
     )
@@ -626,11 +684,7 @@ fn mixed_programmatic_and_parsed_children_survive_checked_projection_and_reentry
     let actual = lists(&values);
     explicit_children(&actual, animation(&source));
     assert_eq!(
-        actual.durations.values()[0]
-            .time()
-            .literal()
-            .unwrap()
-            .component(),
+        actual.durations.values()[0].literal().unwrap().component(),
         &dimension
     );
     assert_eq!(
@@ -640,14 +694,17 @@ fn mixed_programmatic_and_parsed_children_survive_checked_projection_and_reentry
     let CssAnimationIterationCount::Number(count) = &actual.counts.values()[0] else {
         panic!("count")
     };
-    assert_eq!(count.literal_component(), Some(&number));
+    assert_eq!(
+        count.literal().map(|literal| literal.component()),
+        Some(&number)
+    );
     assert_eq!(count.origin(), &CssValueOrigin::Programmatic);
     assert!(matches!(
         actual.delays.values()[0].origin(),
         CssValueOrigin::Parsed(_)
     ));
     let pending = parsed("animation:var(--animation)!important");
-    let CssExpansion::Pending(handle) = expand_declaration(&pending).unwrap() else {
+    let CssExpansion::Pending(handle) = pending.expand().unwrap() else {
         panic!("pending")
     };
     let CssContributions::Longhands(values) = handle.reenter(replacement.clone()).unwrap() else {
@@ -672,10 +729,10 @@ fn late_recovered_time_projections_keep_implicit_graphs_through_output_and_norma
         (".a{animation:fade 1s,slide calc((2s", true),
         (".a{animation:fade 1s,slide 2s calc((-250ms", false),
     ] {
-        let report = parse_sheet(css);
+        let report = CssParser::default().parse_sheet(css);
         assert_implicit_closure(css, &report);
         let limits = CssNormalizationLimits::try_new(0, 1, 1, 8).unwrap();
-        let normalized = normalize_report_with_limits(&report, limits).unwrap();
+        let normalized = report.normalize(limits).unwrap();
         assert!(!normalized.is_clean());
         assert_eq!(normalized.diagnostics(), report.diagnostics());
         let declaration = normalized
@@ -701,10 +758,10 @@ fn late_recovered_time_projections_keep_implicit_graphs_through_output_and_norma
         explicit_children(&actual, original);
         let time = if duration {
             assert!(CssDurationList::try_new(actual.durations.values().to_vec()).is_none());
-            actual.durations.values()[1].time()
+            actual.durations.values()[1].clone().into_any_range()
         } else {
             assert!(CssDelayList::try_new(actual.delays.values().to_vec()).is_none());
-            &actual.delays.values()[1]
+            actual.delays.values()[1].clone()
         };
         let raw = time.calculation().unwrap().components().clone();
         implicit_origin(&raw, css);
@@ -718,29 +775,28 @@ fn late_recovered_time_projections_keep_implicit_graphs_through_output_and_norma
         assert_eq!(at.span().start().byte_offset().value(), css.len());
         assert_eq!(at.span().start(), at.span().end());
         assert_eq!(
-            time.serialize_specified().unwrap(),
+            time.serialize_specified(Default::default()).unwrap(),
             if duration { "calc(2s)" } else { "calc(-0.25s)" }
         );
         assert_eq!(time.calculation().unwrap().components(), &raw);
         assert_eq!(
-            validate_sheet(css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
         let before = report.clone();
         assert_eq!(
-            normalize_report_with_limits(
-                &report,
-                CssNormalizationLimits::try_new(0, 1, 1, 7).unwrap()
-            )
-            .unwrap_err()
-            .kind(),
-            &CssNormalizationErrorKind::LimitExceeded {
-                resource: CssNormalizationResource::Contributions,
-                limit: 7
-            }
+            report
+                .normalize(CssNormalizationLimits::try_new(0, 1, 1, 7).unwrap())
+                .unwrap_err()
+                .exhausted_limit(),
+            Some((CssNormalizationResource::Contributions, 7))
         );
         assert_eq!(report.diagnostics(), before.diagnostics());
-        assert!(normalize_report_with_limits(&report, limits).is_ok());
+        assert!(report.normalize(limits).is_ok());
     }
 }
 
@@ -751,7 +807,7 @@ fn pending_handles_retry_original_eof_grammar_residual_and_output_resource_failu
             "{}:var(--animation)!important",
             property.canonical_name()
         ));
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         let good = if property == P::Animation {
@@ -760,43 +816,39 @@ fn pending_handles_retry_original_eof_grammar_residual_and_output_resource_failu
             INITIALS[MEMBERS.iter().position(|p| *p == property).unwrap()]
         };
         let recovered_source = format!("{good}/*");
-        let recovered = parse_component_values(&recovered_source).unwrap();
+        let recovered =
+            CssComponentValues::parse(&CssParser::default(), &recovered_source).unwrap();
         let origin = implicit_origin(&recovered, &recovered_source);
         let error = handle.reenter(recovered).unwrap_err();
-        let CssExpansionErrorKind::InvalidReplacement(error) = error.kind() else {
+        let Some(error) = error.replacement_error() else {
             panic!("strict recovered replacement")
         };
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(ErrorKind::UnexpectedEnd(_))
-        ));
-        assert_eq!(error.origin(), &CssSerializedOrigin::End(Some(origin)));
-        assert!(matches!(
+        assert!(error.code() == Some(CssErrorCode::UnexpectedEnd));
+        assert_eq!(error.origin(), CssSerializedOrigin::End(Some(origin)));
+        assert!(
             handle
-                .reenter(parse_component_values("1px").unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), "1px").unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
-        assert_eq!(
-            handle
-                .reenter(parse_component_values("var(--again)").unwrap())
-                .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .replacement_error()
+                .is_some()
         );
-        let replacement = parse_component_values(good).unwrap();
+        assert!(
+            handle
+                .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
+                .unwrap_err()
+                .is_residual_substitution()
+        );
+        let replacement = CssComponentValues::parse(&CssParser::default(), good).unwrap();
         let CssContributions::Longhands(first) = handle.reenter(replacement.clone()).unwrap()
         else {
             panic!("completed replacement")
         };
         for item in first.items() {
             let view = item.ordinary_value().unwrap().view();
-            assert_eq!(
-                output(view, CssSpecifiedValueSerializationLimits::new(100, 100, 0))
+            assert!(
+                output(view, CssSerializationLimits::new(100, 100, 0))
                     .unwrap_err()
-                    .kind(),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit
+                    .is_byte_limit()
             );
         }
         let CssContributions::Longhands(retry) = handle.reenter(replacement.clone()).unwrap()
@@ -812,7 +864,7 @@ fn pending_handles_retry_original_eof_grammar_residual_and_output_resource_failu
             assert!(
                 output(
                     b.ordinary_value().unwrap().view(),
-                    CssSpecifiedValueSerializationLimits::default()
+                    CssSerializationLimits::default()
                 )
                 .is_ok()
             );
@@ -840,7 +892,7 @@ fn projected_eight_lists_use_exact_cumulative_provider_budgets_and_fail_atomical
         (3, "fade, slide"),
     ]) {
         let view = item.ordinary_value().unwrap().view();
-        let limits = CssSpecifiedValueSerializationLimits::new;
+        let limits = CssSerializationLimits::new;
         assert_eq!(
             output(view, limits(nodes, nodes, expected.len())).unwrap(),
             expected
@@ -848,18 +900,21 @@ fn projected_eight_lists_use_exact_cumulative_provider_budgets_and_fail_atomical
         for (limit, kind) in [
             (
                 limits(nodes - 1, nodes, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+                SerializationFailure::InputNodeLimit,
             ),
             (
                 limits(nodes, nodes - 1, expected.len()),
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+                SerializationFailure::ProjectionNodeLimit,
             ),
             (
                 limits(nodes, nodes, expected.len() - 1),
-                CssSpecifiedValueSerializationErrorKind::ByteLimit,
+                SerializationFailure::ByteLimit,
             ),
         ] {
-            assert_eq!(output(view, limit).unwrap_err().kind(), kind);
+            assert_eq!(
+                serialization_failure(&output(view, limit).unwrap_err()),
+                kind
+            );
             assert_eq!(
                 output(view, limits(nodes, nodes, expected.len())).unwrap(),
                 expected
@@ -997,18 +1052,24 @@ fn each_animation_role_rejects_intrinsic_grammar_negatives_through_all_fronts() 
                 "invalid declaration dropped: {css}"
             );
             assert_eq!(
-                validate_style_attribute(&css).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&css)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics()
             );
-            let components = parse_component_values(body).unwrap();
-            let grammar = parse_property_value_for_grammar(
-                property.grammar(),
+            let components = CssComponentValues::parse(&CssParser::default(), body).unwrap();
+            let grammar = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Normal,
             )
             .unwrap_err();
-            let named = parse_property_value(
-                CssPropertyNameRef::Known(property),
+            let named = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components,
                 CssImportance::Normal,
             )
@@ -1028,7 +1089,10 @@ fn quoted_names_and_keyword_priority_remain_independent_of_projection_defaults()
     let actual = lists(&values);
     explicit_children(&actual, animation(&source));
     assert_eq!(
-        actual.names.serialize_specified().unwrap(),
+        actual
+            .names
+            .serialize_specified(Default::default())
+            .unwrap(),
         "\"\", \" \", none, none, reverse, infinite, running, \"none\""
     );
     assert_eq!(actual.fills.modes()[2], CssAnimationFillMode::None);
@@ -1040,7 +1104,7 @@ fn quoted_names_and_keyword_priority_remain_independent_of_projection_defaults()
     let CssAnimationIterationCount::Number(count) = &actual.counts.values()[5] else {
         panic!("explicit count before colliding name")
     };
-    assert_eq!(count.serialize_specified().unwrap(), "2");
+    assert_eq!(count.serialize_specified(Default::default()).unwrap(), "2");
     assert_eq!(actual.plays.states()[6], CssAnimationPlayState::Paused);
     let CssKnownPropertyValueRef::Animation(original) =
         source.known().unwrap().property_value().unwrap()
@@ -1048,15 +1112,19 @@ fn quoted_names_and_keyword_priority_remain_independent_of_projection_defaults()
         panic!("animation")
     };
     assert_eq!(
-        original.animations().serialize_specified().unwrap(),
+        original
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "1s \"\", 2s \" \", 3s none, 4s backwards, 5s normal reverse, 6s 2 infinite, 7s paused running, 8s \"none\""
     );
     let name = CssAnimationNameList::try_new(vec![CssAnimationName::String(
         CssKeyframesString::new("\0"),
     )])
     .unwrap();
-    assert_eq!(
-        name.serialize_specified().unwrap_err().kind(),
-        CssSpecifiedValueSerializationErrorKind::UnrepresentableValue
+    assert!(
+        name.serialize_specified(Default::default())
+            .unwrap_err()
+            .is_unrepresentable_value()
     );
 }

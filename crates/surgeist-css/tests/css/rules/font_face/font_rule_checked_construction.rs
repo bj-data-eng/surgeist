@@ -1,12 +1,31 @@
 //! Functional construction contract from selected parser placement and Fonts4 §4.1/13.2.
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::clean_sheet as sheet;
 use crate::css::support::rules::ordinary_font_face_descriptor as ordinary;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptor, CssFontFaceDescriptorKind,
+    CssFontFaceDescriptors, CssFontFaceRule,
+};
+use surgeist_css::rule::{
+    CssContainerRule, CssLayerBlockRule, CssMediaRule, CssNamespaceName, CssNamespacePrefix,
+    CssRule, CssRuleConstructionError, CssScopeNestingContext, CssScopeRule, CssSheet,
+    CssSupportsRule,
+};
+use surgeist_css::selector::{
+    CssCompoundSelectorArgument, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorList,
+    CssScopeSelectorList, CssSelector, CssStyleSelector,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn rule(source: &str) -> CssRule {
     sheet(source).rules()[0].clone()
 }
-fn scoped(source: &str) -> Vec<CssScopedRule> {
+fn scoped(source: &str) -> Vec<CssRule> {
     let source = format!("@scope {{ {source} }}");
     let input = sheet(&source);
     let CssRule::Scope(scope) = &input.rules()[0] else {
@@ -49,7 +68,7 @@ fn source_free_face_and_sheet_preserve_ordered_children_and_empty_rules() {
     ])
     .unwrap();
     assert_eq!(
-        input.to_specified_css().unwrap(),
+        input.serialize_specified(Default::default()).unwrap(),
         "@font-face { }\n@font-face { font-weight: 600; }"
     );
     assert_eq!(face.descriptors().occurrences().len(), 2);
@@ -88,25 +107,25 @@ fn every_ordinary_and_scoped_group_constructor_has_absent_enclosing_position() {
     );
     let children = scoped("@font-face {}");
     assert_eq!(
-        CssScopedMediaRule::try_new(query(), children.clone(), &context())
+        CssMediaRule::try_new(query(), children.clone(), &context())
             .unwrap()
             .position(),
         None
     );
     assert_eq!(
-        CssScopedSupportsRule::try_new(supports.condition().clone(), children.clone(), &context())
+        CssSupportsRule::try_new(supports.condition().clone(), children.clone(), &context())
             .unwrap()
             .position(),
         None
     );
     assert_eq!(
-        CssScopedContainerRule::try_new(container.prelude().clone(), children.clone(), &context())
+        CssContainerRule::try_new(container.prelude().clone(), children.clone(), &context())
             .unwrap()
             .position(),
         None
     );
     assert_eq!(
-        CssScopedLayerBlockRule::try_new(None, children.clone(), &context())
+        CssLayerBlockRule::try_new(None, children.clone(), &context())
             .unwrap()
             .position(),
         None
@@ -136,10 +155,15 @@ fn leading_layer_import_namespace_order_and_duplicate_namespace_admission() {
             "{source}"
         );
     }
-    for (rules, kind, path) in [
+    type Case = (
+        Vec<CssRule>,
+        fn(&CssRuleConstructionError) -> bool,
+        Vec<usize>,
+    );
+    let cases: [Case; 5] = [
         (
             vec![rule("a {}"), rule("@import 'a';")],
-            CssRuleConstructionErrorKind::InvalidPreludeOrder,
+            CssRuleConstructionError::is_invalid_prelude_order,
             vec![1],
         ),
         (
@@ -148,28 +172,29 @@ fn leading_layer_import_namespace_order_and_duplicate_namespace_admission() {
                 rule("@layer first;"),
                 rule("@import 'b';"),
             ],
-            CssRuleConstructionErrorKind::InvalidPreludeOrder,
+            CssRuleConstructionError::is_invalid_prelude_order,
             vec![2],
         ),
         (
             vec![rule("@namespace p 'urn:p';"), rule("@import 'b';")],
-            CssRuleConstructionErrorKind::InvalidPreludeOrder,
+            CssRuleConstructionError::is_invalid_prelude_order,
             vec![1],
         ),
         (
             vec![rule("@namespace p 'urn:p';"), rule("@namespace p 'urn:p';")],
-            CssRuleConstructionErrorKind::DuplicateNamespace,
+            CssRuleConstructionError::is_duplicate_namespace,
             vec![1],
         ),
         (
             vec![rule("@namespace 'urn:a';"), rule("@namespace 'urn:a';")],
-            CssRuleConstructionErrorKind::DuplicateNamespace,
+            CssRuleConstructionError::is_duplicate_namespace,
             vec![1],
         ),
-    ] {
+    ];
+    for (rules, kind, path) in cases {
         let before = rules.clone();
         let error = CssSheet::try_from_rules(rules).unwrap_err();
-        assert_eq!(error.kind(), kind);
+        assert!(kind(&error), "{error:?}");
         assert_eq!(error.path(), path);
         assert!(error.position().is_some());
         assert!(!before.is_empty());
@@ -189,23 +214,34 @@ fn detached_relative_and_nested_declaration_subtrees_recheck_ancestry() {
     );
     for child in style.rules() {
         let error = CssMediaRule::try_new(query(), vec![child.clone()], &context()).unwrap_err();
-        assert_eq!(error.kind(), CssRuleConstructionErrorKind::InvalidPlacement);
+        assert!(error.is_invalid_placement(), "{error:?}");
         assert_eq!(error.path(), &[0]);
         assert!(error.position().is_some());
     }
     assert!(CssSheet::try_from_rules(vec![rule("& {}")]).is_ok());
-    assert!(CssScopedMediaRule::try_new(query(), scoped("> b {}"), &context()).is_ok());
-    assert_eq!(
+    // A relative selector needs a style or scope ancestor, so a group that holds one
+    // is assembled by its scope, not detached.
+    let error = CssMediaRule::try_new(query(), scoped("> b {}"), &context()).unwrap_err();
+    assert!(error.is_invalid_placement(), "{error:?}");
+    assert!(
+        CssScopeRule::try_new(
+            None,
+            None,
+            scoped("@media all { > b {} }"),
+            &context(),
+            CssScopeNestingContext::None,
+        )
+        .is_ok()
+    );
+    assert!(
         CssMediaRule::try_new(query(), vec![rule("@import 'a';")], &context())
             .unwrap_err()
-            .kind(),
-        CssRuleConstructionErrorKind::InvalidPlacement
+            .is_invalid_placement()
     );
-    assert_eq!(
+    assert!(
         CssMediaRule::try_new(query(), vec![rule("@namespace p 'urn:p';")], &context())
             .unwrap_err()
-            .kind(),
-        CssRuleConstructionErrorKind::InvalidPlacement
+            .is_invalid_placement()
     );
 }
 #[test]
@@ -214,15 +250,15 @@ fn scope_direct_page_role_differs_from_its_ordinary_group_body() {
     let CssRule::Scope(scope) = &source.rules()[0] else {
         panic!("scope")
     };
-    let CssScopedRule::Media(media) = &scope.rules().rules()[0] else {
+    let CssRule::Media(media) = &scope.rules().rules()[0] else {
         panic!("media")
     };
-    let page = media.rules().rules()[0].clone();
+    let page = media.rules()[0].clone();
     let list = vec![page];
-    assert!(CssScopedMediaRule::try_new(query(), list.clone(), &context()).is_ok());
+    assert!(CssMediaRule::try_new(query(), list.clone(), &context()).is_ok());
     let error = CssScopeRule::try_new(None, None, list, &context(), CssScopeNestingContext::None)
         .unwrap_err();
-    assert_eq!(error.kind(), CssRuleConstructionErrorKind::InvalidPlacement);
+    assert!(error.is_invalid_placement(), "{error:?}");
     assert_eq!(error.path(), &[0]);
     assert!(error.position().is_some());
     assert!(
@@ -246,27 +282,24 @@ fn namespace_constraints_check_declared_prefix_and_default_structure_without_uri
     )]);
     for child in &parsed.rules()[1..] {
         assert!(CssMediaRule::try_new(query(), vec![child.clone()], &new_context).is_ok());
-        assert_eq!(
+        assert!(
             CssMediaRule::try_new(query(), vec![child.clone()], &context())
                 .unwrap_err()
-                .kind(),
-            CssRuleConstructionErrorKind::NamespaceMismatch
+                .is_namespace_mismatch()
         );
     }
     let default =
         CssNamespaceContext::from_bindings([(None, CssNamespaceName::new("urn:default"))]);
-    assert_eq!(
+    assert!(
         CssMediaRule::try_new(query(), vec![rule("a {}")], &default)
             .unwrap_err()
-            .kind(),
-        CssRuleConstructionErrorKind::NamespaceMismatch
+            .is_namespace_mismatch()
     );
     let parsed = sheet("@namespace 'urn:default'; a {}");
-    assert_eq!(
+    assert!(
         CssMediaRule::try_new(query(), vec![parsed.rules()[1].clone()], &context())
             .unwrap_err()
-            .kind(),
-        CssRuleConstructionErrorKind::NamespaceMismatch
+            .is_namespace_mismatch()
     );
     assert!(CssMediaRule::try_new(query(), vec![rule("*|a {}")], &default).is_ok());
 }
@@ -274,14 +307,17 @@ fn namespace_constraints_check_declared_prefix_and_default_structure_without_uri
 fn scope_raw_identifiers_and_functional_arguments_are_intrinsically_checked() {
     // The old Is(NUL class) scope-rule defense is retained privately. Checked
     // public list construction now rejects that exact raw member first.
-    assert!(CssPseudoSelectorList::try_new(vec![CssSelector::Class("\0".into())]).is_err());
+    assert!(
+        CssPseudoSelectorList::try_new(vec![CssSelector::Class("\0".into())], Default::default())
+            .is_err()
+    );
     for selector in [
         CssSelector::Tag(String::new()),
         CssSelector::Key("\0".into()),
         CssSelector::Class(String::new()),
     ] {
         let root =
-            CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]).unwrap();
+            CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(selector)]).unwrap();
         let error = CssScopeRule::try_new(
             Some(root),
             None,
@@ -290,15 +326,12 @@ fn scope_raw_identifiers_and_functional_arguments_are_intrinsically_checked() {
             CssScopeNestingContext::None,
         )
         .unwrap_err();
-        assert_eq!(
-            error.kind(),
-            CssRuleConstructionErrorKind::InvalidSelectorIdentifier
-        );
+        assert!(error.is_invalid_selector_identifier(), "{error:?}");
         assert!(error.path().is_empty());
         assert_eq!(error.position(), None);
     }
     for name in ["1lead", "embedded space", "é"] {
-        let root = CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(
+        let root = CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(
             CssSelector::Class(name.into()),
         )])
         .unwrap();
@@ -316,11 +349,11 @@ fn scope_raw_identifiers_and_functional_arguments_are_intrinsically_checked() {
     let mut selector = CssSelector::Class("ok".into());
     for _ in 0..256 {
         selector = CssSelector::PseudoClass(CssPseudoClass::Is(
-            CssPseudoSelectorList::try_new(vec![selector]).unwrap(),
+            CssPseudoSelectorList::try_new(vec![selector], Default::default()).unwrap(),
         ));
     }
     let root =
-        CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector.clone())]).unwrap();
+        CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(selector.clone())]).unwrap();
     assert!(
         CssScopeRule::try_new(
             Some(root),
@@ -332,10 +365,10 @@ fn scope_raw_identifiers_and_functional_arguments_are_intrinsically_checked() {
         .is_ok()
     );
     selector = CssSelector::PseudoClass(CssPseudoClass::Is(
-        CssPseudoSelectorList::try_new(vec![selector]).unwrap(),
+        CssPseudoSelectorList::try_new(vec![selector], Default::default()).unwrap(),
     ));
-    let root = CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]).unwrap();
-    assert_eq!(
+    let root = CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(selector)]).unwrap();
+    assert!(
         CssScopeRule::try_new(
             Some(root),
             None,
@@ -344,8 +377,7 @@ fn scope_raw_identifiers_and_functional_arguments_are_intrinsically_checked() {
             CssScopeNestingContext::None
         )
         .unwrap_err()
-        .kind(),
-        CssRuleConstructionErrorKind::SelectorNestingLimit
+        .is_selector_nesting_limit()
     );
 }
 #[test]
@@ -356,7 +388,7 @@ fn exact_rule_depth_boundary_counts_new_ordinary_and_scoped_wrappers() {
     }
     assert!(CssSheet::try_from_rules(vec![child.clone()]).is_ok());
     let error = CssMediaRule::try_new(query(), vec![child], &context()).unwrap_err();
-    assert_eq!(error.kind(), CssRuleConstructionErrorKind::NestingLimit);
+    assert!(error.is_nesting_limit(), "{error:?}");
     assert_eq!(error.path().len(), 256);
     assert!(error.position().is_some());
     let input = format!(
@@ -365,22 +397,19 @@ fn exact_rule_depth_boundary_counts_new_ordinary_and_scoped_wrappers() {
         "}".repeat(255)
     );
     let child = rule(&input);
-    assert_eq!(
+    assert!(
         CssMediaRule::try_new(query(), vec![child], &context())
             .unwrap_err()
-            .kind(),
-        CssRuleConstructionErrorKind::NestingLimit
+            .is_nesting_limit()
     );
-    let mut child = CssScopedRule::FontFace(CssFontFaceRule::new(CssFontFaceDescriptors::new(
-        Vec::new(),
-    )));
+    let mut child = CssRule::FontFace(CssFontFaceRule::new(
+        CssFontFaceDescriptors::new(Vec::new()),
+    ));
     for _ in 1..256 {
-        child = CssScopedRule::Media(
-            CssScopedMediaRule::try_new(query(), vec![child], &context()).unwrap(),
-        );
+        child = CssRule::Media(CssMediaRule::try_new(query(), vec![child], &context()).unwrap());
     }
-    let error = CssScopedMediaRule::try_new(query(), vec![child], &context()).unwrap_err();
-    assert_eq!(error.kind(), CssRuleConstructionErrorKind::NestingLimit);
+    let error = CssMediaRule::try_new(query(), vec![child], &context()).unwrap_err();
+    assert!(error.is_nesting_limit(), "{error:?}");
     assert_eq!(error.position(), None);
 }
 #[test]
@@ -404,10 +433,14 @@ fn aggregate_descriptor_front_door_covers_all_fourteen_kinds() {
     ] {
         let value = ordinary(source, kind);
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{kind:?}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{kind:?}"
+        );
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     usize::MAX,
                     usize::MAX,
                     expected.len()
@@ -415,16 +448,15 @@ fn aggregate_descriptor_front_door_covers_all_fourteen_kinds() {
                 .unwrap(),
             expected
         );
-        assert_eq!(
+        assert!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
+                .serialize_specified(CssSerializationLimits::new(
                     usize::MAX,
                     usize::MAX,
                     expected.len() - 1
                 ))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(value, before);
     }
@@ -436,45 +468,35 @@ fn suppressed_descriptor_occurrences_and_feature_names_charge_work_without_bytes
         "suppressed".repeat(100)
     ));
     let expected = "@font-face { font-family: Demo; }";
-    let limits = CssSpecifiedValueSerializationLimits::new(5, 5, expected.len());
-    assert_eq!(
-        input.to_specified_css_with_limits(limits).unwrap(),
-        expected
-    );
+    let limits = CssSerializationLimits::new(5, 5, expected.len());
+    assert_eq!(input.serialize_specified(limits).unwrap(), expected);
     let input = rule(
         "@font-feature-values Demo { @swash { pretty: 999999999999999999999999999999; } @swash { pretty: 1; } }",
     );
     let expected = "@font-feature-values Demo { @swash { pretty: 1; } }";
     assert_eq!(
         input
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                10,
-                10,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(10, 10, expected.len()))
             .unwrap(),
         expected
     );
     for (limits, resource) in [
         (
-            CssSpecifiedValueSerializationLimits::new(9, 10, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(9, 10, expected.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(10, 9, expected.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(10, 9, expected.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(10, 10, expected.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(10, 10, expected.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            input
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(resource)
+            serialization_failure(&input.serialize_specified(limits).unwrap_err()),
+            resource
         );
     }
 }
@@ -483,12 +505,15 @@ fn pending_descriptor_effective_value_uses_shared_authored_owner() {
     let input = rule("@font-face { font-weight: 400; font-weight: env(weight); }");
     let before = input.clone();
     assert_eq!(
-        input.to_specified_css().unwrap(),
+        input.serialize_specified(Default::default()).unwrap(),
         "@font-face { font-weight:  env(weight); }"
     );
     assert_eq!(input, before);
-    let report =
-        parse_font_face_descriptor_value("env(weight)", CssFontFaceDescriptorKind::FontWeight);
+    let report = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        "env(weight)",
+        CssFontFaceDescriptorKind::FontWeight,
+    );
     let value = report.syntax().as_ref().unwrap().clone();
     let face = CssFontFaceRule::new(CssFontFaceDescriptors::new(vec![
         CssFontFaceDescriptor::new(value),
@@ -497,7 +522,9 @@ fn pending_descriptor_effective_value_uses_shared_authored_owner() {
     let record = face.descriptors().occurrences().next().unwrap();
     assert_eq!(record.position(), None);
     assert_eq!(
-        CssRule::FontFace(face).to_specified_css().unwrap(),
+        CssRule::FontFace(face)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "@font-face { font-weight: env(weight); }"
     );
 }
@@ -524,7 +551,7 @@ fn malformed_font_grammar_keeps_independent_local_recovery_controls() {
         "@font-face { font-weight: 400 500 600; font-display: swap; }",
         "@font-feature-values Demo { @character-variant { bad: 1 2 3; good: 100; } }",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert_eq!(report.syntax().rules().len(), 1);
         assert_eq!(report.diagnostics().len(), 1);
         assert_eq!(
@@ -545,7 +572,7 @@ fn first_authored_failure_precedes_later_prelude_order_errors() {
     };
     let error =
         CssSheet::try_from_rules(vec![style.rules()[0].clone(), rule("@import 'a';")]).unwrap_err();
-    assert_eq!(error.kind(), CssRuleConstructionErrorKind::InvalidPlacement);
+    assert!(error.is_invalid_placement(), "{error:?}");
     assert_eq!(error.path(), &[0]);
 }
 #[test]
@@ -554,7 +581,7 @@ fn functional_compound_raw_classes_use_the_same_intrinsic_rejection() {
     let argument =
         CssCompoundSelectorArgument::try_new(CssSelector::Class("escaped name".into())).unwrap();
     let selector = CssSelector::PseudoClass(CssPseudoClass::HostFunction(argument));
-    let root = CssScopeSelectorList::try_new(vec![CssScopeSelector::Selector(selector)]).unwrap();
+    let root = CssScopeSelectorList::try_new(vec![CssStyleSelector::Selector(selector)]).unwrap();
     let scope = CssScopeRule::try_new(
         Some(root.clone()),
         None,
@@ -597,7 +624,9 @@ fn semantic_endpoint_shortening_does_not_require_identical_units_or_keyword_bran
         ),
     ] {
         assert_eq!(
-            ordinary(source, kind).serialize_specified().unwrap(),
+            ordinary(source, kind)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );
@@ -609,7 +638,10 @@ fn extreme_exact_angle_exponents_do_not_become_a_machine_integer_admission_limit
     let exponent = "99999999999999999999999999999999999999999999999999";
     let source = format!("oblique 9e-{exponent}deg 10e-{exponent}grad");
     let value = ordinary(&source, CssFontFaceDescriptorKind::FontStyle);
-    assert_eq!(value.serialize_specified().unwrap(), "oblique 0deg");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "oblique 0deg"
+    );
 }
 
 #[test]
@@ -623,7 +655,7 @@ fn descriptor_rule_order_uses_selected_cssom_relative_order_and_fonts4_append_po
     }",
     );
     assert_eq!(
-        input.to_specified_css().unwrap(),
+        input.serialize_specified(Default::default()).unwrap(),
         "@font-face { font-family: Demo; src: local(\"Demo\"); unicode-range: U+0-7F; font-feature-settings: normal; font-width: 100%; font-weight: 400; font-style: italic; font-display: auto; font-variation-settings: normal; font-named-instance: auto; font-language-override: normal; ascent-override: normal; descent-override: normal; line-gap-override: normal; }"
     );
 }
@@ -641,17 +673,17 @@ fn parsed_scoped_near_limit_subtrees_count_new_group_and_scope_wrappers() {
         panic!("parsed scope")
     };
     let children = scope.rules().rules().to_vec();
-    let CssScopedRule::Media(original) = &children[0] else {
+    let CssRule::Media(original) = &children[0] else {
         panic!("parsed scoped group")
     };
     let original_position = original.position().expect("parsed child position");
-    let wrapped = CssScopedMediaRule::try_new(query(), children.clone(), &context()).unwrap();
+    let wrapped = CssMediaRule::try_new(query(), children.clone(), &context()).unwrap();
     assert_eq!(wrapped.position(), None);
-    let CssScopedRule::Media(retained) = &wrapped.rules().rules()[0] else {
+    let CssRule::Media(retained) = &wrapped.rules()[0] else {
         panic!("retained child")
     };
     assert_eq!(retained.position(), Some(original_position));
-    assert_eq!(wrapped.rules().rules(), children);
+    assert_eq!(wrapped.rules(), children);
     let constructed_scope = CssScopeRule::try_new(
         None,
         None,
@@ -662,22 +694,18 @@ fn parsed_scoped_near_limit_subtrees_count_new_group_and_scope_wrappers() {
     .unwrap();
     assert_eq!(constructed_scope.position(), None);
     for error in [
-        CssScopedMediaRule::try_new(
-            query(),
-            vec![CssScopedRule::Scope(scope.clone())],
-            &context(),
-        )
-        .unwrap_err(),
+        CssMediaRule::try_new(query(), vec![CssRule::Scope(scope.clone())], &context())
+            .unwrap_err(),
         CssScopeRule::try_new(
             None,
             None,
-            vec![CssScopedRule::Media(wrapped)],
+            vec![CssRule::Media(wrapped)],
             &context(),
             CssScopeNestingContext::None,
         )
         .unwrap_err(),
     ] {
-        assert_eq!(error.kind(), CssRuleConstructionErrorKind::NestingLimit);
+        assert!(error.is_nesting_limit(), "{error:?}");
         assert_eq!(error.path().len(), 256);
         assert_eq!(
             error.position().unwrap().byte_offset().value(),
@@ -711,14 +739,13 @@ fn equal_symbolic_ranges_discard_bytes_but_retain_both_projection_visits() {
         let single = ordinary(single, kind);
         let repeated = ordinary(repeated, kind);
         let before = repeated.clone();
-        assert_eq!(single.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            single.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             repeated
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );
@@ -728,41 +755,33 @@ fn equal_symbolic_ranges_discard_bytes_but_retain_both_projection_visits() {
             let single_boundary = (0..100)
                 .find(|&limit| {
                     let limits = if input_budget {
-                        CssSpecifiedValueSerializationLimits::new(limit, 100, expected.len())
+                        CssSerializationLimits::new(limit, 100, expected.len())
                     } else {
-                        CssSpecifiedValueSerializationLimits::new(100, limit, expected.len())
+                        CssSerializationLimits::new(100, limit, expected.len())
                     };
-                    single.serialize_specified_with_limits(limits).is_ok()
+                    single.serialize_specified(limits).is_ok()
                 })
                 .expect("bounded single endpoint");
             let limits = if input_budget {
-                CssSpecifiedValueSerializationLimits::new(single_boundary, 100, expected.len())
+                CssSerializationLimits::new(single_boundary, 100, expected.len())
             } else {
-                CssSpecifiedValueSerializationLimits::new(100, single_boundary, expected.len())
+                CssSerializationLimits::new(100, single_boundary, expected.len())
             };
             assert_eq!(
-                repeated
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&repeated.serialize_specified(limits).unwrap_err()),
                 if input_budget {
-                    CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                    SerializationFailure::InputNodeLimit
                 } else {
-                    CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+                    SerializationFailure::ProjectionNodeLimit
                 }
             );
             assert_eq!(repeated, before);
         }
-        assert_eq!(
+        assert!(
             repeated
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len() - 1
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(repeated, before);
     }
@@ -779,11 +798,7 @@ fn overwritten_symbolic_metrics_use_shared_numeric_visits_without_formatting() {
         let expected = format!("@font-face {{ {name}: 40%; }}");
         assert_eq!(
             input
-                .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );
@@ -791,28 +806,25 @@ fn overwritten_symbolic_metrics_use_shared_numeric_visits_without_formatting() {
             let boundary = (0..100)
                 .find(|&limit| {
                     let limits = if input_budget {
-                        CssSpecifiedValueSerializationLimits::new(limit, 100, expected.len())
+                        CssSerializationLimits::new(limit, 100, expected.len())
                     } else {
-                        CssSpecifiedValueSerializationLimits::new(100, limit, expected.len())
+                        CssSerializationLimits::new(100, limit, expected.len())
                     };
-                    surviving.to_specified_css_with_limits(limits).is_ok()
+                    surviving.serialize_specified(limits).is_ok()
                 })
                 .expect("bounded surviving metric");
             let limits = if input_budget {
-                CssSpecifiedValueSerializationLimits::new(boundary, 100, expected.len())
+                CssSerializationLimits::new(boundary, 100, expected.len())
             } else {
-                CssSpecifiedValueSerializationLimits::new(100, boundary, expected.len())
+                CssSerializationLimits::new(100, boundary, expected.len())
             };
             assert_eq!(
-                input
-                    .to_specified_css_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
-                CssSpecifiedRuleSerializationErrorKind::Resource(if input_budget {
-                    CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                serialization_failure(&input.serialize_specified(limits).unwrap_err()),
+                if input_budget {
+                    SerializationFailure::InputNodeLimit
                 } else {
-                    CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-                })
+                    SerializationFailure::ProjectionNodeLimit
+                }
             );
             assert_eq!(input, before);
         }
@@ -831,11 +843,7 @@ fn overwritten_pending_streams_charge_visits_without_discarded_bytes() {
     let expected = "@font-face { font-weight: 600; }";
     assert_eq!(
         input
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                100,
-                100,
-                expected.len()
-            ))
+            .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
             .unwrap(),
         expected
     );
@@ -843,43 +851,33 @@ fn overwritten_pending_streams_charge_visits_without_discarded_bytes() {
         let boundary = (0..100)
             .find(|&limit| {
                 let limits = if input_budget {
-                    CssSpecifiedValueSerializationLimits::new(limit, 100, expected.len())
+                    CssSerializationLimits::new(limit, 100, expected.len())
                 } else {
-                    CssSpecifiedValueSerializationLimits::new(100, limit, expected.len())
+                    CssSerializationLimits::new(100, limit, expected.len())
                 };
-                surviving.to_specified_css_with_limits(limits).is_ok()
+                surviving.serialize_specified(limits).is_ok()
             })
             .expect("bounded surviving descriptor");
         let limits = if input_budget {
-            CssSpecifiedValueSerializationLimits::new(boundary, 100, expected.len())
+            CssSerializationLimits::new(boundary, 100, expected.len())
         } else {
-            CssSpecifiedValueSerializationLimits::new(100, boundary, expected.len())
+            CssSerializationLimits::new(100, boundary, expected.len())
         };
         assert_eq!(
-            input
-                .to_specified_css_with_limits(limits)
-                .unwrap_err()
-                .kind(),
-            CssSpecifiedRuleSerializationErrorKind::Resource(if input_budget {
-                CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+            serialization_failure(&input.serialize_specified(limits).unwrap_err()),
+            if input_budget {
+                SerializationFailure::InputNodeLimit
             } else {
-                CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
-            })
+                SerializationFailure::ProjectionNodeLimit
+            }
         );
         assert_eq!(input, before);
     }
-    assert_eq!(
+    assert!(
         input
-            .to_specified_css_with_limits(CssSpecifiedValueSerializationLimits::new(
-                100,
-                100,
-                expected.len() - 1
-            ))
+            .serialize_specified(CssSerializationLimits::new(100, 100, expected.len() - 1))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedRuleSerializationErrorKind::Resource(
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
-        )
+            .is_byte_limit()
     );
     assert_eq!(input, before);
 }
@@ -926,14 +924,13 @@ fn exact_spelling_identity_in_matching_calculations_shortens_ranges() {
         let single = ordinary(&format!("{prefix}{first}"), kind);
         let repeated = ordinary(&format!("{prefix}{first} {second}"), kind);
         let before = repeated.clone();
-        assert_eq!(single.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            single.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             repeated
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );
@@ -941,41 +938,33 @@ fn exact_spelling_identity_in_matching_calculations_shortens_ranges() {
             let boundary = (0..100)
                 .find(|&limit| {
                     let limits = if input_budget {
-                        CssSpecifiedValueSerializationLimits::new(limit, 100, expected.len())
+                        CssSerializationLimits::new(limit, 100, expected.len())
                     } else {
-                        CssSpecifiedValueSerializationLimits::new(100, limit, expected.len())
+                        CssSerializationLimits::new(100, limit, expected.len())
                     };
-                    single.serialize_specified_with_limits(limits).is_ok()
+                    single.serialize_specified(limits).is_ok()
                 })
                 .expect("bounded first endpoint");
             let limits = if input_budget {
-                CssSpecifiedValueSerializationLimits::new(boundary, 100, expected.len())
+                CssSerializationLimits::new(boundary, 100, expected.len())
             } else {
-                CssSpecifiedValueSerializationLimits::new(100, boundary, expected.len())
+                CssSerializationLimits::new(100, boundary, expected.len())
             };
             assert_eq!(
-                repeated
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&repeated.serialize_specified(limits).unwrap_err()),
                 if input_budget {
-                    CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                    SerializationFailure::InputNodeLimit
                 } else {
-                    CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+                    SerializationFailure::ProjectionNodeLimit
                 }
             );
             assert_eq!(repeated, before);
         }
-        assert_eq!(
+        assert!(
             repeated
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len() - 1
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len() - 1))
                 .unwrap_err()
-                .kind(),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit
+                .is_byte_limit()
         );
         assert_eq!(repeated, before);
     }
@@ -1009,11 +998,7 @@ fn matching_calculation_structure_does_not_equate_distinct_rounded_leaves() {
         let before = value.clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );
@@ -1035,14 +1020,13 @@ fn exact_absolute_units_inside_number_cancellation_share_retained_identity() {
         let single = ordinary(first, kind);
         let repeated = ordinary(&format!("{first} {second}"), kind);
         let before = repeated.clone();
-        assert_eq!(single.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            single.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             repeated
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );
@@ -1050,27 +1034,24 @@ fn exact_absolute_units_inside_number_cancellation_share_retained_identity() {
             let boundary = (0..100)
                 .find(|&limit| {
                     let limits = if input_budget {
-                        CssSpecifiedValueSerializationLimits::new(limit, 100, expected.len())
+                        CssSerializationLimits::new(limit, 100, expected.len())
                     } else {
-                        CssSpecifiedValueSerializationLimits::new(100, limit, expected.len())
+                        CssSerializationLimits::new(100, limit, expected.len())
                     };
-                    single.serialize_specified_with_limits(limits).is_ok()
+                    single.serialize_specified(limits).is_ok()
                 })
                 .expect("bounded cancellation expression");
             let limits = if input_budget {
-                CssSpecifiedValueSerializationLimits::new(boundary, 100, expected.len())
+                CssSerializationLimits::new(boundary, 100, expected.len())
             } else {
-                CssSpecifiedValueSerializationLimits::new(100, boundary, expected.len())
+                CssSerializationLimits::new(100, boundary, expected.len())
             };
             assert_eq!(
-                repeated
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&repeated.serialize_specified(limits).unwrap_err()),
                 if input_budget {
-                    CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                    SerializationFailure::InputNodeLimit
                 } else {
-                    CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+                    SerializationFailure::ProjectionNodeLimit
                 }
             );
             assert_eq!(repeated, before);
@@ -1107,11 +1088,7 @@ fn numeric_identity_preserves_different_dimensions_context_and_irrational_angles
         let before = value.clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );
@@ -1139,14 +1116,13 @@ fn typed_constant_and_round_strategy_identity_ignores_case_and_escape_spelling()
         let single = ordinary(first, kind);
         let repeated = ordinary(&format!("{first} {second}"), kind);
         let before = repeated.clone();
-        assert_eq!(single.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            single.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(
             repeated
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );
@@ -1154,27 +1130,24 @@ fn typed_constant_and_round_strategy_identity_ignores_case_and_escape_spelling()
             let boundary = (0..100)
                 .find(|&limit| {
                     let limits = if input_budget {
-                        CssSpecifiedValueSerializationLimits::new(limit, 100, expected.len())
+                        CssSerializationLimits::new(limit, 100, expected.len())
                     } else {
-                        CssSpecifiedValueSerializationLimits::new(100, limit, expected.len())
+                        CssSerializationLimits::new(100, limit, expected.len())
                     };
-                    single.serialize_specified_with_limits(limits).is_ok()
+                    single.serialize_specified(limits).is_ok()
                 })
                 .expect("bounded typed expression");
             let limits = if input_budget {
-                CssSpecifiedValueSerializationLimits::new(boundary, 100, expected.len())
+                CssSerializationLimits::new(boundary, 100, expected.len())
             } else {
-                CssSpecifiedValueSerializationLimits::new(100, boundary, expected.len())
+                CssSerializationLimits::new(100, boundary, expected.len())
             };
             assert_eq!(
-                repeated
-                    .serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&repeated.serialize_specified(limits).unwrap_err()),
                 if input_budget {
-                    CssSpecifiedValueSerializationErrorKind::InputNodeLimit
+                    SerializationFailure::InputNodeLimit
                 } else {
-                    CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit
+                    SerializationFailure::ProjectionNodeLimit
                 }
             );
             assert_eq!(repeated, before);
@@ -1205,11 +1178,7 @@ fn typed_expression_identity_preserves_different_constants_strategies_and_rounde
         let before = value.clone();
         assert_eq!(
             value
-                .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-                    100,
-                    100,
-                    expected.len()
-                ))
+                .serialize_specified(CssSerializationLimits::new(100, 100, expected.len()))
                 .unwrap(),
             expected
         );

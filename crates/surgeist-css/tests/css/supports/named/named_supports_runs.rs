@@ -3,10 +3,15 @@
 //! candidate is later rejected. Failed declaration text alone has no such rule
 //! boundary. These generic tests do not become ordinary style declarations.
 
-use surgeist_css::{CssRecoveryAction, CssRule, CssSupportsTestItem, parse_sheet};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::supports::CssSupportsTestItem;
+use surgeist_css::rule::CssRule;
 
-fn report_with_definition(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet> {
-    let report = parse_sheet(source);
+fn report_with_definition(
+    source: &str,
+) -> surgeist_css::CssParseReport<surgeist_css::rule::CssSheet> {
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.syntax().rules().len(), 1, "{source}: {report:?}");
     assert!(matches!(
         report.syntax().rules()[0],

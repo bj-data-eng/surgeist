@@ -4,8 +4,17 @@ use super::boolean_condition::{
     parse_component_condition,
 };
 use super::query_components::{ComponentCursor as Cursor, authored_operand};
-use crate::supports::{SupportsLexical, trivia};
-use crate::*;
+use crate::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueRef, CssValueTokenRef,
+};
+use crate::query::CssCondition;
+use crate::query::container::{
+    CssContainerGeneralEnclosed, CssContainerScrollDirectionKeyword,
+    CssContainerScrollDirectionValue, CssContainerScrollFeature, CssContainerScrollFeatureKind,
+    CssContainerSnappedKeyword, CssContainerSnappedValue, CssContainerStuckKeyword,
+    CssContainerStuckValue, CssScrollStateLeaf,
+};
+use crate::query::supports::construction::{SupportsLexical, trivia};
 
 /// A scroll-state query, as regions of its lexical root.
 pub(super) type ScrollNode = BooleanNode<ScrollLeaf>;
@@ -18,36 +27,20 @@ pub(super) enum ScrollLeaf {
 struct ScrollModel;
 
 impl BooleanModel<ScrollLeaf> for ScrollModel {
-    type Condition = CssContainerScrollQuery;
-    type Kind = CssContainerScrollQueryKind;
+    type Leaf = CssScrollStateLeaf;
 
-    fn leaf(leaf: ScrollLeaf, lexical: &SupportsLexical) -> Self::Kind {
+    fn leaf(leaf: ScrollLeaf, lexical: &SupportsLexical) -> CssScrollStateLeaf {
         match leaf {
-            ScrollLeaf::Feature(feature) => CssContainerScrollQueryKind::Feature(feature),
-            ScrollLeaf::Opaque => CssContainerScrollQueryKind::GeneralEnclosed(
+            ScrollLeaf::Feature(feature) => CssScrollStateLeaf::Feature(feature),
+            ScrollLeaf::Opaque => CssScrollStateLeaf::GeneralEnclosed(
                 CssContainerGeneralEnclosed::new(lexical.clone()),
             ),
         }
     }
-    fn parenthesized(group: Box<Self::Condition>) -> Self::Kind {
-        CssContainerScrollQueryKind::Parenthesized(group)
-    }
-    fn not(operand: Box<Self::Condition>) -> Self::Kind {
-        CssContainerScrollQueryKind::Not(operand)
-    }
-    fn and(operands: Vec<Self::Condition>) -> Self::Kind {
-        CssContainerScrollQueryKind::And(CssContainerScrollQueryList::new(operands))
-    }
-    fn or(operands: Vec<Self::Condition>) -> Self::Kind {
-        CssContainerScrollQueryKind::Or(CssContainerScrollQueryList::new(operands))
-    }
-    fn condition(kind: Self::Kind, lexical: SupportsLexical) -> Self::Condition {
-        CssContainerScrollQuery::new(kind, lexical)
-    }
 }
 
 impl ScrollNode {
-    pub(super) fn into_query(self, parent: SupportsLexical) -> CssContainerScrollQuery {
+    pub(super) fn into_query(self, parent: SupportsLexical) -> CssCondition<CssScrollStateLeaf> {
         self.build::<ScrollModel>(&parent)
     }
 }
@@ -55,18 +48,14 @@ impl ScrollNode {
 // A whole scroll-state feature is tried before the boolean algebra.
 pub(super) fn parse(
     items: &[CssComponentValue],
-) -> Result<Option<ScrollNode>, CssComponentValueError> {
+) -> Result<ScrollNode, ConditionFailure<CssComponentValueError>> {
     if let Some(feature) = feature(items)? {
-        return Ok(Some(ScrollNode {
+        return Ok(ScrollNode {
             range: 0..items.len(),
             kind: BooleanNodeKind::Leaf(ScrollLeaf::Feature(feature)),
-        }));
+        });
     }
-    match parse_component_condition(&mut ScrollOperands, items) {
-        Ok(node) => Ok(Some(node)),
-        Err(ConditionFailure::Mismatch(_)) => Ok(None),
-        Err(ConditionFailure::Fatal(error)) => Err(error),
-    }
+    parse_component_condition(&mut ScrollOperands, items)
 }
 
 struct ScrollOperands;
@@ -86,9 +75,10 @@ impl<'a> ComponentOperands<'a> for ScrollOperands {
         };
         let kind = match component.view() {
             CssComponentValueRef::Block(block) if block.kind() == CssBlockKind::Parenthesis => {
-                match parse(block.values().items())? {
-                    Some(group) => BooleanNodeKind::Parenthesized(Box::new(group)),
-                    None => BooleanNodeKind::Leaf(ScrollLeaf::Opaque),
+                match parse(block.values().items()) {
+                    Ok(group) => BooleanNodeKind::Parenthesized(Box::new(group)),
+                    Err(ConditionFailure::Mismatch(_)) => BooleanNodeKind::Leaf(ScrollLeaf::Opaque),
+                    Err(failure @ ConditionFailure::Fatal(_)) => return Err(failure),
                 }
             }
             CssComponentValueRef::Function(_) => BooleanNodeKind::Leaf(ScrollLeaf::Opaque),

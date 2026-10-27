@@ -1,13 +1,14 @@
 //! Text 4 authored alignment grammar and source-preserving string admission.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
-use crate::numeric::NumericInputContext;
-use crate::{
-    CssCharacterAlignment, CssComponentValueRef, CssTextAlign, CssTextAlignAllValue,
-    CssTextAlignLastValue, CssTextAlignPosition, CssTextAlignValue, CssValueTokenRef,
+use crate::component::{CssComponentValueRef, CssValueTokenRef};
+use crate::numeric::expression::NumericInputContext;
+use crate::values::text::{
+    CssCharacterAlignment, CssTextAlign, CssTextAlignAllValue, CssTextAlignLastValue,
+    CssTextAlignPosition, CssTextAlignValue,
 };
 
 fn keyword(ident: &str) -> Option<CssTextAlign> {

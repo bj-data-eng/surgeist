@@ -13,7 +13,11 @@ use crate::css::support::color_components::{
 };
 use crate::css::support::parsed_color as parsed;
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::*;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorNumberLiteral, CssColorSyntax, CssHslColor,
+    CssHwbColor, CssLabColor, CssLchColor, CssPredefinedColor, CssRgbColor,
+};
+use surgeist_css::numeric::{CssAngle, CssAngleUnit, CssNumericLiteral};
 
 #[derive(Clone, Copy)]
 enum Family {
@@ -66,7 +70,7 @@ fn hue(text: &str) -> CssColorHue {
     if text == "none" {
         CssColorHue::None
     } else if text.ends_with("turn") {
-        CssColorHue::Angle(CssAngleLiteral::try_from_component(token(text)).unwrap())
+        CssColorHue::Angle(CssNumericLiteral::<CssAngle>::try_from_component(token(text)).unwrap())
     } else {
         CssColorHue::Number(CssColorNumberLiteral::try_from_component(token(text)).unwrap())
     }
@@ -309,7 +313,7 @@ fn each_modern_missing_channel_keeps_none_distinct_from_zero_in_both_front_doors
                 );
                 let before = color.clone();
                 assert_eq!(
-                    color.to_specified_css().unwrap(),
+                    color.serialize_specified(Default::default()).unwrap(),
                     expected(name, channels, false),
                     "{source}"
                 );
@@ -337,7 +341,7 @@ fn each_modern_missing_alpha_keeps_none_distinct_from_zero_and_omission() {
             assert_ne!(alpha(&color, family), alpha(&zero, family));
             let before = color.clone();
             assert_eq!(
-                color.to_specified_css().unwrap(),
+                color.serialize_specified(Default::default()).unwrap(),
                 expected(name, ["0"; 3], true),
                 "{source}"
             );
@@ -385,7 +389,11 @@ fn hsl_and_hsla_aliases_preserve_modern_or_legacy_syntax_with_number_or_angle_hu
                         } else {
                             "rgb(0, 0, 0)".into()
                         };
-                        assert_eq!(color.to_specified_css().unwrap(), output, "{source}");
+                        assert_eq!(
+                            color.serialize_specified(Default::default()).unwrap(),
+                            output,
+                            "{source}"
+                        );
                         assert_eq!(color, before);
                     }
                 }
@@ -426,10 +434,7 @@ fn legacy_aliases_reject_none_in_each_channel_or_alpha_with_sibling_recovery() {
                 )
                 .map(CssColor::from_hsl)
             };
-            assert_eq!(
-                result.unwrap_err(),
-                CssColorConstructionError::InvalidSyntax
-            );
+            assert!(result.unwrap_err().is_invalid_syntax());
         }
     }
 }

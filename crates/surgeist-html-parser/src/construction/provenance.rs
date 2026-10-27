@@ -171,8 +171,8 @@ pub(crate) struct ColorComputation {
     pub(crate) original: Option<RangeEdge>,
     pub(crate) operands: [Option<RangeEdge>; 2],
     pub(crate) space: crate::HtmlInputColorSpace,
-    pub(crate) standard_failure: Option<surgeist_css::CssColorStandardFailure>,
-    pub(crate) environment: surgeist_css::CssColorFactIdentity,
+    pub(crate) standard_failure: Option<surgeist_css::color::CssColorStandardFailure>,
+    pub(crate) environment: surgeist_css::color::CssColorFactIdentity,
     pub(crate) value: surgeist_color::Color,
 }
 /// Only one actual generated-value operation can own a replacement cause.

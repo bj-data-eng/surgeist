@@ -3,7 +3,19 @@
 //! ranges are permitted. Exact ordinary transport and lexical provenance
 //! are adopted Surgeist product contracts, not an arbitrary-precision CSS claim.
 use crate::css::support::value_assertions::property_rejection;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssCalculationType, CssInteger, CssNumeric, CssNumericLiteral};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::box_model::CssZIndexValue;
 
 const OUTSIDE_I32: &[&str] = &[
     "2147483648",
@@ -20,7 +32,7 @@ fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
         CssKnownProperty::ZIndex => "z-index",
         _ => panic!("selected integer property"),
     };
-    let report = parse_style_attribute(&format!("{name}:{text}!important"));
+    let report = CssParser::default().parse_block_contents(format!("{name}:{text}!important"));
     assert!(
         report.is_clean(),
         "{name}:{text}: {:?}",
@@ -32,7 +44,7 @@ fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
     declaration.clone()
 }
 
-fn retained_integer(declaration: &CssDeclaration) -> &CssIntegerLiteral {
+fn retained_integer(declaration: &CssDeclaration) -> &CssNumericLiteral<CssInteger> {
     let value = match declaration.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::Order(value) => value.value(),
         CssKnownPropertyValueRef::ZIndex(value) => match value.value() {
@@ -41,7 +53,7 @@ fn retained_integer(declaration: &CssDeclaration) -> &CssIntegerLiteral {
         },
         _ => panic!("selected integer wrapper"),
     };
-    let CssIntegerValue::Literal(literal) = value else {
+    let Some(literal) = value.literal() else {
         panic!("ordinary integer")
     };
     literal
@@ -55,7 +67,11 @@ fn assert_authored_integer(declaration: &CssDeclaration, text: &str) {
     };
     assert_eq!(raw, text);
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         text
     );
     let [component] = declaration.value_components().items() else {
@@ -92,21 +108,24 @@ fn assert_parsed_outside_i32(property: CssKnownProperty) {
 
 fn assert_checked_outside_i32(property: CssKnownProperty) {
     for &text in OUTSIDE_I32 {
-        let programmatic =
-            CssComponentValues::try_new(vec![CssComponentValue::try_number(text).unwrap()])
-                .unwrap();
+        let programmatic = CssComponentValues::try_new(
+            vec![CssComponentValue::try_number(text).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         assert!(matches!(
             programmatic.items()[0].origin(),
             CssValueOrigin::Programmatic
         ));
-        let retained_parsed = parse_component_values(text).unwrap();
+        let retained_parsed = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         assert!(matches!(
             retained_parsed.items()[0].origin(),
             CssValueOrigin::Parsed(_)
         ));
         for components in [programmatic, retained_parsed] {
-            let declaration = parse_property_value(
-                CssPropertyNameRef::Known(property),
+            let declaration = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Normal,
             )
@@ -170,16 +189,20 @@ fn exact_i32_boundaries_signs_and_leading_zeros_retain_tokens() {
                 text
             );
             assert_eq!(
-                CssIntegerValue::Literal(retained_integer(&declaration).clone())
-                    .serialize_specified()
+                CssNumeric::<CssInteger>::try_from_literal(retained_integer(&declaration).clone())
+                    .unwrap()
+                    .serialize_specified(Default::default())
                     .unwrap(),
                 expected.to_string()
             );
-            let components =
-                CssComponentValues::try_new(vec![CssComponentValue::try_number(text).unwrap()])
-                    .unwrap();
-            let checked = parse_property_value(
-                CssPropertyNameRef::Known(property),
+            let components = CssComponentValues::try_new(
+                vec![CssComponentValue::try_number(text).unwrap()],
+                Default::default(),
+            )
+            .unwrap();
+            let checked = CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Normal,
             )
@@ -195,10 +218,14 @@ fn exact_i32_boundaries_signs_and_leading_zeros_retain_tokens() {
 fn z_index_auto_and_integer_math_keep_their_typed_boundaries() {
     for text in ["auto", "AUTO", r"a\75 to"] {
         let parsed = parsed(CssKnownProperty::ZIndex, text);
-        let components =
-            CssComponentValues::try_new(vec![CssComponentValue::try_token(text).unwrap()]).unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ZIndex),
+        let components = CssComponentValues::try_new(
+            vec![CssComponentValue::try_token(text).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ZIndex)),
             components.clone(),
             CssImportance::Normal,
         )
@@ -218,12 +245,14 @@ fn z_index_auto_and_integer_math_keep_their_typed_boundaries() {
         for text in ["calc(1.5)", "calc(-1.5)", "calc(2px / 1px)"] {
             let declaration = parsed(property, text);
             let calculation = match declaration.known().unwrap().property_value().unwrap() {
-                CssKnownPropertyValueRef::Order(value) => match value.value() {
-                    CssIntegerValue::Calculation(value) => value,
-                    _ => panic!("unrounded integer calculation"),
-                },
+                CssKnownPropertyValueRef::Order(value) => value
+                    .value()
+                    .calculation()
+                    .expect("unrounded integer calculation"),
                 CssKnownPropertyValueRef::ZIndex(value) => match value.value() {
-                    CssZIndexValue::Integer(CssIntegerValue::Calculation(value)) => value,
+                    CssZIndexValue::Integer(value) => {
+                        value.calculation().expect("unrounded integer calculation")
+                    }
                     _ => panic!("unrounded integer calculation"),
                 },
                 _ => panic!("integer property"),
@@ -254,7 +283,7 @@ fn admitted_order_literals_and_math_expand_once_with_source_identity() {
     for text in ["0", "-2", "calc(1.5)", "calc(-1.5)"] {
         let declaration = parsed(CssKnownProperty::Order, text);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            expand_declaration(&declaration).expect("Order intrinsic expansion")
+            declaration.expand().expect("Order intrinsic expansion")
         else {
             panic!("ordinary longhand contributions")
         };
@@ -294,16 +323,18 @@ fn noninteger_ordinary_tokens_and_wrong_numeric_roots_remain_invalid() {
             "calc(1%)",
             "inherit 1",
         ] {
-            let report = parse_style_attribute(&format!("color:red;{name}:{text};color:blue"));
+            let report = CssParser::default()
+                .parse_block_contents(format!("color:red;{name}:{text};color:blue"));
             let [diagnostic] = report.diagnostics() else {
                 panic!("one invalid integer declaration: {name}:{text}")
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
             assert_eq!(report.syntax().len(), 2);
-            let components = parse_component_values(text).unwrap();
+            let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
             property_rejection(
-                parse_property_value(
-                    CssPropertyNameRef::Known(property),
+                CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                     components,
                     CssImportance::Normal,
                 ),
@@ -311,7 +342,7 @@ fn noninteger_ordinary_tokens_and_wrong_numeric_roots_remain_invalid() {
             );
         }
     }
-    let report = parse_style_attribute("order:auto");
+    let report = CssParser::default().parse_block_contents("order:auto");
     crate::css::support::value_assertions::assert_first_property_diagnostic(
         report.diagnostics(),
         "order:auto",

@@ -1,4 +1,4 @@
-use surgeist_css::*;
+use surgeist_css::CssParserContext;
 use surgeist_cssom::*;
 
 fn context(revision: u64) -> CssomContext {

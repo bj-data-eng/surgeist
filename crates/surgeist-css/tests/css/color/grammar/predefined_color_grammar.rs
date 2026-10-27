@@ -10,7 +10,12 @@
 use crate::css::support::color_components::{assert_component, assert_recovered, component, token};
 use crate::css::support::parsed_color as parsed;
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorNumberLiteral, CssColorPercentageLiteral, CssPredefinedColor,
+};
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{CssCalculation, CssNumber, CssPercentage};
 
 // The source lists seven RGB keywords and three XYZ spellings; xyz denotes D65.
 const SPACES: [(&str, PredefinedColorSpace, &str); 10] = [
@@ -78,7 +83,7 @@ fn assert_case(
         assert_fields(&color, space, channels, alpha);
         let before = color.clone();
         assert_eq!(
-            color.to_specified_css().unwrap(),
+            color.serialize_specified(Default::default()).unwrap(),
             format!("color({canonical} {projected})"),
             "{text}"
         );
@@ -156,15 +161,15 @@ fn xyz_is_the_d65_alias_and_d50_remains_distinct() {
     );
     // Full authored equality includes provenance; semantic space identity does not.
     assert_eq!(
-        alias.to_specified_css().unwrap(),
+        alias.serialize_specified(Default::default()).unwrap(),
         "color(xyz-d65 0.1 0.2 0.3)"
     );
     assert_eq!(
-        d65.to_specified_css().unwrap(),
+        d65.serialize_specified(Default::default()).unwrap(),
         "color(xyz-d65 0.1 0.2 0.3)"
     );
     assert_eq!(
-        d50.to_specified_css().unwrap(),
+        d50.serialize_specified(Default::default()).unwrap(),
         "color(xyz-d50 0.1 0.2 0.3)"
     );
 }
@@ -177,7 +182,7 @@ fn function_space_and_missing_keywords_accept_ascii_case_and_escapes() {
             let color = parsed(&format!("{function}({spelling} NoNe 50% -2 / NONE)"));
             assert_fields(&color, space, ["none", "50%", "-2"], Some("none"));
             assert_eq!(
-                color.to_specified_css().unwrap(),
+                color.serialize_specified(Default::default()).unwrap(),
                 format!("color({canonical} none 0.5 -2 / none)")
             );
         }
@@ -242,38 +247,43 @@ fn malformed_predefined_forms_recover_only_the_color_declaration() {
     let custom = parsed("color(--Profile 1 2 3)");
     assert!(custom.custom_value().is_some());
     assert!(custom.predefined_value().is_none());
-    assert_eq!(custom.to_specified_css().unwrap(), "color(--Profile 1 2 3)");
+    assert_eq!(
+        custom.serialize_specified(Default::default()).unwrap(),
+        "color(--Profile 1 2 3)"
+    );
 }
 
 #[test]
 fn checked_component_front_doors_exclude_dimensions_not_in_the_grammar() {
     for text in ["1deg", "1px", "1s"] {
-        assert_eq!(
+        assert!(
             CssColorNumberLiteral::try_from_component(token(text))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::InvalidToken
+                .is_invalid_token()
         );
-        assert_eq!(
+        assert!(
             CssColorPercentageLiteral::try_from_component(token(text))
                 .unwrap_err()
-                .kind(),
-            CssComponentValueErrorKind::InvalidToken
+                .is_invalid_token()
         );
     }
     for text in ["calc(1px)", "calc(1deg)", "calc(1s)"] {
-        assert_eq!(
-            CssNumberCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch,
+        assert!(
+            CssCalculation::<CssNumber>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .is_root_domain_mismatch(),
             "{text}"
         );
-        assert_eq!(
-            CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::RootDomainMismatch,
+        assert!(
+            CssCalculation::<CssPercentage>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default()
+            )
+            .unwrap_err()
+            .is_root_domain_mismatch(),
             "{text}"
         );
     }

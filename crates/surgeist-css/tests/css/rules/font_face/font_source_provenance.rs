@@ -4,7 +4,7 @@
 //! Font-face rule support remains Partial because selected descriptors are
 //! unfinished. Source-list authored grammar includes the Values4 src() branch.
 
-use surgeist_css::{CssSupportStatus, feature_metadata, specification_source};
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata, specification_source};
 
 const SELECTED_ID: &str = "I-FONTS4-20260907";
 const SELECTED_URL: &str = "https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/";

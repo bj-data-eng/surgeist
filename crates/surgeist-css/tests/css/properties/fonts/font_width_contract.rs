@@ -1,13 +1,25 @@
 //! Exact authored font-width contracts from CSS Fonts 4 WD 2026-09-07 §§2.3, 2.7.
 
-use surgeist_css::*;
+use crate::css::support::failure_classes::NumericFailure;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::numeric_failure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssNonNegative, CssNumeric, CssPercentage};
+use surgeist_css::property::{CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyTarget};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::{CssFontWidth, CssFontWidthKeyword};
 
-fn scalar(text: &str) -> CssSpecifiedNonNegativePercentage {
-    let values = parse_component_values(text).unwrap();
+fn scalar(text: &str) -> CssNumeric<CssPercentage, CssNonNegative> {
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let [component] = values.items() else {
         panic!("one percentage: {text}")
     };
-    CssSpecifiedNonNegativePercentage::try_from_component(component.clone()).unwrap()
+    CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(component.clone()).unwrap()
 }
 
 fn ordinary_percentage_spelling(value: &CssFontWidth) -> &str {
@@ -15,7 +27,8 @@ fn ordinary_percentage_spelling(value: &CssFontWidth) -> &str {
         panic!("percentage width")
     };
     let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = value
-        .literal_component()
+        .literal()
+        .map(|literal| literal.component())
         .expect("ordinary percentage")
         .view()
     else {
@@ -26,14 +39,15 @@ fn ordinary_percentage_spelling(value: &CssFontWidth) -> &str {
 
 fn width(name: &str, value: &str, checked: bool) -> CssFontWidth {
     let declaration = if checked {
-        parse_property_value_for_grammar(
-            CssPropertyGrammar::from_name(name).unwrap(),
-            parse_component_values(value).unwrap(),
+        CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Grammar(CssPropertyGrammar::from_name(name).unwrap()),
+            CssComponentValues::parse(&CssParser::default(), value).unwrap(),
             CssImportance::Normal,
         )
         .unwrap()
     } else {
-        let report = parse_style_attribute(&format!("{name}:{value}"));
+        let report = CssParser::default().parse_block_contents(format!("{name}:{value}"));
         assert!(
             report.is_clean(),
             "{name}:{value}: {:?}",
@@ -64,11 +78,17 @@ fn nine_keywords_have_the_fonts_four_exact_percentage_mapping() {
         (UltraExpanded, "ultra-expanded", "200%"),
     ] {
         assert_eq!(
-            keyword.percentage().serialize_specified().unwrap(),
+            keyword
+                .percentage()
+                .serialize_specified(Default::default())
+                .unwrap(),
             percentage
         );
         let direct = CssFontWidth::Keyword(keyword);
-        assert_eq!(direct.serialize_specified().unwrap(), spelling);
+        assert_eq!(
+            direct.serialize_specified(Default::default()).unwrap(),
+            spelling
+        );
         for name in ["font-width", "font-stretch"] {
             for checked in [false, true] {
                 assert_eq!(width(name, spelling, checked), direct);
@@ -87,7 +107,10 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
         ("999999999999999999999999%", "999999999999999999999999%"),
     ] {
         let direct = CssFontWidth::Percentage(scalar(text));
-        assert_eq!(direct.serialize_specified().unwrap(), canonical);
+        assert_eq!(
+            direct.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
         for name in ["font-width", "font-stretch"] {
             for checked in [false, true] {
                 let actual = width(name, text, checked);
@@ -97,7 +120,7 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
                     text.trim_end_matches('%')
                 );
                 assert_eq!(
-                    actual.serialize_specified().unwrap(),
+                    actual.serialize_specified(Default::default()).unwrap(),
                     canonical,
                     "{name}:{text}"
                 );
@@ -112,19 +135,20 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
     // A number or length is outside the <percentage> root; a negative
     // percentage is outside [0,inf].
     for (text, kind) in [
-        ("0", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("1px", CssNumericConstructionErrorKind::RootDomainMismatch),
-        ("-1%", CssNumericConstructionErrorKind::OutOfRange),
-        ("-1e-999%", CssNumericConstructionErrorKind::OutOfRange),
+        ("0", NumericFailure::RootDomainMismatch),
+        ("1", NumericFailure::RootDomainMismatch),
+        ("1px", NumericFailure::RootDomainMismatch),
+        ("-1%", NumericFailure::OutOfRange),
+        ("-1e-999%", NumericFailure::OutOfRange),
     ] {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let [component] = values.items() else {
             panic!("one invalid scalar")
         };
         let error =
-            CssSpecifiedNonNegativePercentage::try_from_component(component.clone()).unwrap_err();
-        assert_eq!(error.kind(), &kind, "{text}");
+            CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(component.clone())
+                .unwrap_err();
+        assert_eq!(numeric_failure(&error), kind, "{text}");
         assert_eq!(error.origin(), Some(component.origin()), "{text}");
     }
     for text in ["1e999%", "1e-999%"] {
@@ -145,30 +169,43 @@ fn percentage_constructor_preserves_exact_literals_and_rejects_invalid_roots() {
 #[test]
 fn bare_percentage_calculation_roots_reenter_exact_range_admission() {
     for text in ["-1%", "-1e-999%"] {
-        let typed =
-            CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-                .expect("negative percentage is in the percentage calculation domain");
-        assert_eq!(
-            CssSpecifiedNonNegativePercentage::try_from_calculation(typed)
+        let typed = CssCalculation::<CssPercentage>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+            Default::default(),
+        )
+        .expect("negative percentage is in the percentage calculation domain");
+        assert!(
+            CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(typed)
                 .unwrap_err()
-                .kind(),
-            &CssNumericConstructionErrorKind::OutOfRange,
+                .is_out_of_range(),
             "{text}"
         );
     }
-    let positive = CssSpecifiedNonNegativePercentage::try_from_calculation(
-        CssPercentageCalculation::try_from_components(parse_component_values("125%").unwrap())
-            .unwrap(),
+    let positive = CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(
+        CssCalculation::<CssPercentage>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), "125%").unwrap(),
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
-    assert!(positive.literal_component().is_some());
+    assert!(
+        positive
+            .literal()
+            .map(|literal| literal.component())
+            .is_some()
+    );
     assert!(positive.calculation().is_none());
-    assert_eq!(positive.serialize_specified().unwrap(), "125%");
+    assert_eq!(
+        positive.serialize_specified(Default::default()).unwrap(),
+        "125%"
+    );
 }
 
 #[test]
 fn parsed_percentages_keep_source_origin_and_symbolic_math_unresolved() {
-    let report = parse_style_attribute("FoNt-StReTcH:62.500000000000000000001%");
+    let report =
+        CssParser::default().parse_block_contents("FoNt-StReTcH:62.500000000000000000001%");
     assert!(report.is_clean());
     let CssKnownPropertyValueRef::FontWidth(wrapper) = report.syntax()[0]
         .known()
@@ -186,22 +223,28 @@ fn parsed_percentages_keep_source_origin_and_symbolic_math_unresolved() {
         scalar("62.500000000000000000001%").origin(),
         CssValueOrigin::Parsed(_)
     ));
-    assert_eq!(parsed.serialize_specified().unwrap(), "62.5%");
+    assert_eq!(
+        parsed.serialize_specified(Default::default()).unwrap(),
+        "62.5%"
+    );
 
     assert!(matches!(
-        parsed.literal_component().unwrap().view(),
+        parsed.literal().map(|literal| literal.component()).unwrap().view(),
         CssComponentValueRef::Token(CssValueTokenRef::Percentage(number))
             if number.representation() == "62.500000000000000000001"
     ));
     for text in ["calc(25% + 50%)", "calc(25% - 50%)"] {
-        let calculation =
-            CssPercentageCalculation::try_from_components(parse_component_values(text).unwrap())
-                .unwrap();
-        let exact = CssSpecifiedNonNegativePercentage::try_from_calculation(calculation).unwrap();
+        let calculation = CssCalculation::<CssPercentage>::try_from_components(
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
+        let exact =
+            CssNumeric::<CssPercentage, CssNonNegative>::try_from_calculation(calculation).unwrap();
         assert!(exact.calculation().is_some());
-        assert!(exact.literal_component().is_none());
+        assert!(exact.literal().map(|literal| literal.component()).is_none());
         let value = CssFontWidth::Percentage(exact);
-        assert!(value.serialize_specified().is_ok());
+        assert!(value.serialize_specified(Default::default()).is_ok());
         for checked in [false, true] {
             let parsed = width("font-width", text, checked);
             assert_eq!(parsed, value);
@@ -210,8 +253,8 @@ fn parsed_percentages_keep_source_origin_and_symbolic_math_unresolved() {
             };
             assert!(parsed.calculation().is_some());
             assert_eq!(
-                parsed.serialize_specified().unwrap(),
-                value.serialize_specified().unwrap()
+                parsed.serialize_specified(Default::default()).unwrap(),
+                value.serialize_specified(Default::default()).unwrap()
             );
         }
     }
@@ -220,47 +263,46 @@ fn parsed_percentages_keep_source_origin_and_symbolic_math_unresolved() {
 #[test]
 fn scalar_and_width_serialization_enforce_input_projection_and_byte_budgets() {
     let value = CssFontWidth::Percentage(scalar("75%"));
-    assert_eq!(value.serialize_specified().unwrap(), "75%");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "75%"
+    );
     assert_eq!(
         value
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 3))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 3))
             .unwrap(),
         "75%"
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(0, 1, 3),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(0, 1, 3),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 0, 3),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(1, 0, 3),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(1, 1, 2),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(1, 1, 2),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
     let scalar = scalar("75%");
     assert_eq!(
         scalar
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 3))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 3))
             .unwrap(),
         "75%"
     );
-    assert_eq!(
+    assert!(
         scalar
-            .serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(1, 1, 2))
+            .serialize_specified(CssSerializationLimits::new(1, 1, 2))
             .unwrap_err()
-            .kind(),
-        CssSpecifiedValueSerializationErrorKind::ByteLimit
+            .is_byte_limit()
     );
 }

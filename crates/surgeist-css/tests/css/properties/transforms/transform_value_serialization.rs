@@ -5,28 +5,49 @@
 
 use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{
-    CssSpecifiedValueSerializationErrorKind as K, CssSpecifiedValueSerializationLimits as L, *,
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssAngleUnit, CssLength, CssLengthPercentage, CssNumber, CssNumeric,
+    CssNumericLiteral,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
+};
+use surgeist_css::values::transform::{
+    CssScale, CssScaleValues, CssTransform, CssTransformFunction, CssTransformFunctionList,
+    CssTransformMatrix, CssTransformOrigin, CssTransformScale3d, CssTransformScaleComponent,
+    CssTransformSkew, CssTransformTranslate3d, CssTranslate, CssTranslateValues,
 };
 
-fn number(text: &str) -> CssSpecifiedNumber {
-    CssSpecifiedNumber::try_from_component(CssComponentValue::try_number(text).unwrap()).unwrap()
-}
-fn lp(text: &str) -> CssSpecifiedLengthPercentage {
-    CssSpecifiedLengthPercentage::try_from_component(CssComponentValue::try_token(text).unwrap())
+fn number(text: &str) -> CssNumeric<CssNumber> {
+    CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_number(text).unwrap())
         .unwrap()
 }
-fn length(text: &str) -> CssSpecifiedLength {
-    CssSpecifiedLength::try_from_component(CssComponentValue::try_token(text).unwrap()).unwrap()
+fn lp(text: &str) -> CssNumeric<CssLengthPercentage> {
+    CssNumeric::<CssLengthPercentage>::try_from_component(
+        CssComponentValue::try_token(text).unwrap(),
+    )
+    .unwrap()
+}
+fn length(text: &str) -> CssNumeric<CssLength> {
+    CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(text).unwrap())
+        .unwrap()
 }
 fn angle(text: &str, unit: CssAngleUnit) -> CssAngleOrZero {
-    CssAngleOrZero::Angle(CssAngleValue::from_literal(
-        CssAngleLiteral::try_new(text, unit).unwrap(),
-    ))
+    CssAngleOrZero::Angle(
+        CssNumeric::<CssAngle>::try_from_literal(
+            CssNumericLiteral::<CssAngle>::try_new(text, unit).unwrap(),
+        )
+        .unwrap(),
+    )
 }
 macro_rules! parsed {
     ($source:expr, TransformOrigin) => {
-        parsed!($source, TransformOrigin, origin)
+        parsed!($source, TransformOrigin, value)
     };
     ($source:expr, $variant:ident) => {
         parsed!($source, $variant, value)
@@ -48,9 +69,12 @@ macro_rules! check {
     ($value:expr, $input:expr, $projection:expr, $expected:expr) => {{
         let value = $value;
         let expected: &str = $expected;
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         budget(expected, $input, $projection, |limits| {
-            value.serialize_specified_with_limits(limits)
+            value.serialize_specified(limits)
         });
     }};
 }
@@ -89,7 +113,10 @@ fn all_twenty_one_functions_use_typed_spelling_order_and_exact_literal_costs() {
         check!(&value, nodes, nodes, expected);
         assert_eq!(value, before);
         let reentered = parsed!(&format!("transform:{expected}"), Transform);
-        assert_eq!(reentered.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            reentered.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         let CssTransform::Functions(original) = &value else {
             panic!("functions")
         };
@@ -139,7 +166,10 @@ fn parsed_and_constructed_functions_reenter_with_the_same_semantic_fields() {
             "scale3d(2, 3, 4)",
         ),
     ] {
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, parsed!(&format!("transform:{expected}"), Transform));
     }
 }
@@ -184,7 +214,7 @@ fn individual_translate_omits_only_ordinary_trailing_zero_lengths() {
         assert_eq!(value, before);
         assert_eq!(
             parsed!(&format!("translate:{expected}"), Translate)
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             reentered_css
         );
@@ -193,7 +223,10 @@ fn individual_translate_omits_only_ordinary_trailing_zero_lengths() {
         CssTranslateValues::try_new(lp("25%"), Some(lp("-2px")), Some(length("3px"))).unwrap(),
     );
     assert_eq!(value, parsed!("translate:25% -2px 3px", Translate));
-    assert_eq!(value.serialize_specified().unwrap(), "25% -2px 3px");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "25% -2px 3px"
+    );
 }
 
 #[test]
@@ -223,7 +256,10 @@ fn individual_scale_uses_exact_literal_equality_and_one_before_shortening() {
         .unwrap(),
     );
     assert_eq!(value, parsed!("scale:2 3 4", Scale));
-    assert_eq!(value.serialize_specified().unwrap(), "2 3 4");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "2 3 4"
+    );
 }
 
 #[test]
@@ -240,7 +276,10 @@ fn transform_origin_reuses_physical_axes_and_retains_optional_z_and_provenance()
         check!(&value, nodes, nodes, expected);
         assert_eq!(value, before);
         let reentered = parsed!(&format!("transform-origin:{expected}"), TransformOrigin);
-        assert_eq!(reentered.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            reentered.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
     }
     let value = CssTransformOrigin::try_new(
         CssPhysicalPosition::try_new(CssHorizontalPosition::Left, CssVerticalPosition::Top)
@@ -264,7 +303,10 @@ fn transform_origin_reuses_physical_axes_and_retains_optional_z_and_provenance()
         origin.source().as_str(),
         "/*😀*/ transform-origin:left top -2px"
     );
-    assert_eq!(parsed.serialize_specified().unwrap(), "left top -2px");
+    assert_eq!(
+        parsed.serialize_specified(Default::default()).unwrap(),
+        "left top -2px"
+    );
 }
 
 #[test]
@@ -316,7 +358,7 @@ fn rotate3d_reuses_directed_parallel_and_identity_policy_with_derived_costs() {
         assert_eq!(value, before);
         assert_eq!(
             parsed!(&format!("transform:{expected}"), Transform)
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             expected
         );
@@ -341,15 +383,17 @@ fn rotate3d_general_vectors_approximate_survivors_and_fail_on_component_loss_ato
             Transform
         );
         let before = value.clone();
-        assert_eq!(
-            value.serialize_specified().unwrap_err().kind(),
-            K::UnrepresentableValue
+        assert!(
+            value
+                .serialize_specified(Default::default())
+                .unwrap_err()
+                .is_unrepresentable_value()
         );
         assert_eq!(value, before);
     }
     assert_eq!(
         parsed!("transform:rotate3d(1, 2, 3, 30deg)", Transform)
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "rotate3d(1, 2, 3, 30deg)"
     );
@@ -427,18 +471,21 @@ fn specified_calculations_remain_wrapped_symbolic_and_unclamped() {
     ] {
         let value = parsed!(source, Transform);
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected);
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
         assert_eq!(value, before);
         assert_eq!(
             parsed!(&format!("transform:{expected}"), Transform)
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             expected
         );
     }
     let translate = parsed!("translate:10px calc(0px) calc(0px)", Translate);
     assert_eq!(
-        translate.serialize_specified().unwrap(),
+        translate.serialize_specified(Default::default()).unwrap(),
         "10px calc(0px) calc(0px)"
     );
     let origin = parsed!(
@@ -446,7 +493,7 @@ fn specified_calculations_remain_wrapped_symbolic_and_unclamped() {
         TransformOrigin
     );
     assert_eq!(
-        origin.serialize_specified().unwrap(),
+        origin.serialize_specified(Default::default()).unwrap(),
         "calc(2em + 1px) center calc(0px)"
     );
 }
@@ -471,13 +518,15 @@ fn rounded_output_and_atomic_byte_failure_preserve_exact_operands_and_origins() 
     let source = "/*😀*/\r\nscale:2 2.0000004 1!important";
     let value = parsed!(source, Scale);
     let before = value.clone();
-    assert_eq!(value.serialize_specified().unwrap(), "2 2");
     assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "2 2"
+    );
+    assert!(
         value
-            .serialize_specified_with_limits(L::new(4, 4, 2))
+            .serialize_specified(L::new(4, 4, 2))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     let CssScale::Values(values) = &value else {
@@ -486,8 +535,11 @@ fn rounded_output_and_atomic_byte_failure_preserve_exact_operands_and_origins() 
     let CssTransformScaleComponent::Number(operand) = &values.values()[1] else {
         panic!("number factor")
     };
-    let CssComponentValueRef::Token(CssValueTokenRef::Number(token)) =
-        operand.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Number(token)) = operand
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("number token")
     };
@@ -501,12 +553,11 @@ fn rounded_output_and_atomic_byte_failure_preserve_exact_operands_and_origins() 
 
     let value = transform(CssTransformFunction::TranslateX(lp("1e999px")));
     let before = value.clone();
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(L::new(3, 3, 64))
+            .serialize_specified(L::new(3, 3, 64))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     let CssTransform::Functions(values) = value else {
@@ -516,8 +567,11 @@ fn rounded_output_and_atomic_byte_failure_preserve_exact_operands_and_origins() 
         panic!("translate x")
     };
     assert!(matches!(value.origin(), CssValueOrigin::Programmatic));
-    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) =
-        value.literal_component().unwrap().view()
+    let CssComponentValueRef::Token(CssValueTokenRef::Dimension { number, unit }) = value
+        .literal()
+        .map(|literal| literal.component())
+        .unwrap()
+        .view()
     else {
         panic!("dimension")
     };
@@ -532,38 +586,34 @@ fn list_order_large_incremental_limits_and_late_failure_preserve_input() {
     let value = parsed!(source, Transform);
     check!(&value, 8, 8, "translateX(1px) scale(2) rotate(30deg)");
     let before = value.clone();
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(L::new(8, 8, 20))
+            .serialize_specified(L::new(8, 8, 20))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
     let function = CssTransformFunction::TranslateX(lp("1px"));
     let value =
         CssTransform::Functions(CssTransformFunctionList::try_new(vec![function; 10_000]).unwrap());
     let before = value.clone();
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(L::new(5, 20_001, 1_000_000))
+            .serialize_specified(L::new(5, 20_001, 1_000_000))
             .unwrap_err()
-            .kind(),
-        K::InputNodeLimit
+            .is_input_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(L::new(20_001, 5, 1_000_000))
+            .serialize_specified(L::new(20_001, 5, 1_000_000))
             .unwrap_err()
-            .kind(),
-        K::ProjectionNodeLimit
+            .is_projection_node_limit()
     );
-    assert_eq!(
+    assert!(
         value
-            .serialize_specified_with_limits(L::new(20_001, 20_001, 20))
+            .serialize_specified(L::new(20_001, 20_001, 20))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(value, before);
 }

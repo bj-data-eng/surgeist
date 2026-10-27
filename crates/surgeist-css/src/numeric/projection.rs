@@ -1,16 +1,14 @@
 //! Bounded specified-value projection; the authored graph is never rewritten.
 
-use super::{
-    CssCalculationExpression, CssMathFunction as Function, CssNumericDimension, CssNumericType,
-    CssRoundingStrategy, NodeKind,
-};
+use super::CssMathFunction as Function;
+use super::{CssNumericDimension, CssNumericType, CssRoundingStrategy};
+use crate::component::{CssComponentValueRef, CssValueTokenRef};
+use crate::numeric::expression::{CssCalculationExpression, NodeKind};
+use crate::serialization::CssSerializationError as Error;
 #[cfg(test)]
-use crate::CssSpecifiedValueSerializationLimits as Limits;
-use crate::{
-    CssComponentValueRef, CssSpecifiedValueSerializationError as Error,
-    CssSpecifiedValueSerializationErrorKind as ErrorKind, CssValueTokenRef,
-    specified_serialization::SpecifiedSerializationContext,
-};
+use crate::serialization::CssSerializationLimits as Limits;
+use crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind as ErrorKind;
+use crate::serialization::specified_serialization::SpecifiedSerializationContext;
 use std::collections::BTreeMap;
 
 pub(crate) mod math;
@@ -65,11 +63,11 @@ impl Unit {
         let Self::Context(unit) = self else {
             return true;
         };
-        use crate::CssLengthUnit::*;
+        use crate::numeric::CssLengthUnit::*;
         // Font size, line height and box sizes can be zero. Glyph metrics and
         // flex fractions require their own basis guarantee before folding.
         matches!(
-            crate::CssLengthUnit::from_css_unit(unit),
+            crate::numeric::CssLengthUnit::from_css_unit(unit),
             Some(
                 Em | Rem
                     | Lh
@@ -157,7 +155,7 @@ enum Kind {
     // Suppressed preparation retains decoded identity. Ordinary preparation
     // keeps its existing bounded escape policy; a later emission can escape
     // this retained identity after the output mode is restored.
-    ProfileChannel(crate::CssColorProfileComponentName),
+    ProfileChannel(crate::color::CssColorProfileComponentName),
     // Flattened containers relinquish their owned edge vectors. IDs are never reused.
     Consumed,
 }
@@ -293,7 +291,9 @@ impl Projection<'_> {
             let leaf_type = match &scalar.unit {
                 Unit::Number => CssNumericType::NUMBER,
                 Unit::Percentage => CssNumericType::dimension(CssNumericDimension::Percentage),
-                Unit::Canonical(unit) => CssNumericType::dimension(super::unit_dimension(unit)?),
+                Unit::Canonical(unit) => {
+                    CssNumericType::dimension(crate::numeric::expression::unit_dimension(unit)?)
+                }
                 Unit::Context(_) => return None,
             };
             ty = ty.product(leaf_type, divide)?;
@@ -788,7 +788,7 @@ pub(crate) fn capture_specified_scaled(
 
 /// Private numeric-emission control preserves finite text and scratch behavior.
 #[cfg(test)]
-pub(super) fn capture_color_specified_scaled(
+pub(crate) fn capture_color_specified_scaled(
     expression: &CssCalculationExpression,
     scale: NumericProjectionScale,
     context: &mut SpecifiedSerializationContext,
@@ -1195,7 +1195,7 @@ fn prepare_specified_scaled_with_mode<'a>(
                 if projection.context.output_suppressed() {
                     projection.add(Kind::ProfileChannel(name.clone()), node.ty)?
                 } else {
-                    let text = crate::serialization_escaping::capture_identifier(
+                    let text = crate::serialization::serialization_escaping::capture_identifier(
                         name.as_str(),
                         projection.context,
                     )?;
@@ -1383,7 +1383,7 @@ fn converted_leaf(representation: &str, scale: super::units::Binary64Projection)
     // applying the scale; neither the authored token nor its exponent is
     // materialized anew. Every intrinsic scale is at least 1/1000, so points
     // above 312 cannot reach the supported range.
-    let lexical = crate::exact_decimal::LexicalDecimal::new(representation);
+    let lexical = crate::serialization::exact_decimal::LexicalDecimal::new(representation);
     let point = lexical
         .exponent
         .map(|exponent| exponent.saturating_add(lexical.len as i128));
@@ -1510,14 +1510,17 @@ impl Projection<'_> {
                 )),
                 Kind::Symbol(text) => next.push(Output::Text(text.clone())),
                 Kind::ProfileChannel(name) => next.push(Output::Text(
-                    crate::serialization_escaping::capture_identifier(name.as_str(), self.context)?,
+                    crate::serialization::serialization_escaping::capture_identifier(
+                        name.as_str(),
+                        self.context,
+                    )?,
                 )),
                 Kind::Function {
                     function,
                     args,
                     strategy,
                 } => {
-                    next.push(Output::Text(format!("{}(", function.name())));
+                    next.push(Output::Text(format!("{}(", function.as_str())));
                     if *function == Function::Round
                         && let Some(strategy) = strategy
                         && *strategy != CssRoundingStrategy::Nearest
@@ -1747,7 +1750,7 @@ impl NumericEmission<'_> {
         let coefficient_limit = limit
             .checked_sub(unit.len())
             .ok_or_else(|| Error::new(ErrorKind::ByteLimit))?;
-        let mut css = crate::numeric_formatting::format_css_number_with_sign(
+        let mut css = crate::serialization::numeric_formatting::format_css_number_with_sign(
             exact.representation,
             0,
             exact.negate,
@@ -1817,8 +1820,10 @@ impl NumericEmission<'_> {
                 let coefficient_limit = limit
                     .checked_sub(unit.len())
                     .ok_or_else(|| Error::new(ErrorKind::ByteLimit))?;
-                let mut css =
-                    crate::numeric_formatting::format_projected_number(value, coefficient_limit)?;
+                let mut css = crate::serialization::numeric_formatting::format_projected_number(
+                    value,
+                    coefficient_limit,
+                )?;
                 let end = css.len();
                 css.try_reserve(unit.len())
                     .map_err(|_| Error::new(ErrorKind::CapacityOverflow))?;
@@ -1900,7 +1905,7 @@ fn scalar_text(scalar: &Scalar, root: bool, value: f64) -> String {
         }
         return format!(
             "{}{unit}",
-            crate::specified_serialization::format_binary64(value)
+            crate::serialization::specified_serialization::format_binary64(value)
         );
     }
     let keyword = if value.is_nan() {
@@ -1923,14 +1928,20 @@ fn scalar_text(scalar: &Scalar, root: bool, value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CssNumberCalculation, CssPercentageCalculation, parse_component_values};
+    use crate::numeric::{CssCalculation, CssNumber, CssPercentage};
 
     fn projected(source: &str) -> String {
-        let components = parse_component_values(source).unwrap();
-        if let Ok(value) = CssNumberCalculation::try_from_components(components.clone()) {
+        let components = crate::component::values::parse_component_values(source).unwrap();
+        if let Ok(value) =
+            CssCalculation::<CssNumber>::try_from_components(components.clone(), Default::default())
+        {
             project_specified(&value.expression, Limits::default()).unwrap()
         } else {
-            let value = CssPercentageCalculation::try_from_components(components).unwrap();
+            let value = CssCalculation::<CssPercentage>::try_from_components(
+                components,
+                Default::default(),
+            )
+            .unwrap();
             project_specified(&value.expression, Limits::default()).unwrap()
         }
     }
@@ -2005,8 +2016,9 @@ mod tests {
 
     #[test]
     fn limits_fail_atomically_and_do_not_change_the_authored_tree() {
-        let value = CssNumberCalculation::try_from_components(
-            parse_component_values("calc(1 / 2)").unwrap(),
+        let value = CssCalculation::<CssNumber>::try_from_components(
+            crate::component::values::parse_component_values("calc(1 / 2)").unwrap(),
+            Default::default(),
         )
         .unwrap();
         let before = value.clone();
@@ -2031,8 +2043,9 @@ mod tests {
 
     #[test]
     fn shared_context_charges_sequential_numeric_children_cumulatively() {
-        let value = CssNumberCalculation::try_from_components(
-            parse_component_values("calc(1 / 2)").unwrap(),
+        let value = CssCalculation::<CssNumber>::try_from_components(
+            crate::component::values::parse_component_values("calc(1 / 2)").unwrap(),
+            Default::default(),
         )
         .unwrap();
 
@@ -2061,8 +2074,9 @@ mod tests {
 
     #[test]
     fn shared_context_emits_into_one_bounded_output_and_reports_dependence() {
-        let value = CssNumberCalculation::try_from_components(
-            parse_component_values("calc(1 / 2)").unwrap(),
+        let value = CssCalculation::<CssNumber>::try_from_components(
+            crate::component::values::parse_component_values("calc(1 / 2)").unwrap(),
+            Default::default(),
         )
         .unwrap();
         let mut context = SpecifiedSerializationContext::new(Limits::new(100, 100, 11));
@@ -2074,8 +2088,9 @@ mod tests {
         assert!(!outcome.context_dependent);
         assert_eq!(outcome.scalar_value, Some(0.5));
 
-        let contextual = CssNumberCalculation::try_from_components(
-            parse_component_values("calc(1em / 1px)").unwrap(),
+        let contextual = CssCalculation::<CssNumber>::try_from_components(
+            crate::component::values::parse_component_values("calc(1em / 1px)").unwrap(),
+            Default::default(),
         )
         .unwrap();
         let mut context = SpecifiedSerializationContext::new(Limits::default());
@@ -2089,8 +2104,9 @@ mod tests {
 
     #[test]
     fn bounded_capture_defers_only_final_output_charging() {
-        let value = CssNumberCalculation::try_from_components(
-            parse_component_values("calc(1 / 2)").unwrap(),
+        let value = CssCalculation::<CssNumber>::try_from_components(
+            crate::component::values::parse_component_values("calc(1 / 2)").unwrap(),
+            Default::default(),
         )
         .unwrap();
         let mut context = SpecifiedSerializationContext::new(Limits::new(4, 100, 10));
@@ -2193,9 +2209,11 @@ mod tests {
     #[test]
     fn flat_and_deep_borrowed_graphs_have_bounded_projection_and_atomic_failure() {
         let source = format!("calc({})", vec!["1"; 4096].join(" + "));
-        let value =
-            CssNumberCalculation::try_from_components(parse_component_values(&source).unwrap())
-                .unwrap();
+        let value = CssCalculation::<CssNumber>::try_from_components(
+            crate::component::values::parse_component_values(&source).unwrap(),
+            Default::default(),
+        )
+        .unwrap();
         let before = value.clone();
         assert_eq!(
             project_specified(&value.expression, Limits::new(100, 10000, 100))
@@ -2260,14 +2278,16 @@ mod tests {
 #[cfg(test)]
 mod comparison_capture_tests {
     use super::*;
-    use crate::{CssLengthCalculation, CssNumberCalculation, parse_component_values};
+    use crate::numeric::{CssCalculation, CssLength, CssNumber};
 
     fn expression(source: &str) -> Box<CssCalculationExpression> {
-        let components = parse_component_values(source).unwrap();
-        if let Ok(value) = CssNumberCalculation::try_from_components(components.clone()) {
+        let components = crate::component::values::parse_component_values(source).unwrap();
+        if let Ok(value) =
+            CssCalculation::<CssNumber>::try_from_components(components.clone(), Default::default())
+        {
             value.expression
         } else {
-            CssLengthCalculation::try_from_components(components)
+            CssCalculation::<CssLength>::try_from_components(components, Default::default())
                 .unwrap()
                 .expression
         }
@@ -2592,16 +2612,21 @@ mod comparison_capture_tests {
 #[cfg(test)]
 mod scaled_capture_tests {
     use super::*;
-    use crate::{CssNumberCalculation, CssPercentageCalculation, parse_component_values};
+    use crate::numeric::{CssCalculation, CssNumber, CssPercentage};
 
-    fn number(source: &str) -> CssNumberCalculation {
-        CssNumberCalculation::try_from_components(parse_component_values(source).unwrap()).unwrap()
+    fn number(source: &str) -> CssCalculation<CssNumber> {
+        CssCalculation::<CssNumber>::try_from_components(
+            crate::component::values::parse_component_values(source).unwrap(),
+            Default::default(),
+        )
+        .unwrap()
     }
 
     #[test]
     fn scaled_percentage_rounds_text_without_rounding_the_scalar() {
-        let value = CssPercentageCalculation::try_from_components(
-            parse_component_values("calc(.78125%)").unwrap(),
+        let value = CssCalculation::<CssPercentage>::try_from_components(
+            crate::component::values::parse_component_values("calc(.78125%)").unwrap(),
+            Default::default(),
         )
         .unwrap();
         let before = value.clone();

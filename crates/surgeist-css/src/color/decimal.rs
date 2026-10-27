@@ -1,7 +1,8 @@
 //! The actual shared decimal child, qualified to retained lexer/scratch records.
 
-use super::protocol::{
-    CssColorProtocolError, CssColorSlot, Data, LexicalRecord, RecordRange, RecordTable,
+use crate::color::controlled::CssColorSlot;
+use crate::color::controlled::protocol::{
+    ColorProtocolError, Data, LexicalRecord, RecordRange, RecordTable,
 };
 use crate::numeric::bounded_decimal::{
     DecimalCursor, DecimalInput, DecimalLayout, DecimalOutcome, DecimalReply, DecimalRequest,
@@ -38,14 +39,15 @@ impl<'owner> NumberConversion<'owner> {
         index: usize,
         slot: &CssColorSlot<'_>,
         scratch_base: usize,
-    ) -> Result<Self, CssColorProtocolError> {
-        let super::protocol::NumberHeader { layout, digits } = table.number_header(index, slot)?;
+    ) -> Result<Self, ColorProtocolError> {
+        let crate::color::controlled::protocol::NumberHeader { layout, digits } =
+            table.number_header(index, slot)?;
         let length = layout
             .mantissa_digits
             .checked_add(layout.exponent_digits)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         if digits.start.checked_add(length) != Some(digits.end) || digits.end > table.length {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let child = DecimalLayout::new(
             layout.negative,
@@ -54,15 +56,15 @@ impl<'owner> NumberConversion<'owner> {
             layout.exponent_negative,
             layout.exponent_digits.max(1),
         )
-        .map_err(|_| CssColorProtocolError::Input)?;
+        .map_err(|_| ColorProtocolError::Input)?;
         if scratch_base < table.length {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         // Child contract: the exact binary64 boundary needs at most1100 digits.
         // Guard the translation before any scratch action can be generated.
         scratch_base
             .checked_add(1100)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         Ok(Self {
             table: *table,
             token: index,
@@ -79,16 +81,16 @@ impl<'owner> NumberConversion<'owner> {
         table: &RecordTable<'owner>,
         scale: ScaledNumber<'owner>,
         scratch_base: usize,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         if !std::ptr::eq(table.owner, scale.owner) || table.phase != scale.phase {
-            return Err(CssColorProtocolError::ForeignSlot);
+            return Err(ColorProtocolError::ForeignSlot);
         }
         if scratch_base < scale.digits.end {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         scratch_base
             .checked_add(1100)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         let child = DecimalLayout::new(
             scale.layout.negative,
             scale.layout.mantissa_digits,
@@ -96,7 +98,7 @@ impl<'owner> NumberConversion<'owner> {
             scale.layout.exponent_negative,
             scale.layout.exponent_digits.max(1),
         )
-        .map_err(|_| CssColorProtocolError::Input)?;
+        .map_err(|_| ColorProtocolError::Input)?;
         Ok(Self {
             table: *table,
             token: scale.token,
@@ -155,23 +157,23 @@ impl<'owner> NumberConversion<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (NumberAction::ReadSource { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let DecimalRequest::ReadInput {
             kind,
             index: child_index,
         } = *self.cursor.next_request()
         else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         let LexicalRecord::NumberDigit { exponent, value } = self.table.observe(index, slot)?
         else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         if exponent != (kind == DecimalInput::Exponent) {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         self.cursor
             .complete(DecimalReply::Input {
@@ -179,37 +181,37 @@ impl<'owner> NumberConversion<'owner> {
                 index: child_index,
                 digit: value,
             })
-            .map_err(|_| CssColorProtocolError::Input)
+            .map_err(|_| ColorProtocolError::Input)
     }
     pub(crate) fn read_scaled(
         &mut self,
         index: usize,
         record: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (NumberAction::ReadScaled { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         record.qualify(
             self.table.owner,
             self.table.phase,
             index,
-            super::protocol::CssColorBank::Algorithm,
+            crate::color::controlled::CssColorBank::Algorithm,
         )?;
         if record.index != index {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let Data::ScaledDigit { token, value } = record.data else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         if token != self.token || value > 9 {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         let DecimalRequest::ReadInput {
             kind: DecimalInput::Mantissa,
             index: child_index,
         } = *self.cursor.next_request()
         else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         self.cursor
             .complete(DecimalReply::Input {
@@ -217,24 +219,20 @@ impl<'owner> NumberConversion<'owner> {
                 index: child_index,
                 digit: value,
             })
-            .map_err(|_| CssColorProtocolError::Input)
+            .map_err(|_| ColorProtocolError::Input)
     }
-    fn qualify(
-        &self,
-        index: usize,
-        record: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    fn qualify(&self, index: usize, record: &CssColorSlot<'_>) -> Result<(), ColorProtocolError> {
         record.qualify(
             self.table.owner,
             self.table.phase,
             index,
-            super::protocol::CssColorBank::Algorithm,
+            crate::color::controlled::CssColorBank::Algorithm,
         )?;
         if record.index != index {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         if !matches!(record.data, Data::DecimalDigit { token, .. } if token == self.token) {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         Ok(())
     }
@@ -242,29 +240,29 @@ impl<'owner> NumberConversion<'owner> {
         &mut self,
         index: usize,
         record: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (NumberAction::ReadScratch { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.qualify(index, record)?;
         let Data::DecimalDigit { digit, .. } = record.data else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         let digit = crate::numeric::bounded_decimal::DecimalDigit::new(digit.digit())
-            .map_err(|_| CssColorProtocolError::WrongSlot)?;
+            .map_err(|_| ColorProtocolError::WrongSlot)?;
         self.cursor
             .complete(DecimalReply::Scratch {
                 index: index - self.scratch_base,
                 digit,
             })
-            .map_err(|_| CssColorProtocolError::Input)
+            .map_err(|_| ColorProtocolError::Input)
     }
     pub(crate) fn scratch_record(
         &self,
         index: usize,
-    ) -> Result<CssColorSlot<'owner>, CssColorProtocolError> {
+    ) -> Result<CssColorSlot<'owner>, ColorProtocolError> {
         if self.stopped {
-            return Err(CssColorProtocolError::Terminal);
+            return Err(ColorProtocolError::Terminal);
         }
         let digit = match *self.cursor.next_request() {
             DecimalRequest::AppendScratch {
@@ -275,7 +273,7 @@ impl<'owner> NumberConversion<'owner> {
                 index: expected,
                 digit,
             } if index == self.scratch_base + expected => digit,
-            _ => return Err(CssColorProtocolError::WrongIndex),
+            _ => return Err(ColorProtocolError::WrongIndex),
         };
         Ok(CssColorSlot::new(
             self.table.owner,
@@ -291,21 +289,21 @@ impl<'owner> NumberConversion<'owner> {
         &mut self,
         index: usize,
         record: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         self.qualify(index, record)?;
         let expected = self.scratch_record(index)?;
         let Data::DecimalDigit { digit, .. } = record.data else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         let Data::DecimalDigit {
             digit: expected_digit,
             ..
         } = expected.data
         else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         if digit != expected_digit {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         let reply = match self.action() {
             NumberAction::AppendScratch { index: expected } if index == expected => {
@@ -318,14 +316,14 @@ impl<'owner> NumberConversion<'owner> {
                     index: index - self.scratch_base,
                 }
             }
-            _ => return Err(CssColorProtocolError::WrongAction),
+            _ => return Err(ColorProtocolError::WrongAction),
         };
         self.cursor
             .complete(reply)
-            .map_err(|_| CssColorProtocolError::Input)
+            .map_err(|_| ColorProtocolError::Input)
     }
-    pub(crate) fn kernel(&self) -> super::CssColorKernel {
-        use super::CssColorKernel as C;
+    pub(crate) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
+        use crate::color::controlled::CssColorKernel as C;
         use crate::numeric::bounded_decimal::DecimalKernel as K;
         match self.cursor.next_request() {
             DecimalRequest::Compute(K::Normalize | K::SelectBoundary | K::UpdateSearch) => {
@@ -338,9 +336,9 @@ impl<'owner> NumberConversion<'owner> {
             _ => C::Transition,
         }
     }
-    pub(crate) fn compute(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(crate) fn compute(&mut self) -> Result<(), ColorProtocolError> {
         if self.stopped {
-            return Err(CssColorProtocolError::Terminal);
+            return Err(ColorProtocolError::Terminal);
         }
         let reply = match *self.cursor.next_request() {
             DecimalRequest::ReadInput {
@@ -354,13 +352,13 @@ impl<'owner> NumberConversion<'owner> {
             DecimalRequest::Compute(kernel) => DecimalReply::Computed(kernel),
             DecimalRequest::Failed(_) => {
                 self.stopped = true;
-                return Err(CssColorProtocolError::Overflow);
+                return Err(ColorProtocolError::Overflow);
             }
-            _ => return Err(CssColorProtocolError::WrongAction),
+            _ => return Err(ColorProtocolError::WrongAction),
         };
         self.cursor
             .complete(reply)
-            .map_err(|_| CssColorProtocolError::Input)
+            .map_err(|_| ColorProtocolError::Input)
     }
     pub(crate) fn abandon(&mut self) {
         self.stopped = true;
@@ -373,7 +371,7 @@ impl<'owner> NumberConversion<'owner> {
 /// place. The original exponent/sign are unchanged: (9*M)*10^(-f-1+e).
 #[derive(Clone, Copy)]
 pub(crate) struct ScaledNumber<'owner> {
-    owner: &'owner super::protocol::CssColorOperationOwner,
+    owner: &'owner crate::color::controlled::CssColorOperationOwner,
     phase: usize,
     token: usize,
     digits: RecordRange,
@@ -411,8 +409,8 @@ impl<'owner> GradScale<'owner> {
         index: usize,
         slot: &CssColorSlot<'_>,
         base: usize,
-    ) -> Result<Self, CssColorProtocolError> {
-        let super::protocol::NumberHeader { mut layout, digits } =
+    ) -> Result<Self, ColorProtocolError> {
+        let crate::color::controlled::protocol::NumberHeader { mut layout, digits } =
             table.number_header(index, slot)?;
         if layout.mantissa_digits == 0
             || layout.fraction_digits > layout.mantissa_digits
@@ -424,20 +422,20 @@ impl<'owner> GradScale<'owner> {
             || digits.end > table.length
             || base < table.length
         {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let source_mantissa = layout.mantissa_digits;
         layout.mantissa_digits = layout
             .mantissa_digits
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         layout.fraction_digits = layout
             .fraction_digits
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         let end = base
             .checked_add(layout.mantissa_digits)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         let result = ScaledNumber {
             owner: table.owner,
             phase: table.phase,
@@ -476,26 +474,26 @@ impl<'owner> GradScale<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (ScaleAction::ReadSource { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         let LexicalRecord::NumberDigit {
             exponent: false,
             value,
         } = self.table.observe(index, slot)?
         else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         if value > 9 {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         self.state = ScaleState::Compute(value);
         Ok(())
     }
-    pub(crate) fn compute(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(crate) fn compute(&mut self) -> Result<(), ColorProtocolError> {
         if self.action() != ScaleAction::Compute {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         match self.state {
             ScaleState::Compute(value) => {
@@ -504,19 +502,16 @@ impl<'owner> GradScale<'owner> {
                 self.state = ScaleState::Append(product % 10);
             }
             ScaleState::Read => self.state = ScaleState::Append(self.carry),
-            _ => return Err(CssColorProtocolError::WrongAction),
+            _ => return Err(ColorProtocolError::WrongAction),
         }
         Ok(())
     }
-    pub(crate) fn record(
-        &self,
-        index: usize,
-    ) -> Result<CssColorSlot<'owner>, CssColorProtocolError> {
+    pub(crate) fn record(&self, index: usize) -> Result<CssColorSlot<'owner>, ColorProtocolError> {
         if self.action() != (ScaleAction::Append { index }) {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let ScaleState::Append(value) = self.state else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         Ok(CssColorSlot::new(
             self.table.owner,
@@ -532,24 +527,24 @@ impl<'owner> GradScale<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let expected = self.record(index)?;
         slot.qualify(
             expected.owner,
             expected.phase,
             index,
-            super::protocol::CssColorBank::Algorithm,
+            crate::color::controlled::CssColorBank::Algorithm,
         )?;
         if slot.index != index {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let (Data::ScaledDigit { token, value }, Data::ScaledDigit { token: t, value: v }) =
             (slot.data, expected.data)
         else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         if (token, value) != (t, v) {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         self.written += 1;
         if self.read == self.result.source_mantissa {
@@ -560,9 +555,9 @@ impl<'owner> GradScale<'owner> {
         }
         Ok(())
     }
-    pub(crate) fn finish(&self) -> Result<ScaledNumber<'owner>, CssColorProtocolError> {
+    pub(crate) fn finish(&self) -> Result<ScaledNumber<'owner>, ColorProtocolError> {
         if self.action() != ScaleAction::Done {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         Ok(self.result)
     }
@@ -573,8 +568,9 @@ impl<'owner> GradScale<'owner> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::protocol::{ActionDescription, CssColorOperationOwner, LexicalOperation};
     use super::*;
+    use crate::color::controlled::CssColorOperationOwner;
+    use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
     use crate::tokenization::bounded::InputKind;
 
     fn lexical<'a>(operation: &mut LexicalOperation<'a>, input: &[u8]) -> Vec<CssColorSlot<'a>> {
@@ -684,15 +680,15 @@ mod tests {
         };
         assert_eq!(
             conversion.read_source(index, &foreign_slots[index]),
-            Err(CssColorProtocolError::ForeignSlot)
+            Err(ColorProtocolError::ForeignSlot)
         );
         assert_eq!(
             conversion.read_source(index, &slots[index + 1]),
-            Err(CssColorProtocolError::WrongIndex)
+            Err(ColorProtocolError::WrongIndex)
         );
         assert_eq!(conversion.action(), NumberAction::ReadSource { index });
         conversion.abandon();
-        assert_eq!(conversion.compute(), Err(CssColorProtocolError::Terminal));
+        assert_eq!(conversion.compute(), Err(ColorProtocolError::Terminal));
     }
     fn scaled_conversion(input: &str) -> DecimalOutcome {
         let mut owner = CssColorOperationOwner::new();
@@ -789,7 +785,7 @@ mod tests {
         };
         assert_eq!(
             scale.read(index, &foreign_slots[index]),
-            Err(CssColorProtocolError::ForeignSlot)
+            Err(ColorProtocolError::ForeignSlot)
         );
         assert_eq!(scale.action(), ScaleAction::ReadSource { index });
         scale.read(index, &slots[index]).unwrap();
@@ -800,7 +796,7 @@ mod tests {
         let pending = scale.record(index).unwrap();
         assert_eq!(
             scale.appended(index, &slots[token]),
-            Err(CssColorProtocolError::WrongIndex)
+            Err(ColorProtocolError::WrongIndex)
         );
         assert_eq!(scale.action(), ScaleAction::Append { index });
         let Data::ScaledDigit { value, .. } = pending.data else {
@@ -810,9 +806,6 @@ mod tests {
         scale.appended(index, &pending).unwrap();
         scale.abandon();
         assert_eq!(scale.action(), ScaleAction::Stopped);
-        assert_eq!(
-            scale.finish().err(),
-            Some(CssColorProtocolError::WrongAction)
-        );
+        assert_eq!(scale.finish().err(), Some(ColorProtocolError::WrongAction));
     }
 }

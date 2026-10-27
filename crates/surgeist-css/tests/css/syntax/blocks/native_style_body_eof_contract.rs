@@ -2,7 +2,15 @@
 //! Syntax3 CRD 20261001 §§5.5.2, 5.5.9–10 and 8; selected Nesting1
 //! WD20260122 §§3.3–3.4; original-source error and clean-report contracts.
 use crate::css::support::authored_syntax::assert_unclean_sheet as strict;
-use surgeist_css::*;
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
+};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::rule::{CssRule, CssScopeRule, CssSheet, CssStyleBlock, CssStyleRule};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector, CssStyleSelector};
+use surgeist_css::source::CssSourceSpan;
+use surgeist_css::{CssParseReport, CssParser};
 
 fn span(actual: CssSourceSpan, start: usize, end: usize) {
     assert_eq!(actual.start().byte_offset().value(), start);
@@ -41,7 +49,11 @@ fn assert_declaration(
     };
     assert_eq!(declaration.property_name(), CssPropertyNameRef::Known(name));
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         value
     );
     assert_eq!(declaration.position().unwrap().byte_offset().value(), at);
@@ -54,7 +66,7 @@ fn media_eof(diagnostic: &CssRecoveryDiagnostic, start: usize, end: usize, line:
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
     assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedEnd);
     assert!(
-        matches!(diagnostic.error().kind(), ErrorKind::UnexpectedEnd(_)),
+        diagnostic.error().code() == CssErrorCode::UnexpectedEnd,
         "a bounded production EOF supplies no authored semicolon: {diagnostic:?}"
     );
     position(diagnostic, end, line, column);
@@ -67,10 +79,7 @@ fn closure(diagnostic: &CssRecoveryDiagnostic, eof: usize) {
         CssRecoveryAction::RetainWithImplicitClosure
     );
     assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedEnd);
-    assert!(matches!(
-        diagnostic.error().kind(),
-        ErrorKind::UnexpectedEnd(_)
-    ));
+    assert!(diagnostic.error().code() == CssErrorCode::UnexpectedEnd);
     position(diagnostic, eof, 0, eof as u32);
     span(diagnostic.span(), eof, eof);
 }
@@ -89,7 +98,7 @@ fn scoped_parent<'a>(report: &'a CssParseReport<CssSheet>, source: &str) -> &'a 
     let [CssRule::Scope(scope)] = parent.rules() else {
         panic!("retained scope, no media child")
     };
-    let [CssScopedRule::NestedDeclarations(run)] = scope.rules().rules() else {
+    let [CssRule::NestedDeclarations(run)] = scope.rules().rules() else {
         panic!("only the original scoped declaration run survives")
     };
     assert_declaration(
@@ -130,7 +139,7 @@ fn native_style_media_ends_at_parent_bound_and_keeps_original_sibling() {
             37,
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [parent, sibling] = report.syntax().rules() else {
             panic!("parent and later sibling")
         };
@@ -164,7 +173,7 @@ fn native_style_media_ends_at_parent_bound_and_keeps_original_sibling() {
         strict(source, &report);
     }
     let source = ".x{color:red;@media screen}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [parent] = report.syntax().rules() else {
         panic!("retained parent")
     };
@@ -188,7 +197,7 @@ fn native_style_media_ends_at_parent_bound_and_keeps_original_sibling() {
 #[test]
 fn native_style_media_at_whole_source_eof_keeps_parent_and_separate_closure_fault() {
     let source = ".x{color:red;@media screen";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [parent] = report.syntax().rules() else {
         panic!("retained implicitly closed parent")
     };
@@ -214,7 +223,7 @@ fn native_style_media_at_whole_source_eof_keeps_parent_and_separate_closure_faul
 #[test]
 fn scoped_style_ancestor_media_uses_scope_bound_and_preserves_both_declaration_owners() {
     let source = ".x{color:red;@scope{width:1px;@media screen}}.after{height:1px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.syntax().rules().len(), 2);
     let scope = scoped_parent(&report, source);
     assert!(scope.root().is_none() && scope.limit().is_none());
@@ -239,7 +248,7 @@ fn scoped_style_ancestor_media_uses_scope_bound_and_preserves_both_declaration_o
 #[test]
 fn scoped_style_ancestor_whole_eof_retains_scope_and_parent_closure_faults() {
     let source = ".x{color:red;@scope{width:1px;@media screen";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.syntax().rules().len(), 1);
     scoped_parent(&report, source);
     let [dropped, scope_closure, style_closure] = report.diagnostics() else {
@@ -273,7 +282,7 @@ fn actual_media_semicolon_has_missing_body_contract_and_local_following_runs() {
             true,
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let [parent] = report.syntax().rules() else {
             panic!("retained parent")
         };
@@ -292,8 +301,8 @@ fn actual_media_semicolon_has_missing_body_contract_and_local_following_runs() {
                 panic!("retained scope")
             };
             let [
-                CssScopedRule::NestedDeclarations(before),
-                CssScopedRule::NestedDeclarations(after),
+                CssRule::NestedDeclarations(before),
+                CssRule::NestedDeclarations(after),
             ] = scope.rules().rules()
             else {
                 panic!("scope runs before and after dropped media")
@@ -335,11 +344,14 @@ fn actual_media_semicolon_has_missing_body_contract_and_local_following_runs() {
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
         assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidAtRuleBody);
-        let ErrorKind::InvalidAtRuleBody(detail) = diagnostic.error().kind() else {
-            panic!("media body owner")
-        };
-        assert_eq!(detail.name().as_str(), "media");
-        assert_eq!(detail.production().as_str(), "baseline.rule.media");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidAtRuleBody,
+            "media body owner"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), "media");
+        assert_eq!(detail.production().unwrap().as_str(), "baseline.rule.media");
         assert!(detail.encountered().is_none());
         position(diagnostic, end, 0, end as u32);
         span(diagnostic.span(), start, end);
@@ -363,7 +375,7 @@ fn legal_layer_statement_eof_is_retained_at_native_style_and_scoped_bounds() {
             true,
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert_eq!(report.syntax().rules().len(), 2);
         let parent = style(&report.syntax().rules()[0], "x");
         assert_declaration(
@@ -380,8 +392,8 @@ fn legal_layer_statement_eof_is_retained_at_native_style_and_scoped_bounds() {
                 panic!("scope")
             };
             let [
-                CssScopedRule::NestedDeclarations(run),
-                CssScopedRule::LayerStatement(layer),
+                CssRule::NestedDeclarations(run),
+                CssRule::LayerStatement(layer),
             ] = scope.rules().rules()
             else {
                 panic!("scoped declaration run then admitted layer statement")
@@ -417,11 +429,10 @@ fn legal_layer_statement_eof_is_retained_at_native_style_and_scoped_bounds() {
             CssRecoveryAction::RetainNonconformingRule
         );
         assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedEnd);
-        let ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-            panic!("statement EOF")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(detail.code(), CssErrorCode::UnexpectedEnd, "statement EOF");
         assert_eq!(
-            detail.expectation().as_str(),
+            detail.expectation().unwrap().as_str(),
             "a semicolon or block terminating an at-rule"
         );
         position(diagnostic, end, 0, end as u32);
@@ -432,9 +443,15 @@ fn legal_layer_statement_eof_is_retained_at_native_style_and_scoped_bounds() {
         ".x{color:red;@layer theme;}",
         ".x{color:red;@scope{width:1px;@layer theme;}}",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert!(report.is_clean(), "{report:?}");
-        assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+        assert_eq!(
+            CssParser::default()
+                .parse_sheet(source)
+                .into_validation_result()
+                .unwrap(),
+            *report.syntax()
+        );
     }
 }
 
@@ -449,7 +466,7 @@ fn invalid_layer_prelude_precedes_missing_body_in_both_native_contexts() {
             37,
         ),
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         assert_eq!(report.syntax().rules().len(), 2);
         let parent = style(&report.syntax().rules()[0], "x");
         assert_declaration(
@@ -474,11 +491,17 @@ fn invalid_layer_prelude_precedes_missing_body_in_both_native_contexts() {
             diagnostic.error().code(),
             CssErrorCode::InvalidAtRulePrelude
         );
-        let ErrorKind::InvalidAtRulePrelude(detail) = diagnostic.error().kind() else {
-            panic!("layer prelude")
-        };
-        assert_eq!(detail.name().as_str(), "layer");
-        assert_eq!(detail.production().as_str(), "baseline.rule.layer-block");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidAtRulePrelude,
+            "layer prelude"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), "layer");
+        assert_eq!(
+            detail.production().unwrap().as_str(),
+            "baseline.rule.layer-block"
+        );
         let token = detail
             .encountered()
             .expect("actual invalid layer-name dimension");
@@ -493,7 +516,7 @@ fn invalid_layer_prelude_precedes_missing_body_in_both_native_contexts() {
 #[test]
 fn contextual_when_body_keeps_owned_missing_token_category_at_native_eof() {
     let source = ".x{color:red;@when media(width)}.after{height:1px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [parent, sibling] = report.syntax().rules() else {
         panic!("retained sibling styles")
     };
@@ -514,11 +537,14 @@ fn contextual_when_body_keeps_owned_missing_token_category_at_native_eof() {
     };
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidAtRuleBody);
-    let ErrorKind::InvalidAtRuleBody(detail) = diagnostic.error().kind() else {
-        panic!("when body owner")
-    };
-    assert_eq!(detail.name().as_str(), "when");
-    assert_eq!(detail.production().as_str(), "ext.rule.when");
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidAtRuleBody,
+        "when body owner"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "when");
+    assert_eq!(detail.production().unwrap().as_str(), "ext.rule.when");
     assert!(detail.encountered().is_none());
     position(diagnostic, 31, 0, 31);
     span(diagnostic.span(), 13, 31);
@@ -532,7 +558,7 @@ fn isolated_real_style_block_preserves_native_bound_and_original_source_origin()
         ("{color:red;@media screen}", 24, false),
         ("{color:red;@media screen", 24, true),
     ] {
-        let report = parse_style_block(source, &context);
+        let report = CssStyleBlock::parse(&CssParser::default(), source, &context);
         let block = report
             .syntax()
             .as_ref()
@@ -573,7 +599,7 @@ fn isolated_real_style_block_preserves_native_bound_and_original_source_origin()
 #[test]
 fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
     let ordinary = ".x{color:red;@media screen{width:1px}}";
-    let report = parse_sheet(ordinary);
+    let report = CssParser::default().parse_sheet(ordinary);
     assert!(report.is_clean(), "{report:?}");
     let [parent] = report.syntax().rules() else {
         panic!("one parent style")
@@ -603,10 +629,16 @@ fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
         33,
         36,
     );
-    assert_eq!(validate_sheet(ordinary).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(ordinary)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
 
     let scoped = ".x{color:red;@scope{width:1px;@media screen{height:2px}}}";
-    let report = parse_sheet(scoped);
+    let report = CssParser::default().parse_sheet(scoped);
     assert!(report.is_clean(), "{report:?}");
     let [parent] = report.syntax().rules() else {
         panic!("one scoped parent style")
@@ -624,11 +656,7 @@ fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
     let [CssRule::Scope(scope)] = parent.rules() else {
         panic!("retained scope")
     };
-    let [
-        CssScopedRule::NestedDeclarations(before),
-        CssScopedRule::Media(media),
-    ] = scope.rules().rules()
-    else {
+    let [CssRule::NestedDeclarations(before), CssRule::Media(media)] = scope.rules().rules() else {
         panic!("direct scoped run and complete media")
     };
     assert_declaration(
@@ -640,7 +668,7 @@ fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
         26,
         29,
     );
-    let [CssScopedRule::NestedDeclarations(run)] = media.rules().rules() else {
+    let [CssRule::NestedDeclarations(run)] = media.rules() else {
         panic!("direct scoped media declaration run")
     };
     assert_declaration(
@@ -652,13 +680,19 @@ fn complete_media_blocks_are_clean_in_both_native_owning_contexts() {
         51,
         54,
     );
-    assert_eq!(validate_sheet(scoped).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(scoped)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
 }
 
 #[test]
 fn explicit_scope_root_with_style_ancestor_retains_direct_color_and_sheet_siblings() {
     let source = ".before{width:1px}.x{@scope (.s){color:red;@media screen}}.after{height:1px}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [before, parent, after] = report.syntax().rules() else {
         panic!("original preceding and following styles")
     };
@@ -681,11 +715,11 @@ fn explicit_scope_root_with_style_ancestor_retains_direct_color_and_sheet_siblin
     assert!(scope.limit().is_none());
     assert_eq!(
         scope.root().unwrap().selectors(),
-        &[CssScopeSelector::Selector(CssSelector::Class(
+        &[CssStyleSelector::Selector(CssSelector::Class(
             "s".to_owned()
         ))]
     );
-    let [CssScopedRule::NestedDeclarations(run)] = scope.rules().rules() else {
+    let [CssRule::NestedDeclarations(run)] = scope.rules().rules() else {
         panic!("direct Color run, no dropped media node")
     };
     assert_declaration(

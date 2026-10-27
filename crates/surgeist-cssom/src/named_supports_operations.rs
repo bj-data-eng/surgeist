@@ -1,7 +1,14 @@
 //! Surgeist's inert named-support policy; CSS owns syntax and reconstruction.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::{model::State, rule_operations::component_limits, *};
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValue, CssComponentValueRef, CssValueOrigin};
+use surgeist_css::query::supports::{
+    CssSupportsConditionName, CssSupportsTestBody, CssSupportsTestChild, CssSupportsTestChildRef,
+};
+use surgeist_css::rule::CssStyleAncestor;
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::{CssRuleGraphInput, CssRuleSerializationLimits};
+use surgeist_css::{CssParser, CssParserContext};
 
 fn own_child(child: CssSupportsTestChildRef<'_>) -> CssSupportsTestChild {
     match child {
@@ -90,17 +97,15 @@ fn validate_body(
         })?;
     // One native request checks all opaque candidate/component nesting and work;
     // a list of live leaf IDs cannot establish these bounds.
-    CssRuleGraphInput::named_supports(name, body)
-        .serialize_cssom_with_graph_limits(
-            &CssNamespaceContext::default(),
-            CssStyleAncestor::Absent,
-            CssRuleGraphSerializationLimits {
-                values: limits.css,
-                max_depth: remaining,
-            },
-        )
-        .map(|_| ())
-        .map_err(CssomError::Format)
+    CssRuleGraphInput::named_supports(name, body).serialize_cssom(
+        &CssNamespaceContext::default(),
+        CssStyleAncestor::Absent,
+        CssRuleSerializationLimits {
+            values: limits.css,
+            max_depth: remaining,
+        },
+    )?;
+    Ok(())
 }
 
 impl CssomBatch {
@@ -124,9 +129,11 @@ impl CssomBatch {
                 maximum: self.limits.max_input_bytes,
             });
         }
-        let (child, diagnostics) =
-            parse_supports_test_child_with_limits(source, component_limits(&self.limits))
-                .into_parts();
+        let (child, diagnostics) = CssSupportsTestChild::parse(
+            &CssParser::new(CssParserContext::default(), component_limits(&self.limits)),
+            source,
+        )
+        .into_parts();
         check_resource_diagnostics(&diagnostics)?;
         let child = child.ok_or(CssomError::Source(CssomException::Syntax))?;
         let depth = self.staged.named_supports_depth(id, &self.limits)?;
@@ -218,9 +225,7 @@ impl CssomBatch {
             };
             payloads.push(child.as_ref());
         }
-        let current = body
-            .recompose_children_with_limits(&payloads, component_limits(&self.limits))
-            .map_err(CssomError::NamedSupports)?;
+        let current = body.recompose_children(&payloads, component_limits(&self.limits))?;
         validate_body(name, &current, depth, &self.limits)?;
         let CssomRuleData::NamedSupports { body, .. } = self
             .staged

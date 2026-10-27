@@ -6,7 +6,21 @@
 //! New z-index longhand payload and canonical Auto writer APIs require functional
 //! implementation alongside independent tests; this file does not call absent APIs.
 use crate::css::support::named_property::sole_longhand_contribution as contribution;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyValue,
+};
+use surgeist_css::values::box_model::CssZIndexValue;
 
 const VALID: &[&str] = &[
     "auto",
@@ -36,14 +50,19 @@ const INVALID: &[&str] = &[
 
 fn declaration(value: &str) -> CssDeclaration {
     let text = format!("Z-INDEX:{value}!important");
-    let report = parse_style_attribute(&text);
+    let report = CssParser::default().parse_block_contents(&text);
     assert!(report.is_clean(), "{text}: {:?}", report.diagnostics());
-    assert!(validate_style_attribute(&text).is_ok());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(&text)
+            .into_validation_result()
+            .is_ok()
+    );
     assert_eq!(report.syntax().len(), 1);
     report.syntax()[0].clone()
 }
 
-fn value(source: &CssDeclaration) -> &CssZIndexPropertyValue {
+fn value(source: &CssDeclaration) -> &CssPropertyValue<CssZIndexValue> {
     let CssKnownPropertyValueRef::ZIndex(value) = source.known().unwrap().property_value().unwrap()
     else {
         panic!("z-index wrapper")
@@ -69,8 +88,9 @@ fn parsed_and_checked_z_index_keep_the_selected_grammar_and_exact_origins() {
                     .same_snapshot(parsed.parsed_value().unwrap().source())
             );
         }
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ZIndex),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ZIndex)),
             components.clone(),
             CssImportance::Important,
         )
@@ -91,9 +111,10 @@ fn parsed_and_checked_z_index_keep_the_selected_grammar_and_exact_origins() {
         CssComponentValue::try_ident("AUTO").unwrap(),
         CssComponentValue::try_number("+0002").unwrap(),
     ] {
-        let components = CssComponentValues::try_new(vec![token]).unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ZIndex),
+        let components = CssComponentValues::try_new(vec![token], Default::default()).unwrap();
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ZIndex)),
             components.clone(),
             CssImportance::Normal,
         )
@@ -112,8 +133,11 @@ fn parsed_and_checked_z_index_keep_the_selected_grammar_and_exact_origins() {
         let CssZIndexValue::Integer(integer) = value(&source).value() else {
             panic!("integer")
         };
-        assert_eq!(integer.serialize_specified().unwrap(), expected);
-        let CssIntegerValue::Literal(literal) = integer else {
+        assert_eq!(
+            integer.serialize_specified(Default::default()).unwrap(),
+            expected
+        );
+        let Some(literal) = integer.literal() else {
             panic!("literal")
         };
         assert_eq!(literal.component(), &source.value_components().items()[0]);
@@ -128,7 +152,7 @@ fn parsed_and_checked_z_index_keep_the_selected_grammar_and_exact_origins() {
 fn invalid_z_index_values_fail_typed_checking_and_recovery_preserves_neighbors() {
     for &text in INVALID {
         let input = format!("color:red;z-index:{text};height:2px!important");
-        let report = parse_style_attribute(&input);
+        let report = CssParser::default().parse_block_contents(&input);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid occurrence: {input}")
         };
@@ -143,22 +167,29 @@ fn invalid_z_index_values_fail_typed_checking_and_recovery_preserves_neighbors()
             CssKnownProperty::Height
         );
         assert_eq!(report.syntax()[1].importance(), CssImportance::Important);
-        assert!(validate_style_attribute(&input).is_err());
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ZIndex),
-            parse_component_values(text).unwrap(),
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&input)
+                .into_validation_result()
+                .is_err()
+        );
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ZIndex)),
+            CssComponentValues::parse(&CssParser::default(), text).unwrap(),
             CssImportance::Normal,
         )
         .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
     }
-    let components =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("none").unwrap()]).unwrap();
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::ZIndex),
+    let components = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("none").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ZIndex)),
         components,
         CssImportance::Normal,
     )
@@ -167,7 +198,7 @@ fn invalid_z_index_values_fail_typed_checking_and_recovery_preserves_neighbors()
         CssSerializedOrigin::Token(origin) | CssSerializedOrigin::End(Some(origin)) => origin,
         other => panic!("responsible origin: {other:?}"),
     };
-    assert_eq!(responsible, &CssValueOrigin::Programmatic);
+    assert_eq!(responsible, CssValueOrigin::Programmatic);
 }
 
 #[test]
@@ -198,8 +229,9 @@ fn z_index_initial_metadata_is_noninherited_auto() {
 fn ordinary_and_css_wide_z_index_values_contribute_once_with_source_identity() {
     for &text in VALID {
         let source = declaration(text);
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ZIndex),
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ZIndex)),
             source.value_components().clone(),
             CssImportance::Important,
         )
@@ -231,8 +263,7 @@ fn ordinary_and_css_wide_z_index_values_contribute_once_with_source_identity() {
 #[test]
 fn pending_z_index_reentry_is_strict_atomic_and_preserves_replacement_origins() {
     let source = declaration("var(--level)");
-    let CssExpansion::Pending(handle) = expand_declaration(&source).expect("pending z-index")
-    else {
+    let CssExpansion::Pending(handle) = source.expand().expect("pending z-index") else {
         panic!("pending")
     };
     assert!(handle.source().same_occurrence(&source));
@@ -242,29 +273,27 @@ fn pending_z_index_reentry_is_strict_atomic_and_preserves_replacement_origins() 
         .chain(["1; color:red", "1!important"])
     {
         assert!(
-            matches!(
-                handle
-                    .reenter(parse_component_values(text).unwrap())
-                    .unwrap_err()
-                    .kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ),
+            handle
+                .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
+                .unwrap_err()
+                .replacement_error()
+                .is_some(),
             "{text}"
         );
     }
     for text in ["var(--again)", "env(level)", "attr(data-level)"] {
-        assert_eq!(
+        assert!(
             handle
-                .reenter(parse_component_values(text).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
     }
     for text in ["auto", "+0002147483648", "calc(1.5)", "inherit"] {
-        let replacement = parse_component_values(text).unwrap();
-        let checked = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::ZIndex),
+        let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+        let checked = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::ZIndex)),
             replacement.clone(),
             CssImportance::Important,
         )
@@ -289,9 +318,12 @@ fn pending_z_index_reentry_is_strict_atomic_and_preserves_replacement_origins() 
 #[test]
 fn normalized_z_index_keeps_order_importance_and_atomic_cumulative_limits() {
     let text = ".a{z-index:auto;.child{z-index:-2}z-index:0!important}";
-    let report = parse_sheet(text);
+    let report = CssParser::default().parse_sheet(text);
     assert!(report.is_clean());
-    let normalized = normalize_sheet(report.syntax()).expect("normalized z-index");
+    let normalized = report
+        .syntax()
+        .normalize(Default::default())
+        .expect("normalized z-index");
     let items: Vec<_> = normalized
         .items()
         .iter()
@@ -328,17 +360,13 @@ fn normalized_z_index_keeps_order_importance_and_atomic_cumulative_limits() {
             .same_context(items[0].selector_context())
     );
     assert_eq!(items[2].source().importance(), CssImportance::Important);
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap(),
-    )
-    .unwrap_err();
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap())
+        .unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert!(
@@ -348,14 +376,18 @@ fn normalized_z_index_keeps_order_importance_and_atomic_cumulative_limits() {
             .same_occurrence(items[2].source())
     );
     assert_eq!(
-        normalize_sheet(report.syntax()).unwrap().items().len(),
+        report
+            .syntax()
+            .normalize(Default::default())
+            .unwrap()
+            .items()
+            .len(),
         normalized.items().len()
     );
     assert!(
-        normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 3).unwrap()
-        )
-        .is_ok()
+        report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 3).unwrap())
+            .is_ok()
     );
 }

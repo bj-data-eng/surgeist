@@ -7,17 +7,25 @@
 //! The explicit borrowed return type below is a public consumer contract.
 //! The authored model is the sole public Grid payload.
 
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
     CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationType,
-    CssCalculationValueRef, CssDeclaration, CssGridAutoFlowAxis, CssGridAutoRepeat,
-    CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridFixedRepeatComponent,
-    CssGridTrackBreadthKind as BreadthKind, CssGridTrackList,
-    CssGridTrackRepeatComponent as Member, CssGridTrackRepeatContent, CssGridTrackSize,
-    CssImportance, CssKnownProperty as Property, CssKnownPropertyValueRef, CssPropertyNameRef,
-    parse_component_values, parse_property_value, parse_style_attribute,
+    CssCalculationValueRef,
+};
+use surgeist_css::property::CssKnownProperty as Property;
+use surgeist_css::property::{CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::values::layout::CssGridTrackBreadthKind as BreadthKind;
+use surgeist_css::values::layout::CssGridTrackRepeatComponent as Member;
+use surgeist_css::values::layout::{
+    CssGridAutoFlowAxis, CssGridAutoRepeat, CssGridAutoRepeatKind, CssGridAutoTrackComponent,
+    CssGridFixedRepeatComponent, CssGridTrackList, CssGridTrackRepeatContent, CssGridTrackSize,
 };
 
-fn columns(declaration: &CssDeclaration) -> &surgeist_css::CssGridTemplateColumnsPropertyValue {
+fn columns(
+    declaration: &CssDeclaration,
+) -> &surgeist_css::property::CssPropertyValue<CssGridTrackList> {
     let Some(CssKnownPropertyValueRef::GridTemplateColumns(value)) =
         declaration.known().unwrap().property_value()
     else {
@@ -72,7 +80,7 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
         "[d] 1fr [e] minmax(auto, 1fr) [f] fit-content(20%) [g]) repeat(2, 5px) [end]",
     );
     let source = format!("grid-template-columns:{authored}!important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one complete Grid declaration");
@@ -102,12 +110,12 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
             .unwrap()
             .length_percentage()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "10px"
     );
     assert!(
-        matches!(after.count(), surgeist_css::CssPositiveIntegerValue::Literal(count) if count.integer().numeric().representation() == "2")
+        matches!(after.count().literal(), Some(count) if count.numeric().representation() == "2")
     );
     let [CssGridFixedRepeatComponent::FixedSize(size)] = after.content().components() else {
         panic!("surrounding integer repetition retains fixed-size content");
@@ -118,7 +126,7 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
             .unwrap()
             .length_percentage()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "5px"
     );
@@ -141,19 +149,29 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
     assert_keyword(track(body, 5), BreadthKind::MaxContent);
     let flex = track(body, 7).breadth().unwrap();
     assert_eq!(flex.kind(), BreadthKind::Fraction);
-    assert_eq!(flex.flex().unwrap().serialize_specified().unwrap(), "1fr");
+    assert_eq!(
+        flex.flex()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "1fr"
+    );
     let (minimum, maximum) = track(body, 9).minmax().unwrap();
     assert_eq!(minimum.kind(), BreadthKind::Auto);
     assert_eq!(maximum.kind(), BreadthKind::Fraction);
     assert_eq!(
-        maximum.flex().unwrap().serialize_specified().unwrap(),
+        maximum
+            .flex()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "1fr"
     );
     assert_eq!(
         track(body, 11)
             .fit_content()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "20%"
     );
@@ -161,7 +179,7 @@ fn intrinsic_body_and_fixed_surroundings_remain_distinct() {
 }
 
 fn automatic_calculations_and_names_remain_symbolic() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "grid-template-columns:repeat(auto-fit, [start] calc(1px * 2) [end])",
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -210,9 +228,10 @@ fn automatic_calculations_and_names_remain_symbolic() {
 
 fn checked_components_preserve_general_body_values_and_origins() {
     let authored = "RePeAt(AUTO-FIT, [Start] MINMAX(MIN-CONTENT, 2fr) [End])";
-    let components = parse_component_values(authored).unwrap();
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(Property::GridTemplateColumns),
+    let components = CssComponentValues::parse(&CssParser::default(), authored).unwrap();
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(Property::GridTemplateColumns)),
         components.clone(),
         CssImportance::Important,
     )
@@ -221,18 +240,22 @@ fn checked_components_preserve_general_body_values_and_origins() {
     assert!(declaration.position().is_none());
     assert!(declaration.parsed_name().is_none());
     assert!(declaration.parsed_value().is_none());
-    let original_tokens = components.serialize().unwrap();
-    let retained_tokens = declaration.value_components().serialize().unwrap();
+    let original_tokens = components.serialize_tokens(Default::default()).unwrap();
+    let retained_tokens = declaration
+        .value_components()
+        .serialize_tokens(Default::default())
+        .unwrap();
     assert_eq!(retained_tokens.as_css(), original_tokens.as_css());
     assert_eq!(retained_tokens.segments(), original_tokens.segments());
     assert_eq!(
         retained_tokens.origin_at(retained_tokens.as_css().len()),
         original_tokens.origin_at(original_tokens.as_css().len())
     );
-    let surgeist_css::CssValueOrigin::Parsed(original) = components.items()[0].origin() else {
+    let surgeist_css::component::CssValueOrigin::Parsed(original) = components.items()[0].origin()
+    else {
         panic!("the supplied first token has parsed provenance");
     };
-    let surgeist_css::CssValueOrigin::Parsed(retained) =
+    let surgeist_css::component::CssValueOrigin::Parsed(retained) =
         declaration.value_components().items()[0].origin()
     else {
         panic!("checked construction retains the first token's provenance");
@@ -250,14 +273,18 @@ fn checked_components_preserve_general_body_values_and_origins() {
     assert_eq!(minimum.kind(), BreadthKind::MinContent);
     assert_eq!(maximum.kind(), BreadthKind::Fraction);
     assert_eq!(
-        maximum.flex().unwrap().serialize_specified().unwrap(),
+        maximum
+            .flex()
+            .unwrap()
+            .serialize_specified(Default::default())
+            .unwrap(),
         "2fr"
     );
     println!("checked component grammar and preserved origins: ok");
 }
 
 fn shorthand_axes_keep_their_explicit_and_implicit_roles() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "grid-template:repeat(auto-fill, auto) / repeat(auto-fit, 1fr);",
         "grid:auto-flow dense 12px / repeat(auto-fit, fit-content(20%))",
     ));
@@ -283,7 +310,7 @@ fn shorthand_axes_keep_their_explicit_and_implicit_roles() {
             .unwrap()
             .flex()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "1fr"
     );
@@ -306,7 +333,7 @@ fn shorthand_axes_keep_their_explicit_and_implicit_roles() {
             .unwrap()
             .length_percentage()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "12px"
     );
@@ -318,7 +345,7 @@ fn shorthand_axes_keep_their_explicit_and_implicit_roles() {
         track(body, 0)
             .fit_content()
             .unwrap()
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "20%"
     );

@@ -4,19 +4,31 @@
 //! ordered length-or-auto edges and permits signed lengths.
 
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::conformance::feature_metadata;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssPropertyKindRef,
+};
+use surgeist_css::values::common::CssAutoOr;
+use surgeist_css::values::effects::CssClip;
 
 fn clip(source: &CssDeclaration) -> &CssClip {
     let CssKnownPropertyValueRef::Clip(value) = source.known().unwrap().property_value().unwrap()
     else {
         panic!("typed clip")
     };
-    value.clip()
+    value.value()
 }
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("one clip longhand contribution")
     };
@@ -57,15 +69,15 @@ fn rect_edges_retain_order_signed_lengths_and_symbolic_math() {
         let CssClip::Rect(rect) = clip(&declaration) else {
             panic!("rectangle: {source}")
         };
-        assert!(matches!(rect.top(), CssClipEdge::Auto));
+        assert!(matches!(rect.top(), CssAutoOr::Auto));
         assert!(
-            matches!(rect.right(), CssClipEdge::Length(length) if exact_dimension(length.literal_component(), "-1", "px"))
+            matches!(rect.right(), CssAutoOr::Value(length) if exact_dimension(length.literal().map(|literal| literal.component()), "-1", "px"))
         );
         assert!(
-            matches!(rect.bottom(), CssClipEdge::Length(length) if length.calculation().is_some())
+            matches!(rect.bottom(), CssAutoOr::Value(length) if length.calculation().is_some())
         );
         assert!(
-            matches!(rect.left(), CssClipEdge::Length(length) if matches!(length.literal_component().unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation()=="0"))
+            matches!(rect.left(), CssAutoOr::Value(length) if matches!(length.literal().map(|literal| literal.component()).unwrap().view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation()=="0"))
         );
         let [item] = expanded(&declaration)
             .try_into()
@@ -86,7 +98,7 @@ fn mixed_separators_percentages_and_wrong_arity_drop_only_the_invalid_declaratio
         "rect(0, calc(1px + 2%), 2px, 3px)",
     ] {
         let source = format!("color:red;clip:{invalid};height:2px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 2, "{invalid}");
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -107,7 +119,7 @@ fn mixed_separators_percentages_and_wrong_arity_drop_only_the_invalid_declaratio
 #[test]
 fn pending_clip_reentry_is_strict_repeatable_and_retains_replacement_provenance() {
     let source = declaration("clip:var(--region)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("clip substitution is pending")
     };
     assert!(pending.source().same_occurrence(&source));
@@ -116,22 +128,22 @@ fn pending_clip_reentry_is_strict_repeatable_and_retains_replacement_provenance(
         "rect(0, 1px 2px, 3px)",
         "rect(0, 1px, 2px)",
     ] {
-        assert!(matches!(
+        assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
     }
-    assert_eq!(
+    assert!(
         pending
-            .reenter(parse_component_values("var(--again)").unwrap())
+            .reenter(CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap())
             .unwrap_err()
-            .kind(),
-        &CssExpansionErrorKind::ResidualSubstitution
+            .is_residual_substitution()
     );
-    let replacement = parse_component_values("rect(auto, -1px, 2em, 0)").unwrap();
+    let replacement =
+        CssComponentValues::parse(&CssParser::default(), "rect(auto, -1px, 2em, 0)").unwrap();
     for _ in 0..2 {
         let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
         else {
@@ -147,7 +159,7 @@ fn pending_clip_reentry_is_strict_repeatable_and_retains_replacement_provenance(
         assert_eq!(item.replacement_components(), Some(&replacement));
     }
     let CssContributions::Longhands(items) = pending
-        .reenter(parse_component_values("inherit").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "inherit").unwrap())
         .unwrap()
     else {
         panic!("one global")
@@ -160,9 +172,10 @@ fn pending_clip_reentry_is_strict_repeatable_and_retains_replacement_provenance(
 
 #[test]
 fn normalization_preserves_mixed_order_and_fails_at_contribution_boundary() {
-    let report = parse_sheet(".a{clip:auto;flex-direction:column;clip:rect(auto, -1px, 2em, 0)}");
+    let report = CssParser::default()
+        .parse_sheet(".a{clip:auto;flex-direction:column;clip:rect(auto, -1px, 2em, 0)}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let declarations = normalized
         .items()
         .iter()
@@ -197,13 +210,10 @@ fn normalization_preserves_mixed_order_and_fails_at_contribution_boundary() {
         assert!(item.source().same_occurrence(declarations[index].source()));
     }
     let limits = CssNormalizationLimits::try_new(256, usize::MAX, usize::MAX, 2).unwrap();
-    let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
+    let error = report.syntax().normalize(limits).unwrap_err();
     assert_eq!(
-        error.kind(),
-        &CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 2,
-        }
+        error.exhausted_limit(),
+        Some((CssNormalizationResource::Contributions, 2))
     );
     assert_eq!(error.declaration_order(), Some(2));
     assert_eq!(
@@ -213,9 +223,9 @@ fn normalization_preserves_mixed_order_and_fails_at_contribution_boundary() {
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }

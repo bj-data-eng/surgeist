@@ -12,11 +12,12 @@
 
 use std::ops::Range;
 
-use surgeist_css::{
-    CssComponentValue, CssComponentValueErrorKind, CssComponentValueRef, CssComponentValues,
-    CssNumericTokenKind, CssNumericTokenRef, CssSpecifiedNumber, CssValueOrigin, CssValueTokenRef,
-    parse_component_values,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
+    CssNumericTokenRef, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::numeric::{CssNumber, CssNumeric};
 
 use CssNumericTokenKind::{Integer, Number};
 
@@ -87,7 +88,8 @@ fn assert_sequence(source: &str, expected: &[(Expected<'_>, Range<usize>)]) {
         } else {
             source.to_owned()
         };
-        let values = parse_component_values(&input).expect("valid token sequence");
+        let values =
+            CssComponentValues::parse(&CssParser::default(), &input).expect("valid token sequence");
         assert_eq!(
             values.items().len(),
             expected.len() + if with_sentinel { 2 } else { 0 },
@@ -299,7 +301,7 @@ fn validated_numeric_conversion_uses_sign_fraction_and_signed_decimal_exponent()
         ("1.0", Number, false, "1"),
         ("1e0", Number, false, "1"),
     ] {
-        let parsed = parse_component_values(source).unwrap();
+        let parsed = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let [original] = parsed.items() else {
             panic!("one complete numeric token")
         };
@@ -308,21 +310,24 @@ fn validated_numeric_conversion_uses_sign_fraction_and_signed_decimal_exponent()
             CssComponentValue::try_number(source).unwrap(),
         ] {
             assert_token(&component, &Expected::Number(source, kind, sign));
-            let value = CssSpecifiedNumber::try_from_component(component.clone()).unwrap();
+            let value = CssNumeric::<CssNumber>::try_from_component(component.clone()).unwrap();
             let before = value.clone();
             assert_eq!(
-                value.serialize_specified().unwrap(),
+                value.serialize_specified(Default::default()).unwrap(),
                 expected_value,
                 "{source}"
             );
             assert_eq!(value, before);
-            assert_eq!(value.literal_component(), Some(&component));
+            assert_eq!(
+                value.literal().map(|literal| literal.component()),
+                Some(&component)
+            );
             assert_eq!(value.origin(), component.origin());
             // Mathematical conversion does not erase the authored spelling.
             assert_eq!(
-                CssComponentValues::try_new(vec![component])
+                CssComponentValues::try_new(vec![component], Default::default())
                     .unwrap()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 source
@@ -340,19 +345,15 @@ fn whole_number_construction_rejects_invalid_spelling_and_admits_a_valid_retry()
     ] {
         let error = CssComponentValue::try_number(spelling)
             .expect_err("a prefix/category is not a whole CSS number");
-        assert_eq!(
-            error.kind(),
-            CssComponentValueErrorKind::InvalidNumber,
-            "{spelling:?}"
-        );
+        assert!(error.is_invalid_number(), "{spelling:?}");
         assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
         let retry = CssComponentValue::try_number("-.5e+2").unwrap();
         assert_token(&retry, &Expected::Number("-.5e+2", Number, true));
         assert_eq!(retry.origin(), &CssValueOrigin::Programmatic);
         assert_eq!(
-            CssSpecifiedNumber::try_from_component(retry)
+            CssNumeric::<CssNumber>::try_from_component(retry)
                 .unwrap()
-                .serialize_specified()
+                .serialize_specified(Default::default())
                 .unwrap(),
             "-50"
         );
@@ -364,20 +365,16 @@ fn dimension_construction_validates_number_text_before_an_exponent_like_unit() {
     for spelling in ["", "+", ".", "1.", "1e+", "1 2", "1px", "1%"] {
         let error = CssComponentValue::try_dimension(spelling, "e2")
             .expect_err("dimension number must be checked whole text");
-        assert_eq!(
-            error.kind(),
-            CssComponentValueErrorKind::InvalidDimension,
-            "{spelling:?}"
-        );
+        assert!(error.is_invalid_dimension(), "{spelling:?}");
         assert_eq!(error.origin(), &CssValueOrigin::Programmatic);
         let retry = CssComponentValue::try_dimension("1", "e2").unwrap();
         assert_token(&retry, &Expected::Dimension("1", "e2", Integer, false));
         assert_eq!(retry.origin(), &CssValueOrigin::Programmatic);
-        let css = CssComponentValues::try_new(vec![retry])
+        let css = CssComponentValues::try_new(vec![retry], Default::default())
             .unwrap()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap();
-        let reparsed = parse_component_values(css.as_css()).unwrap();
+        let reparsed = CssComponentValues::parse(&CssParser::default(), css.as_css()).unwrap();
         let [component] = reparsed.items() else {
             panic!("one dimension, not numeric exponent")
         };

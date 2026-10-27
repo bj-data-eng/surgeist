@@ -27,3 +27,4 @@ mod cssom_selector_context_formatting;
 mod cssom_specified_declaration_blocks;
 mod cssom_supports_composition;
 mod cssom_supports_wrapper_contract;
+mod specified_graph_depth;

@@ -5,16 +5,17 @@
 //! equal explicit px member select the same shortest shorthand form. Each
 //! quirky member still serializes as its own `Npx` text.
 
-use surgeist_css::*;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
 
 fn cssom(context: CssParserContext, source: &str) -> String {
-    let report = context.parse_style_attribute(source);
+    let report = CssParser::new(context, Default::default()).parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
-    CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax())
+    CssSpecifiedDeclarationBlock::try_from_declarations(report.syntax(), Default::default())
         .unwrap()
-        .serialize_cssom()
+        .serialize_cssom(Default::default())
         .unwrap()
 }
 

@@ -4,29 +4,54 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#urls
 //! https://www.w3.org/TR/2026/WD-css-color-5-20260908/#light-dark
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssAngleOrZero, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::common::{CssUrl, CssUrlFunction};
+use surgeist_css::values::content::{CssContentValue, CssGeneratedContentBodyRef};
+use surgeist_css::values::image::{
+    CssColorStopListItem, CssGradient, CssHorizontalGradientSide, CssImage, CssImageValue,
+    CssLinearGradient, CssLinearGradientDirection, CssRadialGradient, CssRadialShape,
+    CssRadialSize, CssVerticalGradientSide,
+};
 
 fn fronts(property: CssKnownProperty, text: &str) -> Vec<(CssDeclaration, String)> {
     let css = format!("/*😀*/{}:{text}!important", property.canonical_name());
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
-    assert_eq!(validate_style_attribute(&css).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     let [parsed] = report.syntax().as_slice() else {
         panic!("one image declaration")
     };
     let mut declarations = vec![(parsed.clone(), css)];
-    let components = parse_component_values(text).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let original = components.clone();
     for grammar in [false, true] {
         let declaration = if grammar {
-            parse_property_value_for_grammar(
-                property.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property.grammar()),
                 components.clone(),
                 CssImportance::Important,
             )
         } else {
-            parse_property_value(
-                CssPropertyNameRef::Known(property),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
                 components.clone(),
                 CssImportance::Important,
             )
@@ -46,13 +71,13 @@ fn fronts(property: CssKnownProperty, text: &str) -> Vec<(CssDeclaration, String
 fn image(declaration: &CssDeclaration) -> &CssImageValue {
     match declaration.known().unwrap().property_value().unwrap() {
         CssKnownPropertyValueRef::BackgroundImage(value) => {
-            let [image] = value.images().images() else {
+            let [image] = value.value().images() else {
                 panic!("one background image")
             };
             image
         }
         CssKnownPropertyValueRef::ListStyleImage(value) => value.value(),
-        CssKnownPropertyValueRef::BorderImageSource(value) => value.source(),
+        CssKnownPropertyValueRef::BorderImageSource(value) => value.value(),
         CssKnownPropertyValueRef::Content(value) => {
             let CssContentValue::Generated(value) = value.value() else {
                 panic!("generated replacement image")
@@ -106,9 +131,10 @@ fn parsed_origin(origin: &CssValueOrigin, source: &str, token: &str) {
     }
 }
 
-fn percentage(value: &CssSpecifiedLengthPercentage, source: &str, spelling: &str) {
+fn percentage(value: &CssNumeric<CssLengthPercentage>, source: &str, spelling: &str) {
     let component = value
-        .literal_component()
+        .literal()
+        .map(|literal| literal.component())
         .expect("literal authored percentage");
     let CssComponentValueRef::Token(CssValueTokenRef::Percentage(number)) = component.view() else {
         panic!("percentage branch")
@@ -121,12 +147,18 @@ fn rejects_background(text: &str) {
     let prefix = "/*😀*/color:red;";
     let unit = format!("background-image:{text};");
     let source = format!("{prefix}{unit}color:blue!important");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [first, last] = report.syntax().as_slice() else {
         panic!("only the two valid neighbors remain: {source}")
     };
-    assert_eq!(first.to_specified_css().unwrap(), "color: red;");
-    assert_eq!(last.to_specified_css().unwrap(), "color: blue !important;");
+    assert_eq!(
+        first.serialize_specified(Default::default()).unwrap(),
+        "color: red;"
+    );
+    assert_eq!(
+        last.serialize_specified(Default::default()).unwrap(),
+        "color: blue !important;"
+    );
     let [diagnostic] = report.diagnostics() else {
         panic!("one rejected image declaration: {source}")
     };
@@ -140,21 +172,29 @@ fn rejects_background(text: &str) {
         prefix.len() + unit.len(),
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics(),
     );
-    let values = parse_component_values(text).unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let original = values.clone();
     for grammar in [false, true] {
         let result = if grammar {
-            parse_property_value_for_grammar(
-                CssKnownProperty::BackgroundImage.grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(CssKnownProperty::BackgroundImage.grammar()),
                 values.clone(),
                 CssImportance::Normal,
             )
         } else {
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                    CssKnownProperty::BackgroundImage,
+                )),
                 values.clone(),
                 CssImportance::Normal,
             )
@@ -190,16 +230,30 @@ fn all_four_gradients_keep_signed_positions_hint_origins_and_function_identity()
             else {
                 panic!("exactly two stops with one intervening hint")
             };
-            assert_eq!(first.color().to_specified_css().unwrap(), "red");
-            assert_eq!(last.color().to_specified_css().unwrap(), "blue");
+            assert_eq!(
+                first
+                    .color()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                "red"
+            );
+            assert_eq!(
+                last.color()
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                "blue"
+            );
             percentage(first.position().unwrap(), &source, "-10%");
             percentage(hint, &source, "40%");
             percentage(last.position().unwrap(), &source, "120%");
-            assert_eq!(value.serialize_specified().unwrap(), text);
+            assert_eq!(value.serialize_specified(Default::default()).unwrap(), text);
             let checked = CssImage::try_new(image(&declaration).clone()).unwrap();
-            assert_eq!(checked.serialize_specified().unwrap(), text);
             assert_eq!(
-                declaration.to_specified_css().unwrap(),
+                checked.serialize_specified(Default::default()).unwrap(),
+                text
+            );
+            assert_eq!(
+                declaration.serialize_specified(Default::default()).unwrap(),
                 format!("background-image: {text} !important;"),
             );
         }
@@ -223,7 +277,9 @@ fn reversed_corner_order_and_unitless_zero_have_the_same_linear_sibling_grammar(
                 );
                 assert_eq!(direction.vertical(), Some(CssVerticalGradientSide::Top));
                 assert_eq!(
-                    gradient(&declaration).serialize_specified().unwrap(),
+                    gradient(&declaration)
+                        .serialize_specified(Default::default())
+                        .unwrap(),
                     format!("{function}(to right top, red, blue)"),
                 );
             }
@@ -255,7 +311,9 @@ fn radial_siblings_keep_unordered_shape_size_and_omitted_authored_defaults() {
                 assert!(matches!(value.size(), Some(CssRadialSize::Circle(_))));
                 assert!(value.position().is_some());
                 assert_eq!(
-                    gradient(&declaration).serialize_specified().unwrap(),
+                    gradient(&declaration)
+                        .serialize_specified(Default::default())
+                        .unwrap(),
                     format!("{function}(5em at left top, red, blue)"),
                 );
             }
@@ -268,12 +326,22 @@ fn radial_siblings_keep_unordered_shape_size_and_omitted_authored_defaults() {
                 let Some(CssRadialSize::Ellipse(size)) = value.size() else {
                     panic!("two nonnegative ellipse radii")
                 };
-                let horizontal = size.horizontal().literal_component().unwrap();
-                let vertical = size.vertical().literal_component().unwrap();
+                let horizontal = size
+                    .horizontal()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap();
+                let vertical = size
+                    .vertical()
+                    .literal()
+                    .map(|literal| literal.component())
+                    .unwrap();
                 parsed_origin(horizontal.origin(), &source, "20%");
                 parsed_origin(vertical.origin(), &source, "30%");
                 assert_eq!(
-                    gradient(&declaration).serialize_specified().unwrap(),
+                    gradient(&declaration)
+                        .serialize_specified(Default::default())
+                        .unwrap(),
                     format!("{function}(20% 30%, red, blue)"),
                 );
             }
@@ -284,7 +352,12 @@ fn radial_siblings_keep_unordered_shape_size_and_omitted_authored_defaults() {
             assert_eq!(value.shape(), None);
             assert_eq!(value.size(), None);
             assert_eq!(value.position(), None);
-            assert_eq!(gradient(&declaration).serialize_specified().unwrap(), text);
+            assert_eq!(
+                gradient(&declaration)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
+                text
+            );
         }
         for prelude in [
             "circle 10%",
@@ -355,9 +428,12 @@ fn nested_src_and_repeating_gradient_pairs_cross_real_image_consumers_without_br
             percentage(hint, &source, "40%");
             percentage(last.position().unwrap(), &source, "120%");
             let expected = format!("{}: {text} !important;", property.canonical_name());
-            assert_eq!(declaration.to_specified_css().unwrap(), expected);
+            assert_eq!(
+                declaration.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
             let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-                expand_declaration(&declaration).unwrap()
+                declaration.expand().unwrap()
             else {
                 panic!("ordinary image longhand")
             };
@@ -374,26 +450,27 @@ fn nested_src_and_repeating_gradient_pairs_cross_real_image_consumers_without_br
 
 #[test]
 fn image_reentry_keeps_nested_numeric_origins_and_retries_after_invalid_whole_replacement() {
-    let report = parse_style_attribute("/*😀*/list-style-image:var(--art)!important");
+    let report =
+        CssParser::default().parse_block_contents("/*😀*/list-style-image:var(--art)!important");
     assert!(report.is_clean());
     let source = &report.syntax()[0];
-    let CssExpansion::Pending(pending) = expand_declaration(source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("whole symbolic image replacement")
     };
     let text = "light-dark(src(\"#art\"), repeating-radial-gradient(red -10%, 40%, blue 120%))";
-    let replacement = parse_component_values(text).unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), text).unwrap();
     let before = replacement.clone();
     for invalid in [
         "light-dark(src(\"#art\"), repeating-radial-gradient(red,))",
         "light-dark(src(\"#art\"), repeating-radial-gradient(red, blue)) trailing",
     ] {
-        assert!(matches!(
+        assert!(
             pending
-                .reenter(parse_component_values(invalid).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+                .replacement_error()
+                .is_some()
+        );
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("valid retry produces one terminal")

@@ -6,17 +6,32 @@ use crate::css::support::descriptor_phases;
 use crate::css::support::rules::sole_counter_style;
 use descriptor_phases::*;
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssInteger, CssNumeric, CssNumericLiteral};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::{
+    CssCounterAdditiveSymbols, CssCounterAdditiveTuple, CssCounterStyleDescriptorKind,
+    CssCounterStyleNegative, CssCounterStylePad, CssCounterStyleRange, CssCounterStyleRangeBound,
+    CssCounterStyleRule, CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
+};
+use surgeist_css::values::common::CssUrl;
+use surgeist_css::values::content::CssContentString;
+use surgeist_css::values::image::{CssImage, CssImageValue};
 
 fn counter(body: &str) -> CssCounterStyleRule {
     sole_counter_style(&format!("@counter-style Custom {{ {body} }}"))
 }
 
-fn integer(value: &str) -> CssIntegerValue {
-    CssIntegerValue::Literal(
-        CssIntegerLiteral::try_from_component(CssComponentValue::try_number(value).unwrap())
-            .unwrap(),
+fn integer(value: &str) -> CssNumeric<CssInteger> {
+    CssNumeric::<CssInteger>::try_from_literal(
+        CssNumericLiteral::<CssInteger>::try_from_component(
+            CssComponentValue::try_number(value).unwrap(),
+        )
+        .unwrap(),
     )
+    .unwrap()
 }
 
 fn string(value: &str) -> CssCounterSymbol {
@@ -51,10 +66,14 @@ fn implicit_initials_are_omitted_authored_values_without_forged_occurrences() {
         CssCounterStyleDescriptorKind::AdditiveSymbols,
         CssCounterStyleDescriptorKind::SpeakAs,
     ] {
-        assert_eq!(rule.descriptor_specified_css(kind).unwrap(), "");
+        assert_eq!(
+            rule.descriptor_specified_css(kind, Default::default())
+                .unwrap(),
+            ""
+        );
     }
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@counter-style Custom { symbols: a; }"
     );
 }
@@ -95,7 +114,7 @@ fn explicit_initial_values_remain_distinct_from_omission() {
             .unwrap()
             .ordinary_pad()
             .minimum_length()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "0"
@@ -113,7 +132,7 @@ fn explicit_initial_values_remain_distinct_from_omission() {
         CssCounterStyleSpeakAs::Auto
     ));
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         concat!(
             "@counter-style Custom { system: symbolic; negative: \"-\"; prefix: \"\"; ",
             "suffix: \". \"; range: auto; pad: 0 \"\"; fallback: decimal; symbols: a; speak-as: auto; }"
@@ -134,8 +153,11 @@ fn every_system_retains_its_valid_minimum_symbol_boundary() {
     ] {
         let rule = counter(body);
         assert_eq!(
-            rule.descriptor_specified_css(CssCounterStyleDescriptorKind::System)
-                .unwrap(),
+            rule.descriptor_specified_css(
+                CssCounterStyleDescriptorKind::System,
+                Default::default()
+            )
+            .unwrap(),
             expected
         );
         match (
@@ -230,7 +252,7 @@ fn every_descriptor_selects_last_valid_duplicate_after_whole_value_recovery() {
         let source = format!(
             ".before{{}} @counter-style Custom {{ symbols:a; {initial}; {invalid}; {last}; }} .after{{}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [
             CssRule::Style(_),
             CssRule::CounterStyle(rule),
@@ -241,7 +263,8 @@ fn every_descriptor_selects_last_valid_duplicate_after_whole_value_recovery() {
         };
         let retained = rule.clone();
         assert_eq!(
-            rule.descriptor_specified_css(kind).unwrap(),
+            rule.descriptor_specified_css(kind, Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );
@@ -263,10 +286,14 @@ fn every_descriptor_selects_last_valid_duplicate_after_whole_value_recovery() {
             start + invalid.len() + 1
         );
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
-        let _ = rule.to_specified_css().unwrap();
+        let _ = rule.serialize_specified(Default::default()).unwrap();
         assert_eq!(rule, &retained);
     }
 }
@@ -274,12 +301,12 @@ fn every_descriptor_selects_last_valid_duplicate_after_whole_value_recovery() {
 #[test]
 fn unknown_descriptor_and_unsupported_value_recover_independently() {
     let source = "@counter-style Custom { symbols:a; Future-Descriptor: f([unknown]); system:future-system; suffix:'.'; } .after{}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("counter and following rule");
     };
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@counter-style Custom { suffix: \".\"; symbols: a; }"
     );
     let [unknown, unsupported] = report.diagnostics() else {
@@ -301,13 +328,16 @@ fn descriptor_annotations_invalidate_only_the_annotated_descriptor() {
         let source = format!(
             "@counter-style Custom {{ symbols:a; prefix:'kept'; prefix:'bad' {annotation}; suffix:'.'; }} .after{{}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
             panic!("annotation recovery");
         };
         assert_eq!(
-            rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Prefix)
-                .unwrap(),
+            rule.descriptor_specified_css(
+                CssCounterStyleDescriptorKind::Prefix,
+                Default::default()
+            )
+            .unwrap(),
             "\"kept\""
         );
         let [diagnostic] = report.diagnostics() else {
@@ -315,7 +345,11 @@ fn descriptor_annotations_invalidate_only_the_annotated_descriptor() {
         };
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDescriptor);
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -324,12 +358,12 @@ fn descriptor_annotations_invalidate_only_the_annotated_descriptor() {
 #[test]
 fn descriptor_body_at_rules_follow_forward_recovery_without_losing_valid_values() {
     let source = "@counter-style Custom { prefix:'before'; @future-body { nested:([x]); } @counter-style forbidden { symbols:x; } symbols:a; suffix:'after'; } .after{}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule), CssRule::Style(_)] = report.syntax().rules() else {
         panic!("whole unknown nested units recover");
     };
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@counter-style Custom { prefix: \"before\"; suffix: \"after\"; symbols: a; }"
     );
     let [unknown, forbidden] = report.diagnostics() else {
@@ -355,20 +389,20 @@ fn extends_omission_and_explicit_range_auto_remain_distinct() {
     ));
     assert_eq!(
         omitted
-            .descriptor_specified_css(CssCounterStyleDescriptorKind::Range)
+            .descriptor_specified_css(CssCounterStyleDescriptorKind::Range, Default::default())
             .unwrap(),
         ""
     );
     assert_eq!(
         explicit
-            .descriptor_specified_css(CssCounterStyleDescriptorKind::Range)
+            .descriptor_specified_css(CssCounterStyleDescriptorKind::Range, Default::default())
             .unwrap(),
         "auto"
     );
     assert!(explicit.descriptors().fallback().is_none());
     assert!(explicit.descriptors().speak_as().is_none());
     assert_eq!(
-        explicit.to_specified_css().unwrap(),
+        explicit.serialize_specified(Default::default()).unwrap(),
         "@counter-style Custom { system: extends Missing; range: auto; }"
     );
 }
@@ -379,7 +413,7 @@ fn extends_symbol_conflicts_keep_authored_rules_and_invalid_descriptors_recover_
         let source = format!(
             ".before{{}} @counter-style Custom {{ system:extends Missing; {descriptor} }} .after{{}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean());
         assert!(matches!(
             report.syntax().rules(),
@@ -391,12 +425,12 @@ fn extends_symbol_conflicts_keep_authored_rules_and_invalid_descriptors_recover_
         ));
     }
     let source = "@counter-style Custom { system:extends Missing; symbols:; additive-symbols:1 I, 1 X; suffix:'.'; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("invalid symbol descriptors are ignored before effective combination validation");
     };
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@counter-style Custom { system: extends Missing; suffix: \".\"; }"
     );
     assert!(
@@ -433,8 +467,11 @@ fn unknown_named_targets_and_speech_choices_remain_symbolic() {
     ] {
         let rule = counter(&format!("symbols:a; speak-as:{body};"));
         assert_eq!(
-            rule.descriptor_specified_css(CssCounterStyleDescriptorKind::SpeakAs)
-                .unwrap(),
+            rule.descriptor_specified_css(
+                CssCounterStyleDescriptorKind::SpeakAs,
+                Default::default()
+            )
+            .unwrap(),
             expected
         );
     }
@@ -460,7 +497,10 @@ fn checked_pad_and_additive_construction_keep_exact_integer_and_image_semantics(
     let image = url("symbol.svg");
     let pad = CssCounterStylePad::try_new(integer("-000"), image.clone()).unwrap();
     assert_eq!(
-        pad.minimum_length().literal().numeric().representation(),
+        pad.minimum_length()
+            .expect_literal()
+            .numeric()
+            .representation(),
         "-000"
     );
     assert_eq!(pad.symbol(), &image);
@@ -472,7 +512,7 @@ fn checked_pad_and_additive_construction_keep_exact_integer_and_image_semantics(
     assert_eq!(
         list.tuples()[0]
             .weight()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         huge
@@ -501,7 +541,7 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
         fixed
             .first_symbol_value()
             .unwrap()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         format!("-{huge}")
@@ -524,7 +564,7 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
             .unwrap()
             .ordinary_pad()
             .minimum_length()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "-000"
@@ -536,18 +576,18 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
             .ordinary_additive_symbols()
             .tuples()[1]
             .weight()
-            .literal()
+            .expect_literal()
             .numeric()
             .representation(),
         "-000"
     );
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Range)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Range, Default::default())
             .unwrap(),
         format!("-{huge} {huge}, infinite -1, 0 infinite")
     );
     assert_eq!(
-        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Pad)
+        rule.descriptor_specified_css(CssCounterStyleDescriptorKind::Pad, Default::default())
             .unwrap(),
         "0 \"_\""
     );
@@ -556,7 +596,7 @@ fn huge_integer_fields_and_signed_zero_keep_authored_tokens_without_range_clampi
 #[test]
 fn inside_and_case_sensitive_names_remain_valid_unresolved_rule_and_reference_names() {
     let source = "@counter-style inside { symbols:MiXeD; fallback:Inside; speak-as:Voice; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("inside is a valid rule name");
@@ -578,12 +618,12 @@ fn inside_and_case_sensitive_names_remain_valid_unresolved_rule_and_reference_na
 #[test]
 fn eof_body_recovery_keeps_valid_occurrences_and_matches_strict_diagnostics() {
     let source = "@counter-style Custom { symbols:a; suffix:'.'";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let [CssRule::CounterStyle(rule)] = report.syntax().rules() else {
         panic!("EOF retains completed descriptors");
     };
     assert_eq!(
-        rule.to_specified_css().unwrap(),
+        rule.serialize_specified(Default::default()).unwrap(),
         "@counter-style Custom { suffix: \".\"; symbols: a; }"
     );
     assert!(
@@ -594,11 +634,15 @@ fn eof_body_recovery_keeps_valid_occurrences_and_matches_strict_diagnostics() {
     );
     assert!(!report.is_clean());
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     assert_eq!(
-        normalize_report(&report).unwrap().diagnostics(),
+        report.normalize(Default::default()).unwrap().diagnostics(),
         report.diagnostics()
     );
 }

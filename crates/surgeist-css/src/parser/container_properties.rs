@@ -1,6 +1,6 @@
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
-use crate::{
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::query::container::{
     CssContainer, CssContainerName, CssContainerNameList, CssContainerNames, CssContainerType,
 };
 

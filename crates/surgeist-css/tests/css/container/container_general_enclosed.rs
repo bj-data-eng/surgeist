@@ -1,15 +1,21 @@
 //! Conditional 5 section 5.4 admits general-enclosed query operands. MQ4
 //! section 3 permits empty any-value contents; unknown syntax stays symbolic.
 use crate::css::support::authored_syntax::assert_diagnostics;
-use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues,
-    CssContainerCondition as Condition, CssContainerConditionKind as Kind,
-    CssContainerGeneralEnclosed, CssErrorCode, CssGeneralEnclosed, CssRecoveryAction, CssRule,
-    CssSerializedOrigin, CssValueOrigin, parse_component_values, parse_sheet, validate_sheet,
+use crate::css::support::failure_classes::ComponentFailure;
+use crate::css::support::failure_classes::component_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
 };
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::container::{CssContainerGeneralEnclosed, CssContainerLeaf};
+use surgeist_css::query::{CssCondition, CssConditionKind, CssGeneralEnclosed};
+use surgeist_css::rule::CssRule;
 
-fn condition(query: &str) -> Condition {
-    let report = parse_sheet(&format!("@container {query} {{ .x {{ color:red }} }}"));
+fn condition(query: &str) -> CssCondition<CssContainerLeaf> {
+    let report =
+        CssParser::default().parse_sheet(format!("@container {query} {{ .x {{ color:red }} }}"));
     assert!(report.is_clean(), "{query}: {:?}", report.diagnostics());
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("container")
@@ -18,31 +24,38 @@ fn condition(query: &str) -> Condition {
     rule.prelude().entries()[0].query().unwrap().clone()
 }
 
-fn opaque(value: &Condition) -> &CssContainerGeneralEnclosed {
-    let Kind::GeneralEnclosed(value) = value.kind() else {
+fn opaque(value: &CssCondition<CssContainerLeaf>) -> &CssContainerGeneralEnclosed {
+    let CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(value)) = value.kind() else {
         panic!("opaque query operand: {value:?}")
     };
     value
 }
 
-fn assert_color_style(condition: &Condition) {
-    use surgeist_css::{
-        CssContainerStyleFeature, CssContainerStyleFeatureName, CssContainerStyleQueryKind,
-        CssPropertyGrammar,
+fn assert_color_style(condition: &CssCondition<CssContainerLeaf>) {
+    use surgeist_css::property::CssPropertyGrammar;
+    use surgeist_css::query::CssConditionKind;
+    use surgeist_css::query::container::{
+        CssContainerStyleFeature, CssContainerStyleFeatureName, CssStyleQueryLeaf,
     };
-    let Kind::Style(query) = condition.kind() else {
+    let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) = condition.kind() else {
         panic!("recognized ordinary-property style query")
     };
-    let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain {
+    let CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(CssContainerStyleFeature::Plain {
         name: CssContainerStyleFeatureName::Property(grammar),
         value,
-    }) = query.kind()
+    })) = query.kind()
     else {
         panic!("plain property feature")
     };
     assert_eq!(*grammar, CssPropertyGrammar::from_name("color").unwrap());
-    assert_eq!(query.serialize().unwrap().as_css(), "color:red");
-    assert_eq!(value.serialize().unwrap().as_css(), "red");
+    assert_eq!(
+        query.serialize_tokens(Default::default()).unwrap().as_css(),
+        "color:red"
+    );
+    assert_eq!(
+        value.serialize_tokens(Default::default()).unwrap().as_css(),
+        "red"
+    );
     let CssValueOrigin::Parsed(origin) = value.origin() else {
         panic!("original value token")
     };
@@ -56,35 +69,44 @@ fn assert_color_style(condition: &Condition) {
 #[test]
 fn nested_negated_unknown_operands_keep_boolean_structure_and_the_original_snapshot() {
     let source = "/*😀*/ @container not ((a) and (not (b))) { .x { color:red } }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
-    assert_eq!(validate_sheet(source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
     let [CssRule::Container(rule)] = report.syntax().rules() else {
         panic!("container")
     };
-    let Kind::Not(outer) = rule.prelude().entries()[0].query().unwrap().kind() else {
+    let CssConditionKind::Not(outer) = rule.prelude().entries()[0].query().unwrap().kind() else {
         panic!("outer not")
     };
-    let Kind::Parenthesized(outer) = outer.kind() else {
+    let CssConditionKind::Parenthesized(outer) = outer.kind() else {
         panic!("grouped outer condition")
     };
-    let Kind::And(list) = outer.kind() else {
+    let CssConditionKind::And(list) = outer.kind() else {
         panic!("and")
     };
     let [a, grouped_b] = list.conditions() else {
         panic!("two operands")
     };
-    let Kind::Parenthesized(grouped_b) = grouped_b.kind() else {
+    let CssConditionKind::Parenthesized(grouped_b) = grouped_b.kind() else {
         panic!("grouped negation")
     };
-    let Kind::Not(b) = grouped_b.kind() else {
+    let CssConditionKind::Not(b) = grouped_b.kind() else {
         panic!("negation")
     };
     let a = opaque(a);
     let b = opaque(b);
     for (value, authored) in [(a, "(a)"), (b, "(b)")] {
         assert_eq!(value.authored(), Some(authored));
-        assert_eq!(value.serialize().unwrap().as_css(), authored);
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            authored
+        );
         let CssValueOrigin::Parsed(origin) = value.origin() else {
             panic!("original opener")
         };
@@ -115,20 +137,32 @@ fn nested_negated_unknown_operands_keep_boolean_structure_and_the_original_snaps
 fn recognized_size_and_style_branches_take_precedence_over_opaque_fallback() {
     assert!(matches!(
         condition("(width > 1px)").kind(),
-        Kind::Feature(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Feature(_))
     ));
-    assert!(matches!(condition("style(--theme)").kind(), Kind::Style(_)));
+    assert!(matches!(
+        condition("style(--theme)").kind(),
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
+    ));
     assert_color_style(&condition("style(color:red)"));
     let mixed = condition("(width > 1px) and Future() and style(--theme)");
-    let Kind::And(list) = mixed.kind() else {
+    let CssConditionKind::And(list) = mixed.kind() else {
         panic!("conjunction")
     };
     let [feature, opaque_condition, style] = list.conditions() else {
         panic!("three operands")
     };
-    assert!(matches!(feature.kind(), Kind::Feature(_)));
-    assert!(matches!(opaque_condition.kind(), Kind::GeneralEnclosed(_)));
-    assert!(matches!(style.kind(), Kind::Style(_)));
+    assert!(matches!(
+        feature.kind(),
+        CssConditionKind::Leaf(CssContainerLeaf::Feature(_))
+    ));
+    assert!(matches!(
+        opaque_condition.kind(),
+        CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
+    ));
+    assert!(matches!(
+        style.kind(),
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
+    ));
     for query in [
         "style(future-property:red)",
         "(unknown-size > 1px)",
@@ -152,27 +186,33 @@ fn empty_comments_escaped_functions_and_nested_components_remain_lexical_operand
         let condition = condition(query);
         let value = opaque(&condition);
         assert_eq!(value.authored(), Some(query));
-        assert_eq!(value.serialize().unwrap().as_css(), query);
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            query
+        );
     }
 }
 
 #[test]
 fn programmatic_opaque_wrapper_preserves_parsed_children_and_required_token_boundaries() {
-    let parsed = parse_component_values("/*😀*/1").unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "/*😀*/1").unwrap();
     let child = parsed.items().last().unwrap().clone();
     let original = child.origin().clone();
     let wrapper = CssGeneralEnclosed::try_function(
         "Future",
-        CssComponentValues::try_new(vec![child, CssComponentValue::try_ident("e2").unwrap()])
-            .unwrap(),
+        CssComponentValues::try_new(
+            vec![child, CssComponentValue::try_ident("e2").unwrap()],
+            Default::default(),
+        )
+        .unwrap(),
     )
     .unwrap();
-    let condition = Condition::try_from_enclosed(wrapper).unwrap();
+    let condition = CssCondition::<CssContainerLeaf>::try_from_enclosed(wrapper).unwrap();
     let value = opaque(&condition);
     assert_eq!(value.position(), None);
     assert_eq!(value.origin(), &CssValueOrigin::Programmatic);
     assert_eq!(value.authored(), None);
-    let output = value.serialize().unwrap();
+    let output = value.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "Future(1/**/e2)");
     let Some(CssSerializedOrigin::Token(CssValueOrigin::Parsed(actual))) = output.origin_at(7)
     else {
@@ -187,7 +227,10 @@ fn programmatic_opaque_wrapper_preserves_parsed_children_and_required_token_boun
     assert_eq!(cloned, condition);
     drop(condition);
     assert_eq!(
-        opaque(&cloned).serialize().unwrap().as_css(),
+        opaque(&cloned)
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "Future(1/**/e2)"
     );
 }
@@ -196,12 +239,12 @@ fn programmatic_opaque_wrapper_preserves_parsed_children_and_required_token_boun
 fn a_recovered_lexical_operand_retains_its_eof_closure_origin() {
     // A missing container rule block is independently invalid. Exercise the
     // recovered lexical operand through its public checked enclosure owner.
-    let components = parse_component_values("Future(").unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), "Future(").unwrap();
     let value = CssGeneralEnclosed::try_from_component(components.items()[0].clone()).unwrap();
-    let condition = Condition::try_from_enclosed(value).unwrap();
+    let condition = CssCondition::<CssContainerLeaf>::try_from_enclosed(value).unwrap();
     let value = opaque(&condition);
     assert_eq!(value.authored(), Some("Future("));
-    let output = value.serialize().unwrap();
+    let output = value.serialize_tokens(Default::default()).unwrap();
     assert_eq!(output.as_css(), "Future()");
     let Some(CssSerializedOrigin::Token(CssValueOrigin::ImplicitClosure { opening, at })) =
         output.origin_at(7)
@@ -230,7 +273,8 @@ fn lexical_errors_and_malformed_outer_boolean_grammar_are_not_hidden_by_fallback
         ("not not Future()", grammar, 4),
         ("Future() and Other() or Third()", grammar, 21),
     ] {
-        let report = parse_sheet(&format!("@container {query} {{ .x {{ color:red }} }}"));
+        let report = CssParser::default()
+            .parse_sheet(format!("@container {query} {{ .x {{ color:red }} }}"));
         assert_diagnostics(
             report.diagnostics(),
             &[(
@@ -246,7 +290,7 @@ fn lexical_errors_and_malformed_outer_boolean_grammar_are_not_hidden_by_fallback
 #[test]
 fn component_depth_limit_rejects_an_oversized_opaque_query() {
     let query = format!("{}x{}", "Future(".repeat(257), ")".repeat(257));
-    let report = parse_sheet(&format!("@container {query} {{}}"));
+    let report = CssParser::default().parse_sheet(format!("@container {query} {{}}"));
     assert!(report.syntax().rules().is_empty());
     assert!(
         report
@@ -258,24 +302,20 @@ fn component_depth_limit_rejects_an_oversized_opaque_query() {
 
 #[test]
 fn speculative_query_branches_preserve_terminal_bad_token_categories_and_original_coordinates() {
-    use surgeist_css::{CssComponentValueErrorKind, CssErrorCode, ErrorKind};
+    use surgeist_css::diagnostic::CssErrorCode;
     // Syntax tokenization attributes a bad string to its opening quote and a
     // bad URL to its url( opener, even when an enclosing query probe fails.
     for (query, offending, kind) in [
-        (
-            "Future(\"x\n)",
-            "\"x",
-            CssComponentValueErrorKind::BadString,
-        ),
+        ("Future(\"x\n)", "\"x", ComponentFailure::BadString),
         (
             "not ((width > 1px) and (not Future(url(a b))))",
             "url(a b)",
-            CssComponentValueErrorKind::BadUrl,
+            ComponentFailure::BadUrl,
         ),
     ] {
         let source = format!("/*😀*/ @container {query} {{ .x {{ color:red }} }}");
         let offset = source.find(offending).unwrap();
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.syntax().rules().is_empty(), "{query}");
         let [diagnostic] = report.diagnostics() else {
             panic!("one terminal lexical failure: {:?}", report.diagnostics())
@@ -285,10 +325,10 @@ fn speculative_query_branches_preserve_terminal_bad_token_categories_and_origina
             CssErrorCode::InvalidComponentValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
-        let ErrorKind::InvalidComponentValue(component) = diagnostic.error().kind() else {
+        let Some(component) = diagnostic.error().component_error() else {
             panic!("original typed component failure")
         };
-        assert_eq!(component.kind(), kind);
+        assert_eq!(component_failure(component), kind);
         let CssValueOrigin::Parsed(origin) = component.origin() else {
             panic!("original bad token")
         };
@@ -305,43 +345,60 @@ fn speculative_query_branches_preserve_terminal_bad_token_categories_and_origina
 
 #[test]
 fn checked_enclosure_classification_prefers_the_same_recognized_branches_as_parsing() {
-    let feature =
-        CssGeneralEnclosed::try_parenthesized(parse_component_values("width > 1px").unwrap())
-            .unwrap();
+    let feature = CssGeneralEnclosed::try_parenthesized(
+        CssComponentValues::parse(&CssParser::default(), "width > 1px").unwrap(),
+    )
+    .unwrap();
     assert!(matches!(
-        Condition::try_from_enclosed(feature).unwrap().kind(),
-        Kind::Feature(_)
+        CssCondition::<CssContainerLeaf>::try_from_enclosed(feature)
+            .unwrap()
+            .kind(),
+        CssConditionKind::Leaf(CssContainerLeaf::Feature(_))
     ));
     assert!(matches!(
         condition("(width > 1px)").kind(),
-        Kind::Feature(_)
+        CssConditionKind::Leaf(CssContainerLeaf::Feature(_))
     ));
-    let style =
-        CssGeneralEnclosed::try_function("style", parse_component_values("--theme").unwrap())
-            .unwrap();
-    assert!(matches!(
-        Condition::try_from_enclosed(style).unwrap().kind(),
-        Kind::Style(_)
-    ));
-    assert!(matches!(condition("style(--theme)").kind(), Kind::Style(_)));
-    let grouped = CssGeneralEnclosed::try_parenthesized(
-        parse_component_values("(width > 1px) and style(--theme)").unwrap(),
+    let style = CssGeneralEnclosed::try_function(
+        "style",
+        CssComponentValues::parse(&CssParser::default(), "--theme").unwrap(),
     )
     .unwrap();
-    let checked = Condition::try_from_enclosed(grouped).unwrap();
+    assert!(matches!(
+        CssCondition::<CssContainerLeaf>::try_from_enclosed(style)
+            .unwrap()
+            .kind(),
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
+    ));
+    assert!(matches!(
+        condition("style(--theme)").kind(),
+        CssConditionKind::Leaf(CssContainerLeaf::Style(_))
+    ));
+    let grouped = CssGeneralEnclosed::try_parenthesized(
+        CssComponentValues::parse(&CssParser::default(), "(width > 1px) and style(--theme)")
+            .unwrap(),
+    )
+    .unwrap();
+    let checked = CssCondition::<CssContainerLeaf>::try_from_enclosed(grouped).unwrap();
     let parsed = condition("((width > 1px) and style(--theme))");
     for condition in [&checked, &parsed] {
-        let Kind::Parenthesized(grouped) = condition.kind() else {
+        let CssConditionKind::Parenthesized(grouped) = condition.kind() else {
             panic!("explicit grouping")
         };
-        let Kind::And(children) = grouped.kind() else {
+        let CssConditionKind::And(children) = grouped.kind() else {
             panic!("grouped conjunction")
         };
         let [feature, style] = children.conditions() else {
             panic!("two operands")
         };
-        assert!(matches!(feature.kind(), Kind::Feature(_)));
-        assert!(matches!(style.kind(), Kind::Style(_)));
+        assert!(matches!(
+            feature.kind(),
+            CssConditionKind::Leaf(CssContainerLeaf::Feature(_))
+        ));
+        assert!(matches!(
+            style.kind(),
+            CssConditionKind::Leaf(CssContainerLeaf::Style(_))
+        ));
     }
 }
 
@@ -352,50 +409,56 @@ fn checked_unknown_and_failed_recognized_enclosures_retain_the_supplied_lexical_
         ("style", "future-property:red"),
         ("Future", "1/**/e2"),
     ] {
-        let enclosure =
-            CssGeneralEnclosed::try_function(name, parse_component_values(contents).unwrap())
-                .unwrap();
+        let enclosure = CssGeneralEnclosed::try_function(
+            name,
+            CssComponentValues::parse(&CssParser::default(), contents).unwrap(),
+        )
+        .unwrap();
         let original = enclosure.clone();
-        let checked = Condition::try_from_enclosed(enclosure).unwrap();
+        let checked = CssCondition::<CssContainerLeaf>::try_from_enclosed(enclosure).unwrap();
         assert_eq!(opaque(&checked).component(), original.component());
         assert_eq!(opaque(&checked).origin(), &CssValueOrigin::Programmatic);
         let parsed = condition(&format!("{name}({contents})"));
         assert_eq!(
-            opaque(&parsed).serialize().unwrap().as_css(),
+            opaque(&parsed)
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
             format!("{name}({contents})")
         );
     }
-    let enclosure =
-        CssGeneralEnclosed::try_function("style", parse_component_values("color:red").unwrap())
-            .unwrap();
+    let enclosure = CssGeneralEnclosed::try_function(
+        "style",
+        CssComponentValues::parse(&CssParser::default(), "color:red").unwrap(),
+    )
+    .unwrap();
     let original = enclosure.component().clone();
-    let checked = Condition::try_from_enclosed(enclosure).unwrap();
+    let checked = CssCondition::<CssContainerLeaf>::try_from_enclosed(enclosure).unwrap();
     assert_eq!(checked.components(), std::slice::from_ref(&original));
     assert_eq!(checked.origin(), &CssValueOrigin::Programmatic);
     assert_color_style(&checked);
     assert_color_style(&condition("style(color:red)"));
     // Invalid recognized grammar still has a complete general-enclosed branch.
-    let enclosure =
-        CssGeneralEnclosed::try_parenthesized(parse_component_values("width: nonsense").unwrap())
-            .unwrap();
+    let enclosure = CssGeneralEnclosed::try_parenthesized(
+        CssComponentValues::parse(&CssParser::default(), "width: nonsense").unwrap(),
+    )
+    .unwrap();
     assert!(matches!(
-        Condition::try_from_enclosed(enclosure).unwrap().kind(),
-        Kind::GeneralEnclosed(_)
+        CssCondition::<CssContainerLeaf>::try_from_enclosed(enclosure)
+            .unwrap()
+            .kind(),
+        CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(_))
     ));
 }
 
 #[test]
 fn wrong_outer_syntax_is_rejected_by_the_enclosure_owner_with_its_original_origin() {
-    use surgeist_css::CssGeneralEnclosedError;
     for source in ["/*😀*/ident", "/*😀*/[x]", "/*😀*/{x}"] {
-        let components = parse_component_values(source).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let component = components.items().last().unwrap().clone();
         let expected = component.origin().clone();
         let error = CssGeneralEnclosed::try_from_component(component).unwrap_err();
-        assert!(matches!(
-            error,
-            CssGeneralEnclosedError::WrongOuterComponent { .. }
-        ));
+        assert!(error.is_wrong_outer_component());
         let (CssValueOrigin::Parsed(actual), CssValueOrigin::Parsed(expected)) =
             (error.origin(), expected)
         else {
@@ -408,19 +471,25 @@ fn wrong_outer_syntax_is_rejected_by_the_enclosure_owner_with_its_original_origi
 
 #[test]
 fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_property_payloads() {
-    use surgeist_css::{
-        CssContainerFeatureQuery, CssContainerLengthRef, CssMediaRangeRef, CssQueryComparison,
-    };
-    let values = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("width").unwrap(),
-        CssComponentValue::try_token(">").unwrap(),
-        CssComponentValue::try_dimension("1", "px").unwrap(),
-    ])
+    use surgeist_css::query::CssQueryComparison;
+    use surgeist_css::query::container::{CssContainerFeatureQuery, CssContainerLengthRef};
+    use surgeist_css::query::media::CssMediaRangeRef;
+    let values = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("width").unwrap(),
+            CssComponentValue::try_token(">").unwrap(),
+            CssComponentValue::try_dimension("1", "px").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let feature =
-        Condition::try_from_enclosed(CssGeneralEnclosed::try_parenthesized(values).unwrap())
-            .unwrap();
-    let Kind::Feature(CssContainerFeatureQuery::Width(range)) = feature.kind() else {
+    let feature = CssCondition::<CssContainerLeaf>::try_from_enclosed(
+        CssGeneralEnclosed::try_parenthesized(values).unwrap(),
+    )
+    .unwrap();
+    let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::Width(range))) =
+        feature.kind()
+    else {
         panic!("known width")
     };
     let CssMediaRangeRef::FeatureFirst { comparison, value } = range.view() else {
@@ -430,19 +499,31 @@ fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_proper
     let CssContainerLengthRef::Numeric(value) = value.view() else {
         panic!("length")
     };
-    assert_eq!(value.components().serialize().unwrap().as_css(), "1px");
-    let values =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("--Theme").unwrap()])
-            .unwrap();
-    let style =
-        Condition::try_from_enclosed(CssGeneralEnclosed::try_function("style", values).unwrap())
-            .unwrap();
-    let Kind::Style(query) = style.kind() else {
+    assert_eq!(
+        value
+            .components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "1px"
+    );
+    let values = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("--Theme").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
+    let style = CssCondition::<CssContainerLeaf>::try_from_enclosed(
+        CssGeneralEnclosed::try_function("style", values).unwrap(),
+    )
+    .unwrap();
+    let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) = style.kind() else {
         panic!("style")
     };
-    let surgeist_css::CssContainerStyleQueryKind::Feature(
-        surgeist_css::CssContainerStyleFeature::Boolean(
-            surgeist_css::CssContainerStyleFeatureName::Custom(name),
+    let surgeist_css::query::CssConditionKind::Leaf(
+        surgeist_css::query::container::CssStyleQueryLeaf::Feature(
+            surgeist_css::query::container::CssContainerStyleFeature::Boolean(
+                surgeist_css::query::container::CssContainerStyleFeatureName::Custom(name),
+            ),
         ),
     ) = query.kind()
     else {
@@ -453,8 +534,9 @@ fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_proper
 
 #[test]
 fn style_variable_grammar_preserves_valid_references_and_falls_back_for_invalid_references() {
-    use surgeist_css::{
-        CssContainerStyleFeature, CssContainerStyleFeatureName, CssContainerStyleQueryKind,
+    use surgeist_css::query::CssConditionKind;
+    use surgeist_css::query::container::{
+        CssContainerStyleFeature, CssContainerStyleFeatureName, CssStyleQueryLeaf,
     };
     // Existing authored declaration grammar requires var's first argument to be
     // one custom-property name, with an optional comma and fallback value.
@@ -463,23 +545,28 @@ fn style_variable_grammar_preserves_valid_references_and_falls_back_for_invalid_
         let parsed = condition(&query);
         let enclosure = CssGeneralEnclosed::try_function(
             "style",
-            parse_component_values(&format!("--theme:{source}")).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), format!("--theme:{source}")).unwrap(),
         )
         .unwrap();
-        let checked = Condition::try_from_enclosed(enclosure).unwrap();
+        let checked = CssCondition::<CssContainerLeaf>::try_from_enclosed(enclosure).unwrap();
         for condition in [parsed, checked] {
-            let Kind::Style(query) = condition.kind() else {
+            let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) = condition.kind() else {
                 panic!("style")
             };
-            let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain {
-                name: CssContainerStyleFeatureName::Custom(name),
-                value,
-            }) = query.kind()
+            let CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(
+                CssContainerStyleFeature::Plain {
+                    name: CssContainerStyleFeatureName::Custom(name),
+                    value,
+                },
+            )) = query.kind()
             else {
                 panic!("valid variable remains a style value: {source}")
             };
             assert_eq!(name.as_str(), "--theme");
-            assert_eq!(value.serialize().unwrap().as_css(), source);
+            assert_eq!(
+                value.serialize_tokens(Default::default()).unwrap().as_css(),
+                source
+            );
         }
     }
     for source in ["var()", "var(tone)", "var(--a --b)"] {
@@ -487,72 +574,100 @@ fn style_variable_grammar_preserves_valid_references_and_falls_back_for_invalid_
         let parsed = condition(&query);
         let enclosure = CssGeneralEnclosed::try_function(
             "style",
-            parse_component_values(&format!("--theme:{source}")).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), format!("--theme:{source}")).unwrap(),
         )
         .unwrap();
-        let checked = Condition::try_from_enclosed(enclosure).unwrap();
-        assert_eq!(opaque(&parsed).serialize().unwrap().as_css(), query);
-        assert_eq!(opaque(&checked).serialize().unwrap().as_css(), query);
+        let checked = CssCondition::<CssContainerLeaf>::try_from_enclosed(enclosure).unwrap();
+        assert_eq!(
+            opaque(&parsed)
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            query
+        );
+        assert_eq!(
+            opaque(&checked)
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            query
+        );
     }
 }
 
 #[test]
 fn constructed_style_value_serialization_keeps_adjacent_number_and_identifier_separate() {
-    use surgeist_css::{
-        CssContainerStyleFeature, CssContainerStyleFeatureName, CssContainerStyleQueryKind,
+    use surgeist_css::query::CssConditionKind;
+    use surgeist_css::query::container::{
+        CssContainerStyleFeature, CssContainerStyleFeatureName, CssStyleQueryLeaf,
     };
     for first in [
         CssComponentValue::try_number("1").unwrap(),
-        parse_component_values("/*😀*/1")
+        CssComponentValues::parse(&CssParser::default(), "/*😀*/1")
             .unwrap()
             .items()
             .last()
             .unwrap()
             .clone(),
     ] {
-        let values = CssComponentValues::try_new(vec![
-            CssComponentValue::try_ident("--theme").unwrap(),
-            CssComponentValue::try_token(":").unwrap(),
-            first,
-            CssComponentValue::try_ident("e2").unwrap(),
-        ])
+        let values = CssComponentValues::try_new(
+            vec![
+                CssComponentValue::try_ident("--theme").unwrap(),
+                CssComponentValue::try_token(":").unwrap(),
+                first,
+                CssComponentValue::try_ident("e2").unwrap(),
+            ],
+            Default::default(),
+        )
         .unwrap();
-        let condition = Condition::try_from_enclosed(
+        let condition = CssCondition::<CssContainerLeaf>::try_from_enclosed(
             CssGeneralEnclosed::try_function("style", values).unwrap(),
         )
         .unwrap();
-        let Kind::Style(query) = condition.kind() else {
+        let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) = condition.kind() else {
             panic!("style")
         };
-        let CssContainerStyleQueryKind::Feature(CssContainerStyleFeature::Plain {
+        let CssConditionKind::Leaf(CssStyleQueryLeaf::Feature(CssContainerStyleFeature::Plain {
             name: CssContainerStyleFeatureName::Custom(name),
             value,
-        }) = query.kind()
+        })) = query.kind()
         else {
             panic!("authored custom property value")
         };
         assert_eq!(name.as_str(), "--theme");
-        assert_eq!(value.serialize().unwrap().as_css(), "1/**/e2");
+        assert_eq!(
+            value.serialize_tokens(Default::default()).unwrap().as_css(),
+            "1/**/e2"
+        );
     }
 }
 
-fn parsed_and_checked_feature(body: &str) -> [Condition; 2] {
+fn parsed_and_checked_feature(body: &str) -> [CssCondition<CssContainerLeaf>; 2] {
     let parsed = condition(&format!("({body})"));
-    let enclosed =
-        CssGeneralEnclosed::try_parenthesized(parse_component_values(body).unwrap()).unwrap();
-    [parsed, Condition::try_from_enclosed(enclosed).unwrap()]
+    let enclosed = CssGeneralEnclosed::try_parenthesized(
+        CssComponentValues::parse(&CssParser::default(), body).unwrap(),
+    )
+    .unwrap();
+    [
+        parsed,
+        CssCondition::<CssContainerLeaf>::try_from_enclosed(enclosed).unwrap(),
+    ]
 }
 
 #[test]
 fn exact_query_lengths_preserve_underflow_spelling_and_signed_zero() {
-    use surgeist_css::{CssContainerFeatureQuery, CssContainerLengthRef, CssMediaRangeRef};
+    use surgeist_css::query::container::{CssContainerFeatureQuery, CssContainerLengthRef};
+    use surgeist_css::query::media::CssMediaRangeRef;
     for literal in ["-1e-999px", "1e-999px", "-0px", "+0px", "-0"] {
         let programmatic = CssGeneralEnclosed::try_parenthesized(
-            CssComponentValues::try_new(vec![
-                CssComponentValue::try_ident("width").unwrap(),
-                CssComponentValue::try_token(":").unwrap(),
-                CssComponentValue::try_token(literal).unwrap(),
-            ])
+            CssComponentValues::try_new(
+                vec![
+                    CssComponentValue::try_ident("width").unwrap(),
+                    CssComponentValue::try_token(":").unwrap(),
+                    CssComponentValue::try_token(literal).unwrap(),
+                ],
+                Default::default(),
+            )
             .unwrap(),
         )
         .unwrap();
@@ -560,9 +675,12 @@ fn exact_query_lengths_preserve_underflow_spelling_and_signed_zero() {
         for condition in [
             parsed,
             checked,
-            Condition::try_from_enclosed(programmatic).unwrap(),
+            CssCondition::<CssContainerLeaf>::try_from_enclosed(programmatic).unwrap(),
         ] {
-            let Kind::Feature(CssContainerFeatureQuery::Width(range)) = condition.kind() else {
+            let CssConditionKind::Leaf(CssContainerLeaf::Feature(CssContainerFeatureQuery::Width(
+                range,
+            ))) = condition.kind()
+            else {
                 panic!("exact length {literal}")
             };
             let CssMediaRangeRef::Plain { value } = range.view() else {
@@ -571,14 +689,24 @@ fn exact_query_lengths_preserve_underflow_spelling_and_signed_zero() {
             let CssContainerLengthRef::Numeric(value) = value.view() else {
                 panic!("numeric")
             };
-            assert_eq!(value.components().serialize().unwrap().as_css(), literal);
+            assert_eq!(
+                value
+                    .components()
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
+                literal
+            );
         }
     }
     // Neither tiny nonzero unitless number becomes zero through f32 underflow.
     for body in ["width:-1e-999", "width:1e-999"] {
         for condition in parsed_and_checked_feature(body) {
             assert_eq!(
-                opaque(&condition).serialize().unwrap().as_css(),
+                opaque(&condition)
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 format!("({body})")
             );
         }
@@ -596,12 +724,21 @@ fn exact_query_numbers_do_not_overflow_through_tokenizer_floats() {
         "aspect-ratio:1 / 1e999",
     ] {
         for (route, condition) in parsed_and_checked_feature(body).into_iter().enumerate() {
-            assert!(matches!(condition.kind(), Kind::Feature(_)), "{body}");
+            assert!(
+                matches!(
+                    condition.kind(),
+                    CssConditionKind::Leaf(CssContainerLeaf::Feature(_))
+                ),
+                "{body}"
+            );
             // The stylesheet helper contributes one trailing prelude space;
             // direct enclosure construction has no surrounding trivia.
             let trailing = if route == 0 { " " } else { "" };
             assert_eq!(
-                condition.serialize().unwrap().as_css(),
+                condition
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 format!("({body}){trailing}")
             );
         }
@@ -610,7 +747,8 @@ fn exact_query_numbers_do_not_overflow_through_tokenizer_floats() {
 
 #[test]
 fn exact_ratios_admit_degenerate_zero_and_reject_negative_nonzero_literals() {
-    use surgeist_css::{CssContainerFeatureQuery, CssContainerRatioRef, CssMediaRangeRef};
+    use surgeist_css::query::container::{CssContainerFeatureQuery, CssContainerRatioRef};
+    use surgeist_css::query::media::CssMediaRangeRef;
     for (body, numerator, denominator) in [
         ("aspect-ratio:2 / 3", "2", "3"),
         ("aspect-ratio:-0 / 1", "-0", "1"),
@@ -619,7 +757,9 @@ fn exact_ratios_admit_degenerate_zero_and_reject_negative_nonzero_literals() {
         ("aspect-ratio:1 / 1e-999", "1", "1e-999"),
     ] {
         for condition in parsed_and_checked_feature(body) {
-            let Kind::Feature(CssContainerFeatureQuery::AspectRatio(range)) = condition.kind()
+            let CssConditionKind::Leaf(CssContainerLeaf::Feature(
+                CssContainerFeatureQuery::AspectRatio(range),
+            )) = condition.kind()
             else {
                 panic!("exact ratio {body}")
             };
@@ -633,7 +773,7 @@ fn exact_ratios_admit_degenerate_zero_and_reject_negative_nonzero_literals() {
                 value
                     .numerator()
                     .components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css()
                     .trim(),
@@ -643,7 +783,7 @@ fn exact_ratios_admit_degenerate_zero_and_reject_negative_nonzero_literals() {
                 value
                     .denominator()
                     .components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css()
                     .trim(),
@@ -658,7 +798,10 @@ fn exact_ratios_admit_degenerate_zero_and_reject_negative_nonzero_literals() {
     ] {
         for condition in parsed_and_checked_feature(body) {
             assert_eq!(
-                opaque(&condition).serialize().unwrap().as_css(),
+                opaque(&condition)
+                    .serialize_tokens(Default::default())
+                    .unwrap()
+                    .as_css(),
                 format!("({body})")
             );
         }

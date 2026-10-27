@@ -6,15 +6,17 @@
 
 use super::keywords::Word;
 use super::literal::{LiteralAction, LiteralConversion};
-use super::protocol::{CssColorProtocolError, CssColorSlot, Data, LexicalTable};
 use super::tokens::{ClassifiedToken, TokenAction, TokenReader};
+use crate::color::controlled::CssColorSlot;
+use crate::color::controlled::protocol::{ColorProtocolError, Data, LexicalTable};
+use crate::numeric::CssNumericDimension as Dimension;
+use crate::numeric::CssNumericType as Type;
 use crate::numeric::bounded_expression as engine;
 use crate::tokenization::tokenizer::{NameKind, TokenKind};
-use crate::{CssNumericDimension as Dimension, CssNumericType as Type};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct InputContext {
-    function: Option<crate::CssMathFunction>,
+    function: Option<crate::numeric::CssMathFunction>,
     leading: bool,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -42,8 +44,10 @@ impl Number {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Variable {
-    Channel(crate::CssRelativeColorChannel),
-    Profile { name: super::protocol::RecordRange },
+    Channel(crate::color::CssRelativeColorChannel),
+    Profile {
+        name: crate::color::controlled::protocol::RecordRange,
+    },
 }
 /// A reference retains full source-token identity or its genuine authored site.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -64,7 +68,7 @@ pub(crate) enum NumericLeaf {
     Literal(Number),
     Contextual {
         token: OperandReference,
-        unit: crate::CssNumericUnit,
+        unit: crate::numeric::CssNumericUnit,
         number: Number,
     },
     Variable {
@@ -211,7 +215,7 @@ pub(crate) struct NumericGrammar<'owner> {
 }
 #[derive(Clone, Copy)]
 pub(crate) struct ExpressionTable<'owner> {
-    owner: &'owner super::protocol::CssColorOperationOwner,
+    owner: &'owner crate::color::controlled::CssColorOperationOwner,
     phase: usize,
     pub(crate) start: usize,
     pub(crate) length: usize,
@@ -247,9 +251,9 @@ impl ExpressionDescriptor {
         ty: Type,
         site: usize,
         closed: bool,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         if start >= length || root < start || root >= length {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         Ok(Self {
             start,
@@ -262,10 +266,10 @@ impl ExpressionDescriptor {
     }
 }
 impl ExpressionTable<'_> {
-    pub(crate) fn source_last_token(&self) -> Result<usize, CssColorProtocolError> {
+    pub(crate) fn source_last_token(&self) -> Result<usize, ColorProtocolError> {
         match self.end {
             ExpressionEnd::Source { last_token } => Ok(last_token),
-            ExpressionEnd::Authored { .. } => Err(CssColorProtocolError::WrongSlot),
+            ExpressionEnd::Authored { .. } => Err(ColorProtocolError::WrongSlot),
         }
     }
     pub(crate) fn descriptor(&self) -> ExpressionDescriptor {
@@ -282,20 +286,20 @@ impl ExpressionTable<'_> {
         &self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<engine::Record, CssColorProtocolError> {
+    ) -> Result<engine::Record, ColorProtocolError> {
         self.qualify(index, slot)?;
         if index < self.start || index >= self.length {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         let Data::Expression(value) = slot.data else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         Ok(value.record)
     }
-    fn qualify(&self, index: usize, slot: &CssColorSlot<'_>) -> Result<(), CssColorProtocolError> {
+    fn qualify(&self, index: usize, slot: &CssColorSlot<'_>) -> Result<(), ColorProtocolError> {
         slot.qualify(self.owner, self.phase, index, slot.data.bank())?;
         if index != slot.index {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         Ok(())
     }
@@ -304,7 +308,7 @@ impl<'owner> ExpressionTable<'owner> {
     pub(crate) fn from_descriptor(
         input: &super::grammar::GrammarInput<'owner>,
         descriptor: ExpressionDescriptor,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         let ExpressionDescriptor {
             start,
             length,
@@ -319,10 +323,10 @@ impl<'owner> ExpressionTable<'owner> {
                 last_token
             }
             (super::grammar::GrammarInput::Authored(_), ExpressionEnd::Authored { site }) => site,
-            _ => return Err(CssColorProtocolError::WrongSlot),
+            _ => return Err(ColorProtocolError::WrongSlot),
         };
         if start >= length || root < start || root >= length || site >= records.length {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         Ok(Self {
             owner: records.owner,
@@ -343,9 +347,9 @@ impl<'owner> NumericGrammar<'owner> {
         header: &CssColorSlot<'_>,
         scratch_end: usize,
         expression_start: usize,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         let Word::Math(function) = opener.word else {
-            return Err(CssColorProtocolError::Input);
+            return Err(ColorProtocolError::Input);
         };
         if !matches!(
             opener.token.kind,
@@ -355,7 +359,7 @@ impl<'owner> NumericGrammar<'owner> {
             }
         ) || scratch_end < table.length()
         {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         let reader = TokenReader::start_after(table, opener, header)?;
         Ok(Self {
@@ -430,10 +434,10 @@ impl<'owner> NumericGrammar<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if !matches!(self.action(), NumericAction::ReadLexical { index: expected } if expected == index)
         {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.reader.read(index, slot)
     }
@@ -441,7 +445,7 @@ impl<'owner> NumericGrammar<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         match &mut self.state {
             State::Header(token) if index == token.index => {
                 let cursor = LiteralConversion::start(&self.table, *token, slot, self.scratch_end)?;
@@ -449,16 +453,11 @@ impl<'owner> NumericGrammar<'owner> {
                 Ok(())
             }
             State::Number(_, cursor) => cursor.read(index, slot),
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
-    pub(crate) fn record(
-        &self,
-        index: usize,
-    ) -> Result<CssColorSlot<'owner>, CssColorProtocolError> {
-        index
-            .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+    pub(crate) fn record(&self, index: usize) -> Result<CssColorSlot<'owner>, ColorProtocolError> {
+        index.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
         let data = match &self.state {
             State::Number(_, cursor) => return cursor.record(index),
             State::Leaf(_, number) if index == self.scratch_end => Data::NumericLeaf(*number),
@@ -470,9 +469,9 @@ impl<'owner> NumericGrammar<'owner> {
                     record: *record,
                     suspended: matches!(record, engine::Record::Frame(_)).then_some(self.context),
                 }),
-                _ => return Err(CssColorProtocolError::WrongAction),
+                _ => return Err(ColorProtocolError::WrongAction),
             },
-            _ => return Err(CssColorProtocolError::WrongAction),
+            _ => return Err(ColorProtocolError::WrongAction),
         };
         Ok(CssColorSlot::new(
             self.table.owner,
@@ -485,11 +484,9 @@ impl<'owner> NumericGrammar<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         self.qualify(index, slot)?;
-        let next = index
-            .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+        let next = index.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
         match &mut self.state {
             State::Number(_, cursor) => {
                 cursor.written(index, slot)?;
@@ -497,14 +494,14 @@ impl<'owner> NumericGrammar<'owner> {
             }
             State::Leaf(_, expected) if index == self.scratch_end => {
                 let Data::NumericLeaf(actual) = slot.data else {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 };
                 if !actual.same(*expected) {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 }
                 let Some(engine::Request::ReadInput { ordinal }) = self.engine.request().copied()
                 else {
-                    return Err(CssColorProtocolError::WrongAction);
+                    return Err(ColorProtocolError::WrongAction);
                 };
                 let State::Leaf(token, _) = self.state else {
                     unreachable!();
@@ -520,7 +517,7 @@ impl<'owner> NumericGrammar<'owner> {
                             },
                         )),
                     )
-                    .map_err(|_| CssColorProtocolError::Input)?;
+                    .map_err(|_| ColorProtocolError::Input)?;
                 self.consume()?;
                 self.context.leading = false;
                 self.scratch_end = next;
@@ -528,31 +525,31 @@ impl<'owner> NumericGrammar<'owner> {
             }
             State::Input => {
                 let Data::Expression(actual) = slot.data else {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 };
                 let Some(engine::Request::AppendRecord {
                     index: expected,
                     record,
                 }) = self.engine.request().copied()
                 else {
-                    return Err(CssColorProtocolError::WrongAction);
+                    return Err(ColorProtocolError::WrongAction);
                 };
                 let suspended = matches!(record, engine::Record::Frame(_)).then_some(self.context);
                 if index != expected || actual != (ExpressionRecord { record, suspended }) {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 }
                 if suspended.is_some() && self.nested.is_none() {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 }
                 self.engine
                     .acknowledge_append(index, true)
-                    .map_err(|_| CssColorProtocolError::Input)?;
+                    .map_err(|_| ColorProtocolError::Input)?;
                 self.expression_length = next;
                 if suspended.is_some() {
                     self.context = self.nested.take().expect("checked nested input context");
                 }
             }
-            _ => return Err(CssColorProtocolError::WrongAction),
+            _ => return Err(ColorProtocolError::WrongAction),
         }
         Ok(())
     }
@@ -560,56 +557,56 @@ impl<'owner> NumericGrammar<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         self.qualify(index, slot)?;
         let Data::Expression(record) = slot.data else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
-        let context = record.suspended.ok_or(CssColorProtocolError::WrongSlot)?;
+        let context = record.suspended.ok_or(ColorProtocolError::WrongSlot)?;
         let Some(engine::Request::ReadRecord { kind, .. }) = self.engine.request() else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         if record.record.kind() != *kind {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         if let engine::Record::Frame(frame) = record.record
             && frame
                 .parent()
                 .is_some_and(|parent| parent < self.expression_start || parent >= index)
         {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         self.engine
             .acknowledge_record(index, Some(record.record))
-            .map_err(|_| CssColorProtocolError::Input)?;
+            .map_err(|_| ColorProtocolError::Input)?;
         self.context = context;
         Ok(())
     }
-    fn qualify(&self, index: usize, slot: &CssColorSlot<'_>) -> Result<(), CssColorProtocolError> {
+    fn qualify(&self, index: usize, slot: &CssColorSlot<'_>) -> Result<(), ColorProtocolError> {
         slot.qualify(self.table.owner, self.table.phase, index, slot.data.bank())?;
         if index != slot.index {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         Ok(())
     }
     pub(crate) fn relative_channel(
         &self,
-        environment: crate::CssRelativeColorEnvironment,
-    ) -> Result<Option<crate::CssRelativeColorChannel>, CssColorProtocolError> {
+        environment: crate::color::CssRelativeColorEnvironment,
+    ) -> Result<Option<crate::color::CssRelativeColorChannel>, ColorProtocolError> {
         if !matches!(self.state, State::Identifier(_)) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.reader.relative_channel(environment)
     }
     pub(crate) fn relative_identifier(
         &mut self,
-        environment: crate::CssRelativeColorEnvironment,
-    ) -> Result<(), CssColorProtocolError> {
+        environment: crate::color::CssRelativeColorEnvironment,
+    ) -> Result<(), ColorProtocolError> {
         let channel = self
             .relative_channel(environment)?
-            .ok_or(CssColorProtocolError::Input)?;
+            .ok_or(ColorProtocolError::Input)?;
         let State::Identifier(token) = self.state else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         self.state = State::Leaf(
             token,
@@ -620,23 +617,23 @@ impl<'owner> NumericGrammar<'owner> {
         );
         Ok(())
     }
-    pub(crate) fn profile_identifier(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(crate) fn profile_identifier(&mut self) -> Result<(), ColorProtocolError> {
         let State::Identifier(token) = self.state else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         let TokenKind::Name {
             kind: NameKind::Ident,
             units: name,
         } = token.token.kind
         else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         self.state = State::Leaf(
             token,
             NumericLeaf::Variable {
                 token: OperandReference::Source(token),
                 binding: Variable::Profile {
-                    name: super::protocol::RecordRange {
+                    name: crate::color::controlled::protocol::RecordRange {
                         start: name.start,
                         end: name.end,
                     },
@@ -645,22 +642,22 @@ impl<'owner> NumericGrammar<'owner> {
         );
         Ok(())
     }
-    pub(crate) fn kernel(&self) -> super::CssColorKernel {
+    pub(crate) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
         match &self.state {
             State::Number(_, cursor) => {
                 if matches!(cursor.action(), LiteralAction::Done(_)) {
-                    super::CssColorKernel::Literal
+                    crate::color::controlled::CssColorKernel::Literal
                 } else {
                     cursor.kernel()
                 }
             }
             State::Input if self.reader.action() == TokenAction::Classify => {
-                super::CssColorKernel::Classify
+                crate::color::controlled::CssColorKernel::Classify
             }
-            _ => super::CssColorKernel::Grammar,
+            _ => crate::color::controlled::CssColorKernel::Grammar,
         }
     }
-    pub(crate) fn compute(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(crate) fn compute(&mut self) -> Result<(), ColorProtocolError> {
         match &mut self.state {
             State::Number(token, cursor) => {
                 if let LiteralAction::Done(value) = cursor.action() {
@@ -677,7 +674,7 @@ impl<'owner> NumericGrammar<'owner> {
                 Some(engine::Request::Compute) => self
                     .engine
                     .acknowledge_compute()
-                    .map_err(|_| CssColorProtocolError::Input),
+                    .map_err(|_| ColorProtocolError::Input),
                 Some(engine::Request::ReadInput { ordinal }) => {
                     if self.reader.action() == TokenAction::Classify {
                         return self.reader.classify();
@@ -693,13 +690,13 @@ impl<'owner> NumericGrammar<'owner> {
                                     engine::InputKind::End,
                                 )),
                             )
-                            .map_err(|_| CssColorProtocolError::Input);
+                            .map_err(|_| ColorProtocolError::Input);
                     }
                     let token = self.reader.current()?;
                     let admits_operand = self
                         .engine
                         .admits_operand(ordinal)
-                        .map_err(|_| CssColorProtocolError::Input)?;
+                        .map_err(|_| ColorProtocolError::Input)?;
                     let kind = match token.token.kind {
                         TokenKind::Number { .. } if admits_operand => {
                             self.state = State::Header(token);
@@ -727,7 +724,8 @@ impl<'owner> NumericGrammar<'owner> {
                         } => match token.word {
                             Word::None => engine::InputKind::None,
                             Word::Strategy(strategy)
-                                if self.context.function == Some(crate::CssMathFunction::Round)
+                                if self.context.function
+                                    == Some(crate::numeric::CssMathFunction::Round)
                                     && self.context.leading =>
                             {
                                 engine::InputKind::Strategy(strategy)
@@ -752,7 +750,7 @@ impl<'owner> NumericGrammar<'owner> {
                     };
                     self.engine
                         .acknowledge_input(ordinal, Some(engine::Input::new(token.index, kind)))
-                        .map_err(|_| CssColorProtocolError::Input)?;
+                        .map_err(|_| ColorProtocolError::Input)?;
                     if !matches!(
                         kind,
                         engine::InputKind::Whitespace | engine::InputKind::Comment
@@ -772,12 +770,12 @@ impl<'owner> NumericGrammar<'owner> {
                     };
                     self.consume()
                 }
-                _ => Err(CssColorProtocolError::WrongAction),
+                _ => Err(ColorProtocolError::WrongAction),
             },
-            _ => Err(CssColorProtocolError::WrongAction),
+            _ => Err(ColorProtocolError::WrongAction),
         }
     }
-    fn consume(&mut self) -> Result<(), CssColorProtocolError> {
+    fn consume(&mut self) -> Result<(), ColorProtocolError> {
         let token = self.reader.current()?;
         self.reader.consumed()?;
         self.last_token = token.index;
@@ -786,9 +784,9 @@ impl<'owner> NumericGrammar<'owner> {
     pub(crate) fn scratch_end(&self) -> usize {
         self.scratch_end
     }
-    pub(crate) fn finish(&self) -> Result<ExpressionTable<'owner>, CssColorProtocolError> {
+    pub(crate) fn finish(&self) -> Result<ExpressionTable<'owner>, ColorProtocolError> {
         let NumericAction::Done { root, ty } = self.action() else {
-            return Err(CssColorProtocolError::Terminal);
+            return Err(ColorProtocolError::Terminal);
         };
         Ok(ExpressionTable {
             owner: self.table.owner,
@@ -879,7 +877,7 @@ pub(crate) enum EvaluationAction {
     },
     ResolveUnit {
         token: usize,
-        unit: crate::CssNumericUnit,
+        unit: crate::numeric::CssNumericUnit,
     },
     Compute,
     Append {
@@ -915,7 +913,7 @@ enum EvaluationState {
     },
     Unit {
         token: OperandReference,
-        unit: crate::CssNumericUnit,
+        unit: crate::numeric::CssNumericUnit,
         number: Number,
     },
     Append(Evaluated),
@@ -937,17 +935,17 @@ impl<'owner> NumericEvaluation<'owner> {
     pub(crate) fn start(
         table: &ExpressionTable<'owner>,
         evaluation_start: usize,
-    ) -> Result<Self, CssColorProtocolError> {
+    ) -> Result<Self, ColorProtocolError> {
         let length = table
             .length
             .checked_sub(table.start)
-            .ok_or(CssColorProtocolError::WrongIndex)?;
+            .ok_or(ColorProtocolError::WrongIndex)?;
         if length == 0 || table.root < table.start || table.root >= table.length {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         evaluation_start
             .checked_add(length)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         Ok(Self {
             table: *table,
             state: EvaluationState::Expression,
@@ -995,21 +993,21 @@ impl<'owner> NumericEvaluation<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (EvaluationAction::ReadExpression { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         if index < self.table.start || index >= self.table.length {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         self.table.qualify(index, slot)?;
         if let Data::AuthoredTraversal(event) = slot.data {
             if !matches!(self.table.end, ExpressionEnd::Authored { .. }) {
-                return Err(CssColorProtocolError::WrongSlot);
+                return Err(ColorProtocolError::WrongSlot);
             }
             self.index
                 .checked_add(1)
-                .ok_or(CssColorProtocolError::Overflow)?;
+                .ok_or(ColorProtocolError::Overflow)?;
             self.authored_site = Some(event.site());
             self.state = EvaluationState::Append(Evaluated::Empty);
             return Ok(());
@@ -1039,7 +1037,7 @@ impl<'owner> NumericEvaluation<'owner> {
                                 || (closed
                                     && !matches!(self.table.end, ExpressionEnd::Source { last_token } if site == last_token))))
                     {
-                        return Err(CssColorProtocolError::WrongSlot);
+                        return Err(ColorProtocolError::WrongSlot);
                     }
                 }
                 match node.kind() {
@@ -1073,7 +1071,7 @@ impl<'owner> NumericEvaluation<'owner> {
         if previous.is_some_and(|i| i < self.table.start || i >= index)
             || operand.is_some_and(|i| i < self.table.start || i >= index)
         {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         self.state = if let Some(index) = previous {
             EvaluationState::Previous { record, index }
@@ -1096,27 +1094,27 @@ impl<'owner> NumericEvaluation<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let EvaluationState::Leaf {
             node,
             index: expected,
         } = self.state
         else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         if index != expected {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         self.table.qualify(index, slot)?;
         let Data::NumericLeaf(number) = slot.data else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         if number.ty() != node.numeric_type() {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         self.index
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         self.state = match number {
             NumericLeaf::Literal(value) => EvaluationState::Append(Evaluated::Value(value)),
             NumericLeaf::Contextual {
@@ -1138,19 +1136,19 @@ impl<'owner> NumericEvaluation<'owner> {
         &mut self,
         token_index: usize,
         number: Number,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let EvaluationState::Variable { token, .. } = self.state else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         if token_index != token.index() {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         if number.ty != Type::NUMBER {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         self.index
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         self.state = EvaluationState::Append(Evaluated::Value(number));
         Ok(())
     }
@@ -1158,21 +1156,23 @@ impl<'owner> NumericEvaluation<'owner> {
     pub(crate) fn unavailable_unit(
         &self,
         token_index: usize,
-        unit: crate::CssNumericUnit,
-    ) -> Result<(), CssColorProtocolError> {
+        unit: crate::numeric::CssNumericUnit,
+    ) -> Result<(), ColorProtocolError> {
         let EvaluationState::Unit {
             token,
             unit: expected,
             number,
         } = self.state
         else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         if token_index != token.index() {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
-        if unit != expected || number.ty != crate::numeric::literal_type(Some(unit), false) {
-            return Err(CssColorProtocolError::WrongSlot);
+        if unit != expected
+            || number.ty != crate::numeric::expression::literal_type(Some(unit), false)
+        {
+            return Err(ColorProtocolError::WrongSlot);
         }
         Ok(())
     }
@@ -1183,16 +1183,16 @@ impl<'owner> NumericEvaluation<'owner> {
         &mut self,
         token_index: usize,
         value: f64,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         let EvaluationState::Unit { token, number, .. } = self.state else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         if token_index != token.index() {
-            return Err(CssColorProtocolError::WrongIndex);
+            return Err(ColorProtocolError::WrongIndex);
         }
         self.index
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         self.state = EvaluationState::Append(Evaluated::Value(Number {
             value,
             ty: number.ty,
@@ -1203,10 +1203,10 @@ impl<'owner> NumericEvaluation<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         self.table.qualify(index, slot)?;
         let Data::Evaluation(value) = slot.data else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         self.state = match self.state {
             EvaluationState::Previous {
@@ -1217,7 +1217,7 @@ impl<'owner> NumericEvaluation<'owner> {
                     engine::Record::Term(term) => Some(term.parts().2),
                     engine::Record::Factor(factor) => Some(factor.parts().2),
                     engine::Record::Argument(argument) => argument.parts().2,
-                    _ => return Err(CssColorProtocolError::WrongSlot),
+                    _ => return Err(ColorProtocolError::WrongSlot),
                 };
                 if let Some(index) = operand {
                     EvaluationState::Operand {
@@ -1242,12 +1242,12 @@ impl<'owner> NumericEvaluation<'owner> {
                 previous,
                 operand: Some(value),
             },
-            _ => return Err(CssColorProtocolError::WrongAction),
+            _ => return Err(ColorProtocolError::WrongAction),
         };
         Ok(())
     }
-    pub(crate) fn kernel(&self) -> super::CssColorKernel {
-        use super::CssColorKernel as K;
+    pub(crate) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
+        use crate::color::controlled::CssColorKernel as K;
         match self.state {
             EvaluationState::Compute {
                 record: engine::Record::Argument(argument),
@@ -1271,21 +1271,21 @@ impl<'owner> NumericEvaluation<'owner> {
             _ => K::Transition,
         }
     }
-    pub(crate) fn compute(&mut self) -> Result<(), CssColorProtocolError> {
+    pub(crate) fn compute(&mut self) -> Result<(), ColorProtocolError> {
         let EvaluationState::Compute {
             record,
             previous,
             operand,
         } = self.state
         else {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         };
         self.index
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
-        let number = |value: Option<Evaluated>| -> Result<Number, CssColorProtocolError> {
+            .ok_or(ColorProtocolError::Overflow)?;
+        let number = |value: Option<Evaluated>| -> Result<Number, ColorProtocolError> {
             let Some(Evaluated::Value(number)) = value else {
-                return Err(CssColorProtocolError::WrongSlot);
+                return Err(ColorProtocolError::WrongSlot);
             };
             Ok(number)
         };
@@ -1294,7 +1294,7 @@ impl<'owner> NumericEvaluation<'owner> {
             engine::Record::Node(node) => {
                 let value = match node.kind() {
                     engine::NodeKind::Leaf { .. } => {
-                        return Err(CssColorProtocolError::WrongAction);
+                        return Err(ColorProtocolError::WrongAction);
                     }
                     engine::NodeKind::Group { .. }
                     | engine::NodeKind::Sum { .. }
@@ -1311,23 +1311,23 @@ impl<'owner> NumericEvaluation<'owner> {
                             folds,
                         }) = operand
                         else {
-                            return Err(CssColorProtocolError::WrongSlot);
+                            return Err(ColorProtocolError::WrongSlot);
                         };
                         if count != actual_count {
-                            return Err(CssColorProtocolError::WrongSlot);
+                            return Err(ColorProtocolError::WrongSlot);
                         }
                         if VariadicMath::new(function).is_some() {
                             folds[match function {
-                                crate::CssMathFunction::Min => 0,
-                                crate::CssMathFunction::Max => 1,
-                                crate::CssMathFunction::Hypot => 2,
+                                crate::numeric::CssMathFunction::Min => 0,
+                                crate::numeric::CssMathFunction::Max => 1,
+                                crate::numeric::CssMathFunction::Hypot => 2,
                                 _ => unreachable!("actual variadic function"),
                             }]
                             .finish()
-                            .ok_or(CssColorProtocolError::WrongSlot)?
+                            .ok_or(ColorProtocolError::WrongSlot)?
                         } else {
                             evaluate_fixed(function, fixed, count, strategy)
-                                .map_err(|_| CssColorProtocolError::WrongSlot)?
+                                .map_err(|_| ColorProtocolError::WrongSlot)?
                         }
                     }
                 };
@@ -1342,12 +1342,12 @@ impl<'owner> NumericEvaluation<'owner> {
                 let value = if let Some(operator) = operator {
                     let left = number(previous)?.value;
                     match operator {
-                        crate::CssCalculationSumOperator::Add => left + right.value,
-                        crate::CssCalculationSumOperator::Subtract => left - right.value,
+                        crate::numeric::CssCalculationSumOperator::Add => left + right.value,
+                        crate::numeric::CssCalculationSumOperator::Subtract => left - right.value,
                     }
                 } else {
                     if previous.is_some() {
-                        return Err(CssColorProtocolError::WrongSlot);
+                        return Err(ColorProtocolError::WrongSlot);
                     }
                     right.value
                 };
@@ -1364,12 +1364,14 @@ impl<'owner> NumericEvaluation<'owner> {
                 let value = if let Some(operator) = operator {
                     let left = number(previous)?.value;
                     match operator {
-                        crate::CssCalculationProductOperator::Multiply => left * right.value,
-                        crate::CssCalculationProductOperator::Divide => left / right.value,
+                        crate::numeric::CssCalculationProductOperator::Multiply => {
+                            left * right.value
+                        }
+                        crate::numeric::CssCalculationProductOperator::Divide => left / right.value,
                     }
                 } else {
                     if previous.is_some() {
-                        return Err(CssColorProtocolError::WrongSlot);
+                        return Err(ColorProtocolError::WrongSlot);
                     }
                     right.value
                 };
@@ -1390,19 +1392,17 @@ impl<'owner> NumericEvaluation<'owner> {
                         [None; 3],
                         0,
                         [
-                            VariadicMath::new(crate::CssMathFunction::Min).unwrap(),
-                            VariadicMath::new(crate::CssMathFunction::Max).unwrap(),
-                            VariadicMath::new(crate::CssMathFunction::Hypot).unwrap(),
+                            VariadicMath::new(crate::numeric::CssMathFunction::Min).unwrap(),
+                            VariadicMath::new(crate::numeric::CssMathFunction::Max).unwrap(),
+                            VariadicMath::new(crate::numeric::CssMathFunction::Hypot).unwrap(),
                         ],
                     ),
-                    _ => return Err(CssColorProtocolError::WrongSlot),
+                    _ => return Err(ColorProtocolError::WrongSlot),
                 };
                 if count != ordinal {
-                    return Err(CssColorProtocolError::WrongSlot);
+                    return Err(ColorProtocolError::WrongSlot);
                 }
-                let next = count
-                    .checked_add(1)
-                    .ok_or(CssColorProtocolError::Overflow)?;
+                let next = count.checked_add(1).ok_or(ColorProtocolError::Overflow)?;
                 let value = if node.is_some() {
                     let value = number(operand)?;
                     Some(Operand {
@@ -1411,7 +1411,7 @@ impl<'owner> NumericEvaluation<'owner> {
                     })
                 } else {
                     if operand.is_some() {
-                        return Err(CssColorProtocolError::WrongSlot);
+                        return Err(ColorProtocolError::WrongSlot);
                     }
                     None
                 };
@@ -1437,16 +1437,13 @@ impl<'owner> NumericEvaluation<'owner> {
         self.state = EvaluationState::Append(value);
         Ok(())
     }
-    pub(crate) fn record(
-        &self,
-        index: usize,
-    ) -> Result<CssColorSlot<'owner>, CssColorProtocolError> {
+    pub(crate) fn record(&self, index: usize) -> Result<CssColorSlot<'owner>, ColorProtocolError> {
         if self.action() != (EvaluationAction::Append { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.index
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         let EvaluationState::Append(value) = self.state else {
             unreachable!();
         };
@@ -1461,27 +1458,27 @@ impl<'owner> NumericEvaluation<'owner> {
         &mut self,
         index: usize,
         slot: &CssColorSlot<'_>,
-    ) -> Result<(), CssColorProtocolError> {
+    ) -> Result<(), ColorProtocolError> {
         if self.action() != (EvaluationAction::Append { index }) {
-            return Err(CssColorProtocolError::WrongAction);
+            return Err(ColorProtocolError::WrongAction);
         }
         self.table.qualify(index, slot)?;
         let EvaluationState::Append(expected) = self.state else {
             unreachable!();
         };
         let Data::Evaluation(actual) = slot.data else {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         };
         if !actual.same(expected) {
-            return Err(CssColorProtocolError::WrongSlot);
+            return Err(ColorProtocolError::WrongSlot);
         }
         let next = self
             .index
             .checked_add(1)
-            .ok_or(CssColorProtocolError::Overflow)?;
+            .ok_or(ColorProtocolError::Overflow)?;
         if self.index == self.table.root {
             let Evaluated::Value(value) = actual else {
-                return Err(CssColorProtocolError::WrongSlot);
+                return Err(ColorProtocolError::WrongSlot);
             };
             self.root = Some(value);
         }
@@ -1493,11 +1490,11 @@ impl<'owner> NumericEvaluation<'owner> {
         };
         Ok(())
     }
-    pub(crate) fn finish(&self) -> Result<Number, CssColorProtocolError> {
+    pub(crate) fn finish(&self) -> Result<Number, ColorProtocolError> {
         if !matches!(self.state, EvaluationState::Done) {
-            return Err(CssColorProtocolError::Terminal);
+            return Err(ColorProtocolError::Terminal);
         }
-        self.root.ok_or(CssColorProtocolError::WrongSlot)
+        self.root.ok_or(ColorProtocolError::WrongSlot)
     }
     pub(crate) fn abandon(&mut self) {
         self.state = EvaluationState::Stopped;
@@ -1506,8 +1503,9 @@ impl<'owner> NumericEvaluation<'owner> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::protocol::{ActionDescription, CssColorOperationOwner, LexicalOperation};
     use super::*;
+    use crate::color::controlled::CssColorOperationOwner;
+    use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
     use crate::tokenization::bounded::InputKind;
 
     fn lexical<'owner>(
@@ -1663,7 +1661,7 @@ mod tests {
             if start > 0 {
                 assert_eq!(
                     expression.record(0, &expressions[0]),
-                    Err(CssColorProtocolError::WrongIndex)
+                    Err(ColorProtocolError::WrongIndex)
                 );
                 let (isolated, isolated_values) = evaluate(&expression, &slots, &expressions);
                 assert_eq!(isolated.value.to_bits(), expected.to_bits());
@@ -1689,11 +1687,11 @@ mod tests {
                         let record = evaluation.record(index).unwrap();
                         assert_eq!(
                             record.bank(),
-                            super::super::protocol::CssColorBank::Evaluation
+                            crate::color::controlled::CssColorBank::Evaluation
                         );
                         assert_eq!(
                             evaluation.written(index, &expressions[index]),
-                            Err(CssColorProtocolError::WrongSlot)
+                            Err(ColorProtocolError::WrongSlot)
                         );
                         values.push(record);
                         evaluation.written(index, &values[index]).unwrap();
@@ -1823,7 +1821,7 @@ mod tests {
         let mut evaluator = NumericEvaluation::start(&table, 0).unwrap();
         assert_eq!(
             evaluator.read_expression(0, &foreign_slots[0]),
-            Err(CssColorProtocolError::ForeignSlot)
+            Err(ColorProtocolError::ForeignSlot)
         );
         assert_eq!(
             evaluator.action(),
@@ -1831,7 +1829,7 @@ mod tests {
         );
         assert_eq!(
             evaluator.read_expression(0, &slots[0]),
-            Err(CssColorProtocolError::WrongSlot)
+            Err(ColorProtocolError::WrongSlot)
         );
         evaluator.read_expression(0, &expression[0]).unwrap();
         let EvaluationAction::ReadLeaf { index } = evaluator.action() else {
@@ -1839,7 +1837,7 @@ mod tests {
         };
         assert_eq!(
             evaluator.read_leaf(index, &foreign_slots[0]),
-            Err(CssColorProtocolError::ForeignSlot)
+            Err(ColorProtocolError::ForeignSlot)
         );
         assert_eq!(evaluator.action(), EvaluationAction::ReadLeaf { index });
         evaluator.read_leaf(index, &slots[index]).unwrap();
@@ -1848,12 +1846,9 @@ mod tests {
         evaluator.abandon();
         assert_eq!(
             evaluator.written(0, &pending),
-            Err(CssColorProtocolError::WrongAction)
+            Err(ColorProtocolError::WrongAction)
         );
-        assert_eq!(
-            evaluator.finish().err(),
-            Some(CssColorProtocolError::Terminal)
-        );
+        assert_eq!(evaluator.finish().err(), Some(ColorProtocolError::Terminal));
         let _ = foreign_table;
     }
     #[test]
@@ -1904,11 +1899,11 @@ mod tests {
         };
         assert_eq!(
             unit,
-            crate::CssNumericUnit::Length(crate::CssLengthUnit::Em)
+            crate::numeric::CssNumericUnit::Length(crate::numeric::CssLengthUnit::Em)
         );
         assert_eq!(
             evaluation.unit(token + 1, 16.0),
-            Err(CssColorProtocolError::WrongIndex)
+            Err(ColorProtocolError::WrongIndex)
         );
         assert_eq!(
             evaluation.action(),
@@ -1933,12 +1928,12 @@ mod tests {
                     variables.push((
                         token.index,
                         syntax
-                            .relative_channel(crate::CssRelativeColorEnvironment::Rgb)
+                            .relative_channel(crate::color::CssRelativeColorEnvironment::Rgb)
                             .unwrap()
                             .unwrap(),
                     ));
                     syntax
-                        .relative_identifier(crate::CssRelativeColorEnvironment::Rgb)
+                        .relative_identifier(crate::color::CssRelativeColorEnvironment::Rgb)
                         .unwrap();
                 }
                 NumericAction::Done { ty, .. } => {
@@ -1954,15 +1949,15 @@ mod tests {
                 .map(|(_, channel)| *channel)
                 .collect::<Vec<_>>(),
             [
-                crate::CssRelativeColorChannel::R,
-                crate::CssRelativeColorChannel::Alpha
+                crate::color::CssRelativeColorChannel::R,
+                crate::color::CssRelativeColorChannel::Alpha
             ]
         );
         assert_eq!(syntax.scratch_end(), slots.len());
         let expressions_table = syntax.finish().unwrap();
         let binding = super::super::relative::Binding::new(
-            crate::CssRelativeColorEnvironment::Rgb,
-            super::super::Color::from_srgba8([128, 32, 16, 64]),
+            crate::color::CssRelativeColorEnvironment::Rgb,
+            surgeist_color::Color::from_srgba8([128, 32, 16, 64]),
         )
         .unwrap();
         let mut evaluator = NumericEvaluation::start(&expressions_table, 0).unwrap();
@@ -1992,7 +1987,7 @@ mod tests {
                                 ty: Type::NUMBER
                             }
                         ),
-                        Err(CssColorProtocolError::WrongIndex)
+                        Err(ColorProtocolError::WrongIndex)
                     );
                     let value = binding.channel(channel, true).unwrap();
                     evaluator
@@ -2080,7 +2075,7 @@ mod tests {
         else {
             panic!("must reject syntax before ResolveIdentifier: {action:?}");
         };
-        let super::super::protocol::LexicalRecord::Token(token) =
+        let crate::color::controlled::protocol::LexicalRecord::Token(token) =
             table.observe(site, &slots[site]).unwrap()
         else {
             panic!("responsible identifier")
@@ -2091,6 +2086,6 @@ mod tests {
         );
         syntax.abandon();
         assert!(matches!(syntax.action(), NumericAction::Stopped));
-        assert_eq!(syntax.finish().err(), Some(CssColorProtocolError::Terminal));
+        assert_eq!(syntax.finish().err(), Some(ColorProtocolError::Terminal));
     }
 }

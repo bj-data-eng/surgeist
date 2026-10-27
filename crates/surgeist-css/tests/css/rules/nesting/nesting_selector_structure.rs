@@ -3,9 +3,12 @@
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/
 
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::{
-    CssCompoundSelector, CssErrorCode, CssPseudoClass, CssPseudoSelectorListItem, CssRule,
-    CssSelector, CssSelectorCombinator, CssStyleSelector, parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssCompoundSelector, CssPseudoClass, CssPseudoSelectorListItem, CssSelector,
+    CssSelectorCombinator, CssStyleSelector,
 };
 
 fn compound_anchors(compound: &CssCompoundSelector) -> usize {
@@ -89,7 +92,7 @@ fn explicit_nesting_anchors_survive_every_valid_selector_position() {
         (":nth-child(2n of &)", 1),
     ] {
         let source = format!(".parent, #other {{ {authored} {{ color: green }} }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{authored}: {:?}", report.diagnostics());
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("one parent")
@@ -119,7 +122,7 @@ fn leading_relative_combinators_preserve_their_explicit_inner_anchors() {
         ("+ .bar &", CssSelectorCombinator::NextSibling),
     ] {
         let source = format!(".parent {{ {authored} {{ color: green }} }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{authored}: {:?}", report.diagnostics());
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("one parent")
@@ -146,7 +149,7 @@ fn nesting_type_order_and_nested_has_restrictions_recover_the_inner_rule() {
         ("&:has(:has(.child))", invalid.clone()),
     ] {
         let source = format!(".parent {{ {authored} {{ color: green }} color: red }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("one retained parent")
         };

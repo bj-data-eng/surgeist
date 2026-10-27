@@ -6,10 +6,27 @@
 //! 35–41, and CSSValueTypes.h, lines 97–118. Goldens select exact edges first,
 //! then round each emitted coefficient; rounded text is never an equality oracle.
 
-use surgeist_css::*;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssLength, CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric, CssPercentage,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::border::{
+    CssBorderImage, CssBorderImageOutset, CssBorderImageOutsetComponent, CssBorderImageSlice,
+    CssBorderImageSliceComponent, CssBorderImageWidth, CssBorderImageWidthComponent,
+};
 
-type Limits = CssSpecifiedValueSerializationLimits;
-type Kind = CssSpecifiedValueSerializationErrorKind;
+type Limits = CssSerializationLimits;
+type Kind = SerializationFailure;
 
 #[derive(Clone, Copy, Debug)]
 enum Slot {
@@ -36,11 +53,11 @@ enum Group {
     Outset(CssBorderImageOutset),
 }
 impl Group {
-    fn serialize(&self, limits: Limits) -> Result<String, CssSpecifiedValueSerializationError> {
+    fn serialize(&self, limits: Limits) -> Result<String, CssSerializationError> {
         match self {
-            Self::Slice(value) => value.serialize_specified_with_limits(limits),
-            Self::Width(value) => value.serialize_specified_with_limits(limits),
-            Self::Outset(value) => value.serialize_specified_with_limits(limits),
+            Self::Slice(value) => value.serialize_specified(limits),
+            Self::Width(value) => value.serialize_specified(limits),
+            Self::Outset(value) => value.serialize_specified(limits),
         }
     }
     fn literals(&self) -> Vec<&CssComponentValue> {
@@ -50,10 +67,10 @@ impl Group {
                 .iter()
                 .map(|edge| match edge {
                     CssBorderImageSliceComponent::Number(value) => {
-                        value.literal_component().unwrap()
+                        value.literal().map(|literal| literal.component()).unwrap()
                     }
                     CssBorderImageSliceComponent::Percentage(value) => {
-                        value.literal_component().unwrap()
+                        value.literal().map(|literal| literal.component()).unwrap()
                     }
                     _ => panic!("numeric edge"),
                 })
@@ -63,10 +80,10 @@ impl Group {
                 .iter()
                 .map(|edge| match edge {
                     CssBorderImageWidthComponent::Number(value) => {
-                        value.literal_component().unwrap()
+                        value.literal().map(|literal| literal.component()).unwrap()
                     }
                     CssBorderImageWidthComponent::LengthPercentage(value) => {
-                        value.literal_component().unwrap()
+                        value.literal().map(|literal| literal.component()).unwrap()
                     }
                     _ => panic!("numeric edge"),
                 })
@@ -76,10 +93,10 @@ impl Group {
                 .iter()
                 .map(|edge| match edge {
                     CssBorderImageOutsetComponent::Number(value) => {
-                        value.literal_component().unwrap()
+                        value.literal().map(|literal| literal.component()).unwrap()
                     }
                     CssBorderImageOutsetComponent::Length(value) => {
-                        value.literal_component().unwrap()
+                        value.literal().map(|literal| literal.component()).unwrap()
                     }
                     _ => panic!("numeric edge"),
                 })
@@ -107,11 +124,14 @@ fn group(slot: Slot, coefficients: [&str; 4]) -> Group {
                     .into_iter()
                     .map(|component| match slot {
                         Slot::SlicePercentage => CssBorderImageSliceComponent::Percentage(
-                            CssSpecifiedNonNegativePercentage::try_from_component(component)
-                                .unwrap(),
+                            CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
+                                component,
+                            )
+                            .unwrap(),
                         ),
                         _ => CssBorderImageSliceComponent::Number(
-                            CssSpecifiedNonNegativeNumber::try_from_component(component).unwrap(),
+                            CssNumeric::<CssNumber, CssNonNegative>::try_from_component(component)
+                                .unwrap(),
                         ),
                     })
                     .collect(),
@@ -125,11 +145,14 @@ fn group(slot: Slot, coefficients: [&str; 4]) -> Group {
                     .into_iter()
                     .map(|component| match slot {
                         Slot::WidthLength => CssBorderImageWidthComponent::LengthPercentage(
-                            CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
-                                .unwrap(),
+                            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                                component,
+                            )
+                            .unwrap(),
                         ),
                         _ => CssBorderImageWidthComponent::Number(
-                            CssSpecifiedNonNegativeNumber::try_from_component(component).unwrap(),
+                            CssNumeric::<CssNumber, CssNonNegative>::try_from_component(component)
+                                .unwrap(),
                         ),
                     })
                     .collect(),
@@ -142,10 +165,12 @@ fn group(slot: Slot, coefficients: [&str; 4]) -> Group {
                     .into_iter()
                     .map(|component| match slot {
                         Slot::OutsetLength => CssBorderImageOutsetComponent::Length(
-                            CssSpecifiedNonNegativeLength::try_from_component(component).unwrap(),
+                            CssNumeric::<CssLength, CssNonNegative>::try_from_component(component)
+                                .unwrap(),
                         ),
                         _ => CssBorderImageOutsetComponent::Number(
-                            CssSpecifiedNonNegativeNumber::try_from_component(component).unwrap(),
+                            CssNumeric::<CssNumber, CssNonNegative>::try_from_component(component)
+                                .unwrap(),
                         ),
                     })
                     .collect(),
@@ -155,17 +180,18 @@ fn group(slot: Slot, coefficients: [&str; 4]) -> Group {
     }
 }
 fn raw(component: &CssComponentValue) -> String {
-    CssComponentValues::try_new(vec![component.clone()])
+    CssComponentValues::try_new(vec![component.clone()], Default::default())
         .unwrap()
-        .serialize()
+        .serialize_tokens(Default::default())
         .unwrap()
         .as_css()
         .to_owned()
 }
 fn image(text: &str) -> CssBorderImage {
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BorderImage),
-        parse_component_values(text).unwrap(),
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BorderImage)),
+        CssComponentValues::parse(&CssParser::default(), text).unwrap(),
         CssImportance::Normal,
     )
     .unwrap();
@@ -174,7 +200,7 @@ fn image(text: &str) -> CssBorderImage {
     else {
         panic!("typed border-image")
     };
-    value.border_image().clone()
+    value.value().clone()
 }
 const UNEQUAL: [&str; 4] = [".12345641", ".12345642", ".12345643", ".12345644"];
 fn unequal_edges(slot: Slot, expected: &str) {
@@ -329,7 +355,11 @@ fn unequal_edges_visit_all_four_before_final_byte_failure() {
         ] {
             let result = value.serialize(limits);
             assert_eq!(value, before);
-            assert_eq!(result.unwrap_err().kind(), kind, "{slot:?}");
+            assert_eq!(
+                serialization_failure(&result.unwrap_err()),
+                kind,
+                "{slot:?}"
+            );
         }
         assert_eq!(
             value.serialize(Limits::new(9, 9, bytes)).unwrap(),
@@ -352,7 +382,10 @@ fn compressed_edges_still_charge_four_visits_and_exact_scratch_bytes() {
         // The first component's input is charged before its projection.
         (Limits::new(1, 1, 8), Kind::InputNodeLimit),
     ] {
-        assert_eq!(value.serialize(limits).unwrap_err().kind(), kind);
+        assert_eq!(
+            serialization_failure(&value.serialize(limits).unwrap_err()),
+            kind
+        );
     }
     assert_eq!(value.serialize(Limits::new(9, 9, 8)).unwrap(), "0.123456");
 }
@@ -422,7 +455,7 @@ fn exponent_compensation_and_signed_actual_zero_still_compress() {
 fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
     let length_percentage = |text| {
         CssBorderImageWidthComponent::LengthPercentage(
-            CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+            CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token(text).unwrap(),
             )
             .unwrap(),
@@ -435,10 +468,13 @@ fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
         length_percentage("+0px"),
     ])
     .unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "0px");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "0px"
+    );
     let value = CssBorderImageWidth::try_new(vec![
         CssBorderImageWidthComponent::Number(
-            CssSpecifiedNonNegativeNumber::try_from_component(
+            CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
                 CssComponentValue::try_number("0").unwrap(),
             )
             .unwrap(),
@@ -448,10 +484,13 @@ fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
         length_percentage("0%"),
     ])
     .unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "0 0px 0em 0%");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "0 0px 0em 0%"
+    );
     let length = |text| {
         CssBorderImageOutsetComponent::Length(
-            CssSpecifiedNonNegativeLength::try_from_component(
+            CssNumeric::<CssLength, CssNonNegative>::try_from_component(
                 CssComponentValue::try_token(text).unwrap(),
             )
             .unwrap(),
@@ -464,7 +503,10 @@ fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
         length("+0px"),
     ])
     .unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "0px");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "0px"
+    );
     let value = CssBorderImageOutset::try_new(vec![
         length("0px"),
         length("0em"),
@@ -472,17 +514,20 @@ fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
         length("0em"),
     ])
     .unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "0px 0em");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "0px 0em"
+    );
     let value = CssBorderImageSlice::try_new(
         vec![
             CssBorderImageSliceComponent::Number(
-                CssSpecifiedNonNegativeNumber::try_from_component(
+                CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
                     CssComponentValue::try_number("0").unwrap(),
                 )
                 .unwrap(),
             ),
             CssBorderImageSliceComponent::Percentage(
-                CssSpecifiedNonNegativePercentage::try_from_component(
+                CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
                     CssComponentValue::try_token("0%").unwrap(),
                 )
                 .unwrap(),
@@ -491,7 +536,10 @@ fn length_zero_normalization_preserves_kind_and_unit_boundaries() {
         false,
     )
     .unwrap();
-    assert_eq!(value.serialize_specified().unwrap(), "0 0%");
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        "0 0%"
+    );
 }
 
 #[test]
@@ -507,7 +555,7 @@ fn parsed_quad_preserves_raw_components_and_origins_after_serialization() {
         };
         assert_eq!(origin.source().as_str(), authored);
     }
-    let serialized = value.serialize_specified();
+    let serialized = value.serialize_specified(Default::default());
     assert_eq!(value, before);
     assert_eq!(serialized.unwrap(), "0.123456 0.123456 0.123456 0.123456");
 }
@@ -522,7 +570,11 @@ fn rounded_near_initial_values_are_retained_in_shorthand() {
     ] {
         let value = image(authored);
         let before = value.clone();
-        assert_eq!(value.serialize_specified().unwrap(), expected, "{authored}");
+        assert_eq!(
+            value.serialize_specified(Default::default()).unwrap(),
+            expected,
+            "{authored}"
+        );
         assert_eq!(value, before);
     }
 }
@@ -553,8 +605,10 @@ fn ordinary_length_compression_folds_unit_case_without_converting_units() {
                 .cloned()
                 .map(|component| {
                     CssBorderImageWidthComponent::LengthPercentage(
-                        CssSpecifiedNonNegativeLengthPercentage::try_from_component(component)
-                            .unwrap(),
+                        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
+                            component,
+                        )
+                        .unwrap(),
                     )
                 })
                 .collect(),
@@ -565,7 +619,8 @@ fn ordinary_length_compression_folds_unit_case_without_converting_units() {
                 .into_iter()
                 .map(|component| {
                     CssBorderImageOutsetComponent::Length(
-                        CssSpecifiedNonNegativeLength::try_from_component(component).unwrap(),
+                        CssNumeric::<CssLength, CssNonNegative>::try_from_component(component)
+                            .unwrap(),
                     )
                 })
                 .collect(),
@@ -579,7 +634,10 @@ fn ordinary_length_compression_folds_unit_case_without_converting_units() {
                 (Limits::new(9, 8, bytes), Kind::ProjectionNodeLimit),
                 (Limits::new(9, 9, bytes - 1), Kind::ByteLimit),
             ] {
-                assert_eq!(value.serialize(limits).unwrap_err().kind(), kind);
+                assert_eq!(
+                    serialization_failure(&value.serialize(limits).unwrap_err()),
+                    kind
+                );
                 assert_eq!(value, before);
             }
             for (component, authored) in value.literals().iter().zip(authored) {

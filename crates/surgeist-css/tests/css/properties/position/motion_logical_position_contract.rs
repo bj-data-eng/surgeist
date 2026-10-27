@@ -7,7 +7,30 @@
 use crate::css::support::authored_declaration_through_front as declaration;
 use crate::css::support::known_property as property;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::CssAngleUnit;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::effects::CssClipPath;
+use surgeist_css::values::position::{
+    CssBlockPosition, CssCartesianPosition, CssHorizontalPosition, CssInlinePosition, CssPosition,
+    CssPositionRef, CssRelativeAxisPosition, CssVerticalPosition,
+};
+use surgeist_css::values::shape::CssBasicShape;
+use surgeist_css::values::transform::{
+    CssOffset, CssOffsetAnchor, CssOffsetPath, CssOffsetPathKind, CssOffsetPathRef,
+    CssOffsetPosition, CssRay, CssRaySize,
+};
 
 const LONGHANDS: [&str; 5] = [
     "offset-position",
@@ -59,27 +82,22 @@ fn same_path(left: &CssOffsetPath, right: &CssOffsetPath) {
                         b.position().cloned().map(full_position)
                     );
                     if let (Some(a), Some(b)) = (a.angle().literal(), b.angle().literal()) {
-                        assert_eq!(a.unit(), b.unit());
-                        // Literal authored spelling is intentionally retained by Eq;
-                        // the independent decimal values compare reparse meaning.
-                        assert_eq!(
-                            a.numeric().representation().parse::<f64>().unwrap(),
-                            b.numeric().representation().parse::<f64>().unwrap()
-                        );
+                        // Literal equality compares the unit and the exact value.
+                        assert_eq!(a, b);
                     } else {
                         assert_eq!(
                             CssRay::new(a.angle().clone(), None, false, None)
-                                .serialize_specified()
+                                .serialize_specified(Default::default())
                                 .unwrap(),
                             CssRay::new(b.angle().clone(), None, false, None)
-                                .serialize_specified()
+                                .serialize_specified(Default::default())
                                 .unwrap()
                         );
                     }
                 }
                 _ => assert_eq!(
-                    a.path().serialize_specified().unwrap(),
-                    b.path().serialize_specified().unwrap()
+                    a.path().serialize_specified(Default::default()).unwrap(),
+                    b.path().serialize_specified(Default::default()).unwrap()
                 ),
             }
         }
@@ -120,13 +138,15 @@ fn same_motion_value(left: &CssDeclaration, right: &CssDeclaration) {
             }
             assert_eq!(
                 a.distance()
-                    .map(|value| value.serialize_specified().unwrap()),
+                    .map(|value| value.serialize_specified(Default::default()).unwrap()),
                 b.distance()
-                    .map(|value| value.serialize_specified().unwrap())
+                    .map(|value| value.serialize_specified(Default::default()).unwrap())
             );
             assert_eq!(
-                a.rotate().map(|value| value.serialize_specified().unwrap()),
-                b.rotate().map(|value| value.serialize_specified().unwrap())
+                a.rotate()
+                    .map(|value| value.serialize_specified(Default::default()).unwrap()),
+                b.rotate()
+                    .map(|value| value.serialize_specified(Default::default()).unwrap())
             );
         }
         _ => panic!("same motion property"),
@@ -139,10 +159,17 @@ fn accept(name: &str, cases: &[(&str, &str)]) {
             let source = declaration(name, input, front);
             let snapshot = source.clone();
             let output = format!("{name}: {expected} !important;");
-            assert_eq!(source.to_specified_css().unwrap(), output, "front {front}");
+            assert_eq!(
+                source.serialize_specified(Default::default()).unwrap(),
+                output,
+                "front {front}"
+            );
             let reparsed = declaration(name, expected, front);
             same_motion_value(&source, &reparsed);
-            assert_eq!(reparsed.to_specified_css().unwrap(), output);
+            assert_eq!(
+                reparsed.serialize_specified(Default::default()).unwrap(),
+                output
+            );
             assert_eq!(source, snapshot);
         }
     }
@@ -286,7 +313,8 @@ fn full_position_owner_supplies_three_symbolic_families() {
         ),
         ("start end", "start end"),
     ] {
-        let report = parse_style_attribute(&format!("clip-path:circle(at {input})"));
+        let report =
+            CssParser::default().parse_block_contents(format!("clip-path:circle(at {input})"));
         assert!(report.is_clean(), "{input}: {:?}", report.diagnostics());
         let CssKnownPropertyValueRef::ClipPath(value) = report.syntax()[0]
             .known()
@@ -303,14 +331,18 @@ fn full_position_owner_supplies_three_symbolic_families() {
             panic!("circle")
         };
         assert_eq!(
-            value.position().unwrap().serialize_specified().unwrap(),
+            value
+                .position()
+                .unwrap()
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected
         );
     }
     let checked =
         CssPosition::try_from_named_axes(CssBlockPosition::Start, CssInlinePosition::End).unwrap();
     assert_eq!(
-        checked.serialize_specified().unwrap(),
+        checked.serialize_specified(Default::default()).unwrap(),
         "block-start inline-end"
     );
     assert_eq!(
@@ -319,7 +351,7 @@ fn full_position_owner_supplies_three_symbolic_families() {
             CssRelativeAxisPosition::End
         )
         .unwrap()
-        .serialize_specified()
+        .serialize_specified(Default::default())
         .unwrap(),
         "start end"
     );
@@ -434,8 +466,7 @@ fn shorthand_relative_position_preserves_order_and_authored_omissions() {
     assert!(value.value().distance().is_none());
     assert!(value.value().rotate().is_none());
     assert!(value.value().anchor().is_none());
-    let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-        expand_declaration(&source).unwrap()
+    let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()
     else {
         panic!("longhands")
     };
@@ -454,7 +485,10 @@ fn shorthand_relative_position_preserves_order_and_authored_omissions() {
     else {
         panic!("position")
     };
-    assert_eq!(position.serialize_specified().unwrap(), "start end");
+    assert_eq!(
+        position.serialize_specified(Default::default()).unwrap(),
+        "start end"
+    );
 }
 
 #[test]
@@ -497,7 +531,7 @@ fn logical_positions_compose_with_the_full_quoted_path_and_six_boxes() {
 fn reject(name: &str, input: &str) {
     let middle = format!("{name}:{input}!important;");
     let css = format!("/*😀*/color:red;{middle}color:blue");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert_eq!(report.syntax().len(), 2, "{css}");
     let [diagnostic] = report.diagnostics() else {
         panic!("one diagnostic for {css}")
@@ -518,21 +552,27 @@ fn reject(name: &str, input: &str) {
         css[..start].encode_utf16().count()
     );
     assert_eq!(
-        validate_style_attribute(&css).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&css)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     for grammar in [false, true] {
-        let components = parse_component_values(input).unwrap();
+        let components = CssComponentValues::parse(&CssParser::default(), input).unwrap();
         let snapshot = components.clone();
         let result = if grammar {
-            parse_property_value_for_grammar(
-                property(name).grammar(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Grammar(property(name).grammar()),
                 components.clone(),
                 CssImportance::Important,
             )
         } else {
-            parse_property_value(
-                CssPropertyNameRef::Known(property(name)),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(property(name))),
                 components.clone(),
                 CssImportance::Important,
             )
@@ -540,15 +580,15 @@ fn reject(name: &str, input: &str) {
         assert!(result.is_err(), "checked {name}:{input}");
         assert_eq!(components, snapshot);
         let report = if grammar {
-            parse_property_value_text_for_grammar(
+            CssParser::default().parse_property_value(
                 input,
-                property(name).grammar(),
+                CssPropertyTextTarget::Grammar(property(name).grammar()),
                 CssImportance::Important,
             )
         } else {
-            parse_property_value_text(
+            CssParser::default().parse_property_value(
                 input,
-                CssPropertyNameRef::Known(property(name)),
+                CssPropertyTextTarget::Property(CssPropertyNameRef::Known(property(name))),
                 CssImportance::Important,
             )
         };
@@ -594,9 +634,15 @@ fn mixed_families_invalid_arity_and_background_three_values_drop_atomically() {
 
 fn terminal_css(item: &CssLonghandContribution) -> String {
     match item.ordinary_value().unwrap().view() {
-        CssLonghandValueRef::OffsetPosition(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::OffsetPath(value) => value.serialize_specified().unwrap(),
-        CssLonghandValueRef::OffsetAnchor(value) => value.serialize_specified().unwrap(),
+        CssLonghandValueRef::OffsetPosition(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::OffsetPath(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
+        CssLonghandValueRef::OffsetAnchor(value) => {
+            value.serialize_specified(Default::default()).unwrap()
+        }
         other => panic!("position consumer: {other:?}"),
     }
 }
@@ -605,23 +651,28 @@ fn pending(name: &str, valid: &str, expected: &[&str], invalid: &str) {
     for authored in ["var(--motion)", "env(motion)"] {
         let source = declaration(name, authored, 0);
         let snapshot = source.clone();
-        let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(handle) = source.expand().unwrap() else {
             panic!("pending")
         };
         for _ in 0..2 {
-            let bad = parse_component_values(invalid).unwrap();
-            assert!(matches!(
-                handle.reenter(bad).unwrap_err().kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
-            assert_eq!(
+            let bad = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
+            assert!(
                 handle
-                    .reenter(parse_component_values("var(--again)").unwrap())
+                    .reenter(bad)
                     .unwrap_err()
-                    .kind(),
-                &CssExpansionErrorKind::ResidualSubstitution
+                    .replacement_error()
+                    .is_some()
             );
-            let replacement = parse_component_values(&format!("/*😀*/{valid}")).unwrap();
+            assert!(
+                handle
+                    .reenter(
+                        CssComponentValues::parse(&CssParser::default(), "var(--again)").unwrap()
+                    )
+                    .unwrap_err()
+                    .is_residual_substitution()
+            );
+            let replacement =
+                CssComponentValues::parse(&CssParser::default(), format!("/*😀*/{valid}")).unwrap();
             let before = replacement.clone();
             let CssContributions::Longhands(items) = handle.reenter(replacement.clone()).unwrap()
             else {
@@ -652,7 +703,7 @@ fn pending(name: &str, valid: &str, expected: &[&str], invalid: &str) {
                 ("revert-layer", CssGlobalKeyword::RevertLayer),
             ] {
                 let CssContributions::Longhands(items) = handle
-                    .reenter(parse_component_values(text).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                     .unwrap()
                 else {
                     panic!("global")
@@ -760,7 +811,7 @@ fn immutable_checked_motion_construction_reuses_parsed_symbolic_children() {
     .unwrap();
     assert_eq!(checked, snapshot);
     assert_eq!(
-        checked.serialize_specified().unwrap(),
+        checked.serialize_specified(Default::default()).unwrap(),
         "x-start center ray(0.25turn at block-start inline-end) -2% reverse 100grad / start end"
     );
     let CssOffsetPathRef::Path(path) = checked.path().unwrap().view() else {
@@ -805,9 +856,7 @@ fn immutable_checked_motion_construction_reuses_parsed_symbolic_children() {
 
 #[test]
 fn normalization_preserves_logical_source_order_importance_and_atomic_limits() {
-    let report = parse_sheet(
-        ".a{offset-position:x-start!important;offset: start end none / inline-end;offset-anchor:var(--anchor)!important}",
-    );
+    let report = CssParser::default().parse_sheet(".a{offset-position:x-start!important;offset: start end none / inline-end;offset-anchor:var(--anchor)!important}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let CssRule::Style(style) = &report.syntax().rules()[0] else {
         panic!("style")
@@ -815,7 +864,7 @@ fn normalization_preserves_logical_source_order_importance_and_atomic_limits() {
     let before = report.clone();
     // One position, five shorthand terminals and one pending anchor member.
     let exact = CssNormalizationLimits::try_new(0, 1, 3, 7).unwrap();
-    let normalized = normalize_sheet_with_limits(report.syntax(), exact).unwrap();
+    let normalized = report.syntax().normalize(exact).unwrap();
     let declarations: Vec<_> = normalized
         .items()
         .iter()
@@ -865,14 +914,11 @@ fn normalization_preserves_logical_source_order_importance_and_atomic_limits() {
             6,
         ),
     ] {
-        let error = normalize_sheet_with_limits(report.syntax(), limits).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNormalizationErrorKind::LimitExceeded { resource, limit }
-        );
+        let error = report.syntax().normalize(limits).unwrap_err();
+        assert_eq!(error.exhausted_limit(), Some((resource, limit)));
         assert_eq!(report, before);
     }
-    assert!(normalize_report_with_limits(&report, exact).is_ok());
+    assert!(report.normalize(exact).is_ok());
 }
 
 fn named_offset_origin(position: CssPosition, expected_source: &str) {
@@ -919,10 +965,10 @@ fn logical_axis_offsets_retain_checked_parsed_and_replacement_scalar_origins() {
         named_offset_origin(full_position(position.clone()), expected_source);
     }
     let source = declaration("offset-anchor", "env(anchor)", 0);
-    let CssExpansion::Pending(handle) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(handle) = source.expand().unwrap() else {
         panic!("pending")
     };
-    let replacement = parse_component_values(input).unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), input).unwrap();
     let CssContributions::Longhands(items) = handle.reenter(replacement.clone()).unwrap() else {
         panic!("anchor")
     };
@@ -965,7 +1011,9 @@ fn physical_composition_confirms_the_same_cumulative_budget_control() {
 fn composed_budget(value: &CssOffset, expected: &str) {
     // Offset 1 + three positions (aggregate and two axes each) 9 + path pair 1
     // + ray 1 + literal angle 1 + authored default size 1 + contain 1 = 15.
-    LimitLadder::new(expected, 15, 15)
-        .assert_unchanged(value, CssOffset::serialize_specified_with_limits);
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    LimitLadder::new(expected, 15, 15).assert_unchanged(value, CssOffset::serialize_specified);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }

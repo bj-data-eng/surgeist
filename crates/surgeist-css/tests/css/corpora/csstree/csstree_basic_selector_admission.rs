@@ -2,9 +2,10 @@
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#grammar
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#attrnmsp
 //! The fixture context binds only `ns`; `a` and `xlink` are undeclared.
-use surgeist_css::{
-    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssRecoveryAction, parse_selector,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
 
 #[test]
 fn basic_selector_authored_admission_matches_selected_context() {
@@ -49,7 +50,7 @@ fn basic_selector_authored_admission_matches_selected_context() {
             case_count += 1;
             let id = case["id"].as_str().unwrap();
             let input = case["input"].as_str().unwrap();
-            let report = parse_selector(input, &context);
+            let report = CssSelector::parse(&CssParser::default(), input, &context);
             let valid = if rejected.contains(&id) {
                 report.syntax().is_none()
                     && !report.is_clean()

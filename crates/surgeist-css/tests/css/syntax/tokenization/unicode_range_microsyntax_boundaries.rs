@@ -6,17 +6,24 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-token
 //! https://www.w3.org/TR/2018/REC-css-fonts-3-20180920/#unicode-range-desc
 //! These literal endpoints use consumed source text, not decoded numeric values.
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValue,
-    CssComponentValueRef as Component, CssComponentValues, CssErrorCode,
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value,
-    CssFontFaceValueErrorKind, CssNamespaceContext, CssNumericTokenKind, CssRecoveryAction,
-    CssRule, CssSelector, CssSelectorCombinator, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind as OutputError,
-    CssSpecifiedValueSerializationLimits as OutputLimits, CssUnicodeRange, CssUnicodeRangeList,
-    CssValueOrigin, CssValueTokenRef as Token, ErrorKind, parse_component_values,
-    parse_font_face_descriptor_value, parse_selector, parse_sheet, validate_sheet,
+use crate::css::support::failure_classes::SerializationFailure as OutputError;
+use crate::css::support::failure_classes::serialization_failure;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValueRef as Component;
+use surgeist_css::component::CssValueTokenRef as Token;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssNumericTokenKind, CssSerializedOrigin, CssValueOrigin,
 };
+use surgeist_css::diagnostic::{CssError, CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue as Authored;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue as Value;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssUnicodeRange, CssUnicodeRangeList,
+};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector, CssSelectorCombinator};
+use surgeist_css::serialization::CssSerializationLimits as OutputLimits;
 
 fn endpoints(value: &Authored) -> Vec<(u32, u32)> {
     let Authored::Ordinary(Value::UnicodeRange(ranges)) = value else {
@@ -33,27 +40,33 @@ fn specified(value: &Authored) -> String {
     let Authored::Ordinary(value) = value else {
         panic!("ordinary descriptor: {value:?}");
     };
-    value.serialize_specified().unwrap()
+    value.serialize_specified(Default::default()).unwrap()
 }
 
 fn assert_lifecycle(source: &str, expected: &[(u32, u32)], canonical: &str) {
-    let raw = parse_font_face_descriptor_value(source, Kind::UnicodeRange);
+    let raw = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        source,
+        Kind::UnicodeRange,
+    );
     assert!(raw.is_clean(), "{source:?}: {raw:?}");
     let value = raw.syntax().as_ref().unwrap();
     assert_eq!(endpoints(value), expected, "{source:?}");
     assert_eq!(specified(value), canonical, "{source:?}");
     assert_eq!(raw.clone().into_validation_result().unwrap(), *raw.syntax());
 
-    let components = parse_component_values(source).unwrap();
+    let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let before = components.clone();
-    let checked = Authored::try_from_components(Kind::UnicodeRange, components.clone()).unwrap();
+    let checked =
+        Authored::try_from_components(Kind::UnicodeRange, components.clone(), Default::default())
+            .unwrap();
     assert_eq!(endpoints(&checked), expected, "{source:?}");
     assert_eq!(specified(&checked), canonical, "{source:?}");
     assert_eq!(components, before);
 
     let sheet_source =
         format!("@font-face{{unicode-range:{source};font-display:swap}}.after{{color:red}}");
-    let sheet = parse_sheet(&sheet_source);
+    let sheet = CssParser::default().parse_sheet(&sheet_source);
     assert!(sheet.is_clean(), "{source:?}: {sheet:?}");
     let [CssRule::FontFace(face), CssRule::Style(_)] = sheet.syntax().rules() else {
         panic!("font face and later rule: {sheet:?}");
@@ -66,7 +79,13 @@ fn assert_lifecycle(source: &str, expected: &[(u32, u32)], canonical: &str) {
         "@font-face{".len()
     );
     assert!(face.descriptors().effective(Kind::FontDisplay).is_some());
-    assert_eq!(validate_sheet(&sheet_source).unwrap(), *sheet.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(&sheet_source)
+            .into_validation_result()
+            .unwrap(),
+        *sheet.syntax()
+    );
 }
 
 /// Checks that checked construction rejects `source` by the unicode-range
@@ -74,14 +93,14 @@ fn assert_lifecycle(source: &str, expected: &[(u32, u32)], canonical: &str) {
 /// offset, or `None` when the failure is at EOF after the last token.
 #[track_caller]
 fn unicode_range_rejection_offset(source: &str) -> Option<usize> {
-    let error =
-        Authored::try_from_components(Kind::UnicodeRange, parse_component_values(source).unwrap())
-            .unwrap_err();
+    let error = Authored::try_from_components(
+        Kind::UnicodeRange,
+        CssComponentValues::parse(&CssParser::default(), source).unwrap(),
+        Default::default(),
+    )
+    .unwrap_err();
     assert!(
-        matches!(
-            error.kind(),
-            CssFontFaceValueErrorKind::Grammar(ErrorKind::InvalidDescriptorValue(_))
-        ),
+        error.diagnostic().map(CssError::code) == Some(CssErrorCode::InvalidDescriptorValue),
         "{source:?}: {error:?}"
     );
     let origin = match error.origin() {
@@ -98,7 +117,11 @@ fn unicode_range_rejection_offset(source: &str) -> Option<usize> {
 }
 
 fn assert_invalid_lifecycle(source: &str) {
-    let raw = parse_font_face_descriptor_value(source, Kind::UnicodeRange);
+    let raw = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        source,
+        Kind::UnicodeRange,
+    );
     assert!(raw.syntax().is_none(), "{source:?}: {raw:?}");
     assert!(raw.clone().into_validation_result().is_err());
     assert!(
@@ -112,7 +135,7 @@ fn assert_invalid_lifecycle(source: &str) {
     unicode_range_rejection_offset(source);
     let sheet_source =
         format!("@font-face{{unicode-range:{source};font-display:swap}}.after{{color:red}}");
-    let sheet = parse_sheet(&sheet_source);
+    let sheet = CssParser::default().parse_sheet(&sheet_source);
     let [CssRule::FontFace(face), CssRule::Style(_)] = sheet.syntax().rules() else {
         panic!("local descriptor recovery: {source:?}: {sheet:?}");
     };
@@ -129,7 +152,11 @@ fn assert_invalid_lifecycle(source: &str) {
         "{source:?}: {sheet:?}"
     );
     assert_eq!(
-        validate_sheet(&sheet_source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(&sheet_source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         sheet.diagnostics()
     );
 }
@@ -147,7 +174,7 @@ fn all_six_ordinary_token_patterns_share_descriptor_sheet_and_checked_admission(
         ("u+?", (0, 15), "U+0-F"),
     ];
     for (row, (source, expected, canonical)) in cases.into_iter().enumerate() {
-        let values = parse_component_values(source).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let items = values.items();
         assert!(matches!(
             items[0].view(),
@@ -223,7 +250,7 @@ fn all_six_ordinary_token_patterns_share_descriptor_sheet_and_checked_admission(
 fn u_plus_a_remains_two_type_selectors_and_a_sibling_combinator() {
     let namespaces = CssNamespaceContext::default();
     for source in ["u+a", "u + a"] {
-        let report = parse_selector(source, &namespaces);
+        let report = CssSelector::parse(&CssParser::default(), source, &namespaces);
         assert!(report.is_clean(), "{source:?}: {report:?}");
         let selector = report.into_validation_result().unwrap().unwrap();
         let CssSelector::Complex(complex) = &selector else {
@@ -241,9 +268,12 @@ fn u_plus_a_remains_two_type_selectors_and_a_sibling_combinator() {
             part.selector().type_selector().unwrap().local_name(),
             Some("a")
         );
-        assert_eq!(selector.to_specified_css().unwrap(), "u + a");
+        assert_eq!(
+            selector.serialize_specified(Default::default()).unwrap(),
+            "u + a"
+        );
     }
-    let sheet = parse_sheet("u+a{color:green}");
+    let sheet = CssParser::default().parse_sheet("u+a{color:green}");
     assert!(sheet.is_clean(), "{sheet:?}");
     let [CssRule::Style(rule)] = sheet.syntax().rules() else {
         panic!("ordinary style rule");
@@ -251,7 +281,13 @@ fn u_plus_a_remains_two_type_selectors_and_a_sibling_combinator() {
     let [selector] = rule.selectors().selectors() else {
         panic!("one ordinary selector");
     };
-    assert_eq!(selector.selector().to_specified_css().unwrap(), "u + a");
+    assert_eq!(
+        selector
+            .selector()
+            .serialize_specified(Default::default())
+            .unwrap(),
+        "u + a"
+    );
 }
 
 #[test]
@@ -288,7 +324,7 @@ fn numeric_and_escape_representations_control_ranges_instead_of_decoded_payloads
     ] {
         assert_lifecycle(source, &[expected], canonical);
     }
-    let values = parse_component_values("u+0e0").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), "u+0e0").unwrap();
     let Component::Token(Token::Number(number)) = values.items()[1].view() else {
         panic!("one lexical exponent number");
     };
@@ -296,7 +332,7 @@ fn numeric_and_escape_representations_control_ranges_instead_of_decoded_payloads
     assert_eq!(number.kind(), CssNumericTokenKind::Number);
     assert!(number.has_sign());
 
-    let values = parse_component_values(r"u+/**/\61").unwrap();
+    let values = CssComponentValues::parse(&CssParser::default(), r"u+/**/\61").unwrap();
     assert!(matches!(
         values.items().last().unwrap().view(),
         Component::Token(Token::Ident("a"))
@@ -364,7 +400,11 @@ fn a_raw_value_requires_a_complete_nonempty_comma_list_and_consumes_no_trailing_
         ("u+0{}", Some(3)),
         ("u+0,?", Some(4)),
     ] {
-        let report = parse_font_face_descriptor_value(source, Kind::UnicodeRange);
+        let report = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            source,
+            Kind::UnicodeRange,
+        );
         assert!(report.syntax().is_none(), "{source:?}: {report:?}");
         let [diagnostic] = report.diagnostics() else {
             panic!("one complete raw-value rejection: {source:?}: {report:?}");
@@ -411,7 +451,7 @@ fn invalid_members_drop_only_their_occurrence_and_keep_original_token_coordinate
         let source = format!(
             "/*😀*/\r\n@font-face{{unicode-range:u+0;unicode-range:{invalid};font-display:swap;unicode-range:u+2}}.after{{color:red}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [diagnostic] = report.diagnostics() else {
             panic!("one invalid occurrence: {invalid:?}: {report:?}");
         };
@@ -436,11 +476,14 @@ fn invalid_members_drop_only_their_occurrence_and_keep_original_token_coordinate
             diagnostic.span().end().byte_offset().value(),
             source.find("font-display").unwrap()
         );
-        let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-            panic!("typed descriptor failure");
-        };
-        assert_eq!(detail.at_rule().as_str(), "font-face");
-        assert_eq!(detail.descriptor().as_str(), "unicode-range");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidDescriptorValue,
+            "typed descriptor failure"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), "font-face");
+        assert_eq!(detail.descriptor().unwrap().as_str(), "unicode-range");
         assert_eq!(detail.encountered().unwrap().authored(), spelling);
 
         let [CssRule::FontFace(face), CssRule::Style(_)] = report.syntax().rules() else {
@@ -469,7 +512,11 @@ fn invalid_members_drop_only_their_occurrence_and_keep_original_token_coordinate
         );
         assert!(face.descriptors().effective(Kind::FontDisplay).is_some());
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -488,7 +535,11 @@ fn missing_range_tokens_or_endpoints_name_the_last_authored_token() {
         ("u+ab-", Some("ab-")),
         ("/*😀*/\r\nu+ab-/**/", Some("ab-")),
     ] {
-        let report = parse_font_face_descriptor_value(source, Kind::UnicodeRange);
+        let report = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            source,
+            Kind::UnicodeRange,
+        );
         assert!(report.syntax().is_none(), "{source:?}: {report:?}");
         let [diagnostic] = report.diagnostics() else {
             panic!("one bounded EOF failure: {source:?}: {report:?}");
@@ -503,13 +554,16 @@ fn missing_range_tokens_or_endpoints_name_the_last_authored_token() {
             last.map_or(source.len(), |last| source.rfind(last).unwrap()),
             "{source:?}"
         );
-        let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-            panic!("descriptor error");
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidDescriptorValue,
+            "descriptor error"
+        );
         assert_eq!(
             detail
                 .encountered()
-                .map(surgeist_css::CssTokenSummary::authored),
+                .map(surgeist_css::diagnostic::CssTokenSummary::authored),
             last,
             "{source:?}"
         );
@@ -520,13 +574,20 @@ fn missing_range_tokens_or_endpoints_name_the_last_authored_token() {
 
 #[test]
 fn checked_mixed_origins_preserve_representation_and_map_the_actual_rejected_component() {
-    let parsed_number = parse_component_values("+12e-130").unwrap().items()[0].clone();
-    let mixed = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("u").unwrap(),
-        parsed_number.clone(),
-    ])
+    let parsed_number = CssComponentValues::parse(&CssParser::default(), "+12e-130")
+        .unwrap()
+        .items()[0]
+        .clone();
+    let mixed = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("u").unwrap(),
+            parsed_number.clone(),
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let checked = Authored::try_from_components(Kind::UnicodeRange, mixed).unwrap();
+    let checked =
+        Authored::try_from_components(Kind::UnicodeRange, mixed, Default::default()).unwrap();
     assert_eq!(endpoints(&checked), vec![(302, 304)]);
     assert_eq!(specified(&checked), "U+12E-130");
     let CssValueOrigin::Parsed(number_origin) = parsed_number.origin() else {
@@ -534,19 +595,23 @@ fn checked_mixed_origins_preserve_representation_and_map_the_actual_rejected_com
     };
     assert_eq!(number_origin.source().as_str(), "+12e-130");
 
-    let escaped = parse_component_values(r"\61").unwrap().items()[0].clone();
+    let escaped = CssComponentValues::parse(&CssParser::default(), r"\61")
+        .unwrap()
+        .items()[0]
+        .clone();
     let escaped_origin = escaped.origin().clone();
-    let mixed = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("u").unwrap(),
-        CssComponentValue::try_token("+").unwrap(),
-        escaped,
-    ])
+    let mixed = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("u").unwrap(),
+            CssComponentValue::try_token("+").unwrap(),
+            escaped,
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let error = Authored::try_from_components(Kind::UnicodeRange, mixed).unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssFontFaceValueErrorKind::Grammar(ErrorKind::InvalidDescriptorValue(_))
-    ));
+    let error =
+        Authored::try_from_components(Kind::UnicodeRange, mixed, Default::default()).unwrap_err();
+    assert!(error.diagnostic().map(CssError::code) == Some(CssErrorCode::InvalidDescriptorValue));
     assert_eq!(error.origin(), &CssSerializedOrigin::Token(escaped_origin));
     let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
         panic!("actual parsed failing component");
@@ -555,13 +620,17 @@ fn checked_mixed_origins_preserve_representation_and_map_the_actual_rejected_com
     assert_eq!(origin.span().start().byte_offset().value(), 0);
     assert_eq!(origin.span().end().byte_offset().value(), 3);
 
-    let programmatic = CssComponentValues::try_new(vec![
-        CssComponentValue::try_ident("u").unwrap(),
-        CssComponentValue::try_token("+").unwrap(),
-        CssComponentValue::try_ident("g").unwrap(),
-    ])
+    let programmatic = CssComponentValues::try_new(
+        vec![
+            CssComponentValue::try_ident("u").unwrap(),
+            CssComponentValue::try_token("+").unwrap(),
+            CssComponentValue::try_ident("g").unwrap(),
+        ],
+        Default::default(),
+    )
     .unwrap();
-    let error = Authored::try_from_components(Kind::UnicodeRange, programmatic).unwrap_err();
+    let error = Authored::try_from_components(Kind::UnicodeRange, programmatic, Default::default())
+        .unwrap_err();
     assert_eq!(
         error.origin(),
         &CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
@@ -592,7 +661,7 @@ fn checked_ranges_keep_domain_order_overlap_and_atomic_specified_limits() {
     // One list plus three retained range members, even for duplicate members.
     assert_eq!(
         value
-            .serialize_specified_with_limits(OutputLimits::new(4, 4, expected.len()))
+            .serialize_specified(OutputLimits::new(4, 4, expected.len()))
             .unwrap(),
         expected
     );
@@ -611,15 +680,15 @@ fn checked_ranges_keep_domain_order_overlap_and_atomic_specified_limits() {
         ),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(value, before);
     }
-    assert_eq!(value.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        value.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
 }
 
 /// Fonts 4 unicode-range: whitespace after a range may still continue the
@@ -629,26 +698,33 @@ fn checked_ranges_keep_domain_order_overlap_and_atomic_specified_limits() {
 #[test]
 fn every_front_names_the_same_responsible_unicode_range_token() {
     for (value, offset, spelling) in [("u+0 extra", 4, "extra"), ("u+0,", 3, ",")] {
-        let raw = parse_font_face_descriptor_value(value, Kind::UnicodeRange);
+        let raw = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            value,
+            Kind::UnicodeRange,
+        );
         let [raw] = raw.diagnostics() else {
             panic!("{value:?}: one raw rejection: {raw:?}")
         };
         let sheet_source = format!("@font-face{{unicode-range:{value};font-display:swap}}");
-        let sheet = parse_sheet(&sheet_source);
+        let sheet = CssParser::default().parse_sheet(&sheet_source);
         let [sheet] = sheet.diagnostics() else {
             panic!("{value:?}: one sheet rejection: {sheet:?}")
         };
         let value_start = "@font-face{unicode-range:".len();
         for (front, diagnostic, start) in [("raw", raw, 0), ("sheet", sheet, value_start)] {
-            let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-                panic!("{value:?} {front}: descriptor rejection: {diagnostic:?}")
-            };
+            let detail = diagnostic.error();
+            assert_eq!(
+                detail.code(),
+                CssErrorCode::InvalidDescriptorValue,
+                "{value:?} {front}: descriptor rejection: {diagnostic:?}"
+            );
             assert_eq!(
                 (
                     diagnostic.error().position().byte_offset().value() - start,
                     detail
                         .encountered()
-                        .map(surgeist_css::CssTokenSummary::authored),
+                        .map(surgeist_css::diagnostic::CssTokenSummary::authored),
                 ),
                 (offset, Some(spelling)),
                 "{value:?} {front}"

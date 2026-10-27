@@ -1,10 +1,12 @@
-//! Grid line indices preserve integer token spelling and ignore diagnostic
-//! origins when comparing values, as specified by `CssGridLineIndex`'s contract.
+//! Grid line indices compare integer values, ignoring token spelling and
+//! diagnostic origins, as specified by `CssGridLineIndex`'s contract.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::layout::CssGridLine;
 
 fn line(source: &str) -> CssGridLine {
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [declaration] = report.syntax().as_slice() else {
         panic!("one Grid line declaration")
@@ -18,7 +20,7 @@ fn line(source: &str) -> CssGridLine {
 }
 
 #[test]
-fn grid_line_indices_preserve_spelling_at_every_integer_magnitude() {
+fn grid_line_indices_compare_values_across_spellings_at_every_integer_magnitude() {
     for (left, right, canonical) in [
         ("+0007", "7", "7"),
         ("-0007", "-7", "-7"),
@@ -26,9 +28,15 @@ fn grid_line_indices_preserve_spelling_at_every_integer_magnitude() {
     ] {
         let left = line(&format!("grid-column-start:{left}"));
         let right = line(&format!("grid-column-start:{right}"));
-        assert_eq!(left.serialize_specified().unwrap(), canonical);
-        assert_eq!(right.serialize_specified().unwrap(), canonical);
-        assert_ne!(left, right, "authored integer spellings remain distinct");
+        assert_eq!(
+            left.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
+        assert_eq!(
+            right.serialize_specified(Default::default()).unwrap(),
+            canonical
+        );
+        assert_eq!(left, right, "equal integers compare equal across spellings");
     }
 }
 

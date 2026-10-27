@@ -2,24 +2,27 @@
 //! authored-value policy. MQ5 supplies the domains; Values4 supplies both ratio
 //! operands; numeric lexemes and slash spacing remain the selected media policy.
 
+use crate::css::support::failure_classes::SerializationFailure as ResourceKind;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::value_assertions::assert_parsed_span as parsed_span;
 use crate::css::support::value_assertions::clean_media_query as query;
 use crate::css::support::value_assertions::media_resource_kind as resource_kind;
-use surgeist_css::{
-    CssCalculationExpressionRef, CssMediaConditionKind, CssMediaFeatureQuery, CssMediaGridRef,
-    CssMediaQuery, CssMediaRangeRef, CssMediaResolutionRef, CssMediaSerializationError,
-    CssQueryComparison, CssRecoveryAction, CssSerializedOrigin,
-    CssSpecifiedValueSerializationErrorKind as ResourceKind,
-    CssSpecifiedValueSerializationLimits as Limits, CssUnknownMediaFeatureReason, CssValueOrigin,
-    parse_cssom_media_query, parse_media_query_list,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::CssCalculationExpressionRef;
+use surgeist_css::query::media::{
+    CssMediaFeatureQuery, CssMediaGridRef, CssMediaLeaf, CssMediaQuery, CssMediaQueryList,
+    CssMediaRangeRef, CssMediaResolutionRef, CssUnknownMediaFeatureReason,
 };
+use surgeist_css::query::{CssConditionKind, CssQueryComparison};
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 fn feature(query: &CssMediaQuery) -> &CssMediaFeatureQuery {
     let CssMediaQuery::Condition(condition) = query else {
         panic!("expected a media condition");
     };
-    let CssMediaConditionKind::Feature(feature) = condition.kind() else {
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(feature)) = condition.kind() else {
         panic!("expected an admitted known feature");
     };
     feature
@@ -27,13 +30,19 @@ fn feature(query: &CssMediaQuery) -> &CssMediaFeatureQuery {
 
 fn exact_projection(source: &str, expected: &str, nodes: usize) {
     let authored = query(source);
-    assert_eq!(authored.serialize_cssom().unwrap().as_css(), expected);
+    assert_eq!(
+        authored
+            .serialize_cssom(Default::default())
+            .unwrap()
+            .as_css(),
+        expected
+    );
     // A failed projection is atomic and an adequate retry keeps the query.
     LimitLadder::new(expected, nodes, nodes)
         .zero_limits()
         .assert_unchanged(&authored, |authored, limits| {
             authored
-                .serialize_cssom_with_limits(limits)
+                .serialize_cssom(limits)
                 .map(|css| css.as_css().to_owned())
         });
 }
@@ -92,8 +101,14 @@ fn dated_media_feature_cells_preserve_lexical_quantities_and_defined_keywords() 
         ("(SCAN:PROGRESSIVE)", "(scan: progressive)", "scan", 6),
     ] {
         let authored = query(source);
-        assert_eq!(feature(&authored).name(), name);
-        assert_eq!(authored.serialize().unwrap().as_css(), expected);
+        assert_eq!(feature(&authored).as_str(), name);
+        assert_eq!(
+            authored
+                .serialize_tokens(Default::default())
+                .unwrap()
+                .as_css(),
+            expected
+        );
         exact_projection(source, expected, nodes);
     }
 }
@@ -224,9 +239,7 @@ fn ratio_metadata_separates_original_numeric_tokens_from_the_default_denominator
     assert_eq!(position.line().value(), 1);
     assert_eq!(position.column().value(), 14);
     let expected = "(aspect-ratio: +002 / 1)";
-    let output = authored
-        .serialize_cssom_with_limits(Limits::new(6, 6, 24))
-        .unwrap();
+    let output = authored.serialize_cssom(Limits::new(6, 6, 24)).unwrap();
     assert_eq!(output.as_css(), expected);
     let Some(CssSerializedOrigin::Token(origin)) = output.origin_at(expected.find("+002").unwrap())
     else {
@@ -241,17 +254,21 @@ fn ratio_metadata_separates_original_numeric_tokens_from_the_default_denominator
         );
     }
     // B23 fails on the closing parenthesis after the generated denominator.
-    let error = authored
-        .serialize_cssom_with_limits(Limits::new(6, 6, 23))
-        .unwrap_err();
+    let error = authored.serialize_cssom(Limits::new(6, 6, 23)).unwrap_err();
     assert_eq!(resource_kind(&error), ResourceKind::ByteLimit);
     assert_eq!(authored, original);
-    assert_eq!(authored.serialize_cssom().unwrap().as_css(), expected);
+    assert_eq!(
+        authored
+            .serialize_cssom(Default::default())
+            .unwrap()
+            .as_css(),
+        expected
+    );
 
     let source = "/*😀*/\n(device-aspect-ratio:32/18)";
     let authored = query(source);
     let expected = "(device-aspect-ratio: 32 / 18)";
-    let output = authored.serialize_cssom().unwrap();
+    let output = authored.serialize_cssom(Default::default()).unwrap();
     assert_eq!(output.as_css(), expected);
     for spelling in ["32", "18"] {
         let Some(CssSerializedOrigin::Token(origin)) =
@@ -303,12 +320,18 @@ fn numeric_domains_do_not_turn_unknown_features_into_ignored_queries() {
         let CssMediaQuery::Condition(condition) = &authored else {
             panic!("expected retained condition");
         };
-        let CssMediaConditionKind::UnknownFeature(value) = condition.kind() else {
+        let CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(value)) = condition.kind() else {
             panic!("expected unknown feature, not ignored query: {source}");
         };
         assert_eq!(value.reason(), reason);
         assert_eq!(value.authored(), Some(source));
-        assert_eq!(authored.serialize_cssom().unwrap().as_css(), expected);
+        assert_eq!(
+            authored
+                .serialize_cssom(Default::default())
+                .unwrap()
+                .as_css(),
+            expected
+        );
         assert_eq!(authored, original);
     }
     // Pinned MQ5 WD20260219 section 3 admits -1 as an <mf-value> number.
@@ -325,13 +348,22 @@ fn numeric_domains_do_not_turn_unknown_features_into_ignored_queries() {
         };
         assert!(matches!(
             condition.kind(),
-            CssMediaConditionKind::GeneralEnclosed(_)
+            CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_))
         ));
-        assert_eq!(authored.serialize_cssom().unwrap().as_css(), expected);
+        assert_eq!(
+            authored
+                .serialize_cssom(Default::default())
+                .unwrap()
+                .as_css(),
+            expected
+        );
         assert_eq!(authored, original);
     }
     assert_eq!(
-        query("(FuTuRe:ACTIVE)").serialize().unwrap().as_css(),
+        query("(FuTuRe:ACTIVE)")
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         "(FuTuRe: ACTIVE)"
     );
     let authored = query("Future(\"A\")");
@@ -340,14 +372,20 @@ fn numeric_domains_do_not_turn_unknown_features_into_ignored_queries() {
     };
     assert!(matches!(
         condition.kind(),
-        CssMediaConditionKind::GeneralEnclosed(_)
+        CssConditionKind::Leaf(CssMediaLeaf::GeneralEnclosed(_))
     ));
     assert_eq!(
-        authored.serialize_cssom().unwrap().as_css(),
+        authored
+            .serialize_cssom(Default::default())
+            .unwrap()
+            .as_css(),
         "Future(\"A\")"
     );
     assert_eq!(
-        query("not (grid:2)").serialize_cssom().unwrap().as_css(),
+        query("not (grid:2)")
+            .serialize_cssom(Default::default())
+            .unwrap()
+            .as_css(),
         "not (grid: 2)"
     );
 }
@@ -361,9 +399,7 @@ fn cssom_quantity_equality_compares_lexical_bytes_without_unit_conversion() {
     // Each query has six visits and emits 19 bytes. Comparison shares I12/P12/B38.
     for (other, expected) in [(&same, true), (&equivalent_unit, false)] {
         assert_eq!(
-            first
-                .cssom_equals_with_limits(other, Limits::new(12, 12, 38))
-                .unwrap(),
+            first.cssom_equals(other, Limits::new(12, 12, 38)).unwrap(),
             expected
         );
         for (limits, kind) in [
@@ -371,12 +407,10 @@ fn cssom_quantity_equality_compares_lexical_bytes_without_unit_conversion() {
             (Limits::new(12, 11, 38), ResourceKind::ProjectionNodeLimit),
             (Limits::new(12, 12, 37), ResourceKind::ByteLimit),
         ] {
-            let error = first.cssom_equals_with_limits(other, limits).unwrap_err();
+            let error = first.cssom_equals(other, limits).unwrap_err();
             assert_eq!(resource_kind(&error), kind);
             assert_eq!(
-                first
-                    .cssom_equals_with_limits(other, Limits::new(12, 12, 38))
-                    .unwrap(),
+                first.cssom_equals(other, Limits::new(12, 12, 38)).unwrap(),
                 expected
             );
         }
@@ -384,7 +418,7 @@ fn cssom_quantity_equality_compares_lexical_bytes_without_unit_conversion() {
     assert_ne!(first, same);
     assert!(
         !query("(width:+001.5PX)")
-            .cssom_equals(&query("(width:1.5px)"))
+            .cssom_equals(&query("(width:1.5px)"), Default::default())
             .unwrap()
     );
     assert_eq!((first, same, equivalent_unit), originals);
@@ -393,14 +427,14 @@ fn cssom_quantity_equality_compares_lexical_bytes_without_unit_conversion() {
 #[test]
 fn feature_lists_share_resources_and_report_the_later_original_member() {
     let source = "/*😀*/\n(width:1px), (resolution:96dpi)";
-    let report = parse_media_query_list(source);
+    let report = CssMediaQueryList::parse(&CssParser::default(), source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let original = report.clone();
     let list = report.syntax();
     let expected = "(width: 1px), (resolution: 96dpi)";
     // One list aggregate plus two six-node feature graphs; 12 + 2 + 19 bytes.
     assert_eq!(
-        list.serialize_cssom_with_limits(Limits::new(13, 13, 33))
+        list.serialize_cssom(Limits::new(13, 13, 33))
             .unwrap()
             .as_css(),
         expected
@@ -415,24 +449,24 @@ fn feature_lists_share_resources_and_report_the_later_original_member() {
         // The first output and separator fit; the second opening token does not.
         (Limits::new(13, 13, 14), ResourceKind::ByteLimit),
     ] {
-        let error = list.serialize_cssom_with_limits(limits).unwrap_err();
+        let error = list.serialize_cssom(limits).unwrap_err();
         assert_eq!(resource_kind(&error), kind);
-        let CssValueOrigin::Parsed(origin) = error.origin() else {
+        let Some(CssValueOrigin::Parsed(origin)) = error.origin() else {
             panic!("later-member failure must retain its source");
         };
         assert_eq!(origin.source().as_str(), source);
         assert!(origin.span().start().byte_offset().value() >= source.find("(resolution").unwrap());
         assert_eq!(report, original);
         assert_eq!(
-            list.serialize_cssom_with_limits(Limits::new(13, 13, 33))
+            list.serialize_cssom(Limits::new(13, 13, 33))
                 .unwrap()
                 .as_css(),
             expected
         );
     }
     for limits in [Limits::new(7, 13, 33), Limits::new(13, 7, 33)] {
-        let error = list.serialize_cssom_with_limits(limits).unwrap_err();
-        assert_eq!(error.origin(), list.queries()[1].origin());
+        let error = list.serialize_cssom(limits).unwrap_err();
+        assert_eq!(error.origin(), Some(list.queries()[1].origin()));
     }
     assert_eq!(report, original);
 }
@@ -440,7 +474,7 @@ fn feature_lists_share_resources_and_report_the_later_original_member() {
 #[test]
 fn malformed_neighbor_recovery_keeps_feature_reports_and_atomic_resource_retries() {
     let source = "screen, ???, print";
-    let report = parse_media_query_list(source);
+    let report = CssMediaQueryList::parse(&CssParser::default(), source);
     let original = report.clone();
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
@@ -461,7 +495,7 @@ fn malformed_neighbor_recovery_keeps_feature_reports_and_atomic_resource_retries
     assert_eq!(
         report
             .syntax()
-            .serialize_cssom_with_limits(Limits::new(6, 8, 22))
+            .serialize_cssom(Limits::new(6, 8, 22))
             .unwrap()
             .as_css(),
         expected
@@ -471,26 +505,23 @@ fn malformed_neighbor_recovery_keeps_feature_reports_and_atomic_resource_retries
         (Limits::new(6, 7, 22), ResourceKind::ProjectionNodeLimit),
         (Limits::new(6, 8, 21), ResourceKind::ByteLimit),
     ] {
-        let error = report
-            .syntax()
-            .serialize_cssom_with_limits(limits)
-            .unwrap_err();
+        let error = report.syntax().serialize_cssom(limits).unwrap_err();
         assert_eq!(resource_kind(&error), kind);
         assert_eq!(report, original);
         assert_eq!(
             report
                 .syntax()
-                .serialize_cssom_with_limits(Limits::new(6, 8, 22))
+                .serialize_cssom(Limits::new(6, 8, 22))
                 .unwrap()
                 .as_css(),
             expected
         );
     }
     assert!(matches!(
-        report.syntax().serialize(),
-        Err(CssMediaSerializationError::RecoveredNever { .. })
+        report.syntax().serialize_tokens(Default::default()),
+        Err(ref error) if crate::css::support::is_recovered_media_failure(error)
     ));
-    let output = report.syntax().serialize_cssom().unwrap();
+    let output = report.syntax().serialize_cssom(Default::default()).unwrap();
     assert_eq!(
         output.origin_at(8).cloned(),
         Some(CssSerializedOrigin::Token(
@@ -499,7 +530,7 @@ fn malformed_neighbor_recovery_keeps_feature_reports_and_atomic_resource_retries
     );
     assert_eq!(report, original);
 
-    let single = parse_cssom_media_query(source);
+    let single = CssMediaQuery::parse_medium(&CssParser::default(), source);
     assert!(single.syntax().is_none());
     assert_eq!(single.diagnostics(), report.diagnostics());
 }

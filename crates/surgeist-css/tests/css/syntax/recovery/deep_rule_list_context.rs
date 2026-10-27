@@ -1,8 +1,8 @@
 //! Nested rule-list context remains semantic across bounded structural replay.
-use surgeist_css::{
-    CssErrorCode, CssRecoveryAction, CssRule, CssSelector, CssSheet, CssTokenKind, ErrorKind,
-    parse_sheet, validate_sheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::selector::CssSelector;
 
 fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
     let CssRule::Style(style) = rule else {
@@ -20,7 +20,11 @@ fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
         panic!("one retained declaration")
     };
     assert_eq!(
-        declaration.value_components().serialize().unwrap().as_css(),
+        declaration
+            .value_components()
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
         value
     );
     assert_eq!(
@@ -81,7 +85,7 @@ fn check_html_token(html: &str, kind: CssTokenKind) {
                 "@media all{".repeat(ancestors),
                 "}".repeat(ancestors)
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             (
                 ancestors,
                 ancestors + body_media_depth + 2,
@@ -95,7 +99,7 @@ fn check_html_token(html: &str, kind: CssTokenKind) {
     // Run the genuine root control before any nested assertion can fail.
     // At the real stylesheet root only, both HTML tokens are discarded.
     let source = format!("{} .kept{{color:blue}}", html_unit(html, 0));
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(
         report.is_clean(),
         "root control: {:?}",
@@ -109,7 +113,13 @@ fn check_html_token(html: &str, kind: CssTokenKind) {
     };
     assert_style(hidden, &source, "hidden", "red");
     assert_style(kept, &source, "kept", "blue");
-    assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
 
     for (ancestors, max_depth, unit, source, report) in cases {
         assert_nested_siblings(report.syntax(), &source, ancestors, max_depth);
@@ -127,14 +137,21 @@ fn check_html_token(html: &str, kind: CssTokenKind) {
             diagnostic.span().end().byte_offset().value(),
             start + unit.len()
         );
-        let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-            panic!("selector owns the qualified prelude")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidSelector,
+            "selector owns the qualified prelude"
+        );
         let token = detail.encountered().unwrap();
         assert_eq!(token.kind(), kind);
         assert_eq!(token.authored(), html);
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -159,7 +176,7 @@ fn check_root_only_statement(statement: &str, name: &str) {
                 "@media all{".repeat(depth),
                 "}".repeat(depth)
             );
-            let report = parse_sheet(&source);
+            let report = CssParser::default().parse_sheet(&source);
             (depth, source, report)
         })
         .collect();
@@ -179,23 +196,30 @@ fn check_root_only_statement(statement: &str, name: &str) {
             diagnostic.span().end().byte_offset().value(),
             start + statement.len()
         );
-        let ErrorKind::InvalidAtRulePlacement(detail) = diagnostic.error().kind() else {
-            panic!("nested placement owns rejection")
-        };
-        assert_eq!(detail.name().as_str(), name);
+        let detail = diagnostic.error();
         assert_eq!(
-            detail.expected_context().as_str(),
+            detail.code(),
+            CssErrorCode::InvalidAtRulePlacement,
+            "nested placement owns rejection"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), name);
+        assert_eq!(
+            detail.expectation().unwrap().as_str(),
             "the stylesheet top level"
         );
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
 
     // The same valid spelling is admitted in the actual initial root phase.
     let source = format!("{statement}.after{{color:red}}");
-    let report = parse_sheet(&source);
+    let report = CssParser::default().parse_sheet(&source);
     assert!(
         report.is_clean(),
         "root control: {:?}",
@@ -208,7 +232,7 @@ fn check_root_only_statement(statement: &str, name: &str) {
         ("import", CssRule::Import(import)) => {
             assert!(matches!(
                 import.target(),
-                surgeist_css::CssImportTarget::String(target) if target.as_str() == "theme.css"
+                surgeist_css::rule::CssImportTarget::String(target) if target.as_str() == "theme.css"
             ));
         }
         ("namespace", CssRule::Namespace(namespace)) => {
@@ -218,7 +242,13 @@ fn check_root_only_statement(statement: &str, name: &str) {
         _ => panic!("context-valid typed root owner"),
     }
     assert_style(after, &source, "after", "red");
-    assert_eq!(validate_sheet(&source).unwrap(), *report.syntax());
+    assert_eq!(
+        CssParser::default()
+            .parse_sheet(&source)
+            .into_validation_result()
+            .unwrap(),
+        *report.syntax()
+    );
 }
 
 #[test]

@@ -2,7 +2,70 @@
 //! inverse composites. This consumer preserves authored branches and field
 //! order; the numeric owner alone schedules and admits graph work slots.
 
-use super::*;
+use crate::color::CssColor;
+use crate::component::CssComponentValue;
+use crate::numeric::{CssAngleOrZero, CssCalculation, CssNumeric, CssNumericRoot, CssRange};
+#[cfg(test)]
+use crate::property::CssKnownPropertyValueRef;
+#[cfg(test)]
+use crate::serialization::CssSerializationLimits;
+#[cfg(test)]
+use crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind;
+use crate::serialization::specified_serialization::SpecifiedSerializationContext;
+use crate::specified_inverse::EqualityResult;
+#[cfg(test)]
+use crate::values::animation::CssEasingKeyword;
+use crate::values::animation::{
+    CssCubicBezier, CssCubicBezierX, CssEasing, CssEasingList, CssLinearEasing, CssLinearStop,
+    CssSteps,
+};
+use crate::values::background::{CssBackgroundPosition, CssBackgroundPositionList};
+use crate::values::border::CssBorderRadiusShorthand;
+use crate::values::box_model::{CssBoxSize, CssFlowTolerance, CssFlowToleranceRef, CssSizeValue};
+use crate::values::common::CssAutoOr;
+use crate::values::content::{
+    CssCounterStyleValue, CssCounterSymbolValue, CssListStyleTypeValue, CssSymbolsStyleValue,
+};
+use crate::values::effects::{
+    CssDropShadow, CssFilterAmount, CssFilterBlur, CssFilterFunction, CssFilterFunctionList,
+    CssFilterHueRotate, CssFilterImageInput, CssFilterImageInputRef,
+};
+use crate::values::font::{CssAbsoluteFontWeight, CssFontSize, CssFontStyle, CssFontWeight};
+use crate::values::image::{
+    CssAngularColorStop, CssAngularColorStopList, CssAngularColorStopListItem,
+    CssAngularColorStopPosition, CssColorStopList, CssColorStopListItem, CssConicGradient,
+    CssGradient, CssGradientColorStop, CssImage, CssImageValue, CssImageValueList,
+    CssLinearGradient, CssLinearGradientDirection, CssRadialEllipseSize, CssRadialGradient,
+    CssRadialSize,
+};
+use crate::values::layout::{
+    CssColumnCount, CssFlexBasisRef, CssFlexBasisValue, CssGridAutoRepeat,
+    CssGridAutoTrackComponent, CssGridAutoTrackList, CssGridFixedRepeatComponent,
+    CssGridFixedRepeatContent, CssGridFixedSize, CssGridGeneralTrackComponent,
+    CssGridGeneralTrackList, CssGridIntegerFixedRepeat, CssGridIntegerTrackRepeat, CssGridLine,
+    CssGridNameRepeat, CssGridSubgridComponent, CssGridTrackBreadth, CssGridTrackBreadthKind,
+    CssGridTrackList, CssGridTrackRepeatComponent, CssGridTrackRepeatContent, CssGridTrackSize,
+    CssGridTrackSizeKind, CssGridTrackSizeList,
+};
+use crate::values::position::{
+    CssBlockPosition, CssCartesianPosition, CssHorizontalPosition, CssInlinePosition,
+    CssNamedFlowPosition, CssPhysicalPosition, CssPosition, CssPositionList, CssPositionRef,
+    CssRelativeAxisPosition, CssRelativeFlowPosition, CssVerticalPosition,
+};
+use crate::values::shape::{
+    CssBasicShape, CssCircleRadius, CssCircleShape, CssEllipseRadii, CssEllipseRadius,
+    CssEllipseShape, CssInsetShape, CssInsetShapeOffsets, CssPolygonPoint, CssPolygonPointList,
+    CssPolygonShape, CssRectShape, CssShapeAbsoluteControlPoint, CssShapeAbsoluteControlPointRef,
+    CssShapeArc, CssShapeArcRadii, CssShapeCommand, CssShapeCommandList, CssShapeCoordinatePair,
+    CssShapeCurve, CssShapeCurveRef, CssShapeEndpoint, CssShapeFunction, CssShapeHorizontalLine,
+    CssShapeRelativeControlPoint, CssShapeSmooth, CssShapeSmoothRef, CssShapeVerticalLine,
+    CssXywhShape,
+};
+use crate::values::text::{CssLineHeight, CssTextDecorationThickness};
+use crate::values::transform::{
+    CssOffsetAnchor, CssOffsetPath, CssOffsetPathKind, CssOffsetPathRef, CssOffsetPathValue,
+    CssOffsetPosition, CssOffsetRotate, CssRay,
+};
 
 pub(crate) trait BoundedStructuralEquality {
     fn bounded_eq(
@@ -65,46 +128,34 @@ fn token_equal(a: &CssComponentValue, b: &CssComponentValue) -> bool {
     a.token_structural_eq_ignoring_origin(b)
         .expect("checked primitive numeric token")
 }
-macro_rules! numeric_equality {
-    ($($ty:ty),+ $(,)?) => { $(impl BoundedStructuralEquality for $ty {
-        fn bounded_eq(&self, other: &Self, context: &mut SpecifiedSerializationContext) -> EqualityResult {
-            match (self.literal_component(), other.literal_component()) {
-                (Some(a), Some(b)) => Ok(token_equal(a, b)),
-                (None, None) => self.calculation().expect("checked math").expression
-                    .specified_inverse_eq(&other.calculation().expect("checked math").expression, context),
-                _ => Ok(false),
+impl<T: CssNumericRoot, R: CssRange<T>> BoundedStructuralEquality for CssNumeric<T, R> {
+    fn bounded_eq(
+        &self,
+        other: &Self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> EqualityResult {
+        match (self.literal(), other.literal()) {
+            (Some(a), Some(b)) => {
+                Ok(a.structural_kind_eq(b) && token_equal(a.component(), b.component()))
             }
+            (None, None) => self
+                .calculation()
+                .expect("checked math")
+                .bounded_eq(other.calculation().expect("checked math"), context),
+            _ => Ok(false),
         }
-    })+ };
+    }
 }
-numeric_equality!(
-    CssSpecifiedNumber,
-    CssSpecifiedPercentage,
-    CssSpecifiedNonNegativeNumber,
-    CssSpecifiedNonNegativePercentage,
-    CssSpecifiedNonNegativeFlex,
-    CssFontObliqueAngle,
-    CssFontWeightNumber
-);
-macro_rules! length_equality {
-    ($($ty:ty),+ $(,)?) => { $(impl BoundedStructuralEquality for $ty {
-        fn bounded_eq(&self, other: &Self, context: &mut SpecifiedSerializationContext) -> EqualityResult {
-            if self.is_quirky_length() != other.is_quirky_length() { return Ok(false); }
-            match (self.literal_component(), other.literal_component()) {
-                (Some(a), Some(b)) => Ok(token_equal(a, b)),
-                (None, None) => self.calculation().expect("checked math").expression
-                    .specified_inverse_eq(&other.calculation().expect("checked math").expression, context),
-                _ => Ok(false),
-            }
-        }
-    })+ };
+impl<T: CssNumericRoot> BoundedStructuralEquality for CssCalculation<T> {
+    fn bounded_eq(
+        &self,
+        other: &Self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> EqualityResult {
+        self.expression
+            .specified_inverse_eq(&other.expression, context)
+    }
 }
-length_equality!(
-    CssSpecifiedLength,
-    CssSpecifiedNonNegativeLength,
-    CssSpecifiedLengthPercentage,
-    CssSpecifiedNonNegativeLengthPercentage
-);
 
 impl BoundedStructuralEquality for CssBoxSize {
     fn bounded_eq(
@@ -171,38 +222,6 @@ impl BoundedStructuralEquality for CssFlexBasisValue {
         }
     }
 }
-impl BoundedStructuralEquality for CssHintedNumberCalculation {
-    fn bounded_eq(
-        &self,
-        other: &Self,
-        context: &mut SpecifiedSerializationContext,
-    ) -> EqualityResult {
-        self.expression
-            .specified_inverse_eq(&other.expression, context)
-    }
-}
-impl BoundedStructuralEquality for CssAngleValue {
-    fn bounded_eq(
-        &self,
-        other: &Self,
-        context: &mut SpecifiedSerializationContext,
-    ) -> EqualityResult {
-        match (self.literal(), other.literal()) {
-            (Some(a), Some(b)) => {
-                Ok(a.unit() == b.unit() && token_equal(a.component(), b.component()))
-            }
-            (None, None) => self
-                .calculation()
-                .expect("checked angle math")
-                .expression
-                .specified_inverse_eq(
-                    &other.calculation().expect("checked angle math").expression,
-                    context,
-                ),
-            _ => Ok(false),
-        }
-    }
-}
 impl BoundedStructuralEquality for CssAngleOrZero {
     fn bounded_eq(
         &self,
@@ -212,24 +231,6 @@ impl BoundedStructuralEquality for CssAngleOrZero {
         match (self, other) {
             (Self::Angle(a), Self::Angle(b)) => a.bounded_eq(b, context),
             (Self::Zero(a), Self::Zero(b)) => Ok(token_equal(a.component(), b.component())),
-            _ => Ok(false),
-        }
-    }
-}
-impl BoundedStructuralEquality for CssPositiveIntegerValue {
-    fn bounded_eq(
-        &self,
-        other: &Self,
-        context: &mut SpecifiedSerializationContext,
-    ) -> EqualityResult {
-        match (self, other) {
-            (Self::Literal(a), Self::Literal(b)) => Ok(token_equal(
-                a.integer().component(),
-                b.integer().component(),
-            )),
-            (Self::Calculation(a), Self::Calculation(b)) => {
-                a.expression.specified_inverse_eq(&b.expression, context)
-            }
             _ => Ok(false),
         }
     }
@@ -245,15 +246,7 @@ impl BoundedStructuralEquality for CssGridLine {
                 if a.name() != b.name() {
                     return Ok(false);
                 }
-                match (a.value(), b.value()) {
-                    (CssIntegerValue::Literal(a), CssIntegerValue::Literal(b)) => {
-                        Ok(token_equal(a.component(), b.component()))
-                    }
-                    (CssIntegerValue::Calculation(a), CssIntegerValue::Calculation(b)) => {
-                        a.expression.specified_inverse_eq(&b.expression, context)
-                    }
-                    _ => Ok(false),
-                }
+                a.value().bounded_eq(b.value(), context)
             }
             (Self::Span(a), Self::Span(b)) => {
                 Ok(a.integer().bounded_eq(&b.integer(), context)? && a.name() == b.name())
@@ -401,7 +394,6 @@ branch_equality!(CssAbsoluteFontWeight; Number);
 branch_equality!(CssColumnCount; Count);
 branch_equality!(CssLineHeight; Number, HintedNumberCalculation, LengthPercentage);
 branch_equality!(CssTextDecorationThickness; Length);
-branch_equality!(CssOutlineWidth; Length);
 impl BoundedStructuralEquality for CssFontStyle {
     fn bounded_eq(
         &self,
@@ -430,7 +422,7 @@ impl BoundedStructuralEquality for CssFlowTolerance {
     }
 }
 getter_equality!(CssCubicBezierX; value: bounded);
-// The owning numeric_fields_eq compares y1/y2 before the x-coordinate carriers.
+// Compares y1/y2 before the x-coordinate carriers.
 getter_equality!(CssCubicBezier; y1: bounded, y2: bounded, x1: bounded, x2: bounded);
 getter_equality!(CssSteps; count: bounded, position: raw);
 impl BoundedStructuralEquality for CssLinearStop {
@@ -444,7 +436,7 @@ impl BoundedStructuralEquality for CssLinearStop {
             other.output().literal_component(),
         ) {
             (Some(left), Some(right)) => {
-                crate::specified_numeric::ordinary_literal_equal(left, right)
+                crate::numeric::specified_numeric::ordinary_literal_equal(left, right)
             }
             (None, None) => self
                 .output()
@@ -467,7 +459,7 @@ impl BoundedStructuralEquality for CssLinearStop {
         for (left, right) in self.inputs().iter().zip(other.inputs()) {
             let equal = match (left.literal_component(), right.literal_component()) {
                 (Some(left), Some(right)) => {
-                    crate::specified_numeric::ordinary_literal_equal(left, right)
+                    crate::numeric::specified_numeric::ordinary_literal_equal(left, right)
                 }
                 (None, None) => left
                     .calculation()
@@ -503,7 +495,7 @@ getter_equality!(CssPhysicalPosition; horizontal: bounded, vertical: bounded);
 getter_equality!(CssBackgroundPosition; horizontal: bounded, vertical: bounded);
 getter_equality!(CssNamedFlowPosition; block: bounded, inline: bounded);
 getter_equality!(CssRelativeFlowPosition; block: bounded, inline: bounded);
-getter_equality!(CssPhysicalPositionList; positions: bounded);
+getter_equality!(CssPositionList; positions: bounded);
 getter_equality!(CssBackgroundPositionList; positions: bounded);
 impl BoundedStructuralEquality for CssPosition {
     fn bounded_eq(
@@ -655,7 +647,18 @@ getter_equality!(CssInsetShape; offsets: bounded, round: bounded);
 getter_equality!(CssPolygonPoint; x: bounded, y: bounded);
 getter_equality!(CssPolygonPointList; points: bounded);
 getter_equality!(CssPolygonShape; round: bounded, fill_rule: raw, points: bounded);
-branch_equality!(CssRectShapeEdge; LengthPercentage);
+impl<T: BoundedStructuralEquality + PartialEq> BoundedStructuralEquality for CssAutoOr<T> {
+    fn bounded_eq(
+        &self,
+        other: &Self,
+        context: &mut SpecifiedSerializationContext,
+    ) -> EqualityResult {
+        match (self, other) {
+            (Self::Value(a), Self::Value(b)) => a.bounded_eq(b, context),
+            _ => Ok(self == other),
+        }
+    }
+}
 getter_equality!(CssRectShape; top: bounded, right: bounded, bottom: bounded, left: bounded, round: bounded);
 getter_equality!(CssXywhShape; x: bounded, y: bounded, width: bounded, height: bounded, round: bounded);
 getter_equality!(CssBorderRadiusShorthand; horizontal_values: bounded, authored_vertical_values: bounded);
@@ -792,7 +795,8 @@ mod linear_equality_tests {
     use super::*;
 
     fn easing(source: &str) -> CssEasing {
-        let report = crate::parse_style_attribute(&format!("transition-timing-function:{source}"));
+        let report = crate::CssParser::default()
+            .parse_block_contents(format!("transition-timing-function:{source}"));
         assert!(report.is_clean());
         let CssKnownPropertyValueRef::TransitionTimingFunction(value) = report.syntax()[0]
             .known()
@@ -802,7 +806,7 @@ mod linear_equality_tests {
         else {
             panic!("timing wrapper")
         };
-        value.timing_functions().values()[0].clone()
+        value.value().values()[0].clone()
     }
 
     #[test]
@@ -812,9 +816,8 @@ mod linear_equality_tests {
         // Each independent calc comparison schedules root, Sum and two leaves.
         // Authored stop/list carriers and exact literal comparisons add no slots.
         for projections in [8, 7, 8] {
-            let mut context = SpecifiedSerializationContext::new(
-                CssSpecifiedValueSerializationLimits::new(0, projections, 0),
-            );
+            let mut context =
+                SpecifiedSerializationContext::new(CssSerializationLimits::new(0, projections, 0));
             let result = left.bounded_eq(&right, &mut context);
             if projections == 8 {
                 assert!(result.unwrap());
@@ -829,8 +832,7 @@ mod linear_equality_tests {
 
     #[test]
     fn linear_ordinary_comparison_uses_exact_values_without_math_work() {
-        let mut context =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 0, 0));
+        let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 0, 0));
         assert!(
             easing("linear(+000.0 20e0%, 1e0)")
                 .bounded_eq(&easing("linear(0 20%, 1)"), &mut context)
@@ -850,8 +852,7 @@ mod linear_equality_tests {
 
     #[test]
     fn linear_shape_differences_stop_before_unreached_math() {
-        let mut context =
-            SpecifiedSerializationContext::new(CssSpecifiedValueSerializationLimits::new(0, 0, 0));
+        let mut context = SpecifiedSerializationContext::new(CssSerializationLimits::new(0, 0, 0));
         assert!(
             !easing("linear(0, calc(1 + 2))")
                 .bounded_eq(&easing("linear(0, 1, calc(1 + 2))"), &mut context)

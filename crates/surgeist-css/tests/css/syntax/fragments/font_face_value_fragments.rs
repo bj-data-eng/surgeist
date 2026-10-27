@@ -1,13 +1,20 @@
 //! Raw values use font-face grammar without inventing a descriptor-name occurrence.
 //! Unicode-range expectations follow CSS Syntax 3 sections 4.3.14 and 5.5.11.
 
-use surgeist_css::{
-    CssAbsoluteFontWeight, CssAuthoredFontFeatureSettings, CssComponentValue, CssErrorCode,
-    CssFontDisplay, CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value,
-    CssFontFaceFamily, CssFontFaceSource, CssFontFaceSourceList, CssFontFaceStyle,
-    CssFontFaceWeight, CssFontFaceWidth, CssFontLocalName, CssFontWeightNumber, CssFontWidth,
-    CssRecoveryAction, CssRule, CssSpecifiedNonNegativePercentage, CssUnicodeRange,
-    CssUnicodeRangeList, ErrorKind, parse_font_face_descriptor_value, parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssNonNegative, CssNumber, CssNumeric, CssPercentage};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue as Value;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontDisplay, CssFontFaceFamily, CssFontFaceSource,
+    CssFontFaceSourceList, CssFontLocalName, CssUnicodeRange, CssUnicodeRangeList,
+};
+use surgeist_css::values::font::{
+    CssAbsoluteFontWeight, CssAuthoredFontFeatureSettings, CssFontFaceStyle, CssFontFaceWeight,
+    CssFontFaceWidth, CssFontWeightRange, CssFontWidth,
 };
 
 fn local_x() -> CssFontFaceSourceList {
@@ -25,7 +32,8 @@ fn root_delimiters_after_font_functions_keep_their_own_token_origin() {
         ("local(X){}", 8, "{"),
         ("/*😀*/\r\nlocal(\"X\");", 20, ";"),
     ] {
-        let report = parse_font_face_descriptor_value(source, Kind::Src);
+        let report =
+            CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), source, Kind::Src);
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         let [diagnostic] = report.diagnostics() else {
             panic!("one outer rejection")
@@ -36,9 +44,12 @@ fn root_delimiters_after_font_functions_keep_their_own_token_origin() {
             offset,
             "{source}"
         );
-        let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-            panic!("descriptor error")
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidDescriptorValue,
+            "descriptor error"
+        );
         assert_eq!(detail.encountered().unwrap().authored(), token, "{source}");
     }
 }
@@ -57,13 +68,13 @@ fn every_descriptor_kind_returns_its_source_neutral_typed_value() {
             "400 700",
             Value::FontWeight(CssFontFaceWeight::Range {
                 start: CssAbsoluteFontWeight::Number(
-                    CssFontWeightNumber::try_from_component(
+                    CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
                         CssComponentValue::try_number("400").unwrap(),
                     )
                     .unwrap(),
                 ),
                 end: Some(CssAbsoluteFontWeight::Number(
-                    CssFontWeightNumber::try_from_component(
+                    CssNumeric::<CssNumber, CssFontWeightRange>::try_from_component(
                         CssComponentValue::try_number("700").unwrap(),
                     )
                     .unwrap(),
@@ -74,7 +85,7 @@ fn every_descriptor_kind_returns_its_source_neutral_typed_value() {
             Kind::FontStyle,
             "italic",
             Value::FontStyle(CssFontFaceStyle::Keyword(
-                surgeist_css::CssFontStyleKeyword::Italic,
+                surgeist_css::values::font::CssFontStyleKeyword::Italic,
             )),
         ),
         (
@@ -82,13 +93,13 @@ fn every_descriptor_kind_returns_its_source_neutral_typed_value() {
             "75% 125%",
             Value::FontWidth(CssFontFaceWidth::Range {
                 start: CssFontWidth::Percentage(
-                    CssSpecifiedNonNegativePercentage::try_from_component(
+                    CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
                         CssComponentValue::try_token("75%").unwrap(),
                     )
                     .unwrap(),
                 ),
                 end: Some(CssFontWidth::Percentage(
-                    CssSpecifiedNonNegativePercentage::try_from_component(
+                    CssNumeric::<CssPercentage, CssNonNegative>::try_from_component(
                         CssComponentValue::try_token("125%").unwrap(),
                     )
                     .unwrap(),
@@ -115,12 +126,12 @@ fn every_descriptor_kind_returns_its_source_neutral_typed_value() {
         ),
     ];
     for (kind, source, expected) in cases {
-        let report = parse_font_face_descriptor_value(source, kind);
-        assert!(report.is_clean(), "{}: {report:?}", kind.css_name());
+        let report = CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), source, kind);
+        assert!(report.is_clean(), "{}: {report:?}", kind.as_str());
         assert_eq!(report.syntax(), &Some(expected.into()));
         assert_eq!(report.syntax().as_ref().unwrap().kind(), kind);
-        let empty = parse_font_face_descriptor_value("", kind);
-        assert!(empty.syntax().is_none(), "{}: {empty:?}", kind.css_name());
+        let empty = CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), "", kind);
+        assert!(empty.syntax().is_none(), "{}: {empty:?}", kind.as_str());
         assert!(
             empty
                 .diagnostics()
@@ -140,7 +151,11 @@ fn incomplete_unicode_range_names_the_last_authored_raw_token() {
         ("u", Some("u"), 0, 0),
         ("/*😀*/\r\n/*é*/U+", Some("+"), 1, 6),
     ] {
-        let report = parse_font_face_descriptor_value(source, Kind::UnicodeRange);
+        let report = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            source,
+            Kind::UnicodeRange,
+        );
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         let diagnostic = report
             .diagnostics()
@@ -160,13 +175,16 @@ fn incomplete_unicode_range_names_the_last_authored_raw_token() {
         assert_eq!(diagnostic.error().position().column().value(), column);
         assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
         assert_eq!(diagnostic.span().end().byte_offset().value(), source.len());
-        let ErrorKind::InvalidDescriptorValue(detail) = diagnostic.error().kind() else {
-            panic!("typed descriptor error");
-        };
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidDescriptorValue,
+            "typed descriptor error"
+        );
         assert_eq!(
             detail
                 .encountered()
-                .map(surgeist_css::CssTokenSummary::authored),
+                .map(surgeist_css::diagnostic::CssTokenSummary::authored),
             last,
             "{source:?}"
         );
@@ -176,11 +194,15 @@ fn incomplete_unicode_range_names_the_last_authored_raw_token() {
 #[test]
 fn unicode_range_values_need_no_surrounding_font_face_and_keep_original_token_positions() {
     let source = " /*x*/ U+41-5A, u+? ";
-    let report = parse_font_face_descriptor_value(source, Kind::UnicodeRange);
+    let report = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        source,
+        Kind::UnicodeRange,
+    );
     assert!(report.is_clean(), "{report:?}");
-    let Some(surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(Value::UnicodeRange(
-        ranges,
-    ))) = report.syntax()
+    let Some(surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::Ordinary(
+        Value::UnicodeRange(ranges),
+    )) = report.syntax()
     else {
         panic!("typed ranges");
     };
@@ -192,7 +214,11 @@ fn unicode_range_values_need_no_surrounding_font_face_and_keep_original_token_po
         ]
     );
     let source = "/*😀*/\r\n/*é*/?";
-    let report = parse_font_face_descriptor_value(source, Kind::UnicodeRange);
+    let report = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        source,
+        Kind::UnicodeRange,
+    );
     assert!(report.syntax().is_none());
     let diagnostic = report
         .diagnostics()
@@ -216,7 +242,8 @@ fn raw_descriptor_boundaries_reject_annotations_and_delimiters_before_src_recove
         "local(X),bad()!important",
         "local(X);font-display:swap",
     ] {
-        let report = parse_font_face_descriptor_value(source, Kind::Src);
+        let report =
+            CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), source, Kind::Src);
         assert!(report.syntax().is_none(), "{source}: {report:?}");
         assert!(
             report
@@ -237,7 +264,8 @@ fn src_member_recovery_and_implicit_closures_commit_only_retained_components() {
     // Fonts 4 §4.3.1 validates comma-separated members independently. The
     // matched block is invalid font-src data, so it is discarded as a member.
     for source in ["local(X),bad()", "local(X),bad(", "local(X),{}"] {
-        let report = parse_font_face_descriptor_value(source, Kind::Src);
+        let report =
+            CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), source, Kind::Src);
         assert_eq!(
             report.syntax(),
             &Some(Value::Src(local_x()).into()),
@@ -259,24 +287,29 @@ fn src_member_recovery_and_implicit_closures_commit_only_retained_components() {
     }
     // Checked construction cannot silently recover that same original input.
     let source = "local(X),{}";
-    let error = surgeist_css::CssAuthoredFontFaceDescriptorValue::try_from_components(
-        Kind::Src,
-        surgeist_css::parse_component_values(source).unwrap(),
-    )
-    .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        surgeist_css::CssFontFaceValueErrorKind::Grammar(_)
-    ));
-    let surgeist_css::CssSerializedOrigin::Token(surgeist_css::CssValueOrigin::Parsed(origin)) =
-        error.origin()
+    let error =
+        surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::try_from_components(
+            Kind::Src,
+            surgeist_css::component::CssComponentValues::parse(
+                &surgeist_css::CssParser::default(),
+                source,
+            )
+            .unwrap(),
+            Default::default(),
+        )
+        .unwrap_err();
+    assert!(error.diagnostic().is_some());
+    let surgeist_css::component::CssSerializedOrigin::Token(
+        surgeist_css::component::CssValueOrigin::Parsed(origin),
+    ) = error.origin()
     else {
         panic!("the failed source member retains its real token origin");
     };
     assert_eq!(origin.source().as_str(), source);
     assert_eq!(origin.span().start().byte_offset().value(), 9);
     for source in ["bad()", "bad("] {
-        let report = parse_font_face_descriptor_value(source, Kind::Src);
+        let report =
+            CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), source, Kind::Src);
         assert!(report.syntax().is_none());
         assert!(
             report
@@ -291,7 +324,8 @@ fn src_member_recovery_and_implicit_closures_commit_only_retained_components() {
         )));
     }
     let source = "local(X";
-    let report = parse_font_face_descriptor_value(source, Kind::Src);
+    let report =
+        CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), source, Kind::Src);
     assert_eq!(report.syntax(), &Some(Value::Src(local_x()).into()));
     let closure = report
         .diagnostics()
@@ -309,7 +343,8 @@ fn src_member_recovery_and_implicit_closures_commit_only_retained_components() {
 #[test]
 fn descriptor_resource_failure_retains_its_stop_action() {
     let source = format!("{}x{}", "f(".repeat(300), ")".repeat(300));
-    let report = parse_font_face_descriptor_value(&source, Kind::Src);
+    let report =
+        CssAuthoredFontFaceDescriptorValue::parse(&CssParser::default(), &source, Kind::Src);
     assert!(report.syntax().is_none());
     assert!(
         report
@@ -328,7 +363,7 @@ fn descriptor_resource_failure_retains_its_stop_action() {
 #[test]
 fn stylesheet_occurrences_keep_real_names_and_last_valid_values() {
     let source = "@font-face{FONT-DISPLAY:swap;font-display:block;unicode-range:u+?}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
     let [CssRule::FontFace(face)] = report.syntax().rules() else {
         panic!("font face");
@@ -337,9 +372,9 @@ fn stylesheet_occurrences_keep_real_names_and_last_valid_values() {
     let display = face.descriptors().effective(Kind::FontDisplay).unwrap();
     assert!(matches!(
         display.value(),
-        surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(Value::FontDisplay(
-            CssFontDisplay::Block
-        ))
+        surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::Ordinary(
+            Value::FontDisplay(CssFontDisplay::Block)
+        )
     ));
     assert_eq!(
         display.position().unwrap().byte_offset().value(),

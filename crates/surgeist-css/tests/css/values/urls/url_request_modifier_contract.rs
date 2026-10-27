@@ -5,12 +5,45 @@
 //! Fetch execution, CORS policy and resource resolution belong downstream.
 
 use crate::css::support::check_property_text as checked;
+use crate::css::support::failure_classes::SerializationFailure;
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::background_image_url as parsed_url;
 use crate::css::support::value_assertions::url_consumer_text as consumer_value;
 use crate::css::support::value_assertions::{
     assert_first_property_diagnostic, assert_property_rejected,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::rule::color_profile::{
+    CssColorProfileDescriptorKind, CssColorProfileDescriptorValue,
+    CssColorProfileDescriptorValueRef,
+};
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorKind, CssCounterStyleDescriptorValue,
+};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFontFaceSource, CssFontTechHint,
+};
+use surgeist_css::rule::{CssImportRule, CssImportTarget, CssRule};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::{
+    CssIdent, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
+};
+use surgeist_css::values::image::CssImageValue;
 
 const REFERRER_POLICIES: [&str; 8] = [
     "no-referrer",
@@ -79,7 +112,7 @@ fn background_url(declaration: &CssDeclaration) -> &CssUrl {
     else {
         panic!("ordinary background image")
     };
-    let [CssImageValue::Url(url)] = images.images().images() else {
+    let [CssImageValue::Url(url)] = images.value().images() else {
         panic!("one URL")
     };
     url
@@ -115,7 +148,7 @@ fn all_published_arguments_are_admitted_in_both_quoted_url_forms() {
                     CssUrlFunction::Src
                 }
             );
-            assert_eq!(url.serialize_specified().unwrap(), text);
+            assert_eq!(url.serialize_specified(Default::default()).unwrap(), text);
             let checked = checked(CssKnownProperty::BackgroundImage, &text).unwrap();
             assert_eq!(background_url(&checked), &url);
         }
@@ -131,12 +164,18 @@ fn known_request_modifiers_share_admission_across_all_property_consumers() {
             );
             let value = consumer_value(property, &url);
             let source = format!("{}:{value}!important", property.canonical_name());
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
             assert_eq!(report.syntax().len(), 1, "{source}");
             assert_eq!(report.syntax()[0].known().unwrap().property(), property);
             assert_eq!(report.syntax()[0].importance(), CssImportance::Important);
-            assert!(validate_style_attribute(&source).is_ok(), "{source}");
+            assert!(
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .is_ok(),
+                "{source}"
+            );
             assert!(checked(property, &value).is_ok(), "{source}");
         }
     }
@@ -149,7 +188,7 @@ fn missing_extra_wrong_category_and_malformed_known_arguments_drop_whole_declara
             let source = format!(
                 "color:red;background-image:{function}(\"asset\" {modifier})!important;width:2px"
             );
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(
                 report.syntax().len(),
                 2,
@@ -173,7 +212,11 @@ fn missing_extra_wrong_category_and_malformed_known_arguments_drop_whole_declara
                 CssErrorCode::InvalidPropertyValue
             );
             assert_eq!(
-                validate_style_attribute(&source).unwrap_err().diagnostics(),
+                CssParser::default()
+                    .parse_block_contents(&source)
+                    .into_validation_result()
+                    .unwrap_err()
+                    .diagnostics(),
                 report.diagnostics(),
                 "{source}"
             );
@@ -191,7 +234,7 @@ fn every_property_consumer_rejects_invalid_recognized_modifier_arguments() {
         ] {
             let value = consumer_value(property, &format!("src(\"asset\" {modifier})"));
             let source = format!("color:red;{}:{value};width:2px", property.canonical_name());
-            let report = parse_style_attribute(&source);
+            let report = CssParser::default().parse_block_contents(&source);
             assert_eq!(report.syntax().len(), 2, "{source}");
             // Values 5 request URL modifiers: the invalid modifier function is
             // responsible in every consumer.
@@ -210,10 +253,7 @@ fn checked_input_rejects_every_invalid_known_argument_without_losing_origin() {
     for modifier in INVALID_MODIFIERS {
         let text = format!("src(\"asset\" {modifier})");
         let error = checked(CssKnownProperty::BackgroundImage, &text).unwrap_err();
-        assert!(
-            matches!(error.kind(), CssPropertyValueErrorKind::Grammar(_)),
-            "{text}: {error:?}"
-        );
+        assert!(error.code().is_some(), "{text}: {error:?}");
         let CssSerializedOrigin::Token(CssValueOrigin::Parsed(origin)) = error.origin() else {
             panic!("original parsed token origin: {text}: {error:?}")
         };
@@ -266,7 +306,7 @@ fn imports_reject_invalid_known_modifiers_atomically_and_keep_following_rules() 
         let source = format!(
             "@import src(\"theme.css\" {modifier}) layer(theme) screen;.after{{color:red}}"
         );
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             matches!(report.syntax().rules(), [CssRule::Style(_)]),
             "{source}: {:?}",
@@ -278,16 +318,26 @@ fn imports_reject_invalid_known_modifiers_atomically_and_keep_following_rules() 
             CssRecoveryAction::DropAtRule
         );
         assert_eq!(
-            validate_sheet(&source).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_sheet(&source)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
-        assert!(matches!(
+        assert!(
             CssImportRule::try_from_components(
-                parse_component_values(&source[..source.find(".after").unwrap()]).unwrap(),
-                &CssNamespaceContext::default()
-            ),
-            Err(CssImportConstructionError::InvalidRuleGrammar { .. })
-        ));
+                CssComponentValues::parse(
+                    &CssParser::default(),
+                    &source[..source.find(".after").unwrap()]
+                )
+                .unwrap(),
+                &CssNamespaceContext::default(),
+                Default::default(),
+            )
+            .as_ref()
+            .is_err_and(|error| error.is_invalid_rule_grammar())
+        );
     }
 }
 
@@ -295,7 +345,11 @@ fn imports_reject_invalid_known_modifiers_atomically_and_keep_following_rules() 
 fn font_sources_reject_invalid_known_modifiers_at_the_source_item_boundary() {
     for modifier in INVALID_MODIFIERS {
         let value = format!("src(\"bad.woff\" {modifier}),url(\"good.woff\" integrity(\"hash\"))");
-        let report = parse_font_face_descriptor_value(&value, CssFontFaceDescriptorKind::Src);
+        let report = CssAuthoredFontFaceDescriptorValue::parse(
+            &CssParser::default(),
+            &value,
+            CssFontFaceDescriptorKind::Src,
+        );
         assert!(!report.is_clean(), "{value}");
         let CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::Src(sources)) =
             report.syntax().as_ref().unwrap()
@@ -312,13 +366,11 @@ fn font_sources_reject_invalid_known_modifiers_at_the_source_item_boundary() {
         );
         let error = CssAuthoredFontFaceDescriptorValue::try_from_components(
             CssFontFaceDescriptorKind::Src,
-            parse_component_values(&value).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), &value).unwrap(),
+            Default::default(),
         )
         .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssFontFaceValueErrorKind::Grammar(_)),
-            "{value}: {error:?}"
-        );
+        assert!(error.diagnostic().is_some(), "{value}: {error:?}");
     }
 }
 
@@ -326,7 +378,12 @@ fn font_sources_reject_invalid_known_modifiers_at_the_source_item_boundary() {
 fn color_profile_src_uses_the_shared_known_modifier_grammar() {
     let valid = "src(\"profile.icc\" crossorigin(use-credentials) integrity(\"hash\") referrerpolicy(same-origin))";
     assert!(
-        parse_color_profile_descriptor_value(valid, CssColorProfileDescriptorKind::Src).is_clean()
+        CssColorProfileDescriptorValue::parse(
+            &CssParser::default(),
+            valid,
+            CssColorProfileDescriptorKind::Src
+        )
+        .is_clean()
     );
     for modifier in [
         "crossorigin(credentialless)",
@@ -334,8 +391,11 @@ fn color_profile_src_uses_the_shared_known_modifier_grammar() {
         "referrerpolicy(default)",
     ] {
         let text = format!("src(\"profile.icc\" {modifier})");
-        let report =
-            parse_color_profile_descriptor_value(&text, CssColorProfileDescriptorKind::Src);
+        let report = CssColorProfileDescriptorValue::parse(
+            &CssParser::default(),
+            &text,
+            CssColorProfileDescriptorKind::Src,
+        );
         assert!(report.syntax().is_none(), "{text}");
         assert!(!report.is_clean());
     }
@@ -372,18 +432,21 @@ fn unknown_extensions_bare_identifiers_and_repetition_remain_ordered_authored_sy
     let text = r##"src("asset" crossorigin integrity referrerpolicy future() future([x] f(1,"s")) crossorigin(anonymous) crossorigin(use-credentials) integrity("one") integrity("two"))"##;
     let url = parsed_url(text);
     assert_eq!(url.modifiers().len(), 9);
-    assert_eq!(url.serialize_specified().unwrap(), text);
+    assert_eq!(url.serialize_specified(Default::default()).unwrap(), text);
     assert_eq!(
         one_function(&parsed_url(r##"url("asset" integrity-extra(hash))"##)).name(),
         "integrity-extra"
     );
-    assert_eq!(parsed_url(&url.serialize_specified().unwrap()), url);
+    assert_eq!(
+        parsed_url(&url.serialize_specified(Default::default()).unwrap()),
+        url
+    );
 }
 
 #[test]
 fn modifier_arguments_keep_decoded_values_order_and_original_token_spans() {
     let source = r##"background-image:SRC("\23 asset" integrity("sha\32 56") crossorigin(anonymous) referrerpolicy(origin))!important"##;
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let declaration = &report.syntax()[0];
     assert_eq!(declaration.importance(), CssImportance::Important);
@@ -429,8 +492,11 @@ fn modifier_arguments_keep_decoded_values_order_and_original_token_spans() {
 
 #[test]
 fn checked_known_arguments_preserve_programmatic_origins() {
-    let arguments =
-        CssComponentValues::try_new(vec![CssComponentValue::try_string("hash").unwrap()]).unwrap();
+    let arguments = CssComponentValues::try_new(
+        vec![CssComponentValue::try_string("hash").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     let modifier =
         CssUrlModifierFunction::try_new(CssIdent::try_new("integrity").unwrap(), arguments)
             .unwrap();
@@ -444,7 +510,7 @@ fn checked_known_arguments_preserve_programmatic_origins() {
         vec![CssUrlModifier::Function(modifier)],
     );
     assert_eq!(
-        url.serialize_specified().unwrap(),
+        url.serialize_specified(Default::default()).unwrap(),
         "src(\"#asset\" integrity(\"hash\"))"
     );
 }
@@ -457,29 +523,40 @@ fn strict_pending_reentry_rejects_bad_known_arguments_and_is_retryable() {
         CssKnownProperty::MaskImage,
     ] {
         let authored = checked(property, "src(var(--asset))").unwrap();
-        let CssExpansion::Pending(pending) = expand_declaration(&authored).unwrap() else {
+        let CssExpansion::Pending(pending) = authored.expand().unwrap() else {
             panic!("pending URL")
         };
         for modifier in INVALID_MODIFIERS {
-            let replacement =
-                parse_component_values(&format!("src(\"asset\" {modifier})")).unwrap();
+            let replacement = CssComponentValues::parse(
+                &CssParser::default(),
+                format!("src(\"asset\" {modifier})"),
+            )
+            .unwrap();
             assert!(
-                matches!(
-                    pending.reenter(replacement).unwrap_err().kind(),
-                    CssExpansionErrorKind::InvalidReplacement(_)
-                ),
+                pending
+                    .reenter(replacement)
+                    .unwrap_err()
+                    .replacement_error()
+                    .is_some(),
                 "{modifier}"
             );
             assert!(pending.source().same_occurrence(&authored));
         }
-        assert!(matches!(
+        assert!(
             pending
-                .reenter(parse_component_values("src(\"asset\" integrity(var(--hash)))").unwrap())
+                .reenter(
+                    CssComponentValues::parse(
+                        &CssParser::default(),
+                        "src(\"asset\" integrity(var(--hash)))"
+                    )
+                    .unwrap()
+                )
                 .unwrap_err()
-                .kind(),
-            CssExpansionErrorKind::ResidualSubstitution
-        ));
-        let replacement = parse_component_values("src(\"asset\" integrity(\"hash\"))").unwrap();
+                .is_residual_substitution()
+        );
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), "src(\"asset\" integrity(\"hash\"))")
+                .unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("completed contribution")
@@ -502,7 +579,7 @@ fn known_argument_comments_and_whitespace_preserve_the_single_significant_token(
         let text = format!("url(\"asset\" {modifier})");
         let url = parsed_url(&text);
         assert!(checked(CssKnownProperty::BackgroundImage, &text).is_ok());
-        assert_eq!(url.serialize_specified().unwrap(), text);
+        assert_eq!(url.serialize_specified(Default::default()).unwrap(), text);
     }
     for modifier in [
         "crossorigin(anony/**/mous)",
@@ -527,50 +604,43 @@ fn known_modifiers_share_cumulative_specified_output_budgets_atomically() {
     let before = url.clone();
     // One URL, one target, and three pairs of modifier/function-argument nodes.
     assert_eq!(
-        url.serialize_specified_with_limits(CssSpecifiedValueSerializationLimits::new(
-            8,
-            8,
-            text.len()
-        ))
-        .unwrap(),
+        url.serialize_specified(CssSerializationLimits::new(8, 8, text.len()))
+            .unwrap(),
         text
     );
     for (limits, kind) in [
         (
-            CssSpecifiedValueSerializationLimits::new(7, 8, text.len()),
-            CssSpecifiedValueSerializationErrorKind::InputNodeLimit,
+            CssSerializationLimits::new(7, 8, text.len()),
+            SerializationFailure::InputNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(8, 7, text.len()),
-            CssSpecifiedValueSerializationErrorKind::ProjectionNodeLimit,
+            CssSerializationLimits::new(8, 7, text.len()),
+            SerializationFailure::ProjectionNodeLimit,
         ),
         (
-            CssSpecifiedValueSerializationLimits::new(8, 8, text.len() - 1),
-            CssSpecifiedValueSerializationErrorKind::ByteLimit,
+            CssSerializationLimits::new(8, 8, text.len() - 1),
+            SerializationFailure::ByteLimit,
         ),
     ] {
         assert_eq!(
-            url.serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&url.serialize_specified(limits).unwrap_err()),
             kind
         );
         assert_eq!(url, before);
     }
-    assert_eq!(url.serialize_specified().unwrap(), text);
+    assert_eq!(url.serialize_specified(Default::default()).unwrap(), text);
     assert_eq!(parsed_url(text), url);
 }
 
 #[test]
 fn normalization_preserves_request_modifiers_and_has_atomic_cumulative_limits() {
     let source = ".x{background-image:src(\"#asset\" integrity(\"hash\"));mask-image:url(\"asset\" referrerpolicy(origin))}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean());
-    let normalized = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
-    )
-    .unwrap();
+    let normalized = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap())
+        .unwrap();
     let [
         CssNormalizedItem::Rule(_),
         CssNormalizedItem::Declaration(first),
@@ -586,31 +656,24 @@ fn normalization_preserves_request_modifiers_and_has_atomic_cumulative_limits() 
     assert!(second.source().same_occurrence(&style.declarations()[1]));
     assert_eq!(
         background_url(first.source())
-            .serialize_specified()
+            .serialize_specified(Default::default())
             .unwrap(),
         "src(\"#asset\" integrity(\"hash\"))"
     );
-    let error = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 2, 1).unwrap(),
-    )
-    .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssNormalizationErrorKind::LimitExceeded {
-            resource: CssNormalizationResource::Contributions,
-            limit: 1
-        }
-    ));
+    let error = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 1).unwrap())
+        .unwrap_err();
+    assert!(error.exhausted_limit() == Some((CssNormalizationResource::Contributions, 1)));
     assert_eq!(report.syntax().rules().len(), 1);
-    assert!(normalize_sheet(report.syntax()).is_ok());
+    assert!(report.syntax().normalize(Default::default()).is_ok());
 }
 
 #[test]
 fn structural_recovery_and_checked_component_failures_remain_typed() {
     for modifier in ["integrity([)", "crossorigin([)", "referrerpolicy({)"] {
         let source = format!("background-image:src(\"asset\" {modifier});width:2px");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(!report.is_clean(), "{source}");
         assert!(
             !report.syntax().iter().any(|d| d
@@ -619,21 +682,24 @@ fn structural_recovery_and_checked_component_failures_remain_typed() {
             "{source}"
         );
     }
-    assert_eq!(
-        CssComponentValue::try_token("a b").unwrap_err().kind(),
-        CssComponentValueErrorKind::InvalidToken
+    assert!(
+        CssComponentValue::try_token("a b")
+            .unwrap_err()
+            .is_invalid_token()
     );
-    let recovered = parse_component_values("src(\"asset\" integrity(\"hash\")) f(").unwrap();
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
+    let recovered = CssComponentValues::parse(
+        &CssParser::default(),
+        "src(\"asset\" integrity(\"hash\")) f(",
+    )
+    .unwrap();
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage)),
         recovered,
         CssImportance::Normal,
     )
     .unwrap_err();
-    assert!(matches!(
-        error.kind(),
-        CssPropertyValueErrorKind::Grammar(_)
-    ));
+    assert!(error.code().is_some());
 }
 
 #[test]
@@ -644,7 +710,7 @@ fn integrity_requires_a_string_argument() {
         "integrity(\"one\" \"two\")",
     ] {
         let source = format!("background-image:url(\"asset\" {modifier})");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert!(
             report.syntax().is_empty(),
             "known grammar must reject {modifier}"
@@ -665,30 +731,35 @@ fn checked_programmatic_url_components_reject_invalid_known_function_arguments()
         ("integrity", "hash"),
         ("referrerpolicy", "default"),
     ] {
-        let arguments =
-            CssComponentValues::try_new(vec![CssComponentValue::try_ident(argument).unwrap()])
-                .unwrap();
+        let arguments = CssComponentValues::try_new(
+            vec![CssComponentValue::try_ident(argument).unwrap()],
+            Default::default(),
+        )
+        .unwrap();
         let modifier = CssComponentValue::try_function(name, arguments).unwrap();
         let url = CssComponentValue::try_function(
             "src",
-            CssComponentValues::try_new(vec![
-                CssComponentValue::try_string("asset").unwrap(),
-                CssComponentValue::try_token(" ").unwrap(),
-                modifier,
-            ])
+            CssComponentValues::try_new(
+                vec![
+                    CssComponentValue::try_string("asset").unwrap(),
+                    CssComponentValue::try_token(" ").unwrap(),
+                    modifier,
+                ],
+                Default::default(),
+            )
             .unwrap(),
         )
         .unwrap();
-        let error = parse_property_value(
-            CssPropertyNameRef::Known(CssKnownProperty::BackgroundImage),
-            CssComponentValues::try_new(vec![url]).unwrap(),
+        let error = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::BackgroundImage,
+            )),
+            CssComponentValues::try_new(vec![url], Default::default()).unwrap(),
             CssImportance::Normal,
         )
         .unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            CssPropertyValueErrorKind::Grammar(_)
-        ));
+        assert!(error.code().is_some());
         assert!(matches!(
             error.origin(),
             CssSerializedOrigin::Token(CssValueOrigin::Programmatic)
@@ -704,7 +775,7 @@ fn valid_import_font_and_profile_fronts_preserve_the_ordered_shared_url() {
         );
         let expected = parsed_url(&text);
         let source = format!("@import {text} layer(theme) screen;");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [CssRule::Import(import)] = report.syntax().rules() else {
             panic!("one import")
@@ -716,8 +787,9 @@ fn valid_import_font_and_profile_fronts_preserve_the_ordered_shared_url() {
         assert!(import.layer().is_some());
         assert!(import.media().is_some());
         let checked_import = CssImportRule::try_from_components(
-            parse_component_values(&source).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), &source).unwrap(),
             &CssNamespaceContext::default(),
+            Default::default(),
         )
         .unwrap();
         let CssImportTarget::Url(target) = checked_import.target() else {
@@ -726,7 +798,12 @@ fn valid_import_font_and_profile_fronts_preserve_the_ordered_shared_url() {
         assert_eq!(target.url(), &expected);
         let font = CssAuthoredFontFaceDescriptorValue::try_from_components(
             CssFontFaceDescriptorKind::Src,
-            parse_component_values(&format!("{text} format(\"woff2\") tech(variations)")).unwrap(),
+            CssComponentValues::parse(
+                &CssParser::default(),
+                format!("{text} format(\"woff2\") tech(variations)"),
+            )
+            .unwrap(),
+            Default::default(),
         )
         .unwrap();
         let CssAuthoredFontFaceDescriptorValue::Ordinary(CssFontFaceDescriptorValue::Src(sources)) =
@@ -741,7 +818,8 @@ fn valid_import_font_and_profile_fronts_preserve_the_ordered_shared_url() {
         assert_eq!(font.tech(), &[CssFontTechHint::Variations]);
         let profile = CssColorProfileDescriptorValue::try_new(
             CssColorProfileDescriptorKind::Src,
-            parse_component_values(&text).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), &text).unwrap(),
+            Default::default(),
         )
         .unwrap();
         let CssColorProfileDescriptorValueRef::Src(url) = profile.view() else {
@@ -765,19 +843,22 @@ fn valid_import_font_and_profile_fronts_preserve_the_ordered_shared_url() {
 fn profile_pending_reentry_rejects_invalid_known_modifiers_and_allows_retry() {
     let pending = CssColorProfileDescriptorValue::try_new(
         CssColorProfileDescriptorKind::Src,
-        parse_component_values("env(profile)").unwrap(),
+        CssComponentValues::parse(&CssParser::default(), "env(profile)").unwrap(),
+        Default::default(),
     )
     .unwrap();
     for modifier in INVALID_MODIFIERS {
         let error = pending
             .reparse_after_substitution(
-                parse_component_values(&format!("url(\"profile\" {modifier})")).unwrap(),
+                CssComponentValues::parse(
+                    &CssParser::default(),
+                    format!("url(\"profile\" {modifier})"),
+                )
+                .unwrap(),
+                Default::default(),
             )
             .unwrap_err();
-        assert!(
-            matches!(error.kind(), CssColorProfileValueErrorKind::Grammar(_)),
-            "{modifier}: {error:?}"
-        );
+        assert!(error.diagnostic().is_some(), "{modifier}: {error:?}");
         assert!(matches!(
             pending.view(),
             CssColorProfileDescriptorValueRef::Pending(_)
@@ -786,7 +867,12 @@ fn profile_pending_reentry_rejects_invalid_known_modifiers_and_allows_retry() {
     assert!(
         pending
             .reparse_after_substitution(
-                parse_component_values("url(\"profile\" integrity(\"hash\"))").unwrap()
+                CssComponentValues::parse(
+                    &CssParser::default(),
+                    "url(\"profile\" integrity(\"hash\"))"
+                )
+                .unwrap(),
+                Default::default()
             )
             .is_ok()
     );
@@ -804,37 +890,40 @@ fn counter_symbol_descriptor_consumers_use_shared_known_argument_validation() {
     ] {
         let valid = format!("{prefix}src(\"asset\" integrity(\"hash\"))");
         assert!(
-            parse_counter_style_descriptor_value(&valid, kind).is_clean(),
+            CssCounterStyleDescriptorValue::parse(&CssParser::default(), &valid, kind).is_clean(),
             "{}:{valid}",
-            kind.css_name()
+            kind.as_str()
         );
         assert!(
             CssCounterStyleDescriptorValue::try_from_components(
                 kind,
-                parse_component_values(&valid).unwrap()
+                CssComponentValues::parse(&CssParser::default(), &valid).unwrap(),
+                Default::default(),
             )
             .is_ok()
         );
         let invalid = format!("{prefix}src(\"asset\" integrity(hash))");
-        let report = parse_counter_style_descriptor_value(&invalid, kind);
-        assert!(!report.is_clean(), "{}:{invalid}", kind.css_name());
+        let report = CssCounterStyleDescriptorValue::parse(&CssParser::default(), &invalid, kind);
+        assert!(!report.is_clean(), "{}:{invalid}", kind.as_str());
         assert!(report.syntax().is_none());
         let error = CssCounterStyleDescriptorValue::try_from_components(
             kind,
-            parse_component_values(&invalid).unwrap(),
+            CssComponentValues::parse(&CssParser::default(), &invalid).unwrap(),
+            Default::default(),
         )
         .unwrap_err();
         assert!(
-            matches!(error.kind(), CssCounterStyleValueErrorKind::Grammar(_)),
+            error.diagnostic().is_some(),
             "{}:{invalid}: {error:?}",
-            kind.css_name()
+            kind.as_str()
         );
     }
 }
 
 #[test]
 fn referrerpolicy_rejects_keywords_outside_the_eight_selected_alternatives() {
-    let report = parse_style_attribute("background-image:url(\"asset\" referrerpolicy(default))");
+    let report = CssParser::default()
+        .parse_block_contents("background-image:url(\"asset\" referrerpolicy(default))");
     assert!(
         report.syntax().is_empty(),
         "unknown referrer policy must reject"

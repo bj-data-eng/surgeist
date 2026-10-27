@@ -4,8 +4,30 @@
 //! Occurrence identity, strict immutable reentry and normalization budgets are
 //! Surgeist public contracts exercised through existing public APIs.
 
+use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssNonNegative, CssNumber, CssNumeric};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::border::{
+    CssBorderImage, CssBorderImageOutset, CssBorderImageOutsetComponent,
+    CssBorderImageRepeatKeyword, CssBorderImageSlice, CssBorderImageSliceComponent,
+    CssBorderImageWidth, CssBorderImageWidthComponent,
+};
+use surgeist_css::values::image::CssImageValue;
 
 const MEMBERS: [CssKnownProperty; 5] = [
     CssKnownProperty::BorderImageSource,
@@ -17,23 +39,24 @@ const MEMBERS: [CssKnownProperty; 5] = [
 
 fn authored(value: &str) -> CssDeclaration {
     let css = format!("border-image:{value}!important");
-    let report = parse_style_attribute(&css);
+    let report = CssParser::default().parse_block_contents(&css);
     assert!(report.is_clean(), "{css}: {:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 1);
     report.syntax()[0].clone()
 }
 
 fn checked(value: &str) -> CssDeclaration {
-    parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::BorderImage),
-        parse_component_values(value).unwrap(),
+    CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::BorderImage)),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Important,
     )
     .unwrap()
 }
 
 fn completed(source: &CssDeclaration) -> CssLonghandContributions {
-    let result = expand_declaration(source).expect("border-image intrinsic expansion");
+    let result = source.expand().expect("border-image intrinsic expansion");
     let CssExpansion::Contributions(CssContributions::Longhands(values)) = result else {
         panic!("ordinary/global border-image produces terminal longhands");
     };
@@ -61,8 +84,14 @@ fn assert_members(
             (None, None) => {}
             (Some(actual), Some(expected)) => {
                 assert_eq!(
-                    actual.serialize().unwrap().as_css(),
-                    expected.serialize().unwrap().as_css()
+                    actual
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css(),
+                    expected
+                        .serialize_tokens(Default::default())
+                        .unwrap()
+                        .as_css()
                 );
                 assert_eq!(actual.items().len(), expected.items().len());
                 for (actual, expected) in actual.items().iter().zip(expected.items()) {
@@ -88,12 +117,18 @@ fn assert_slice(slice: &CssBorderImageSlice, texts: [&str; 4], fill: bool) {
             let CssBorderImageSliceComponent::Percentage(number) = edge else {
                 panic!("percentage slice");
             };
-            assert_eq!(number.serialize_specified().unwrap(), format!("{percent}%"));
+            assert_eq!(
+                number.serialize_specified(Default::default()).unwrap(),
+                format!("{percent}%")
+            );
         } else {
             let CssBorderImageSliceComponent::Number(number) = edge else {
                 panic!("number slice");
             };
-            assert_eq!(number.serialize_specified().unwrap(), text);
+            assert_eq!(
+                number.serialize_specified(Default::default()).unwrap(),
+                text
+            );
         }
     }
 }
@@ -105,12 +140,18 @@ fn assert_width(width: &CssBorderImageWidth, texts: [&str; 4]) {
             (CssBorderImageWidthComponent::LengthPercentage(number), text)
                 if text.ends_with('%') || text.ends_with("px") =>
             {
-                assert_eq!(number.serialize_specified().unwrap(), text);
+                assert_eq!(
+                    number.serialize_specified(Default::default()).unwrap(),
+                    text
+                );
             }
             (CssBorderImageWidthComponent::Number(number), text)
                 if !text.ends_with('%') && !text.ends_with("px") && text != "auto" =>
             {
-                assert_eq!(number.serialize_specified().unwrap(), text);
+                assert_eq!(
+                    number.serialize_specified(Default::default()).unwrap(),
+                    text
+                );
             }
             _ => panic!("width branch for {text}: {edge:?}"),
         }
@@ -121,10 +162,16 @@ fn assert_outset(outset: &CssBorderImageOutset, texts: [&str; 4]) {
     for (edge, text) in outset.values().iter().zip(texts) {
         match edge {
             CssBorderImageOutsetComponent::Length(number) if text.ends_with("px") => {
-                assert_eq!(number.serialize_specified().unwrap(), text);
+                assert_eq!(
+                    number.serialize_specified(Default::default()).unwrap(),
+                    text
+                );
             }
             CssBorderImageOutsetComponent::Number(number) if !text.ends_with("px") => {
-                assert_eq!(number.serialize_specified().unwrap(), text);
+                assert_eq!(
+                    number.serialize_specified(Default::default()).unwrap(),
+                    text
+                );
             }
             _ => panic!("outset branch for {text}: {edge:?}"),
         }
@@ -187,7 +234,7 @@ fn border_image_grammar_controls_preserve_typed_arity_and_reject_invalid_constru
             else {
                 panic!("typed shorthand");
             };
-            let image = wrapper.border_image();
+            let image = wrapper.value();
             assert_slice(image.slice().unwrap(), expected, false);
             assert!(image.source().is_none());
             assert!(image.width().is_none());
@@ -195,7 +242,7 @@ fn border_image_grammar_controls_preserve_typed_arity_and_reject_invalid_constru
             assert!(image.repeat().is_none());
         }
     }
-    let number = CssSpecifiedNonNegativeNumber::try_from_component(
+    let number = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
         CssComponentValue::try_number("1").unwrap(),
     )
     .unwrap();
@@ -353,7 +400,12 @@ fn border_image_expansion_preserves_checked_symbolic_numeric_roots() {
         let CssBorderImageSliceComponent::Number(number) = edge else {
             panic!("number math");
         };
-        assert!(number.literal_component().is_none());
+        assert!(
+            number
+                .literal()
+                .map(|literal| literal.component())
+                .is_none()
+        );
         assert!(number.calculation().is_some(), "deferred range evaluation");
     }
     let CssLonghandValueRef::BorderImageWidth(width) = value(&values, 2) else {
@@ -363,7 +415,12 @@ fn border_image_expansion_preserves_checked_symbolic_numeric_roots() {
         let CssBorderImageWidthComponent::Number(number) = edge else {
             panic!("number multiplier math");
         };
-        assert!(number.literal_component().is_none());
+        assert!(
+            number
+                .literal()
+                .map(|literal| literal.component())
+                .is_none()
+        );
         assert!(number.calculation().is_some());
     }
     let CssLonghandValueRef::BorderImageOutset(outset) = value(&values, 3) else {
@@ -373,7 +430,12 @@ fn border_image_expansion_preserves_checked_symbolic_numeric_roots() {
         let CssBorderImageOutsetComponent::Length(length) = edge else {
             panic!("length math");
         };
-        assert!(length.literal_component().is_none());
+        assert!(
+            length
+                .literal()
+                .map(|literal| literal.component())
+                .is_none()
+        );
         assert!(length.calculation().is_some());
     }
 }
@@ -381,31 +443,33 @@ fn border_image_expansion_preserves_checked_symbolic_numeric_roots() {
 #[test]
 fn border_image_pending_reentry_rejects_atomically_and_retries_with_mixed_origins() {
     for source in [authored("var(--frame)"), checked("var(--frame)")] {
-        let CssExpansion::Pending(pending) =
-            expand_declaration(&source).expect("supported pending shorthand")
+        let CssExpansion::Pending(pending) = source.expand().expect("supported pending shorthand")
         else {
             panic!("pending shorthand");
         };
         let before = source
             .value_components()
-            .serialize()
+            .serialize_tokens(Default::default())
             .unwrap()
             .as_css()
             .to_owned();
         for _ in 0..2 {
             for invalid in ["10 /", "10 //", "10 / 2 /", "none none", "10 / -1"] {
-                let components = parse_component_values(invalid).unwrap();
-                let direct = parse_property_value(
-                    CssPropertyNameRef::Known(CssKnownProperty::BorderImage),
+                let components = CssComponentValues::parse(&CssParser::default(), invalid).unwrap();
+                let direct = CssDeclaration::try_from_components(
+                    &CssParser::default(),
+                    CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                        CssKnownProperty::BorderImage,
+                    )),
                     components.clone(),
                     CssImportance::Normal,
                 )
                 .unwrap_err();
                 let error = pending.reenter(components).unwrap_err();
-                let CssExpansionErrorKind::InvalidReplacement(actual) = error.kind() else {
+                let Some(actual) = error.replacement_error() else {
                     panic!("strict grammar failure: {error:?}");
                 };
-                assert_eq!(actual.kind(), direct.kind());
+                assert_eq!(property_value_facts(actual), property_value_facts(&direct));
                 assert_eq!(actual.origin(), direct.origin());
             }
             for residual in [
@@ -415,29 +479,27 @@ fn border_image_pending_reentry_rejects_atomically_and_retries_with_mixed_origin
                 "f(v\\61r(--x))",
             ] {
                 let error = pending
-                    .reenter(parse_component_values(residual).unwrap())
+                    .reenter(CssComponentValues::parse(&CssParser::default(), residual).unwrap())
                     .unwrap_err();
-                assert!(matches!(
-                    error.kind(),
-                    CssExpansionErrorKind::ResidualSubstitution
-                ));
+                assert!(error.is_residual_substitution());
             }
             assert!(pending.source().same_occurrence(&source));
             assert_eq!(
                 pending
                     .source()
                     .value_components()
-                    .serialize()
+                    .serialize_tokens(Default::default())
                     .unwrap()
                     .as_css(),
                 before
             );
         }
-        let parsed = parse_component_values("10 fill / 2 / 1 round").unwrap();
+        let parsed =
+            CssComponentValues::parse(&CssParser::default(), "10 fill / 2 / 1 round").unwrap();
         let mut items = parsed.items().to_vec();
         let width_index = items.iter().position(|item| matches!(item.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number)) if number.representation() == "2")).unwrap();
         items[width_index] = CssComponentValue::try_number("2").unwrap();
-        let replacement = CssComponentValues::try_new(items).unwrap();
+        let replacement = CssComponentValues::try_new(items, Default::default()).unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -465,7 +527,7 @@ fn border_image_pending_reentry_rejects_atomically_and_retries_with_mixed_origin
                 assert_eq!(number.origin(), &CssValueOrigin::Programmatic);
             }
         }
-        let replacement = parse_component_values("revert-layer").unwrap();
+        let replacement = CssComponentValues::parse(&CssParser::default(), "revert-layer").unwrap();
         let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap()
         else {
             panic!("global reentry");
@@ -479,7 +541,7 @@ fn border_image_pending_reentry_rejects_atomically_and_retries_with_mixed_origin
             pending
                 .source()
                 .value_components()
-                .serialize()
+                .serialize_tokens(Default::default())
                 .unwrap()
                 .as_css(),
             before
@@ -491,16 +553,15 @@ fn border_image_pending_reentry_rejects_atomically_and_retries_with_mixed_origin
 fn border_image_normalization_counts_five_completed_members_and_one_pending_occurrence() {
     for (image, members, pending) in [("none", 6, false), ("var(--frame)", 2, true)] {
         let css = format!(".frame {{ border-image:{image}!important; color:red }}");
-        let report = parse_sheet(&css);
+        let report = CssParser::default().parse_sheet(&css);
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         let CssRule::Style(style) = &report.syntax().rules()[0] else {
             panic!("style rule");
         };
-        let sheet = normalize_sheet_with_limits(
-            report.syntax(),
-            CssNormalizationLimits::try_new(0, 1, 2, members).unwrap(),
-        )
-        .expect("exact normalization limits");
+        let sheet = report
+            .syntax()
+            .normalize(CssNormalizationLimits::try_new(0, 1, 2, members).unwrap())
+            .expect("exact normalization limits");
         let [
             CssNormalizedItem::Rule(rule),
             CssNormalizedItem::Declaration(first),
@@ -535,13 +596,12 @@ fn border_image_normalization_counts_five_completed_members_and_one_pending_occu
         };
         assert_eq!(sibling.items()[0].property(), CssKnownProperty::Color);
         for (limit, ordinal) in [(members - 1, 1), (if pending { 0 } else { 4 }, 0)] {
-            let error = normalize_sheet_with_limits(
-                report.syntax(),
-                CssNormalizationLimits::try_new(0, 1, 2, limit).unwrap(),
-            )
-            .unwrap_err();
+            let error = report
+                .syntax()
+                .normalize(CssNormalizationLimits::try_new(0, 1, 2, limit).unwrap())
+                .unwrap_err();
             assert!(
-                matches!(error.kind(), CssNormalizationErrorKind::LimitExceeded { resource: CssNormalizationResource::Contributions, limit: actual } if *actual == limit)
+                error.exhausted_limit() == Some((CssNormalizationResource::Contributions, limit))
             );
             assert_eq!(error.declaration_order(), Some(ordinal));
             assert!(
@@ -566,7 +626,7 @@ fn border_image_invalid_slash_and_duplicate_controls_drop_only_the_responsible_d
     ] {
         let declaration = format!("{property}: {invalid};");
         let css = format!("--😀: kept; {declaration} color: red");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         let [diagnostic] = report.diagnostics() else {
             panic!("one diagnostic");
         };
@@ -598,7 +658,11 @@ fn border_image_invalid_slash_and_duplicate_controls_drop_only_the_responsible_d
             css[..offset].encode_utf16().count()
         );
         assert_eq!(
-            validate_style_attribute(&css).unwrap_err().diagnostics(),
+            CssParser::default()
+                .parse_block_contents(&css)
+                .into_validation_result()
+                .unwrap_err()
+                .diagnostics(),
             report.diagnostics()
         );
     }
@@ -608,7 +672,7 @@ fn border_image_invalid_slash_and_duplicate_controls_drop_only_the_responsible_d
         ("10 fill fill", Some("fill")),
     ] {
         let css = format!("border-image:{invalid};color:red");
-        let report = parse_style_attribute(&css);
+        let report = CssParser::default().parse_block_contents(&css);
         assert_eq!(report.syntax().len(), 1);
         assert_eq!(
             report.syntax()[0].known().unwrap().property(),
@@ -622,15 +686,14 @@ fn border_image_invalid_slash_and_duplicate_controls_drop_only_the_responsible_d
             CssErrorCode::InvalidPropertyValue
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropDeclaration);
-        assert_invalid_value(
-            diagnostic.error().kind(),
-            CssKnownProperty::BorderImage,
-            token,
-        );
+        assert_invalid_value(diagnostic.error(), CssKnownProperty::BorderImage, token);
         assert_checked_rejected(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::BorderImage),
-                parse_component_values(invalid).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                    CssKnownProperty::BorderImage,
+                )),
+                CssComponentValues::parse(&CssParser::default(), invalid).unwrap(),
                 CssImportance::Normal,
             ),
             CssKnownProperty::BorderImage,

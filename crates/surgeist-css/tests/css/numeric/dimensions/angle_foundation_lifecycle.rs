@@ -7,10 +7,28 @@
 //! Transform/orientation have no public specified serializer at this source
 //! basis: existing aggregate identity expresses their literal fidelity instead.
 
+use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::retained_checked_declaration as checked;
 use crate::css::support::value_assertions::filter_value as filter;
 use crate::css::support::value_assertions::validated_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{CssAngle, CssCalculation};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::effects::CssFilter;
+use surgeist_css::values::image::{
+    CssGradient, CssImageOrientation, CssImageValue, CssLinearGradientDirection,
+};
+use surgeist_css::values::transform::CssTransform;
 
 fn transform(source: &CssDeclaration) -> &CssTransform {
     let CssKnownPropertyValueRef::Transform(value) =
@@ -26,7 +44,7 @@ fn orientation(source: &CssDeclaration) -> &CssImageOrientation {
     else {
         panic!("orientation")
     };
-    value.orientation()
+    value.value()
 }
 fn gradient(source: &CssDeclaration) -> &CssGradient {
     let CssKnownPropertyValueRef::BackgroundImage(value) =
@@ -34,7 +52,7 @@ fn gradient(source: &CssDeclaration) -> &CssGradient {
     else {
         panic!("background image")
     };
-    let [CssImageValue::Gradient(gradient)] = value.images().images() else {
+    let [CssImageValue::Gradient(gradient)] = value.value().images() else {
         panic!("one gradient")
     };
     gradient
@@ -82,10 +100,15 @@ fn precise_filter_and_backdrop_literals_round_text_without_changing_authored_uni
                 let authored = format!("hue-rotate({number}{unit})");
                 let expected = format!("hue-rotate({expected}{unit})");
                 let source = validated_declaration(property, &authored, CssImportance::Important);
-                assert_eq!(filter(&source).serialize_specified().unwrap(), expected);
+                assert_eq!(
+                    filter(&source)
+                        .serialize_specified(Default::default())
+                        .unwrap(),
+                    expected
+                );
                 assert_eq!(
                     filter(&checked(property, &authored))
-                        .serialize_specified()
+                        .serialize_specified(Default::default())
                         .unwrap(),
                     expected
                 );
@@ -120,7 +143,9 @@ fn huge_and_tiny_literal_dimensions_are_admitted_without_machine_float_limits() 
                 CssImportance::Important,
             );
             assert_eq!(
-                filter(&filter_value).serialize_specified().unwrap(),
+                filter(&filter_value)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("hue-rotate({decimal}{unit})")
             );
         }
@@ -170,7 +195,8 @@ fn identical_literal_aggregates_ignore_source_location_changes() {
         "rotate(0.1deg)",
         CssImportance::Important,
     );
-    let second_report = parse_style_attribute("/*😀*/ transform:rotate(0.1deg)!important");
+    let second_report =
+        CssParser::default().parse_block_contents("/*😀*/ transform:rotate(0.1deg)!important");
     assert!(second_report.is_clean());
     assert_eq!(transform(&first), transform(&second_report.syntax()[0]));
     let first = validated_declaration(
@@ -178,7 +204,8 @@ fn identical_literal_aggregates_ignore_source_location_changes() {
         "0.1deg flip",
         CssImportance::Important,
     );
-    let second_report = parse_style_attribute("/*😀*/ image-orientation:0.1deg flip!important");
+    let second_report =
+        CssParser::default().parse_block_contents("/*😀*/ image-orientation:0.1deg flip!important");
     assert!(second_report.is_clean());
     assert_eq!(orientation(&first), orientation(&second_report.syntax()[0]));
 }
@@ -202,7 +229,9 @@ fn permitted_consumers_accept_exact_number_zero_with_signed_and_large_exponent_s
             CssImportance::Important,
         );
         assert_eq!(
-            filter(&source).serialize_specified().unwrap(),
+            filter(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             "hue-rotate(0)"
         );
         let source = validated_declaration(
@@ -211,7 +240,9 @@ fn permitted_consumers_accept_exact_number_zero_with_signed_and_large_exponent_s
             CssImportance::Important,
         );
         assert_eq!(
-            gradient(&source).serialize_specified().unwrap(),
+            gradient(&source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             "linear-gradient(0, red, blue)"
         );
     }
@@ -221,7 +252,7 @@ fn reject(property: CssKnownProperty, value: &str) {
     let prefix = "/*😀*/ ";
     let unit = format!("{}:{value};", property.canonical_name());
     let source = format!("{prefix}{unit}color:blue");
-    let report = parse_style_attribute(&source);
+    let report = CssParser::default().parse_block_contents(&source);
     let [sibling] = report.syntax().as_slice() else {
         panic!("only color survives {source}: {:?}", report.diagnostics())
     };
@@ -245,21 +276,23 @@ fn reject(property: CssKnownProperty, value: &str) {
         source[..end].encode_utf16().count()
     );
     assert_eq!(
-        validate_style_attribute(&source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_block_contents(&source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
     // Images 3: a gradient's `1%` is read as a color stop, so the grammar
     // detail may be a color-syntax error rather than a property-value one.
-    let error = parse_property_value(
-        CssPropertyNameRef::Known(property),
-        parse_component_values(value).unwrap(),
+    let error = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
+        CssComponentValues::parse(&CssParser::default(), value).unwrap(),
         CssImportance::Normal,
     )
     .unwrap_err();
-    assert!(
-        matches!(error.kind(), CssPropertyValueErrorKind::Grammar(_)),
-        "{error:?}"
-    );
+    assert!(error.code().is_some(), "{error:?}");
 }
 
 #[test]
@@ -325,7 +358,9 @@ fn gradient_omits_only_exact_positive_default_directions_and_keeps_neighbors() {
                 CssImportance::Important,
             );
             assert_eq!(
-                gradient(&source).serialize_specified().unwrap(),
+                gradient(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("{function}(red, blue)")
             );
         }
@@ -348,7 +383,9 @@ fn gradient_omits_only_exact_positive_default_directions_and_keeps_neighbors() {
                 CssImportance::Important,
             );
             assert_eq!(
-                gradient(&source).serialize_specified().unwrap(),
+                gradient(&source)
+                    .serialize_specified(Default::default())
+                    .unwrap(),
                 format!("{function}({expected_angle}, red, blue)")
             );
         }
@@ -358,7 +395,7 @@ fn gradient_omits_only_exact_positive_default_directions_and_keeps_neighbors() {
 #[test]
 fn escaped_case_varied_angle_unit_and_precise_coefficient_keep_original_token_origin() {
     let source = "/*😀*/ filter:hue-rotate(+1.23000000000000000001D\\45 G)!important";
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let component = &report.syntax()[0].value_components().items()[0];
     let CssComponentValueRef::Function(function) = component.view() else {
@@ -384,14 +421,16 @@ fn escaped_case_varied_angle_unit_and_precise_coefficient_keep_original_token_or
         source[..start].encode_utf16().count()
     );
     assert_eq!(
-        filter(&report.syntax()[0]).serialize_specified().unwrap(),
+        filter(&report.syntax()[0])
+            .serialize_specified(Default::default())
+            .unwrap(),
         "hue-rotate(1.23deg)"
     );
 }
 
 fn located(property: CssKnownProperty, value: &str) -> (CssDeclaration, CssDeclaration) {
     let first = validated_declaration(property, value, CssImportance::Important);
-    let report = parse_style_attribute(&format!(
+    let report = CssParser::default().parse_block_contents(format!(
         "/*😀*/ {}:{value}!important",
         property.canonical_name()
     ));
@@ -442,15 +481,17 @@ fn image_orientation_calculation_aggregate_equality_ignores_original_source_coor
 
 #[test]
 fn raw_angle_math_and_color_compare_original_provenance() {
-    let first = CssAngleCalculation::try_from_components(
-        parse_component_values("calc(25deg + 5deg)").unwrap(),
+    let first = CssCalculation::<CssAngle>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "calc(25deg + 5deg)").unwrap(),
+        Default::default(),
     )
     .unwrap();
-    let second = CssAngleCalculation::try_from_components(
-        parse_component_values("  calc(25deg + 5deg)").unwrap(),
+    let second = CssCalculation::<CssAngle>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "  calc(25deg + 5deg)").unwrap(),
+        Default::default(),
     )
     .unwrap();
-    assert_ne!(first, second);
+    assert_eq!(first, second);
     assert_ne!(first.origin(), second.origin());
     let (first, second) = located(CssKnownProperty::Color, "hsl(25deg 20% 30%)");
     let CssKnownPropertyValueRef::Color(first) = first.known().unwrap().property_value().unwrap()
@@ -472,7 +513,9 @@ fn angle_calculation_simplification_is_a_positive_control() {
         CssImportance::Important,
     );
     assert_eq!(
-        filter(&source).serialize_specified().unwrap(),
+        filter(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "hue-rotate(calc(30deg))"
     );
     let source = validated_declaration(
@@ -481,7 +524,9 @@ fn angle_calculation_simplification_is_a_positive_control() {
         CssImportance::Important,
     );
     assert_eq!(
-        gradient(&source).serialize_specified().unwrap(),
+        gradient(&source)
+            .serialize_specified(Default::default())
+            .unwrap(),
         "linear-gradient(calc(180deg), red, blue)"
     );
 }
@@ -498,7 +543,7 @@ fn ordinary_recovered_angle_math_is_retained_but_checked_construction_is_strict(
         (CssKnownProperty::ImageOrientation, "calc(25deg + 5deg"),
     ] {
         let source = format!("{}:{incomplete}", property.canonical_name());
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(
             report.syntax().len(),
             1,
@@ -506,16 +551,22 @@ fn ordinary_recovered_angle_math_is_retained_but_checked_construction_is_strict(
             report.diagnostics()
         );
         assert!(!report.is_clean());
-        assert!(validate_style_attribute(&source).is_err());
+        assert!(
+            CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
+                .is_err()
+        );
         assert!(
             report
                 .diagnostics()
                 .iter()
                 .any(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
         );
-        let replacement = parse_component_values(incomplete).unwrap();
-        let Err(_) = parse_property_value(
-            CssPropertyNameRef::Known(property),
+        let replacement = CssComponentValues::parse(&CssParser::default(), incomplete).unwrap();
+        let Err(_) = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Known(property)),
             replacement.clone(),
             CssImportance::Normal,
         ) else {
@@ -528,30 +579,35 @@ fn ordinary_recovered_angle_math_is_retained_but_checked_construction_is_strict(
 fn pending_angle_reentry_retains_exact_literals_importance_and_replacement_sources() {
     for property in [CssKnownProperty::Filter, CssKnownProperty::BackdropFilter] {
         let source = validated_declaration(property, "var(--angle)", CssImportance::Important);
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending filter")
         };
-        assert_eq!(
+        assert!(
             pending
-                .reenter(parse_component_values("hue-rotate(var(--again))").unwrap())
+                .reenter(
+                    CssComponentValues::parse(&CssParser::default(), "hue-rotate(var(--again))")
+                        .unwrap()
+                )
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution
+                .is_residual_substitution()
         );
         for invalid in [
             "hue-rotate(1e-999)",
             "hue-rotate(calc(0))",
             "hue-rotate(1px)",
         ] {
-            let Err(error) = pending.reenter(parse_component_values(invalid).unwrap()) else {
+            let Err(error) =
+                pending.reenter(CssComponentValues::parse(&CssParser::default(), invalid).unwrap())
+            else {
                 panic!("invalid replacement: {invalid}")
             };
-            assert!(matches!(
-                error.kind(),
-                CssExpansionErrorKind::InvalidReplacement(_)
-            ));
+            assert!(error.replacement_error().is_some());
         }
-        let replacement = parse_component_values("hue-rotate(0.10000000000000000001deg)").unwrap();
+        let replacement = CssComponentValues::parse(
+            &CssParser::default(),
+            "hue-rotate(0.10000000000000000001deg)",
+        )
+        .unwrap();
         for _ in 0..2 {
             let CssContributions::Longhands(items) = pending.reenter(replacement.clone()).unwrap()
             else {
@@ -570,7 +626,10 @@ fn pending_angle_reentry_retains_exact_literals_importance_and_replacement_sourc
                 }
                 _ => panic!("filter terminal"),
             };
-            assert_eq!(value.serialize_specified().unwrap(), "hue-rotate(0.1deg)");
+            assert_eq!(
+                value.serialize_specified(Default::default()).unwrap(),
+                "hue-rotate(0.1deg)"
+            );
         }
     }
 }
@@ -578,14 +637,14 @@ fn pending_angle_reentry_retains_exact_literals_importance_and_replacement_sourc
 #[test]
 fn normalization_retains_exact_angle_literals_in_surviving_source_order() {
     let source = ".a{filter:hue-rotate(0.10000000000000000001deg)!important;image-orientation:0;backdrop-filter:hue-rotate(1e-40turn);filter:var(--angle)}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(
         report.diagnostics().len(),
         1,
         "strict image orientation zero: {:?}",
         report.diagnostics()
     );
-    let normalized = normalize_sheet(report.syntax()).unwrap();
+    let normalized = report.syntax().normalize(Default::default()).unwrap();
     let items: Vec<_> = normalized
         .items()
         .iter()
@@ -648,15 +707,18 @@ fn normalization_retains_exact_angle_literals_in_surviving_source_order() {
             } else {
                 "hue-rotate(0turn)".to_owned()
             };
-            assert_eq!(filter.serialize_specified().unwrap(), expected);
+            assert_eq!(
+                filter.serialize_specified(Default::default()).unwrap(),
+                expected
+            );
         }
     }
 }
 
 #[test]
 fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund_work() {
-    use CssSpecifiedValueSerializationErrorKind as K;
-    use CssSpecifiedValueSerializationLimits as L;
+    use crate::css::support::failure_classes::SerializationFailure as K;
+    use CssSerializationLimits as L;
     let source = validated_declaration(
         CssKnownProperty::Filter,
         "hue-rotate(0.10000000000000000001deg)",
@@ -673,7 +735,7 @@ fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund
     // One function aggregate plus its one ordinary scalar: 2/2.
     assert_eq!(
         function
-            .serialize_specified_with_limits(L::new(2, 2, expected.len()))
+            .serialize_specified(L::new(2, 2, expected.len()))
             .unwrap(),
         expected
     );
@@ -683,14 +745,14 @@ fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund
         (L::new(2, 2, expected.len() - 1), K::ByteLimit),
     ] {
         assert_eq!(
-            function
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&function.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
-    assert_eq!(function.serialize_specified().unwrap(), expected);
+    assert_eq!(
+        function.serialize_specified(Default::default()).unwrap(),
+        expected
+    );
     assert_eq!(source, before);
     let huge = validated_declaration(
         CssKnownProperty::Filter,
@@ -698,20 +760,19 @@ fn exact_literal_provider_failures_are_atomic_and_do_not_mutate_source_or_refund
         CssImportance::Important,
     );
     let before = huge.clone();
-    assert_eq!(
+    assert!(
         filter(&huge)
-            .serialize_specified_with_limits(L::new(3, 3, 64))
+            .serialize_specified(L::new(3, 3, 64))
             .unwrap_err()
-            .kind(),
-        K::ByteLimit
+            .is_byte_limit()
     );
     assert_eq!(huge, before);
 }
 
 #[test]
 fn suppressed_exact_gradient_default_consumes_its_scalar_budget_without_output_bytes() {
-    use CssSpecifiedValueSerializationErrorKind as K;
-    use CssSpecifiedValueSerializationLimits as L;
+    use crate::css::support::failure_classes::SerializationFailure as K;
+    use CssSerializationLimits as L;
     let source = validated_declaration(
         CssKnownProperty::BackgroundImage,
         "linear-gradient(+1.80e2deg, red, blue)",
@@ -723,7 +784,7 @@ fn suppressed_exact_gradient_default_consumes_its_scalar_budget_without_output_b
     // gradient 1 + direction 1 + scalar 1 + stop list 1 + 2*(stop 1+color 1).
     assert_eq!(
         value
-            .serialize_specified_with_limits(L::new(8, 8, expected.len()))
+            .serialize_specified(L::new(8, 8, expected.len()))
             .unwrap(),
         expected
     );
@@ -733,10 +794,7 @@ fn suppressed_exact_gradient_default_consumes_its_scalar_budget_without_output_b
         (L::new(8, 8, expected.len() - 1), K::ByteLimit),
     ] {
         assert_eq!(
-            value
-                .serialize_specified_with_limits(limits)
-                .unwrap_err()
-                .kind(),
+            serialization_failure(&value.serialize_specified(limits).unwrap_err()),
             kind
         );
     }
@@ -747,27 +805,31 @@ fn suppressed_exact_gradient_default_consumes_its_scalar_budget_without_output_b
 fn pending_filter_reentry_rejects_recovered_angle_math_roots() {
     for property in [CssKnownProperty::Filter, CssKnownProperty::BackdropFilter] {
         let source = validated_declaration(property, "var(--angle)", CssImportance::Important);
-        let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+        let CssExpansion::Pending(pending) = source.expand().unwrap() else {
             panic!("pending filter")
         };
-        let replacement = parse_component_values("hue-rotate(calc(25deg + 5deg").unwrap();
+        let replacement =
+            CssComponentValues::parse(&CssParser::default(), "hue-rotate(calc(25deg + 5deg")
+                .unwrap();
         let Err(error) = pending.reenter(replacement) else {
             panic!("recovered angle math must not reenter")
         };
-        assert!(matches!(
-            error.kind(),
-            CssExpansionErrorKind::InvalidReplacement(_)
-        ));
+        assert!(error.replacement_error().is_some());
     }
 }
 
 #[test]
 fn ordinary_gradient_outer_recovery_retains_its_complete_angle_calculation() {
     let css = "background-image:linear-gradient(calc(25deg + 5deg), red, blue";
-    let report = parse_style_attribute(css);
+    let report = CssParser::default().parse_block_contents(css);
     assert_eq!(report.syntax().len(), 1);
     assert!(!report.is_clean());
-    assert!(validate_style_attribute(css).is_err());
+    assert!(
+        CssParser::default()
+            .parse_block_contents(css)
+            .into_validation_result()
+            .is_err()
+    );
     assert!(
         report
             .diagnostics()
@@ -775,18 +837,40 @@ fn ordinary_gradient_outer_recovery_retains_its_complete_angle_calculation() {
             .any(|d| d.action() == CssRecoveryAction::RetainWithImplicitClosure)
     );
     assert_eq!(
-        gradient(&report.syntax()[0]).serialize_specified().unwrap(),
+        gradient(&report.syntax()[0])
+            .serialize_specified(Default::default())
+            .unwrap(),
         "linear-gradient(calc(30deg), red, blue)"
     );
 }
 
 // Checked construction of angle literals and calculations.
 mod checked_construction {
+    use crate::css::support::failure_classes::ComponentFailure;
+    use crate::css::support::failure_classes::NumericFailure;
+    use crate::css::support::failure_classes::serialization_failure;
     use std::error::Error as _;
-    use surgeist_css::*;
+    use surgeist_css::component::{
+        CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+        CssValueTokenRef,
+    };
+    use surgeist_css::numeric::{
+        CssAngle, CssAngleOrZero, CssAngleUnit, CssCalculation, CssCalculationType, CssNumeric,
+        CssNumericLiteral, CssZeroLiteral,
+    };
+    use surgeist_css::property::CssKnownPropertyValueRef;
+
+    use surgeist_css::values::effects::{
+        CssFilter, CssFilterFunction, CssFilterFunctionList, CssFilterHueRotate,
+    };
+
+    use surgeist_css::CssParser;
+
+    use surgeist_css::serialization::CssSerializationLimits;
+    use surgeist_css::values::transform::CssTransformFunction;
 
     fn component(text: &str) -> CssComponentValue {
-        let values = parse_component_values(text).unwrap();
+        let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
         let mut components = values.items().iter().filter(|value| {
             !matches!(
                 value.view(),
@@ -802,13 +886,16 @@ mod checked_construction {
         CssFilterFunction::HueRotate(CssFilterHueRotate::new(angle))
     }
     fn literal(text: &str) -> CssAngleOrZero {
-        CssAngleOrZero::Angle(CssAngleValue::from_literal(
-            CssAngleLiteral::try_from_component(component(text)).unwrap(),
-        ))
+        CssAngleOrZero::Angle(
+            CssNumeric::<CssAngle>::try_from_literal(
+                CssNumericLiteral::<CssAngle>::try_from_component(component(text)).unwrap(),
+            )
+            .unwrap(),
+        )
     }
     fn budget(value: &CssFilterFunction, expected: &str) {
         crate::css::support::serialization_limits::LimitLadder::new(expected, 2, 2)
-            .assert_unchanged(value, CssFilterFunction::serialize_specified_with_limits);
+            .assert_unchanged(value, CssFilterFunction::serialize_specified);
     }
 
     #[test]
@@ -824,7 +911,8 @@ mod checked_construction {
             ("-1e-999rad", "-1e-999", CssAngleUnit::Radians),
         ] {
             let supplied = component(text);
-            let angle = CssAngleLiteral::try_from_component(supplied.clone()).unwrap();
+            let angle =
+                CssNumericLiteral::<CssAngle>::try_from_component(supplied.clone()).unwrap();
             assert_eq!(angle.numeric().representation(), coefficient);
             assert_eq!(angle.unit(), unit);
             assert_eq!(angle.component(), &supplied);
@@ -837,7 +925,8 @@ mod checked_construction {
             CssAngleUnit::Radians,
             CssAngleUnit::Turns,
         ] {
-            let angle = CssAngleLiteral::try_new("+1.00000000000000000001e999", unit).unwrap();
+            let angle = CssNumericLiteral::<CssAngle>::try_new("+1.00000000000000000001e999", unit)
+                .unwrap();
             assert_eq!(
                 angle.numeric().representation(),
                 "+1.00000000000000000001e999"
@@ -850,28 +939,26 @@ mod checked_construction {
     fn literal_and_zero_failures_report_the_supplied_component_origin() {
         for text in ["0", "25%", "1px", "calc(1deg)", "auto"] {
             let supplied = component(text);
-            let error = CssAngleLiteral::try_from_component(supplied.clone()).unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
-            assert_eq!(error.origin(), supplied.origin());
+            let error =
+                CssNumericLiteral::<CssAngle>::try_from_component(supplied.clone()).unwrap_err();
+            assert!(error.is_root_domain_mismatch(), "{error:?}");
+            assert_eq!(error.origin(), Some(supplied.origin()));
         }
         for text in ["1e-999", "-1e-999", "0deg", "0%", "calc(0)"] {
             let supplied = component(text);
             let error = CssZeroLiteral::try_from_component(supplied.clone()).unwrap_err();
-            assert_eq!(error.kind(), CssComponentValueErrorKind::InvalidToken);
+            assert!(error.is_invalid_token(), "{error:?}");
             assert_eq!(error.origin(), supplied.origin());
         }
         for number in ["NaN", "infinity", "1 2", ""] {
-            assert_eq!(
-                CssAngleLiteral::try_new(number, CssAngleUnit::Degrees)
+            assert!(
+                CssNumericLiteral::<CssAngle>::try_new(number, CssAngleUnit::Degrees)
                     .unwrap_err()
-                    .kind(),
-                surgeist_css::CssComponentValueErrorKind::InvalidDimension
+                    .is_invalid_dimension()
             );
             crate::css::support::value_assertions::assert_numeric_kind(
-                CssAngleCalculation::try_literal(number, CssAngleUnit::Degrees),
-                surgeist_css::CssNumericConstructionErrorKind::Component(
-                    surgeist_css::CssComponentValueErrorKind::InvalidDimension,
-                ),
+                CssCalculation::<CssAngle>::try_literal(number, CssAngleUnit::Degrees),
+                NumericFailure::Component(ComponentFailure::InvalidDimension),
             );
         }
     }
@@ -898,18 +985,20 @@ mod checked_construction {
     #[test]
     fn checked_calculation_transfer_normalizes_only_an_ordinary_dimension_root() {
         let supplied = component("+1.23000000000000000001TURN");
-        let calculation = CssAngleCalculation::try_from_components(
-            CssComponentValues::try_new(vec![supplied.clone()]).unwrap(),
+        let calculation = CssCalculation::<CssAngle>::try_from_components(
+            CssComponentValues::try_new(vec![supplied.clone()], Default::default()).unwrap(),
+            Default::default(),
         )
         .unwrap();
-        let angle = CssAngleValue::try_from_calculation(calculation).unwrap();
+        let angle = CssNumeric::<CssAngle>::try_from_calculation(calculation).unwrap();
         assert!(angle.calculation().is_none());
         assert_eq!(angle.literal().unwrap().component(), &supplied);
         assert_eq!(angle.origin(), supplied.origin());
-        let ordinary = CssAngleCalculation::try_literal("1e999", CssAngleUnit::Radians).unwrap();
+        let ordinary =
+            CssCalculation::<CssAngle>::try_literal("1e999", CssAngleUnit::Radians).unwrap();
         assert_eq!(ordinary.result_type(), CssCalculationType::Angle);
         assert_eq!(
-            CssAngleValue::try_from_calculation(ordinary)
+            CssNumeric::<CssAngle>::try_from_calculation(ordinary)
                 .unwrap()
                 .literal()
                 .unwrap()
@@ -918,10 +1007,12 @@ mod checked_construction {
             "1e999"
         );
         for text in ["calc(180deg)", "calc(90deg + 90deg)", "min(180deg, 200deg)"] {
-            let calculation =
-                CssAngleCalculation::try_from_components(parse_component_values(text).unwrap())
-                    .unwrap();
-            let angle = CssAngleValue::try_from_calculation(calculation.clone()).unwrap();
+            let calculation = CssCalculation::<CssAngle>::try_from_components(
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
+                Default::default(),
+            )
+            .unwrap();
+            let angle = CssNumeric::<CssAngle>::try_from_calculation(calculation.clone()).unwrap();
             assert!(angle.literal().is_none());
             assert_eq!(angle.calculation(), Some(&calculation));
             assert_eq!(angle.origin(), calculation.origin());
@@ -931,7 +1022,7 @@ mod checked_construction {
     #[test]
     fn transfer_rejects_recovered_math_at_the_original_implicit_closure() {
         let source = "/*😀*/filter:hue-rotate(calc(25deg + 5deg";
-        let report = parse_style_attribute(source);
+        let report = CssParser::default().parse_block_contents(source);
         assert_eq!(report.syntax().len(), 1);
         assert!(!report.is_clean());
         let CssKnownPropertyValueRef::Filter(filter) = report.syntax()[0]
@@ -958,11 +1049,8 @@ mod checked_construction {
         let CssComponentValueRef::Function(function) = root.view() else {
             panic!("math")
         };
-        let error = CssAngleValue::try_from_calculation(calculation.clone()).unwrap_err();
-        assert_eq!(
-            error.kind(),
-            &CssNumericConstructionErrorKind::RecoveredComponent
-        );
+        let error = CssNumeric::<CssAngle>::try_from_calculation(calculation.clone()).unwrap_err();
+        assert!(error.is_recovered_component(), "{error:?}");
         assert_eq!(error.origin(), Some(function.closing_origin()));
         assert!(error.path().is_none());
         assert!(error.source().is_none());
@@ -978,19 +1066,19 @@ mod checked_construction {
     }
 
     #[test]
-    fn raw_owner_equality_preserves_provenance_while_aggregates_compare_structure() {
+    fn raw_and_aggregate_equality_ignore_provenance_and_spelling() {
         let first = literal("25deg");
         let second = literal(" 25deg");
-        assert_ne!(first, second);
+        assert_eq!(first, second);
         assert_eq!(hue(first.clone()), hue(second.clone()));
         assert_eq!(
             CssTransformFunction::Rotate(first.clone()),
             CssTransformFunction::Rotate(second.clone())
         );
-        assert_ne!(hue(first), hue(literal("25.0deg")));
+        assert_eq!(hue(first), hue(literal("25.0deg")));
         let first = CssZeroLiteral::try_from_component(component("-0e999")).unwrap();
         let second = CssZeroLiteral::try_from_component(component(" -0e999")).unwrap();
-        assert_ne!(first, second);
+        assert_eq!(first, second);
         assert_eq!(
             hue(CssAngleOrZero::Zero(first)),
             hue(CssAngleOrZero::Zero(second))
@@ -1020,10 +1108,10 @@ mod checked_construction {
             CssFilterFunctionList::try_new(vec![hue(literal(".5turn")), hue(literal("25grad"))])
                 .unwrap();
         let expected = "hue-rotate(0.5turn) hue-rotate(25grad)";
-        use CssSpecifiedValueSerializationErrorKind as K;
-        use CssSpecifiedValueSerializationLimits as L;
+        use crate::css::support::failure_classes::SerializationFailure as K;
+        use CssSerializationLimits as L;
         assert_eq!(
-            list.serialize_specified_with_limits(L::new(5, 5, expected.len()))
+            list.serialize_specified(L::new(5, 5, expected.len()))
                 .unwrap(),
             expected
         );
@@ -1033,18 +1121,15 @@ mod checked_construction {
             (L::new(5, 5, expected.len() - 1), K::ByteLimit),
         ] {
             assert_eq!(
-                list.serialize_specified_with_limits(limits)
-                    .unwrap_err()
-                    .kind(),
+                serialization_failure(&list.serialize_specified(limits).unwrap_err()),
                 kind
             );
         }
         let huge = hue(literal("1e999999999999999999999999999999deg"));
-        assert_eq!(
-            huge.serialize_specified_with_limits(L::new(2, 2, 64))
+        assert!(
+            huge.serialize_specified(L::new(2, 2, 64))
                 .unwrap_err()
-                .kind(),
-            K::ByteLimit
+                .is_byte_limit()
         );
     }
 }

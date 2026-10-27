@@ -1,8 +1,11 @@
-use surgeist_css::{
-    CssCompoundSelector, CssErrorCode, CssLanguageRange, CssNamespaceConstraint, CssNamespaceName,
-    CssNamespacePrefix, CssPseudoClass, CssPseudoElement, CssPseudoElementSegment,
-    CssRecoveryAction, CssRule, CssScopedRule, CssSelector, CssSelectorCombinator,
-    CssSupportsConditionKind, ErrorKind, parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule};
+use surgeist_css::selector::{
+    CssCompoundSelector, CssLanguageRange, CssNamespaceConstraint, CssPseudoClass,
+    CssPseudoElement, CssPseudoElementSegment, CssSelector, CssSelectorCombinator,
 };
 
 fn compound_selector(rule: &CssRule) -> &CssCompoundSelector {
@@ -53,7 +56,7 @@ fn escaped_type_selector_names_preserve_decoded_public_names_without_unwind() {
 
     for (case_id, selector, expected_local_name) in cases {
         let source = format!("@namespace \"\"; {selector} {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{case_id}: {:?}", report.diagnostics());
         let [CssRule::Namespace(_), rule @ CssRule::Style(_)] = report.syntax().rules() else {
             panic!("{case_id}: expected a namespace and one retained style rule")
@@ -71,7 +74,7 @@ fn escaped_type_selector_names_preserve_decoded_public_names_without_unwind() {
 
 #[test]
 fn selectors3_pseudos_legacy_forms_and_repeated_ids_are_typed() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ".target:target { color: red; }",
         ".language:lang(en) { color: red; }",
         ".visited:visited { color: red; }",
@@ -145,7 +148,7 @@ fn selectors3_pseudos_legacy_forms_and_repeated_ids_are_typed() {
 
 #[test]
 fn selectors3_official_pseudo_matrix_and_escaped_language_identifier_are_clean() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         ":root,:link,:visited,:target,:lang(e\\6e),:hover,:active,:focus,",
         ":enabled,:disabled,:checked,:indeterminate,:first-child,:last-child,",
         ":only-child,:empty,:nth-child(2n+1),:nth-last-child(2),",
@@ -178,7 +181,7 @@ fn namespace_rules_obey_namespaces3_prelude_ordering() {
         "@namespace s\\76 g \"replacement\";",
         "@namespace \"\";",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert!(!report.is_clean());
     assert_eq!(report.diagnostics().len(), 2);
@@ -231,7 +234,7 @@ fn late_namespace_is_a_placement_error_not_an_unsupported_rule() {
         "@namespace svg url(http://example.test/a;b); ",
         ".after { color: blue; }",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     assert!(matches!(
         report.syntax().rules(),
@@ -246,12 +249,15 @@ fn late_namespace_is_a_placement_error_not_an_unsupported_rule() {
     );
     assert_ne!(diagnostic.error().code(), CssErrorCode::UnsupportedAtRule);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
-    let ErrorKind::InvalidAtRulePlacement(detail) = diagnostic.error().kind() else {
-        panic!("expected namespace placement payload")
-    };
-    assert_eq!(detail.name().as_str(), "namespace");
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expected_context().as_str(),
+        detail.code(),
+        CssErrorCode::InvalidAtRulePlacement,
+        "expected namespace placement payload"
+    );
+    assert_eq!(detail.at_rule().unwrap().as_str(), "namespace");
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "after initial layer statements and imports, before later layers or body rules"
     );
 }
@@ -296,7 +302,7 @@ fn malformed_late_and_nested_namespace_rules_drop_one_at_rule_and_keep_siblings(
         "@namespace svg url(\"urn:test\") {}",
     ] {
         let source = format!("{invalid} .kept {{ color: red; }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             matches!(report.syntax().rules(), [CssRule::Style(_)]),
             "{source}: {:?}",
@@ -318,7 +324,7 @@ fn malformed_late_and_nested_namespace_rules_drop_one_at_rule_and_keep_siblings(
         ".parent { @namespace \"urn:nested\"; color: red; }",
         "@scope { @namespace \"urn:nested\"; .kept {} }",
     ] {
-        let report = parse_sheet(source);
+        let report = CssParser::default().parse_sheet(source);
         let diagnostic = report
             .diagnostics()
             .iter()
@@ -329,18 +335,21 @@ fn malformed_late_and_nested_namespace_rules_drop_one_at_rule_and_keep_siblings(
             CssRecoveryAction::DropAtRule,
             "{source}"
         );
-        let ErrorKind::InvalidAtRulePlacement(detail) = diagnostic.error().kind() else {
-            panic!("{source}: expected placement payload")
-        };
-        assert_eq!(detail.name().as_str(), "namespace", "{source}");
+        let detail = diagnostic.error();
+        assert_eq!(
+            detail.code(),
+            CssErrorCode::InvalidAtRulePlacement,
+            "{source}: expected placement payload"
+        );
+        assert_eq!(detail.at_rule().unwrap().as_str(), "namespace", "{source}");
         if source.starts_with(".body") {
             assert_eq!(
-                detail.expected_context().as_str(),
+                detail.expectation().unwrap().as_str(),
                 "after initial layer statements and imports, before later layers or body rules"
             );
         } else {
             assert_eq!(
-                detail.expected_context().as_str(),
+                detail.expectation().unwrap().as_str(),
                 "the stylesheet top level"
             );
         }
@@ -351,7 +360,7 @@ fn malformed_late_and_nested_namespace_rules_drop_one_at_rule_and_keep_siblings(
 fn namespace_statement_at_eof_retains_payload_and_reports_its_missing_terminator() {
     // Syntax 3 section 5.5.2 returns an admitted at-rule plus its EOF fault.
     let source = "@namespace svg \"urn:test\"";
-    let missing_semicolon = parse_sheet(source);
+    let missing_semicolon = CssParser::default().parse_sheet(source);
     assert!(!missing_semicolon.is_clean());
     let [CssRule::Namespace(namespace)] = missing_semicolon.syntax().rules() else {
         panic!("intrinsically valid namespace survives its missing statement terminator")
@@ -369,11 +378,14 @@ fn namespace_statement_at_eof_retains_payload_and_reports_its_missing_terminator
         diagnostic.action(),
         CssRecoveryAction::RetainNonconformingRule
     );
-    let ErrorKind::UnexpectedEnd(detail) = diagnostic.error().kind() else {
-        panic!("statement termination payload")
-    };
+    let detail = diagnostic.error();
     assert_eq!(
-        detail.expectation().as_str(),
+        detail.code(),
+        CssErrorCode::UnexpectedEnd,
+        "statement termination payload"
+    );
+    assert_eq!(
+        detail.expectation().unwrap().as_str(),
         "a semicolon or block terminating an at-rule"
     );
     assert_eq!(
@@ -395,28 +407,32 @@ fn namespace_statement_at_eof_retains_payload_and_reports_its_missing_terminator
         source.len()
     );
     assert_eq!(
-        surgeist_css::validate_sheet(source)
+        surgeist_css::CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
             .unwrap_err()
             .diagnostics(),
         missing_semicolon.diagnostics()
     );
 
     let terminated_source = format!("{source};");
-    let terminated = parse_sheet(&terminated_source);
+    let terminated = CssParser::default().parse_sheet(&terminated_source);
     assert!(terminated.is_clean());
     let [CssRule::Namespace(terminated_namespace)] = terminated.syntax().rules() else {
         panic!("terminated namespace control")
     };
     assert_eq!(terminated_namespace, namespace);
     assert_eq!(
-        surgeist_css::validate_sheet(&terminated_source),
+        surgeist_css::CssParser::default()
+            .parse_sheet(&terminated_source)
+            .into_validation_result(),
         Ok(terminated.syntax().clone())
     );
 }
 
 #[test]
 fn namespace_qualified_type_universal_and_attribute_selectors_use_active_bindings() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@namespace \"urn:default\";",
         "@namespace svg \"urn:svg\";",
         "svg|a { color: red; }",
@@ -500,7 +516,7 @@ fn namespace_qualified_type_universal_and_attribute_selectors_use_active_binding
 
 #[test]
 fn namespace_prefix_escapes_redeclarations_and_case_remain_exact() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@namespace svg \"urn:first\";",
         "@namespace SVG \"urn:upper\";",
         "@namespace s\\76 g \"urn:replacement\";",
@@ -547,7 +563,7 @@ fn namespace_prefix_escapes_redeclarations_and_case_remain_exact() {
 
 #[test]
 fn default_namespace_applies_to_universal_types_but_not_omitted_types_or_attributes() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@namespace \"urn:default\";",
         "* { color: red; }",
         ".class { color: red; }",
@@ -594,7 +610,7 @@ fn malformed_namespace_qualified_names_drop_one_rule_and_keep_siblings() {
         ".x[svg| href] { color: red; }",
     ] {
         let source = format!("@namespace svg \"urn:svg\"; .before {{}} {failed} .after {{}}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(
             matches!(
                 report.syntax().rules(),
@@ -624,7 +640,7 @@ fn malformed_namespace_qualified_names_drop_one_rule_and_keep_siblings() {
 
 #[test]
 fn namespace_bindings_reach_every_selector_consumer_without_changing_recovery() {
-    let report = parse_sheet(concat!(
+    let report = CssParser::default().parse_sheet(concat!(
         "@namespace svg \"urn:svg\";",
         "svg|top { color: red; }",
         "@media screen { svg|media { color: red; } }",
@@ -656,14 +672,14 @@ fn namespace_bindings_reach_every_selector_consumer_without_changing_recovery() 
     assert!(matches!(media.rules(), [CssRule::Style(_)]));
     assert!(matches!(
         supports.condition().kind(),
-        CssSupportsConditionKind::Selector(_)
+        CssConditionKind::Leaf(CssSupportsLeaf::Selector(_))
     ));
     assert!(matches!(supports.rules(), [CssRule::Style(_)]));
     assert!(matches!(container.rules(), [CssRule::Style(_)]));
     assert!(matches!(layer.rules(), [CssRule::Style(_)]));
     assert!(scope.root().is_some());
     assert!(scope.limit().is_some());
-    assert!(matches!(scope.rules().rules(), [CssScopedRule::Style(_)]));
+    assert!(matches!(scope.rules().rules(), [CssRule::Style(_)]));
 }
 
 #[test]
@@ -676,7 +692,7 @@ fn namespace_context_keeps_forgiving_members_and_unforgiving_rules_local() {
         "svg|after { color: green; }",
         "}",
     );
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     let [CssRule::Namespace(_), CssRule::Media(media)] = report.syntax().rules() else {
         panic!("expected namespace and retained media group")
@@ -717,7 +733,7 @@ fn namespace_context_keeps_forgiving_members_and_unforgiving_rules_local() {
 #[test]
 fn namespace_context_survives_implicit_eof_closure_in_nested_groups() {
     let source = "@namespace svg \"urn:svg\";@media screen { svg|kept { color: red; }";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
 
     let [CssRule::Namespace(_), CssRule::Media(media)] = report.syntax().rules() else {
         panic!("expected namespace and implicitly closed media group")

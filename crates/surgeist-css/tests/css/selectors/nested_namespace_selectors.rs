@@ -2,9 +2,14 @@
 //! universal selector. Nesting 1 sections 3.1/4 permit a following parent anchor.
 //! A single namespace bar is distinct from the two-bar column combinator.
 
-use surgeist_css::{
-    CssCompoundSelector, CssErrorCode, CssNamespaceConstraint, CssPseudoClass, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, CssSelector, CssSelectorError, ErrorKind, parse_sheet,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssGrammarExpectation, CssProductionId, CssRecoveryAction, CssRecoveryDiagnostic,
+    CssTokenSummary,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssCompoundSelector, CssNamespaceConstraint, CssPseudoClass, CssSelector,
 };
 
 fn compound(selector: &CssSelector) -> &CssCompoundSelector {
@@ -34,7 +39,7 @@ fn nested_type_and_universal_selectors_preserve_explicit_no_namespace() {
         ("|*", true, 0),
     ] {
         let source = format!(".parent, #alternate {{ {selector} {{color:green}} }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("expected one parent");
@@ -56,7 +61,7 @@ fn nested_type_and_universal_selectors_preserve_explicit_no_namespace() {
 fn relational_selectors_preserve_single_bar_namespace_prefixes() {
     for (selector, anchors) in [("|div", 0), ("|div&", 1)] {
         let source = format!(".parent {{ &:has({selector}) {{color:green}} }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("expected parent");
@@ -78,7 +83,7 @@ fn relational_selectors_preserve_single_bar_namespace_prefixes() {
 fn incomplete_namespace_names_discard_only_the_child_rule() {
     for selector in ["|&", "|.class&", "| div&"] {
         let source = format!(".parent {{ {selector} {{color:green}} color:red }}");
-        let report = parse_sheet(&source);
+        let report = CssParser::default().parse_sheet(&source);
         let [CssRule::Style(parent)] = report.syntax().rules() else {
             panic!("expected retained parent: {source}");
         };
@@ -118,7 +123,7 @@ fn incomplete_namespace_names_discard_only_the_child_rule() {
 // prelude is the selector, so its failure is the one reported.
 // https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
 fn selector_failure(source: &str, unit: &str) -> (usize, CssRecoveryDiagnostic) {
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     let failures = report
         .diagnostics()
         .iter()
@@ -141,11 +146,25 @@ fn selector_failure(source: &str, unit: &str) -> (usize, CssRecoveryDiagnostic) 
     (start, (*diagnostic).clone())
 }
 
-fn selector_detail(diagnostic: &CssRecoveryDiagnostic) -> &CssSelectorError {
-    let ErrorKind::InvalidSelector(detail) = diagnostic.error().kind() else {
-        panic!("an invalid selector: {diagnostic:?}");
-    };
-    detail
+/// The position-independent facts of an invalid-selector diagnostic.
+fn selector_detail(
+    diagnostic: &CssRecoveryDiagnostic,
+) -> (
+    Option<CssProductionId>,
+    Option<CssGrammarExpectation>,
+    Option<CssTokenSummary>,
+) {
+    let detail = diagnostic.error();
+    assert_eq!(
+        detail.code(),
+        CssErrorCode::InvalidSelector,
+        "an invalid selector: {diagnostic:?}"
+    );
+    (
+        detail.production(),
+        detail.expectation(),
+        detail.encountered().cloned(),
+    )
 }
 
 #[test]
@@ -154,7 +173,7 @@ fn undeclared_namespace_prefix_is_the_same_invalid_selector_at_every_level() {
         let (top_start, top) = selector_failure(unit, unit);
         assert_eq!(top_start, 0);
         assert_eq!(top.error().code(), CssErrorCode::InvalidSelector, "{unit}");
-        let top_detail = selector_detail(&top).clone();
+        let top_detail = selector_detail(&top);
         let relative = top.error().position().byte_offset().value();
         for context in [
             ".card { UNIT }",
@@ -171,7 +190,7 @@ fn undeclared_namespace_prefix_is_the_same_invalid_selector_at_every_level() {
                 CssErrorCode::InvalidSelector,
                 "{source}: {nested:?}"
             );
-            assert_eq!(selector_detail(&nested), &top_detail, "{source}");
+            assert_eq!(selector_detail(&nested), top_detail, "{source}");
             assert_eq!(
                 nested.error().position().byte_offset().value(),
                 start + relative,

@@ -1,16 +1,20 @@
 //! Ordered captures for the selected CSSOM MediaList byte-comparison algorithm.
+use crate::css::support::failure_classes::SerializationFailure as Kind;
 use crate::css::support::value_assertions::media_resource_kind;
-use surgeist_css::{
-    CssSerializedOrigin, CssSpecifiedValueSerializationErrorKind as Kind,
-    CssSpecifiedValueSerializationLimits as Limits, parse_media_query_list,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssSerializedOrigin;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 #[test]
 fn ordered_captures_keep_duplicates_recovery_and_owned_input_origins() {
     let source = String::from("SCREEN, ???, print, SCREEN, (future: AbC)");
-    let report = parse_media_query_list(&source);
+    let report = CssMediaQueryList::parse(&CssParser::default(), &source);
     let original = report.clone();
-    let captures = report.syntax().serialize_cssom_members().unwrap();
+    let captures = report
+        .syntax()
+        .serialize_cssom_members(Default::default())
+        .unwrap();
     assert_eq!(
         captures
             .iter()
@@ -35,12 +39,9 @@ fn ordered_captures_keep_duplicates_recovery_and_owned_input_origins() {
 
 #[test]
 fn cumulative_member_limits_exclude_separators_and_retry_independently() {
-    let report = parse_media_query_list("screen, print");
+    let report = CssMediaQueryList::parse(&CssParser::default(), "screen, print");
     let exact = Limits::new(5, 5, 11);
-    let captures = report
-        .syntax()
-        .serialize_cssom_members_with_limits(exact)
-        .unwrap();
+    let captures = report.syntax().serialize_cssom_members(exact).unwrap();
     assert_eq!(captures[0].as_css(), "screen");
     assert_eq!(captures[1].as_css(), "print");
     for (limits, expected) in [
@@ -49,18 +50,10 @@ fn cumulative_member_limits_exclude_separators_and_retry_independently() {
         (Limits::new(5, 5, 10), Kind::ByteLimit),
     ] {
         assert_eq!(
-            media_resource_kind(
-                &report
-                    .syntax()
-                    .serialize_cssom_members_with_limits(limits)
-                    .unwrap_err()
-            ),
+            media_resource_kind(&report.syntax().serialize_cssom_members(limits).unwrap_err()),
             expected
         );
-        let retry = report
-            .syntax()
-            .serialize_cssom_members_with_limits(exact)
-            .unwrap();
+        let retry = report.syntax().serialize_cssom_members(exact).unwrap();
         assert_eq!(
             retry
                 .iter()
@@ -74,12 +67,12 @@ fn cumulative_member_limits_exclude_separators_and_retry_independently() {
 
 #[test]
 fn recovered_expansion_and_empty_aggregate_have_their_real_tariffs() {
-    let recovered = parse_media_query_list("???, screen");
+    let recovered = CssMediaQueryList::parse(&CssParser::default(), "???, screen");
     let exact = Limits::new(4, 6, 13);
     assert_eq!(
         recovered
             .syntax()
-            .serialize_cssom_members_with_limits(exact)
+            .serialize_cssom_members(exact)
             .unwrap()
             .len(),
         2
@@ -93,17 +86,17 @@ fn recovered_expansion_and_empty_aggregate_have_their_real_tariffs() {
             media_resource_kind(
                 &recovered
                     .syntax()
-                    .serialize_cssom_members_with_limits(limits)
+                    .serialize_cssom_members(limits)
                     .unwrap_err()
             ),
             expected
         );
     }
-    let empty = parse_media_query_list("");
+    let empty = CssMediaQueryList::parse(&CssParser::default(), "");
     assert!(
         empty
             .syntax()
-            .serialize_cssom_members_with_limits(Limits::new(1, 1, 0))
+            .serialize_cssom_members(Limits::new(1, 1, 0))
             .unwrap()
             .is_empty()
     );
@@ -111,7 +104,7 @@ fn recovered_expansion_and_empty_aggregate_have_their_real_tariffs() {
         media_resource_kind(
             &empty
                 .syntax()
-                .serialize_cssom_members_with_limits(Limits::new(0, 1, 0))
+                .serialize_cssom_members(Limits::new(0, 1, 0))
                 .unwrap_err()
         ),
         Kind::InputNodeLimit

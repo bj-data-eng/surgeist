@@ -2,7 +2,14 @@
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#background-color
 
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssHexColor, CssNamedColor};
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyKindRef,
+};
 
 fn typed_color(item: &CssLonghandContribution) -> &CssColor {
     let CssLonghandValueRef::BackgroundColor(color) = item.ordinary_value().unwrap().view() else {
@@ -32,7 +39,10 @@ fn intrinsic_initial_is_typed_transparent_without_an_authored_occurrence() {
     };
     assert_eq!(color, &CssColor::transparent());
     assert!(color.is_transparent());
-    assert_eq!(color.to_specified_css().unwrap(), "transparent");
+    assert_eq!(
+        color.serialize_specified(Default::default()).unwrap(),
+        "transparent"
+    );
 }
 
 #[test]
@@ -53,7 +63,7 @@ fn ordinary_typed_payloads_retain_literal_and_context_dependent_color_meaning() 
     ] {
         let source = declaration(&format!("background-color:{text}!important"));
         let CssExpansion::Contributions(CssContributions::Longhands(items)) =
-            expand_declaration(&source).unwrap()
+            source.expand().unwrap()
         else {
             panic!("ordinary contribution")
         };
@@ -61,7 +71,12 @@ fn ordinary_typed_payloads_retain_literal_and_context_dependent_color_meaning() 
             panic!("one terminal")
         };
         assert_eq!(typed_color(item), &expected);
-        assert_eq!(typed_color(item).to_specified_css().unwrap(), canonical);
+        assert_eq!(
+            typed_color(item)
+                .serialize_specified(Default::default())
+                .unwrap(),
+            canonical
+        );
         assert!(item.source().same_occurrence(&source));
         assert_eq!(item.source().importance(), CssImportance::Important);
         assert!(item.replacement_components().is_none());
@@ -71,13 +86,15 @@ fn ordinary_typed_payloads_retain_literal_and_context_dependent_color_meaning() 
 #[test]
 fn reusable_reentry_retains_typed_programmatic_and_parsed_colors_and_symbolic_globals() {
     let source = declaration("background-color:var(--paint)!important");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending color")
     };
-    let parsed = parse_component_values("red").unwrap();
-    let programmatic =
-        CssComponentValues::try_new(vec![CssComponentValue::try_ident("currentcolor").unwrap()])
-            .unwrap();
+    let parsed = CssComponentValues::parse(&CssParser::default(), "red").unwrap();
+    let programmatic = CssComponentValues::try_new(
+        vec![CssComponentValue::try_ident("currentcolor").unwrap()],
+        Default::default(),
+    )
+    .unwrap();
     for (replacement, expected) in [
         (
             parsed,
@@ -104,7 +121,7 @@ fn reusable_reentry_retains_typed_programmatic_and_parsed_colors_and_symbolic_gl
         }
     }
     let CssContributions::Longhands(items) = pending
-        .reenter(parse_component_values("initial").unwrap())
+        .reenter(CssComponentValues::parse(&CssParser::default(), "initial").unwrap())
         .unwrap()
     else {
         panic!("global contribution")

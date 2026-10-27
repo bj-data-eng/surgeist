@@ -8,7 +8,21 @@ use crate::css::support::value_assertions::property_rejection;
 use crate::css::support::{
     important_declaration as parsed, retained_checked_declaration as checked,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssCustomPropertyName, CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizationLimits, CssNormalizedItem};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::container::CssContainerLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind,
+};
 
 fn assert_pending(declaration: &CssDeclaration, property: CssKnownProperty, text: &str) {
     let known = declaration.known().unwrap();
@@ -17,7 +31,7 @@ fn assert_pending(declaration: &CssDeclaration, property: CssKnownProperty, text
     assert!(known.global().is_none());
     assert_eq!(known.substitution_dependent().unwrap().as_css(), text);
     assert_eq!(declaration.importance(), CssImportance::Important);
-    let CssExpansion::Pending(pending) = expand_declaration(declaration).unwrap() else {
+    let CssExpansion::Pending(pending) = declaration.expand().unwrap() else {
         panic!("whole declaration remains pending")
     };
     assert!(pending.source().same_occurrence(declaration));
@@ -77,14 +91,16 @@ fn malformed_attr_does_not_defer_or_survive_recovery() {
         "attr(foo, attr())",
     ] {
         property_rejection(
-            parse_property_value(
-                CssPropertyNameRef::Known(CssKnownProperty::Display),
-                parse_component_values(text).unwrap(),
+            CssDeclaration::try_from_components(
+                &CssParser::default(),
+                CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
+                CssComponentValues::parse(&CssParser::default(), text).unwrap(),
                 CssImportance::Normal,
             ),
             CssKnownProperty::Display,
         );
-        let report = parse_style_attribute(&format!("display:{text};display:block"));
+        let report =
+            CssParser::default().parse_block_contents(format!("display:{text};display:block"));
         assert!(!report.is_clean(), "{text}");
         assert_eq!(report.diagnostics().len(), 1, "{text}");
         assert_eq!(
@@ -118,9 +134,10 @@ fn independent_valid_variable_or_environment_can_defer_malformed_attr() {
 fn custom_property_tokens_keep_their_permissive_policy() {
     let name = CssCustomPropertyName::try_new("--x").unwrap();
     for text in ["attr()", "attr(foo,)", "attr(foo <number px>)"] {
-        let components = parse_component_values(text).unwrap();
-        let declaration = parse_property_value(
-            CssPropertyNameRef::Custom(&name),
+        let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();
+        let declaration = CssDeclaration::try_from_components(
+            &CssParser::default(),
+            CssPropertyTarget::Property(CssPropertyNameRef::Custom(&name)),
             components.clone(),
             CssImportance::Important,
         )
@@ -142,20 +159,19 @@ fn custom_property_tokens_keep_their_permissive_policy() {
 #[test]
 fn attr_remains_residual_at_any_depth_before_replacement_grammar() {
     let source = parsed("display", "var(--display)");
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("source pending")
     };
     for text in ["attr(foo)", "attr()", "f([ATTR(foo,)])", "block attr(foo)"] {
-        assert_eq!(
+        assert!(
             pending
-                .reenter(parse_component_values(text).unwrap())
+                .reenter(CssComponentValues::parse(&CssParser::default(), text).unwrap())
                 .unwrap_err()
-                .kind(),
-            &CssExpansionErrorKind::ResidualSubstitution,
+                .is_residual_substitution(),
             "{text}"
         );
     }
-    let replacement = parse_component_values("block").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "block").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("replacement completes")
     };
@@ -175,10 +191,10 @@ fn shorthand_attr_reentry_preserves_original_occurrence_and_importance() {
         CssKnownProperty::MarginBlock,
         "attr(data-size <length>)",
     );
-    let CssExpansion::Pending(pending) = expand_declaration(&source).unwrap() else {
+    let CssExpansion::Pending(pending) = source.expand().unwrap() else {
         panic!("pending shorthand")
     };
-    let replacement = parse_component_values("1px 2px").unwrap();
+    let replacement = CssComponentValues::parse(&CssParser::default(), "1px 2px").unwrap();
     let CssContributions::Longhands(values) = pending.reenter(replacement.clone()).unwrap() else {
         panic!("two margin longhands")
     };
@@ -196,16 +212,29 @@ fn shorthand_attr_reentry_preserves_original_occurrence_and_importance() {
 
 #[test]
 fn checked_attr_function_keeps_mixed_component_origins_without_combining_tokens() {
-    let parsed_name = parse_component_values("foo").unwrap().items()[0].clone();
+    let parsed_name = CssComponentValues::parse(&CssParser::default(), "foo")
+        .unwrap()
+        .items()[0]
+        .clone();
     let keyword_syntax = CssComponentValue::try_ident("bar").unwrap();
-    let arguments =
-        CssComponentValues::try_new(vec![parsed_name.clone(), keyword_syntax.clone()]).unwrap();
+    let arguments = CssComponentValues::try_new(
+        vec![parsed_name.clone(), keyword_syntax.clone()],
+        Default::default(),
+    )
+    .unwrap();
     let function = CssComponentValue::try_function("attr", arguments).unwrap();
     assert!(matches!(function.origin(), CssValueOrigin::Programmatic));
-    let components = CssComponentValues::try_new(vec![function]).unwrap();
-    assert_eq!(components.serialize().unwrap().as_css(), "attr(foo/**/bar)");
-    let declaration = parse_property_value(
-        CssPropertyNameRef::Known(CssKnownProperty::Display),
+    let components = CssComponentValues::try_new(vec![function], Default::default()).unwrap();
+    assert_eq!(
+        components
+            .serialize_tokens(Default::default())
+            .unwrap()
+            .as_css(),
+        "attr(foo/**/bar)"
+    );
+    let declaration = CssDeclaration::try_from_components(
+        &CssParser::default(),
+        CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Display)),
         components.clone(),
         CssImportance::Important,
     )
@@ -240,21 +269,24 @@ fn checked_attr_function_keeps_mixed_component_origins_without_combining_tokens(
 #[test]
 fn pending_attr_normalization_retains_recovered_order_and_importance() {
     let source = ".a{display:attr(first);display:attr(foo,);display:attr(second)!important}";
-    let report = parse_sheet(source);
+    let report = CssParser::default().parse_sheet(source);
     assert_eq!(report.diagnostics().len(), 1);
     assert_eq!(
         report.diagnostics()[0].action(),
         CssRecoveryAction::DropDeclaration
     );
     assert_eq!(
-        validate_sheet(source).unwrap_err().diagnostics(),
+        CssParser::default()
+            .parse_sheet(source)
+            .into_validation_result()
+            .unwrap_err()
+            .diagnostics(),
         report.diagnostics()
     );
-    let sheet = normalize_sheet_with_limits(
-        report.syntax(),
-        CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap(),
-    )
-    .unwrap();
+    let sheet = report
+        .syntax()
+        .normalize(CssNormalizationLimits::try_new(0, 1, 2, 2).unwrap())
+        .unwrap();
     let declarations: Vec<_> = sheet
         .items()
         .iter()
@@ -297,17 +329,21 @@ fn pending_attr_normalization_retains_recovered_order_and_importance() {
 
 #[test]
 fn property_attr_deferral_does_not_admit_query_or_descriptor_operands() {
-    let query = CssContainerCondition::try_from_components(
-        parse_component_values("(width:attr(foo))").unwrap(),
+    let query = CssCondition::<CssContainerLeaf>::try_from_components(
+        CssComponentValues::parse(&CssParser::default(), "(width:attr(foo))").unwrap(),
+        Default::default(),
     )
     .unwrap();
-    let CssContainerConditionKind::GeneralEnclosed(opaque) = query.kind() else {
+    let CssConditionKind::Leaf(CssContainerLeaf::GeneralEnclosed(opaque)) = query.kind() else {
         panic!("width query retains its own grammar")
     };
     assert_eq!(opaque.authored(), Some("(width:attr(foo))"));
 
-    let descriptor =
-        parse_font_face_descriptor_value("attr(foo)", CssFontFaceDescriptorKind::FontStyle);
+    let descriptor = CssAuthoredFontFaceDescriptorValue::parse(
+        &CssParser::default(),
+        "attr(foo)",
+        CssFontFaceDescriptorKind::FontStyle,
+    );
     assert!(descriptor.syntax().is_none());
     assert_first_code(
         descriptor.diagnostics(),

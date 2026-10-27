@@ -5,7 +5,7 @@
   "source_tree": "bfadc7a7a8d93dce59a27fa7df3bb0f6f6a623d8",
   "expectation_schema_version": 1,
   "generation_report_sha256": "ed8c70539c10effc254a8c2c4faa750396c7f3647996f5120e9e311bbe96d366",
-  "expected_class_registry_sha256": "f173837837d195bb4926df4466c3fba3590445453c97a23461b79f92244c0533",
+  "expected_class_registry_sha256": "671eb420c4cffd8bab440c715235e0a66616e00dceb9cbd44a84a4f2a633e3da",
   "records": [
     {
       "id": "atrule/atrule/container.json#/all together",
@@ -10817,10 +10817,19 @@
         "diagnostics": [
           {
             "code": "unexpected_token",
-            "action": "drop_declaration",
+            "action": "drop_qualified_rule",
             "byte_offset": 14,
             "span_start": 14,
-            "span_end": 70,
+            "span_end": 39,
+            "multiplicity": 1,
+            "payload_relation": "intersects"
+          },
+          {
+            "code": "unexpected_token",
+            "action": "drop_at_rule",
+            "byte_offset": 40,
+            "span_start": 40,
+            "span_end": 69,
             "multiplicity": 1,
             "payload_relation": "intersects"
           }
@@ -10862,7 +10871,7 @@
         "diagnostics": [
           {
             "code": "unexpected_token",
-            "action": "drop_declaration",
+            "action": "drop_qualified_rule",
             "byte_offset": 0,
             "span_start": 0,
             "span_end": 24,
@@ -10871,7 +10880,7 @@
           },
           {
             "code": "unknown_property",
-            "action": "drop_declaration",
+            "action": "drop_qualified_rule",
             "byte_offset": 26,
             "span_start": 26,
             "span_end": 51,
@@ -10915,8 +10924,8 @@
         "is_clean": false,
         "diagnostics": [
           {
-            "code": "unknown_at_rule",
-            "action": "drop_declaration",
+            "code": "unexpected_token",
+            "action": "drop_at_rule",
             "byte_offset": 14,
             "span_start": 14,
             "span_end": 106,

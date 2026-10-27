@@ -1,7 +1,15 @@
 //! Numeric properties keep property-specific authored models, and their public
 //! constructors reject invalid values.
 
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValue, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssFiniteNumber, CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::box_model::{CssAspectRatioValue, CssBoxSize, CssSizeValue};
+use surgeist_css::values::effects::{CssOpacityScalar, CssOpacityScalarKind, CssOpacityValue};
+use surgeist_css::values::layout::{CssFlexBasisRef, CssFlexBasisValue, CssFlexComponents};
+use surgeist_css::values::ui::CssScrollbarWidth;
 
 use crate::css::support::sheet_cases::*;
 
@@ -20,26 +28,38 @@ fn numeric_properties_use_property_specific_authored_models() {
     let grow = property_payload!(
         single_declaration(".panel { flex-grow: 2; }"),
         FlexGrow,
-        factor
+        value
     );
-    assert_eq!(number_spelling(grow.literal_component().unwrap()), "2");
+    assert_eq!(
+        number_spelling(grow.literal().map(|literal| literal.component()).unwrap()),
+        "2"
+    );
     assert!(grow.calculation().is_none());
     let shrink = property_payload!(
         single_declaration(".panel { flex-shrink: 0; }"),
         FlexShrink,
-        factor
+        value
     );
-    assert_eq!(number_spelling(shrink.literal_component().unwrap()), "0");
+    assert_eq!(
+        number_spelling(shrink.literal().map(|literal| literal.component()).unwrap()),
+        "0"
+    );
     let ratio = property_payload!(
         single_declaration(".panel { aspect-ratio: 1.5; }"),
         AspectRatio,
-        ratio
+        value
     );
     let CssAspectRatioValue::Ratio(ratio) = ratio else {
         panic!("specified ratio")
     };
     assert_eq!(
-        number_spelling(ratio.numerator().literal_component().unwrap()),
+        number_spelling(
+            ratio
+                .numerator()
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+        ),
         "1.5"
     );
     assert!(ratio.denominator().is_none());
@@ -55,12 +75,27 @@ fn numeric_properties_use_property_specific_authored_models() {
         .unwrap();
     assert_eq!(exact.numeric().representation(), "0.5");
     assert_eq!(
-        number_spelling(nonnegative_number("2").literal_component().unwrap()),
+        number_spelling(
+            nonnegative_number("2")
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+        ),
         "2"
     );
-    let operand =
-        CssRatioOperand::try_from_component(CssComponentValue::try_number("1.5").unwrap()).unwrap();
-    assert_eq!(number_spelling(operand.literal_component().unwrap()), "1.5");
+    let operand = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
+        CssComponentValue::try_number("1.5").unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        number_spelling(
+            operand
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+        ),
+        "1.5"
+    );
 }
 
 #[test]
@@ -114,18 +149,26 @@ fn numeric_property_models_reject_invalid_authored_values() {
     ]);
 
     assert!(
-        CssSpecifiedNonNegativeNumber::try_from_component(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number("-1").unwrap()
         )
         .is_err()
     );
     assert!(
-        CssRatioOperand::try_from_component(CssComponentValue::try_number("-1").unwrap()).is_err()
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
+            CssComponentValue::try_number("-1").unwrap()
+        )
+        .is_err()
     );
     assert!(CssComponentValue::try_number("Infinity").is_err());
-    let zero =
-        CssRatioOperand::try_from_component(CssComponentValue::try_number("0").unwrap()).unwrap();
-    assert_eq!(number_spelling(zero.literal_component().unwrap()), "0");
+    let zero = CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
+        CssComponentValue::try_number("0").unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        number_spelling(zero.literal().map(|literal| literal.component()).unwrap()),
+        "0"
+    );
 }
 
 #[test]
@@ -139,13 +182,17 @@ fn constructor_invariants_reject_invalid_public_numeric_values() {
         assert!(CssComponentValue::try_token(&format!("{number}%")).is_err());
     }
     let exact = signed_length("4px");
-    assert!(exact_dimension(exact.literal_component(), "4", "px"));
+    assert!(exact_dimension(
+        exact.literal().map(|literal| literal.component()),
+        "4",
+        "px"
+    ));
     assert!(matches!(exact.origin(), CssValueOrigin::Programmatic));
 
     assert!(CssComponentValue::try_number("NaN").is_err());
     assert!(CssComponentValue::try_number("inf").is_err());
     assert!(
-        CssSpecifiedNonNegativeNumber::try_from_component(
+        CssNumeric::<CssNumber, CssNonNegative>::try_from_component(
             CssComponentValue::try_number("-1").unwrap()
         )
         .is_err()
@@ -153,18 +200,32 @@ fn constructor_invariants_reject_invalid_public_numeric_values() {
     let grow = nonnegative_number("1");
     let shrink = nonnegative_number("0");
     let basis = CssFlexBasisValue::from(CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(
-        CssSpecifiedNonNegativeLengthPercentage::try_from_component(
+        CssNumeric::<CssLengthPercentage, CssNonNegative>::try_from_component(
             CssComponentValue::try_token("2px").unwrap(),
         )
         .unwrap(),
     )));
     let components = CssFlexComponents::try_new(Some(grow), Some(shrink), Some(basis)).unwrap();
     assert_eq!(
-        number_spelling(components.grow().unwrap().literal_component().unwrap()),
+        number_spelling(
+            components
+                .grow()
+                .unwrap()
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+        ),
         "1"
     );
     assert_eq!(
-        number_spelling(components.shrink().unwrap().literal_component().unwrap()),
+        number_spelling(
+            components
+                .shrink()
+                .unwrap()
+                .literal()
+                .map(|literal| literal.component())
+                .unwrap()
+        ),
         "0"
     );
     let CssFlexBasisRef::Size(CssSizeValue::BoxSize(CssBoxSize::LengthPercentage(length))) =
@@ -172,5 +233,9 @@ fn constructor_invariants_reject_invalid_public_numeric_values() {
     else {
         panic!("length flex basis")
     };
-    assert_length_literal(length.literal_component().unwrap(), "2", "px");
+    assert_length_literal(
+        length.literal().map(|literal| literal.component()).unwrap(),
+        "2",
+        "px",
+    );
 }

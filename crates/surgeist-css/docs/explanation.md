@@ -6,12 +6,13 @@
 adapters lower parsed syntax into typed style data. The parser preserves the
 information downstream consumers need without performing their processing.
 
-The ordinary `parse_sheet` and `parse_style_attribute` entry points use browser recovery: each returns a report containing valid retained syntax and every structured recovery diagnostic in source order. Unsupported or malformed source units are dropped, replaced, retained with an implicit closure, ignored, or stopped at the documented boundary; valid siblings remain eligible. A clean report means that no recovery diagnostic was produced. An empty retained tree alone does not establish that the source was clean, so consumers should inspect `is_clean()` or `diagnostics()` rather than infer validity from syntax length.
+The ordinary `CssParser::parse_sheet` and `CssParser::parse_block_contents` entry points use browser recovery: each returns a report containing valid retained syntax and every structured recovery diagnostic in source order. Unsupported or malformed source units are dropped, replaced, retained with an implicit closure, ignored, or stopped at the documented boundary; valid siblings remain eligible. A clean report means that no recovery diagnostic was produced. An empty retained tree alone does not establish that the source was clean, so consumers should inspect `is_clean()` or `diagnostics()` rather than infer validity from syntax length.
 
 The [report API](../src/report.rs) keeps syntax and diagnostics together.
 Application-strict validation is a decision about accepting the same report,
-not a second grammar. It returns retained syntax only for a clean report and
-otherwise returns every diagnostic in unchanged order.
+not a second grammar. `CssParseReport::into_validation_result` returns retained
+syntax only for a clean report and otherwise returns every diagnostic, in unchanged
+order, in a `CssValidationFailure`.
 
 ## Symbolic values and compatibility
 
@@ -52,7 +53,7 @@ implemented acceptance and the cited standard for normative validity.
 The catalog records named productions and their source provenance. It is not a
 claim that all CSS, every module at a given stability tier, or every valid future
 spelling is implemented. The [reference](reference.md) describes current families
-and their explicit limits; the [source registry](../src/conformance.rs) owns the
+and their explicit limits; the [source registry](../src/conformance/mod.rs) owns the
 exact IDs, statuses, subsets, and exclusions.
 
 ## Selector recovery and downstream matching

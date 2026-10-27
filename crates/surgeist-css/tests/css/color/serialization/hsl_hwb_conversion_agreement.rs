@@ -5,7 +5,7 @@
 //! where an independent exact or CSS3 m1/m2 computation could differ by an ulp.
 
 use crate::css::support::checked_color as color;
-use surgeist_css::{
+use surgeist_css::color::{
     CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInput,
     CssColorOrdinaryLimits, CssColorOrdinaryOutcome, CssColorPropertyFacts, CssColorSchemeFact,
     CssDeviceColorFact, parse_used_color,
@@ -26,13 +26,7 @@ fn used_css(input: &str) -> String {
         CssColorGrammarRequest::WholeColor,
         &facts,
         facts.identity(),
-        CssColorOrdinaryLimits {
-            input_units: 1024,
-            algorithm_records: 16_384,
-            arithmetic_records: 4096,
-            evaluation_records: 4096,
-            actions: 40_000_000,
-        },
+        CssColorOrdinaryLimits::default(),
     )
     .unwrap_or_else(|error| panic!("{input}: {error:?}"));
     let CssColorOrdinaryOutcome::Used(value) = result.outcome() else {
@@ -69,7 +63,9 @@ fn hsl_and_hwb_vectors_serialize_their_srgb_channels() {
         ("hwb(0 60% 60%)", "rgb(127.5, 127.5, 127.5)"),
     ] {
         assert_eq!(
-            color(source).to_specified_css().unwrap(),
+            color(source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );
@@ -103,7 +99,9 @@ fn specified_and_used_hsl_hwb_agree_at_rounding_ties() {
         "hwb(1.9e308grad 10% 20% / 0.5)",
     ] {
         assert_eq!(
-            color(source).to_specified_css().unwrap(),
+            color(source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             used_css(source),
             "{source}"
         );
@@ -122,7 +120,9 @@ fn binary64_ties_have_pinned_specified_and_used_text() {
         ("hwb(120 6.27451% 0%)", "rgb(16, 255, 16)"),
     ] {
         assert_eq!(
-            color(source).to_specified_css().unwrap(),
+            color(source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );
@@ -148,7 +148,9 @@ fn extreme_lightness_and_whiteness_keep_exact_vertex_channels() {
         ("hwb(0 0% -1e18%)", "rgb(255, 0, 0)"),
     ] {
         assert_eq!(
-            color(source).to_specified_css().unwrap(),
+            color(source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );
@@ -175,7 +177,9 @@ fn overflowing_number_hues_take_the_nearest_supported_multiple_of_360deg() {
         ("hsl(1e400 none 50%)", "hsl(0 none 50%)"),
     ] {
         assert_eq!(
-            color(source).to_specified_css().unwrap(),
+            color(source)
+                .serialize_specified(Default::default())
+                .unwrap(),
             expected,
             "{source}"
         );

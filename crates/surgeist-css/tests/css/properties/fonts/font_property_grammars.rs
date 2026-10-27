@@ -1,17 +1,21 @@
-use surgeist_css::{
-    CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssErrorCode,
-    CssFontFamilyNameKind, CssFontSize, CssFontStyle, CssFontSynthesis, CssFontValue,
-    CssFontVariantCaps, CssFontVariantEastAsian, CssFontVariantEastAsianVariant,
-    CssFontVariantEastAsianWidth, CssFontVariantLigatureState, CssFontVariantLigatures,
-    CssFontVariantNumeric, CssFontVariantNumericFigure, CssFontVariantNumericFraction,
-    CssFontVariantNumericSpacing, CssFontVariantPosition, CssFontVariantValue,
-    CssGenericFontFamily, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLineHeight, CssSystemFont, parse_style_attribute,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
 };
+use surgeist_css::values::font::{
+    CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssFontFamilyNameKind,
+    CssFontSize, CssFontStyle, CssFontSynthesis, CssFontValue, CssFontVariantCaps,
+    CssFontVariantEastAsian, CssFontVariantEastAsianVariant, CssFontVariantEastAsianWidth,
+    CssFontVariantLigatureState, CssFontVariantLigatures, CssFontVariantNumeric,
+    CssFontVariantNumericFigure, CssFontVariantNumericFraction, CssFontVariantNumericSpacing,
+    CssFontVariantPosition, CssFontVariantValue, CssGenericFontFamily, CssSystemFont,
+};
+use surgeist_css::values::text::CssLineHeight;
 
 #[test]
 fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "font-variant-caps: all-small-caps; ",
         "font-variant-east-asian: ruby jis04 full-width; ",
         "font-variant-ligatures: no-contextual common-ligatures; ",
@@ -67,7 +71,7 @@ fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
     else {
         panic!("expected font-variant-caps");
     };
-    assert_eq!(caps.caps(), &CssFontVariantCaps::AllSmallCaps);
+    assert_eq!(caps.value(), &CssFontVariantCaps::AllSmallCaps);
 
     let CssKnownPropertyValueRef::FontVariantEastAsian(east_asian) = report.syntax()[1]
         .known()
@@ -77,7 +81,7 @@ fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
     else {
         panic!("expected font-variant-east-asian");
     };
-    let CssFontVariantEastAsian::Values(east_asian) = east_asian.east_asian() else {
+    let CssFontVariantEastAsian::Values(east_asian) = east_asian.value() else {
         panic!("expected East Asian values");
     };
     assert_eq!(
@@ -98,7 +102,7 @@ fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
     else {
         panic!("expected font-variant-ligatures");
     };
-    let CssFontVariantLigatures::Values(ligatures) = ligatures.ligatures() else {
+    let CssFontVariantLigatures::Values(ligatures) = ligatures.value() else {
         panic!("expected ligature values");
     };
     assert_eq!(
@@ -118,7 +122,7 @@ fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
     else {
         panic!("expected font-variant-numeric");
     };
-    let CssFontVariantNumeric::Values(numeric) = numeric.numeric() else {
+    let CssFontVariantNumeric::Values(numeric) = numeric.value() else {
         panic!("expected numeric values");
     };
     assert_eq!(
@@ -144,7 +148,7 @@ fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
     else {
         panic!("expected font-variant-position");
     };
-    assert_eq!(position.position(), &CssFontVariantPosition::Super);
+    assert_eq!(position.value(), &CssFontVariantPosition::Super);
 
     let CssKnownPropertyValueRef::FontVariant(variant) = report.syntax()[5]
         .known()
@@ -154,7 +158,7 @@ fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
     else {
         panic!("expected font-variant");
     };
-    let CssFontVariantValue::Values(values) = variant.variant() else {
+    let CssFontVariantValue::Values(values) = variant.value() else {
         panic!("expected shorthand component values");
     };
     assert_eq!(values.caps(), Some(CssFontVariantCaps::AllSmallCaps));
@@ -177,7 +181,8 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
         "unicase",
         "titling-caps",
     ] {
-        let report = parse_style_attribute(&format!("font-variant-caps: {keyword}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("font-variant-caps: {keyword}"));
         assert!(report.is_clean(), "{keyword}: {:?}", report.diagnostics());
     }
 
@@ -218,11 +223,12 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
         "proportional-width",
         "ruby",
     ] {
-        let report = parse_style_attribute(&format!("font-variant: {keyword}"));
+        let report = CssParser::default().parse_block_contents(format!("font-variant: {keyword}"));
         assert!(report.is_clean(), "{keyword}: {:?}", report.diagnostics());
     }
     for keyword in ["normal", "sub", "super"] {
-        let report = parse_style_attribute(&format!("font-variant-position: {keyword}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("font-variant-position: {keyword}"));
         assert!(report.is_clean(), "{keyword}: {:?}", report.diagnostics());
     }
     for keyword in [
@@ -237,7 +243,8 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
         "contextual",
         "no-contextual",
     ] {
-        let report = parse_style_attribute(&format!("font-variant-ligatures: {keyword}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("font-variant-ligatures: {keyword}"));
         assert!(report.is_clean(), "{keyword}: {:?}", report.diagnostics());
     }
     for keyword in [
@@ -251,7 +258,8 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
         "ordinal",
         "slashed-zero",
     ] {
-        let report = parse_style_attribute(&format!("font-variant-numeric: {keyword}"));
+        let report =
+            CssParser::default().parse_block_contents(format!("font-variant-numeric: {keyword}"));
         assert!(report.is_clean(), "{keyword}: {:?}", report.diagnostics());
     }
     for keyword in [
@@ -266,19 +274,20 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
         "proportional-width",
         "ruby",
     ] {
-        let report = parse_style_attribute(&format!("font-variant-east-asian: {keyword}"));
+        let report = CssParser::default()
+            .parse_block_contents(format!("font-variant-east-asian: {keyword}"));
         assert!(report.is_clean(), "{keyword}: {:?}", report.diagnostics());
     }
 
-    let unordered = parse_style_attribute(concat!(
+    let unordered = CssParser::default().parse_block_contents(concat!(
         "font-variant-ligatures: contextual historical-ligatures common-ligatures discretionary-ligatures; ",
         "font-variant-numeric: ordinal stacked-fractions proportional-nums slashed-zero lining-nums; ",
         "font-variant-east-asian: ruby proportional-width traditional",
     ));
     assert!(unordered.is_clean(), "{:?}", unordered.diagnostics());
 
-    let compatibility =
-        parse_style_attribute("font-variant: normal; font-variant: small-caps; font-variant: none");
+    let compatibility = CssParser::default()
+        .parse_block_contents("font-variant: normal; font-variant: small-caps; font-variant: none");
     assert!(
         compatibility.is_clean(),
         "{:?}",
@@ -293,7 +302,7 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
         else {
             panic!("expected font-variant");
         };
-        match (index, value.variant()) {
+        match (index, value.value()) {
             (0, CssFontVariantValue::Normal) => {}
             (1, CssFontVariantValue::Values(values)) => {
                 assert_eq!(values.caps(), Some(CssFontVariantCaps::SmallCaps));
@@ -315,12 +324,12 @@ fn font_variant_keywords_unordered_groups_and_authored_values_are_exact() {
     else {
         panic!("expected font-variant none");
     };
-    assert!(matches!(none.variant(), CssFontVariantValue::None));
+    assert!(matches!(none.value(), CssFontVariantValue::None));
 }
 
 #[test]
 fn font_variant_globals_substitution_duplicates_and_conflicts_are_exact() {
-    let symbolic = parse_style_attribute(concat!(
+    let symbolic = CssParser::default().parse_block_contents(concat!(
         "font-variant-caps: inherit; ",
         "font-variant-east-asian: var(--east); ",
         "font-variant-ligatures: unset; ",
@@ -387,7 +396,7 @@ fn font_variant_globals_substitution_duplicates_and_conflicts_are_exact() {
         "font-variant: small-caps, ordinal",
     ] {
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -402,7 +411,9 @@ fn font_variant_globals_substitution_duplicates_and_conflicts_are_exact() {
         );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict parsing rejects the recovered declaration")
                 .diagnostics(),
             report.diagnostics(),
@@ -413,7 +424,7 @@ fn font_variant_globals_substitution_duplicates_and_conflicts_are_exact() {
 
 #[test]
 fn kerning_size_adjust_and_synthesis_follow_fonts3() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "font-kerning: normal; ",
         "font-size-adjust: 0.5; ",
         "font-synthesis: style weight; ",
@@ -460,8 +471,8 @@ fn kerning_size_adjust_and_synthesis_follow_fonts3() {
         panic!("expected font-kerning");
     };
     assert!(matches!(
-        kerning.kerning(),
-        surgeist_css::CssFontKerning::Normal
+        kerning.value(),
+        surgeist_css::values::font::CssFontKerning::Normal
     ));
     assert_eq!(kerning.as_css(), "normal");
 
@@ -474,8 +485,8 @@ fn kerning_size_adjust_and_synthesis_follow_fonts3() {
         panic!("expected font-size-adjust");
     };
     assert!(matches!(
-        size_adjust.size_adjust(),
-        surgeist_css::CssFontSizeAdjust::Number(value) if value.serialize_specified().unwrap() == "0.5"
+        size_adjust.value(),
+        surgeist_css::values::font::CssFontSizeAdjust::Number(value) if value.serialize_specified(Default::default()).unwrap() == "0.5"
     ));
 
     let CssKnownPropertyValueRef::FontSynthesis(synthesis) = report.syntax()[2]
@@ -487,14 +498,14 @@ fn kerning_size_adjust_and_synthesis_follow_fonts3() {
         panic!("expected font-synthesis");
     };
     assert!(matches!(
-        synthesis.synthesis(),
+        synthesis.value(),
         CssFontSynthesis::Values(values) if values.weight() && values.style()
     ));
 }
 
 #[test]
 fn font_control_branches_globals_substitution_and_mutations_are_exact() {
-    let branches = parse_style_attribute(concat!(
+    let branches = CssParser::default().parse_block_contents(concat!(
         "font-kerning: auto; font-kerning: normal; font-kerning: none; ",
         "font-size-adjust: none; font-size-adjust: 0; ",
         "font-synthesis: none; font-synthesis: weight; font-synthesis: style; ",
@@ -530,7 +541,7 @@ fn font_control_branches_globals_substitution_and_mutations_are_exact() {
         "font-synthesis: weight, style",
     ] {
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -545,7 +556,9 @@ fn font_control_branches_globals_substitution_and_mutations_are_exact() {
         );
 
         assert_eq!(
-            surgeist_css::validate_style_attribute(&source)
+            surgeist_css::CssParser::default()
+                .parse_block_contents(&source)
+                .into_validation_result()
                 .expect_err("strict parsing rejects the recovered declaration")
                 .diagnostics(),
             report.diagnostics(),
@@ -556,7 +569,7 @@ fn font_control_branches_globals_substitution_and_mutations_are_exact() {
 
 #[test]
 fn font_size_family_line_height_and_shorthand_follow_fonts3() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "font-size: medium; ",
         "line-height: 1.25; ",
         "font-family: \"inherit\", Avenir Next, serif; ",
@@ -575,7 +588,7 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
     else {
         panic!("expected font-size");
     };
-    assert!(matches!(size.size(), CssFontSize::Medium));
+    assert!(matches!(size.value(), CssFontSize::Medium));
 
     let CssKnownPropertyValueRef::LineHeight(line_height) = report.syntax()[1]
         .known()
@@ -586,9 +599,9 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
         panic!("expected line-height");
     };
     assert!(matches!(
-        line_height.line_height(),
+        line_height.value(),
         CssLineHeight::Number(value)
-            if value.serialize_specified().unwrap() == "1.25"
+            if value.serialize_specified(Default::default()).unwrap() == "1.25"
     ));
 
     let CssKnownPropertyValueRef::FontFamily(family) = report.syntax()[2]
@@ -599,7 +612,7 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
     else {
         panic!("expected font-family");
     };
-    let families = family.families().families();
+    let families = family.value().families();
     assert_eq!(families[0].kind(), CssFontFamilyNameKind::Quoted);
     assert_eq!(families[0].as_str(), "inherit");
     assert_eq!(families[1].kind(), CssFontFamilyNameKind::IdentSequence);
@@ -622,7 +635,7 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
     else {
         panic!("expected font shorthand");
     };
-    let CssFontValue::Explicit(explicit) = explicit.font() else {
+    let CssFontValue::Explicit(explicit) = explicit.value() else {
         panic!("expected explicit font shorthand");
     };
     assert!(matches!(explicit.size(), CssFontSize::Medium));
@@ -644,7 +657,7 @@ fn font_size_family_line_height_and_shorthand_follow_fonts3() {
             .property_value()
             .unwrap(),
         CssKnownPropertyValueRef::Font(value)
-            if matches!(value.font(), CssFontValue::System(CssSystemFont::Menu))
+            if matches!(value.value(), CssFontValue::System(CssSystemFont::Menu))
     ));
 }
 
@@ -658,7 +671,7 @@ fn font_keywords_generics_globals_and_signed_boundaries_are_exact() {
         "font-family: serif, sans-serif, cursive, fantasy, monospace; ",
         "font-family: inherit; font-family: \"inherit\"",
     );
-    let report = parse_style_attribute(source);
+    let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 15);
     for (index, expected) in [
@@ -683,7 +696,7 @@ fn font_keywords_generics_globals_and_signed_boundaries_are_exact() {
         else {
             panic!("expected font-size keyword");
         };
-        assert_eq!(value.size(), expected);
+        assert_eq!(value.value(), expected);
     }
     let CssKnownPropertyValueRef::FontFamily(generics) = report.syntax()[12]
         .known()
@@ -695,7 +708,7 @@ fn font_keywords_generics_globals_and_signed_boundaries_are_exact() {
     };
     assert_eq!(
         generics
-            .families()
+            .value()
             .families()
             .iter()
             .map(|family| family.generic_family().unwrap())
@@ -713,7 +726,7 @@ fn font_keywords_generics_globals_and_signed_boundaries_are_exact() {
         CssKnownDeclaredValueRef::Global(_)
     ));
 
-    let globals = parse_style_attribute(concat!(
+    let globals = CssParser::default().parse_block_contents(concat!(
         "font-size: initial; line-height: unset; ",
         "font-family: revert; font: inherit",
     ));
@@ -729,7 +742,7 @@ fn font_keywords_generics_globals_and_signed_boundaries_are_exact() {
             .property_value()
             .unwrap(),
         CssKnownPropertyValueRef::FontFamily(value)
-            if value.families().families()[0].kind() == CssFontFamilyNameKind::Quoted
+            if value.value().families()[0].kind() == CssFontFamilyNameKind::Quoted
     ));
 
     for invalid in [
@@ -741,7 +754,7 @@ fn font_keywords_generics_globals_and_signed_boundaries_are_exact() {
         "font-family: My serif",
     ] {
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
@@ -762,7 +775,7 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
         ("small-caption", CssSystemFont::SmallCaption),
         ("status-bar", CssSystemFont::StatusBar),
     ] {
-        let report = parse_style_attribute(&format!("font: {keyword}"));
+        let report = CssParser::default().parse_block_contents(format!("font: {keyword}"));
         assert!(report.is_clean(), "{keyword}: {:?}", report.diagnostics());
         let CssKnownPropertyValueRef::Font(value) = report.syntax()[0]
             .known()
@@ -772,10 +785,11 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
         else {
             panic!("expected font");
         };
-        assert_eq!(value.font(), &CssFontValue::System(expected));
+        assert_eq!(value.value(), &CssFontValue::System(expected));
     }
 
-    let legacy = parse_style_attribute("font: italic small-caps 700 condensed 16px/normal Arial");
+    let legacy = CssParser::default()
+        .parse_block_contents("font: italic small-caps 700 condensed 16px/normal Arial");
     assert!(legacy.is_clean(), "{:?}", legacy.diagnostics());
     let CssKnownPropertyValueRef::Font(legacy) = legacy.syntax()[0]
         .known()
@@ -785,13 +799,13 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
     else {
         panic!("expected font");
     };
-    let CssFontValue::Explicit(font) = legacy.font() else {
+    let CssFontValue::Explicit(font) = legacy.value() else {
         panic!("expected current explicit font");
     };
     assert_eq!(
         font.style(),
         Some(&CssFontStyle::Keyword(
-            surgeist_css::CssFontStyleKeyword::Italic
+            surgeist_css::values::font::CssFontStyleKeyword::Italic
         ))
     );
     assert_eq!(font.families().families()[0].as_str(), "Arial");
@@ -807,7 +821,7 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
         "font: 16px serif/1.2",
     ] {
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
     }
@@ -815,7 +829,7 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
 
 #[test]
 fn font_shorthand_retains_ambiguous_normal_before_explicit_style() {
-    let report = parse_style_attribute(concat!(
+    let report = CssParser::default().parse_block_contents(concat!(
         "font: normal italic 16px serif; ",
         "font: normal normal italic 16px serif; ",
         "font: normal normal normal italic 16px serif; ",
@@ -828,11 +842,11 @@ fn font_shorthand_retains_ambiguous_normal_before_explicit_style() {
     assert_eq!(report.syntax().len(), 6);
 
     for (index, expected_style) in [
-        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
-        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
-        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
-        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
-        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
+        CssFontStyle::Keyword(surgeist_css::values::font::CssFontStyleKeyword::Italic),
+        CssFontStyle::Keyword(surgeist_css::values::font::CssFontStyleKeyword::Italic),
+        CssFontStyle::Keyword(surgeist_css::values::font::CssFontStyleKeyword::Italic),
+        CssFontStyle::Keyword(surgeist_css::values::font::CssFontStyleKeyword::Italic),
+        CssFontStyle::Keyword(surgeist_css::values::font::CssFontStyleKeyword::Italic),
         CssFontStyle::Oblique { angle: None },
     ]
     .iter()
@@ -846,7 +860,7 @@ fn font_shorthand_retains_ambiguous_normal_before_explicit_style() {
         else {
             panic!("expected font shorthand at declaration {index}");
         };
-        let CssFontValue::Explicit(explicit) = value.font() else {
+        let CssFontValue::Explicit(explicit) = value.value() else {
             panic!("expected explicit font shorthand at declaration {index}");
         };
         assert_eq!(explicit.style(), Some(expected_style));
@@ -855,7 +869,7 @@ fn font_shorthand_retains_ambiguous_normal_before_explicit_style() {
 
 #[test]
 fn opentype_tags_and_indices_enforce_ascii_and_nonnegative_domains() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         "font-feature-settings: \"éabc\"; font-feature-settings: \"kern\" -1; color: red",
     );
 
@@ -869,7 +883,7 @@ fn opentype_tags_and_indices_enforce_ascii_and_nonnegative_domains() {
 
 #[test]
 fn font_feature_settings_preserve_authored_values() {
-    let report = parse_style_attribute(
+    let report = CssParser::default().parse_block_contents(
         r#"font-feature-settings: "kern", "\6c iga" on, "zero" off, "ss01" 0, "cv01" 12"#,
     );
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -882,7 +896,7 @@ fn font_feature_settings_preserve_authored_values() {
     else {
         panic!("expected font-feature-settings");
     };
-    let CssAuthoredFontFeatureSettings::Features(features) = value.settings() else {
+    let CssAuthoredFontFeatureSettings::Features(features) = value.value() else {
         panic!("expected feature list");
     };
     assert_eq!(
@@ -907,11 +921,11 @@ fn font_feature_settings_preserve_authored_values() {
     ));
     assert!(matches!(
         features.features()[3].value(),
-        CssAuthoredFontFeatureValue::Index(index) if index.i32_value() == Some(0)
+        CssAuthoredFontFeatureValue::Index(index) if index.literal().and_then(|literal| literal.value()) == Some(0)
     ));
     assert!(matches!(
         features.features()[4].value(),
-        CssAuthoredFontFeatureValue::Index(index) if index.i32_value() == Some(12)
+        CssAuthoredFontFeatureValue::Index(index) if index.literal().and_then(|literal| literal.value()) == Some(12)
     ));
 
     assert_eq!(features.features().len(), 5);
@@ -928,7 +942,7 @@ fn opentype_tag_length_unicode_and_index_boundaries_recover() {
         r#"font-feature-settings: "kern" -1"#,
     ] {
         let source = format!("{invalid}; color: red");
-        let report = parse_style_attribute(&source);
+        let report = CssParser::default().parse_block_contents(&source);
         assert_eq!(report.syntax().len(), 1, "{source}");
         assert_eq!(report.diagnostics().len(), 1, "{source}");
         assert_eq!(
