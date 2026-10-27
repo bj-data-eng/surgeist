@@ -461,6 +461,11 @@ glyph policy. These are catalogue capabilities. The private owned engine retains
 resources through actual preparation, selected-line finalization and placement;
 the public mixed-line protocol lends those actual phases without copying glyph packets.
 
+Font fallback credits nominal coverage only for the cluster's shaping
+contributors. A noncontributing format scalar such as TAG SPACE cannot make
+a missing letter complete. Genuine glyph-free text can still retain an admitted
+font's metrics without adding paint or changing its original source.
+
 ## Glyph-free associated-font metrics
 
 `System::registered_font_faces()` lends accepted registrations in request order,
