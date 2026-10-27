@@ -631,7 +631,6 @@ pub struct CssLayerStatementRule {
 
 impl CssLayerStatementRule {
     #[must_use]
-    #[allow(dead_code)] // Staged for @layer parser construction.
     pub(crate) const fn new(names: CssLayerNameList, position: CssSourcePosition) -> Self {
         Self { names, position }
     }
@@ -659,7 +658,6 @@ pub struct CssLayerBlockRule {
 
 impl CssLayerBlockRule {
     #[must_use]
-    #[allow(dead_code)] // Staged for @layer parser construction.
     pub(crate) fn new(
         name: Option<CssLayerName>,
         rules: Vec<CssRule>,
@@ -889,6 +887,7 @@ impl CssScopeRule {
 /// nearest enclosing style or scope binds implicit relative roots; explicit
 /// root `&` and declaration runs use any enclosing style ancestor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssScopeNestingContext {
     /// No enclosing style or scope. Relative roots are invalid.
     None,

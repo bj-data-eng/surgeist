@@ -8,8 +8,10 @@
 //! Byte offsets index the original UTF-8 input. Lines and columns are zero-based,
 //! and columns count UTF-16 code units. Display and debug prose are for people;
 //! control flow should match typed variants and include a wildcard for every
-//! non-exhaustive enum. Closed enums such as [`CssImportance`](crate::declaration::CssImportance) and
-//! [`CssSupportStatus`](crate::conformance::CssSupportStatus) remain exhaustively matchable.
+//! non-exhaustive enum, which covers every value and fact enum, including
+//! [`CssSupportStatus`](crate::conformance::CssSupportStatus). The two
+//! importance states of [`CssImportance`](crate::declaration::CssImportance) are
+//! fixed by CSS Cascade, so that enum remains exhaustively matchable.
 
 pub(crate) mod error;
 pub(crate) mod recovery;

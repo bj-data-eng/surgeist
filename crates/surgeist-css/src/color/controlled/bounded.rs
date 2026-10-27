@@ -639,6 +639,24 @@ pub struct CssColorInitializationLayout {
 pub struct CssColorParse<'owner, 'facts> {
     cursor: core::ColorOperation<'owner, 'facts>,
 }
+impl std::fmt::Debug for CssColorParse<'_, '_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssColorParse")
+            .field(
+                "input_kind",
+                &CssColorInputKind::from_native(self.cursor.input_kind()),
+            )
+            .field(
+                "bank_lengths",
+                &[
+                    self.bank_length(CssColorBank::Algorithm),
+                    self.bank_length(CssColorBank::Arithmetic),
+                    self.bank_length(CssColorBank::Evaluation),
+                ],
+            )
+            .finish_non_exhaustive()
+    }
+}
 impl<'owner, 'facts> CssColorParse<'owner, 'facts> {
     /// Fixed metadata admission precedes this call; no array/input is scanned.
     ///
@@ -771,6 +789,7 @@ impl<'owner, 'facts> CssColorParse<'owner, 'facts> {
     clippy::large_enum_variant,
     reason = "A pending action owns the fixed-register parse inline, admitted as action_bytes; boxing it introduces an unadmitted heap allocation"
 )]
+#[derive(Debug)]
 pub enum CssColorParseStep<'owner, 'facts> {
     /// The parse waits on this action.
     Pending(CssColorParseAction<'owner, 'facts>),
@@ -778,6 +797,7 @@ pub enum CssColorParseStep<'owner, 'facts> {
     Complete(CssColorParseOutcome<'facts>),
 }
 /// Exactly one finite action; the guard owns the parse until its completion.
+#[derive(Debug)]
 pub enum CssColorParseAction<'owner, 'facts> {
     /// Read one original input unit.
     ReadInput(CssColorReadInput<'owner, 'facts>),
@@ -830,6 +850,7 @@ impl<'owner, 'facts> CssColorParseAction<'owner, 'facts> {
     }
 }
 /// One original input unit read at a fixed offset.
+#[derive(Debug)]
 pub struct CssColorReadInput<'owner, 'facts> {
     parse: CssColorParse<'owner, 'facts>,
     offset: usize,
@@ -855,6 +876,7 @@ impl<'owner, 'facts> CssColorReadInput<'owner, 'facts> {
     }
 }
 /// One caller-owned record read back from a fixed bank position.
+#[derive(Debug)]
 pub struct CssColorReadSlot<'owner, 'facts> {
     parse: CssColorParse<'owner, 'facts>,
     bank: CssColorBank,
@@ -895,6 +917,7 @@ impl<'owner, 'facts> CssColorReadSlot<'owner, 'facts> {
     }
 }
 /// One record to append at, or replace in, a fixed bank position.
+#[derive(Debug)]
 pub struct CssColorWriteSlot<'owner, 'facts> {
     parse: CssColorParse<'owner, 'facts>,
     bank: CssColorBank,
@@ -936,6 +959,7 @@ impl<'owner, 'facts> CssColorWriteSlot<'owner, 'facts> {
     }
 }
 /// The pending acknowledgement of one minted record's storage.
+#[derive(Debug)]
 pub struct CssColorSlotReceipt<'owner, 'facts> {
     parse: CssColorParse<'owner, 'facts>,
     bank: CssColorBank,
@@ -969,6 +993,7 @@ impl<'owner, 'facts> CssColorSlotReceipt<'owner, 'facts> {
     }
 }
 /// One fixed observation of the supplied fact envelope.
+#[derive(Debug)]
 pub struct CssColorReadFact<'owner, 'facts> {
     parse: CssColorParse<'owner, 'facts>,
     fact: CssColorFactRead,
@@ -993,6 +1018,7 @@ impl<'owner, 'facts> CssColorReadFact<'owner, 'facts> {
     }
 }
 /// One fixed-register kernel transition.
+#[derive(Debug)]
 pub struct CssColorCompute<'owner, 'facts> {
     parse: CssColorParse<'owner, 'facts>,
     kernel: CssColorKernel,
@@ -1018,6 +1044,7 @@ impl<'owner, 'facts> CssColorCompute<'owner, 'facts> {
     }
 }
 /// Standard failure is the only parse result that admits an explicit fallback.
+#[derive(Debug)]
 pub enum CssColorParseOutcome<'facts> {
     /// The input parsed to a used color.
     Used(CssUsedColorCheckpoint<'facts>),
@@ -1025,10 +1052,12 @@ pub enum CssColorParseOutcome<'facts> {
     StandardFailure(CssColorFailureCheckpoint<'facts>),
 }
 /// Fixed used value plus original source/fact qualification, no recipe backing.
+#[derive(Debug)]
 pub struct CssUsedColorCheckpoint<'facts> {
     pub(in crate::color) checkpoint: core::UsedCheckpoint<'facts>,
 }
 /// Actual standard-invalid branch, distinct from reached capability failure.
+#[derive(Debug)]
 pub struct CssColorFailureCheckpoint<'facts> {
     checkpoint: core::FailureCheckpoint<'facts>,
 }
@@ -1134,6 +1163,7 @@ impl<'facts> CssColorFailureCheckpoint<'facts> {
 /// It wraps [`surgeist_color::Computation`], so it has no error. The
 /// checkpoint's value can only come from CSS resolution, an explicit fallback
 /// on a standard failure, or a CSS-issued transformation.
+#[derive(Debug)]
 pub struct CssColorTransform<'num, 'facts> {
     checkpoint: core::UsedCheckpoint<'facts>,
     computation: surgeist_color::Computation<'num>,
@@ -1508,9 +1538,7 @@ mod tests {
             ),
         ] {
             let mut owner = CssColorOperationOwner::new();
-            let error = parse(&mut owner, input, &facts)
-                .err()
-                .expect("actual reached capability");
+            let error = parse(&mut owner, input, &facts).expect_err("actual reached capability");
             assert_eq!(error.unsupported(), Some(expected), "{input}");
         }
         let unknown = [CssColorProfileBinding::new(

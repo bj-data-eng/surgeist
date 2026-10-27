@@ -568,6 +568,7 @@ pub(crate) fn validate_emitted_budget(
 
 /// One inert direct child. Nested candidate bodies remain immutable CSS payload.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum CssSupportsTestChild {
     /// A declaration.
     Declaration(CssSupportsTestDeclaration),
@@ -584,6 +585,7 @@ pub enum CssSupportsTestChild {
 /// Standalone child root is depth zero. Nested payload/components and the complete output share the
 /// same native writer allowances.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum CssSupportsTestChildRef<'a> {
     /// The borrowed declaration.
     Declaration(&'a CssSupportsTestDeclaration),

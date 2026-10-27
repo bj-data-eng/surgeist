@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 /// The document mode that selects contextual authored CSS grammar.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[non_exhaustive]
 pub enum CssParserMode {
     /// Ordinary standards grammar, also required by CSS.supports() method syntax.
     #[default]

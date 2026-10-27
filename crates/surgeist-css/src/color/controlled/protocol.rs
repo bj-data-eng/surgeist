@@ -18,6 +18,13 @@ pub struct CssColorOperationOwner {
     marker: u8,
     phase: std::cell::Cell<usize>,
 }
+impl std::fmt::Debug for CssColorOperationOwner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssColorOperationOwner")
+            .field("phase", &self.phase.get())
+            .finish_non_exhaustive()
+    }
+}
 impl Default for CssColorOperationOwner {
     fn default() -> Self {
         Self::new()
@@ -212,6 +219,16 @@ pub struct CssColorSlot<'owner> {
     pub(crate) phase: usize,
     bank: CssColorBank,
     pub(crate) data: Data<'owner>,
+}
+impl std::fmt::Debug for CssColorSlot<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssColorSlot")
+            .field("bank", &self.bank)
+            .field("index", &self.index)
+            .field("kind", &self.kind())
+            .field("phase", &self.phase)
+            .finish_non_exhaustive()
+    }
 }
 impl<'owner> CssColorSlot<'owner> {
     pub(crate) fn new(

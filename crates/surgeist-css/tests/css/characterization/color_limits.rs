@@ -221,8 +221,7 @@ fn used_error_resource(
         facts.identity(),
         limits,
     )
-    .err()
-    .expect("the input needs more than a ceiling");
+    .expect_err("the input needs more than a ceiling");
     (error.exhausted_limit(), error.color_error().is_some())
 }
 

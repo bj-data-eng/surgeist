@@ -214,6 +214,14 @@ pub struct CssKeyframeSelectorMatcher<'query> {
     normalized: Vec<NormalizedOffset<'query>>,
     context: SpecifiedSerializationContext,
 }
+impl std::fmt::Debug for CssKeyframeSelectorMatcher<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssKeyframeSelectorMatcher")
+            .field("query", &self.query)
+            .field("normalized_selectors", &self.normalized.len())
+            .finish_non_exhaustive()
+    }
+}
 impl<'query> CssKeyframeSelectorMatcher<'query> {
     /// Normalizes the query exactly once under the native cumulative budget.
     pub fn try_new(

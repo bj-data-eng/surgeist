@@ -71,6 +71,7 @@ fn every_record_reports_exactly_the_boundary_fields_of_its_status() {
                 assert_eq!(record.unsupported_remainder(), None, "{id} remainder");
                 assert!(record.recognized_unsupported_code().is_some(), "{id} code");
             }
+            status => panic!("{id} has a status this suite does not classify: {status:?}"),
         }
     }
 }
@@ -373,6 +374,10 @@ fn conformance_catalog_vectors_cover_each_supported_and_unsupported_boundary() {
                     "recognized unsupported has no positive vector"
                 );
             }
+            status => panic!(
+                "{} has a status this suite does not classify: {status:?}",
+                expected.id
+            ),
         }
 
         if matches!(

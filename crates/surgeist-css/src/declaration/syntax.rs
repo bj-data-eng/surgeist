@@ -114,8 +114,10 @@ impl std::ops::Deref for CssDeclarationList {
 /// The complete importance state of an ordinary authored declaration.
 ///
 /// Importance is recognized at a parsed declaration boundary or supplied separately to
-/// [`crate::CssParser::parse_property_value`]; it is not part of the property value. Its two states form
-/// a closed, exhaustively matchable set.
+/// [`crate::CssParser::parse_property_value`]; it is not part of the property value. CSS Cascade defines exactly
+/// two importance states, normal and `!important`, so this enum is exhaustive on purpose,
+/// unlike the other value enums: a cascade consumer matches both states to order precedence
+/// and needs no wildcard arm.
 /// Downstream cascade policy may consume it, but this crate does not apply cascade.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum CssImportance {
@@ -627,67 +629,6 @@ impl CssAuthoredDeclarationValue {
     #[must_use]
     pub fn as_css(&self) -> &str {
         &self.css
-    }
-}
-
-/// A retained `var()` reference: the referenced custom property name and its optional
-/// fallback.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssVariableReference {
-    name: CssCustomPropertyName,
-    fallback: Option<CssVariableFallback>,
-}
-
-impl CssVariableReference {
-    #[allow(dead_code)]
-    #[must_use]
-    pub(crate) fn new(name: CssCustomPropertyName, fallback: Option<CssVariableFallback>) -> Self {
-        Self { name, fallback }
-    }
-
-    /// Returns the referenced custom property name.
-    #[must_use]
-    pub const fn name(&self) -> &CssCustomPropertyName {
-        &self.name
-    }
-
-    /// Returns the fallback argument, or `None` when the reference has none.
-    #[must_use]
-    pub const fn fallback(&self) -> Option<&CssVariableFallback> {
-        self.fallback.as_ref()
-    }
-}
-
-/// The fallback argument of a `var()` reference, with the references nested inside it.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CssVariableFallback {
-    authored: CssAuthoredDeclarationValue,
-    references: Vec<CssVariableReference>,
-}
-
-impl CssVariableFallback {
-    #[allow(dead_code)]
-    #[must_use]
-    pub(crate) fn new(
-        authored: CssAuthoredDeclarationValue,
-        references: Vec<CssVariableReference>,
-    ) -> Self {
-        Self {
-            authored,
-            references,
-        }
-    }
-
-    /// Returns the retained authored fallback text.
-    #[must_use]
-    pub fn as_css(&self) -> &str {
-        self.authored.as_css()
-    }
-
-    /// Returns the `var()` references nested in the fallback, in source order.
-    #[must_use]
-    pub fn references(&self) -> &[CssVariableReference] {
-        &self.references
     }
 }
 

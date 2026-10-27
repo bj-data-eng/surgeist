@@ -7,6 +7,7 @@ use std::mem::{size_of, take};
 
 /// One edge of the path from an authored color to a component inside it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssColorPathStep {
     /// The source color of a relative color, or the color operand of `contrast-color()`.
     Source,

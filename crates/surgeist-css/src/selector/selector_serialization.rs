@@ -118,6 +118,7 @@ crate::serialization::specified_rule_serialization::specified_serialization!(
 /// The actual role of a checked scope boundary. Start binds to its enclosing
 /// context; End binds to the scope introduced by its rule.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssScopeSelectorCssomContext {
     /// A scope-start boundary, which binds to the enclosing context given by the payload.
     Start(CssScopeNestingContext),

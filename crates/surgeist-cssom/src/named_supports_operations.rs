@@ -10,11 +10,19 @@ use surgeist_css::selector::CssNamespaceContext;
 use surgeist_css::serialization::{CssRuleGraphInput, CssRuleSerializationLimits};
 use surgeist_css::{CssParser, CssParserContext};
 
-fn own_child(child: CssSupportsTestChildRef<'_>) -> CssSupportsTestChild {
+/// The refusal for a test child of a kind this CSSOM does not know.
+fn unsupported_test_child() -> CssomError {
+    CssomError::InvalidInput("unsupported named-supports test child")
+}
+
+fn own_child(child: CssSupportsTestChildRef<'_>) -> Result<CssSupportsTestChild, CssomError> {
     match child {
-        CssSupportsTestChildRef::Declaration(v) => CssSupportsTestChild::Declaration(v.clone()),
-        CssSupportsTestChildRef::QualifiedRule(v) => CssSupportsTestChild::QualifiedRule(v.clone()),
-        CssSupportsTestChildRef::AtRule(v) => CssSupportsTestChild::AtRule(v.clone()),
+        CssSupportsTestChildRef::Declaration(v) => Ok(CssSupportsTestChild::Declaration(v.clone())),
+        CssSupportsTestChildRef::QualifiedRule(v) => {
+            Ok(CssSupportsTestChild::QualifiedRule(v.clone()))
+        }
+        CssSupportsTestChildRef::AtRule(v) => Ok(CssSupportsTestChild::AtRule(v.clone())),
+        _ => Err(unsupported_test_child()),
     }
 }
 
@@ -31,7 +39,7 @@ impl State {
         let children = self.list(limits)?;
         for child in body.children() {
             let child = self.adopt(
-                CssomAuthoredRule::SupportsTestChild(own_child(child)),
+                CssomAuthoredRule::SupportsTestChild(own_child(child)?),
                 CssomParent::Rule(parent.clone()),
                 depth.checked_add(1).ok_or(CssomError::Limit {
                     resource: "rule depth",
@@ -322,6 +330,7 @@ pub(crate) fn test_child_storage(
         CssSupportsTestChildRef::Declaration(v) => v.origin(),
         CssSupportsTestChildRef::QualifiedRule(v) => v.origin(),
         CssSupportsTestChildRef::AtRule(v) => v.origin(),
+        _ => return Err(unsupported_test_child()),
     };
     let bytes = retained_test_input_bytes(origin, limits)?;
     push(&mut pending, Entry::Child(child), entries, limits)?;
@@ -347,6 +356,7 @@ pub(crate) fn test_child_storage(
                 )?;
                 (v.prelude().items(), v.body())
             }
+            Entry::Child(_) => return Err(unsupported_test_child()),
             Entry::Component(v) => (
                 match v.view() {
                     CssComponentValueRef::Function(v) => v.values().items(),

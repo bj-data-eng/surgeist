@@ -236,6 +236,7 @@ fn used_with(
                     observation.shape = "standard-failure".to_owned();
                     observation.add_fact(standard_failure(failure));
                 }
+                _ => observation.shape = "future-outcome".to_owned(),
             }
             observation.add_fact(format!("consumed={}..{}", consumed.start, consumed.end));
         }
@@ -270,6 +271,7 @@ fn used_limits(input: &[u8], facts: &CssColorFacts<'_>) -> Observation {
                     observation.shape = "standard-failure".to_owned();
                     observation.add_fact(standard_failure(failure));
                 }
+                _ => observation.shape = "future-outcome".to_owned(),
             },
             Err(error) => {
                 observation.shape = "err".to_owned();
@@ -346,6 +348,7 @@ fn authored(
                     }
                 ));
             }
+            _ => observation.shape = "future-outcome".to_owned(),
         },
         Err(error) => {
             observation.shape = "err".to_owned();

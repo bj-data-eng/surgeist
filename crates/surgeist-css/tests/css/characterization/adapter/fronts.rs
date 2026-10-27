@@ -1966,6 +1966,7 @@ fn feature_facts(feature: &CssFeatureMetadata) -> String {
             CssSupportStatus::Complete => "complete",
             CssSupportStatus::Partial => "partial",
             CssSupportStatus::RecognizedUnsupported => "recognized-unsupported",
+            _ => "future",
         },
         feature.supported_subset().unwrap_or("-"),
         feature.unsupported_remainder().unwrap_or("-"),

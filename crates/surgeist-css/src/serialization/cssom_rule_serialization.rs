@@ -81,7 +81,7 @@ enum CssRuleCssomSerializationErrorKind {
     FormatUnavailable(CssRuleCssomFormat),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum RuleCssomSource {
     Provider(CssSerializationError),
     DeclarationBlock(CssDeclarationBlockError),
@@ -108,7 +108,7 @@ impl From<CssDeclarationBlockError> for RuleCssomSource {
 ///
 /// The value or declaration-block failure behind it is the error's source and is
 /// exposed by its accessor; [`Self::is_resource_limit`] groups the resource refusals.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssRuleSerializationError {
     kind: CssRuleCssomSerializationErrorKind,
     rule_path: Vec<usize>,

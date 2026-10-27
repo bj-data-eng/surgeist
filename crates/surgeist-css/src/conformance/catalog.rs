@@ -50,12 +50,14 @@ pub enum CssFeatureKind {
 
 /// The bounded implementation state of one exact catalog production.
 ///
-/// The three states are closed: callers can distinguish a complete
-/// production, a documented supported subset, and a recognized spelling that
-/// is never retained as that production. A partial remainder describes scope
+/// The three states are the current set, so a downstream match needs a wildcard
+/// arm: callers can distinguish a complete production, a documented supported
+/// subset, and a recognized spelling that is never retained as that
+/// production. A partial remainder describes scope
 /// not claimed as supported; it does not establish that every remainder form
 /// is valid CSS. Consult the cited standard for normative validity.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[non_exhaustive]
 pub enum CssSupportStatus {
     /// The complete identified production is implemented.
     Complete,

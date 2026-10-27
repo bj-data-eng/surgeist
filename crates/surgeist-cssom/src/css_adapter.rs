@@ -390,6 +390,7 @@ impl State {
     }
     fn custom_media_data(
         &mut self,
+        authored: &CssRule,
         rule: &CssCustomMediaRule,
         limits: &CssomLimits,
     ) -> Result<CssomRuleData, CssomError> {
@@ -398,6 +399,13 @@ impl State {
             CssCustomMediaBody::False => CssomCustomMediaQuery::Boolean(false),
             CssCustomMediaBody::Media(list) => {
                 CssomCustomMediaQuery::MediaList(self.media_list(list.clone(), limits)?)
+            }
+            // A body this CSSOM does not know stays an opaque authored rule, as
+            // any other rule it does not interpret does.
+            _ => {
+                return Ok(CssomRuleData::Leaf {
+                    current: CssomAuthoredRule::Rule(authored.clone()),
+                });
             }
         };
         Ok(CssomRuleData::CustomMedia {
@@ -460,7 +468,7 @@ impl State {
             CssRule::CounterStyle(v) => self.counter_data(v, id, limits)?,
             CssRule::FontFace(v) => self.font_data(v, id, limits)?,
             CssRule::FontFeatureValues(v) => self.features_data(v, limits)?,
-            CssRule::CustomMedia(v) => self.custom_media_data(v, limits)?,
+            CssRule::CustomMedia(rule) => self.custom_media_data(v, rule, limits)?,
             CssRule::Import(v) => CssomRuleData::Import {
                 target: v.target().clone(),
                 layer: v.layer().cloned(),

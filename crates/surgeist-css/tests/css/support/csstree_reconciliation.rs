@@ -361,6 +361,7 @@ pub(crate) const fn language_range_token_kind(kind: CssLanguageRangeKind) -> &'s
     match kind {
         CssLanguageRangeKind::Identifier => "identifier",
         CssLanguageRangeKind::String => "string",
+        _ => "future",
     }
 }
 

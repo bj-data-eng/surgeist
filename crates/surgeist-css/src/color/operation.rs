@@ -154,6 +154,7 @@ enum Phase<'owner, 'facts> {
 }
 /// Source and fact qualification survives scratch retirement; no bank link or
 /// owner borrow does, so the owner can serve another parse.
+#[derive(Debug)]
 pub(crate) struct CheckpointContext<'facts> {
     pub(crate) facts: &'facts CssColorFacts<'facts>,
     pub(crate) expected: CssColorFactIdentity,
@@ -166,11 +167,13 @@ pub(crate) enum ParseOutcome<'facts> {
     Used(UsedCheckpoint<'facts>),
     StandardFailure(FailureCheckpoint<'facts>),
 }
+#[derive(Debug)]
 pub(crate) struct UsedCheckpoint<'facts> {
     pub(crate) context: CheckpointContext<'facts>,
     pub(crate) value: Color,
     pub(crate) standard_failure: Option<StandardFailure>,
 }
+#[derive(Debug)]
 pub(crate) struct FailureCheckpoint<'facts> {
     context: CheckpointContext<'facts>,
     failure: StandardFailure,

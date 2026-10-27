@@ -25,5 +25,6 @@ mod color_interpolation_method;
 mod color_quirks_context;
 mod color_symbolic_authoring;
 mod color_used_channel_resolution;
+mod controlled_protocol_surface;
 mod property;
 mod used_color_operations;

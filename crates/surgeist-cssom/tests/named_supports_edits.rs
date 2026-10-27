@@ -188,6 +188,7 @@ fn accepted_single_child_forms_keep_complete_real_input_provenance() {
             CssSupportsTestChild::Declaration(v) => v.origin(),
             CssSupportsTestChild::QualifiedRule(v) => v.origin(),
             CssSupportsTestChild::AtRule(v) => v.origin(),
+            other => panic!("this suite does not classify the test child {other:?}"),
         };
         let CssValueOrigin::Parsed(origin) = origin else {
             panic!("actual source")

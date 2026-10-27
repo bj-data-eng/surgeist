@@ -252,6 +252,11 @@ impl State {
                 CssStyleSelectorContext::Scoped(ancestor) => {
                     CssRuleAdmissionContext::ScopedGroup(ancestor)
                 }
+                _ => {
+                    return Err(CssomError::InvalidInput(
+                        "unsupported style selector context",
+                    ));
+                }
             }),
         }
     }
