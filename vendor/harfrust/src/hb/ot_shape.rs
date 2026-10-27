@@ -323,6 +323,13 @@ pub struct hb_ot_shape_context_t<'a> {
 
 // Pull it all together!
 pub fn shape_internal(ctx: &mut hb_ot_shape_context_t) {
+    shape_internal_with_metrics(ctx, None);
+}
+
+pub(crate) fn shape_internal_with_metrics(
+    ctx: &mut hb_ot_shape_context_t,
+    metrics: Option<&mut vertical_position::MetricSource<'_>>,
+) {
     let initial_vars = ctx.buffer.allocated_var_bits;
     if !ordinary_symbol::begin(ctx.buffer) {
         return;
@@ -361,7 +368,11 @@ pub fn shape_internal(ctx: &mut hb_ot_shape_context_t) {
         ctx.buffer.direction = ctx.target_direction;
         return;
     }
-    position(ctx);
+    if !position(ctx, metrics) {
+        ctx.buffer.allocated_var_bits = initial_vars;
+        ctx.buffer.direction = ctx.target_direction;
+        return;
+    }
     substitute_post(ctx);
 
     propagate_flags(ctx.buffer);
@@ -445,25 +456,47 @@ fn hb_ot_substitute_plan(ctx: &mut hb_ot_shape_context_t) {
     }
 }
 
-fn position(ctx: &mut hb_ot_shape_context_t) {
+fn position(
+    ctx: &mut hb_ot_shape_context_t,
+    metrics: Option<&mut vertical_position::MetricSource<'_>>,
+) -> bool {
     ctx.buffer.clear_positions();
 
-    position_default(ctx);
-
+    if !position_default(ctx, metrics) {
+        return false;
+    }
     position_complex(ctx);
+    if ctx.buffer.position_math.failure.is_some() {
+        return false;
+    }
 
     if ctx.buffer.direction.is_backward() {
         ctx.buffer.reverse();
     }
 
     ctx.buffer.deallocate_gsubgpos_vars();
+    true
 }
 
-fn position_default(ctx: &mut hb_ot_shape_context_t) {
+fn position_default(
+    ctx: &mut hb_ot_shape_context_t,
+    mut metrics: Option<&mut vertical_position::MetricSource<'_>>,
+) -> bool {
     let len = ctx.buffer.len;
 
     if ctx.buffer.direction.is_horizontal() {
         ctx.face.glyph_h_advances(ctx.buffer);
+    } else if let Some(source) = metrics.as_deref_mut() {
+        for index in 0..len {
+            let glyph = ctx.buffer.info[index].as_glyph();
+            let Some((advance, x, y)) = source.get(ctx.buffer, glyph.to_u32()) else {
+                return false;
+            };
+            let pos = &mut ctx.buffer.pos[index];
+            pos.y_advance = advance;
+            pos.x_offset = x;
+            pos.y_offset = y;
+        }
     } else {
         for (info, pos) in ctx.buffer.info[..len]
             .iter()
@@ -477,11 +510,15 @@ fn position_default(ctx: &mut hb_ot_shape_context_t) {
     }
 
     if ctx.buffer.scratch_flags & HB_BUFFER_SCRATCH_FLAG_HAS_SPACE_FALLBACK != 0 {
-        ot_shape_fallback::_hb_ot_shape_fallback_spaces(ctx.plan, ctx.face, ctx.buffer);
+        return ot_shape_fallback::_hb_ot_shape_fallback_spaces(
+            ctx.plan, ctx.face, ctx.buffer, metrics,
+        );
     }
+    true
 }
 
 fn position_complex(ctx: &mut hb_ot_shape_context_t) {
+    ctx.buffer.position_math.stage = vertical_position::VerticalPositionStage::Gpos;
     // If the font has no GPOS and direction is forward, then when
     // zeroing mark widths, we shift the mark with it, such that the
     // mark is positioned hanging over the previous glyph.  When
@@ -503,7 +540,19 @@ fn position_complex(ctx: &mut hb_ot_shape_context_t) {
         zero_mark_widths_by_gdef(ctx.buffer, adjust_offsets_when_zeroing);
     }
 
+    if ctx.buffer.position_math.failure.is_some()
+        || (ctx.buffer.position_math.is_half()
+            && ctx.buffer.shaping_status() != ShapingStatus::Complete)
+    {
+        return;
+    }
     position_by_plan(ctx.plan, ctx.face, ctx.buffer);
+    if ctx.buffer.position_math.failure.is_some()
+        || (ctx.buffer.position_math.is_half()
+            && ctx.buffer.shaping_status() != ShapingStatus::Complete)
+    {
+        return;
+    }
 
     if ctx.plan.zero_marks
         && ctx.plan.shaper.zero_width_marks == HB_OT_SHAPE_ZERO_WIDTH_MARKS_BY_GDEF_LATE
@@ -511,10 +560,19 @@ fn position_complex(ctx: &mut hb_ot_shape_context_t) {
         zero_mark_widths_by_gdef(ctx.buffer, adjust_offsets_when_zeroing);
     }
 
+    if ctx.buffer.position_math.failure.is_some() {
+        return;
+    }
     // Finish off.  Has to follow a certain order.
     GPOS::position_finish_advances(ctx.face, ctx.buffer);
     zero_width_default_ignorables(ctx.buffer);
     GPOS::position_finish_offsets(ctx.face, ctx.buffer);
+    if ctx.buffer.position_math.failure.is_some()
+        || (ctx.buffer.position_math.is_half()
+            && ctx.buffer.shaping_status() != ShapingStatus::Complete)
+    {
+        return;
+    }
 
     if ctx.plan.fallback_mark_positioning {
         ot_shape_fallback::position_marks(
@@ -937,8 +995,8 @@ fn zero_mark_widths_by_gdef(buffer: &mut hb_buffer_t, adjust_offsets: bool) {
     for (info, pos) in buffer.info[..len].iter().zip(&mut buffer.pos[..len]) {
         if info.is_mark() {
             if adjust_offsets {
-                pos.x_offset -= pos.x_advance;
-                pos.y_offset -= pos.y_advance;
+                pos.x_offset = buffer.position_math.sub(pos.x_offset, pos.x_advance);
+                pos.y_offset = buffer.position_math.sub(pos.y_offset, pos.y_advance);
             }
 
             pos.x_advance = 0;

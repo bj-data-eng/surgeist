@@ -77,6 +77,7 @@ mod unicode_emoji_table;
 #[rustfmt::skip]
 mod ucd_table;
 mod unicode;
+pub(crate) mod vertical_position;
 
 use read_fonts::types::Tag as hb_tag_t;
 
@@ -89,3 +90,6 @@ use self::common::{script, Direction, Feature, Language, Script};
 
 #[cfg(test)]
 mod completion_fixture;
+
+#[cfg(test)]
+mod vertical_position_tests;

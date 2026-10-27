@@ -38,37 +38,47 @@ impl Apply for CursivePosFormat1<'_> {
             return None;
         };
 
-        let (exit_x, exit_y) = ctx.face.ot_tables.resolve_anchor(&exit_prev);
-        let (entry_x, entry_y) = ctx.face.ot_tables.resolve_anchor(&entry_this);
+        let (exit_x, exit_y) = ctx
+            .face
+            .ot_tables
+            .resolve_anchor(&exit_prev, &mut ctx.buffer.position_math);
+        let (entry_x, entry_y) = ctx
+            .face
+            .ot_tables
+            .resolve_anchor(&entry_this, &mut ctx.buffer.position_math);
 
         let direction = ctx.buffer.direction;
         let j = ctx.buffer.idx;
+        if ctx.buffer.position_math.failure.is_some() {
+            return None;
+        }
         ctx.buffer.unsafe_to_break(Some(i), Some(j + 1));
 
+        let math = &mut ctx.buffer.position_math;
         let pos = &mut ctx.buffer.pos;
         match direction {
             Direction::LeftToRight => {
-                pos[i].x_advance = exit_x + pos[i].x_offset;
-                let d = entry_x + pos[j].x_offset;
-                pos[j].x_advance -= d;
-                pos[j].x_offset -= d;
+                pos[i].x_advance = math.add(exit_x, pos[i].x_offset);
+                let d = math.add(entry_x, pos[j].x_offset);
+                pos[j].x_advance = math.sub(pos[j].x_advance, d);
+                pos[j].x_offset = math.sub(pos[j].x_offset, d);
             }
             Direction::RightToLeft => {
-                let d = exit_x + pos[i].x_offset;
-                pos[i].x_advance -= d;
-                pos[i].x_offset -= d;
-                pos[j].x_advance = entry_x + pos[j].x_offset;
+                let d = math.add(exit_x, pos[i].x_offset);
+                pos[i].x_advance = math.sub(pos[i].x_advance, d);
+                pos[i].x_offset = math.sub(pos[i].x_offset, d);
+                pos[j].x_advance = math.add(entry_x, pos[j].x_offset);
             }
             Direction::TopToBottom => {
-                pos[i].y_advance = exit_y + pos[i].y_offset;
-                let d = entry_y + pos[j].y_offset;
-                pos[j].y_advance -= d;
-                pos[j].y_offset -= d;
+                pos[i].y_advance = math.add(exit_y, pos[i].y_offset);
+                let d = math.add(entry_y, pos[j].y_offset);
+                pos[j].y_advance = math.sub(pos[j].y_advance, d);
+                pos[j].y_offset = math.sub(pos[j].y_offset, d);
             }
             Direction::BottomToTop => {
-                let d = exit_y + pos[i].y_offset;
-                pos[i].y_advance -= d;
-                pos[i].y_offset -= d;
+                let d = math.add(exit_y, pos[i].y_offset);
+                pos[i].y_advance = math.sub(pos[i].y_advance, d);
+                pos[i].y_offset = math.sub(pos[i].y_offset, d);
                 pos[j].y_advance = entry_y;
             }
             Direction::Invalid => {}
@@ -84,21 +94,21 @@ impl Apply for CursivePosFormat1<'_> {
         // Arabic.
         let mut child = i;
         let mut parent = j;
-        let mut x_offset = entry_x - exit_x;
-        let mut y_offset = entry_y - exit_y;
+        let mut x_offset = math.sub(entry_x, exit_x);
+        let mut y_offset = math.sub(entry_y, exit_y);
 
         // Low bits are lookup flags, so we want to truncate.
         if ctx.lookup_props as u16 & lookup_flags::RIGHT_TO_LEFT == 0 {
             core::mem::swap(&mut child, &mut parent);
-            x_offset = -x_offset;
-            y_offset = -y_offset;
+            x_offset = math.neg(x_offset);
+            y_offset = math.neg(y_offset);
         }
 
         // If child was already connected to someone else, walk through its old
         // chain and reverse the link direction, such that the whole tree of its
         // previous connection now attaches to new parent.  Watch out for case
         // where new parent is on the path from old chain...
-        reverse_cursive_minor_offset(pos, child, direction, parent);
+        reverse_cursive_minor_offset(pos, child, direction, parent, math);
 
         pos[child].set_attach_type(attach_type::CURSIVE);
         pos[child].set_attach_chain((parent as isize - child as isize) as i16);
@@ -132,6 +142,7 @@ fn reverse_cursive_minor_offset(
     i: usize,
     direction: Direction,
     new_parent: usize,
+    math: &mut crate::hb::vertical_position::PositionMath,
 ) {
     let chain = pos[i].attach_chain();
     let attach_type = pos[i].attach_type();
@@ -147,12 +158,12 @@ fn reverse_cursive_minor_offset(
         return;
     }
 
-    reverse_cursive_minor_offset(pos, j, direction, new_parent);
+    reverse_cursive_minor_offset(pos, j, direction, new_parent, math);
 
     if direction.is_horizontal() {
-        pos[j].y_offset = -pos[i].y_offset;
+        pos[j].y_offset = math.neg(pos[i].y_offset);
     } else {
-        pos[j].x_offset = -pos[i].x_offset;
+        pos[j].x_offset = math.neg(pos[i].x_offset);
     }
 
     pos[j].set_attach_chain(-chain);

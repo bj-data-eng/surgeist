@@ -167,6 +167,9 @@ pub fn apply_layout_table<T: LayoutTable>(
                     ctx.per_syllable = lookup_map.per_syllable;
 
                     apply_string::<T>(&mut ctx, lookup);
+                    if ctx.buffer.position_math.failure.is_some() {
+                        return;
+                    }
                 }
             }
         }
@@ -215,7 +218,7 @@ fn apply_forward(ctx: &mut OT::hb_ot_apply_context_t, lookup: &LookupInfo) -> bo
 
     let use_hot_subtable_cache = lookup.cache_enter(ctx);
 
-    while ctx.buffer.successful {
+    while ctx.buffer.successful && ctx.buffer.position_math.failure.is_none() {
         let mut j = ctx.buffer.idx;
         while j < ctx.buffer.len && {
             let info = &ctx.buffer.info[j];
@@ -232,10 +235,13 @@ fn apply_forward(ctx: &mut OT::hb_ot_apply_context_t, lookup: &LookupInfo) -> bo
             break;
         }
 
-        if lookup
+        let applied = lookup
             .apply(ctx, table_data, use_hot_subtable_cache)
-            .is_some()
-        {
+            .is_some();
+        if ctx.buffer.position_math.failure.is_some() {
+            break;
+        }
+        if applied {
             ret = true;
         } else {
             ctx.buffer.next_glyph();
@@ -261,7 +267,7 @@ fn apply_backward(ctx: &mut OT::hb_ot_apply_context_t, lookup: &LookupInfo) -> b
             && check_glyph_property(ctx.face, cur, ctx.lookup_props)
             && lookup.apply(ctx, table_data, false).is_some();
 
-        if ctx.buffer.idx == 0 {
+        if ctx.buffer.idx == 0 || ctx.buffer.position_math.failure.is_some() {
             break;
         }
 

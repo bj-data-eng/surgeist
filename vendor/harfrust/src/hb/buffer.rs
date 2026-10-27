@@ -470,6 +470,7 @@ pub struct hb_buffer_t {
     /// Allocations successful.
     pub successful: bool,
     shaping_refusal: Option<ShapingRefusal>,
+    pub(crate) position_math: super::vertical_position::PositionMath,
     /// Whether we have an output buffer going on.
     pub(crate) have_output: bool,
     pub have_separate_output: bool,
@@ -661,6 +662,7 @@ impl hb_buffer_t {
             language: None,
             successful: true,
             shaping_refusal: None,
+            position_math: super::vertical_position::PositionMath::ordinary(),
             have_output: false,
             have_positions: false,
             idx: 0,
@@ -798,6 +800,7 @@ impl hb_buffer_t {
     }
 
     fn clear(&mut self) {
+        self.position_math = super::vertical_position::PositionMath::ordinary();
         self.default_ignorables = super::default_ignorable::State::default();
         self.default_ignorables_temporary = 0;
         self.joining = super::original_joining::JoiningState::default();

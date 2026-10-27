@@ -30,6 +30,10 @@ pub use hb::face::{hb_font_t as Shaper, ShaperBuilder, ShaperData, ShaperInstanc
 pub use hb::ordinary_symbol::OrdinarySymbolInputError;
 pub use hb::original_joining::{JoiningInputError, JoiningSource, JoiningSourceError};
 pub use hb::ot_shape_plan::{hb_ot_shape_plan_t as ShapePlan, ShapePlanKey};
+pub use hb::vertical_position::{
+    VerticalGlyphBuffer, VerticalGlyphPosition, VerticalNominalMetrics, VerticalPositionStage,
+    VerticalShapeContextError, VerticalShapeError,
+};
 
 /// Type alias for a normalized variation coordinate.
 pub type NormalizedCoord = read_fonts::types::F2Dot14;

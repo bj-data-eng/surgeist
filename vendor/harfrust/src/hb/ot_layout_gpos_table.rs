@@ -24,7 +24,11 @@ fn propagate_attachment_offsets(
     i: usize,
     direction: Direction,
     nesting_level: usize,
+    math: &mut super::vertical_position::PositionMath,
 ) -> bool {
+    if math.failure.is_some() {
+        return false;
+    }
     // Adjusts offsets of attached glyphs (both cursive and mark) to accumulate
     // offset of glyph they are attached to.
     let chain = pos[i].attach_chain();
@@ -42,12 +46,12 @@ fn propagate_attachment_offsets(
     }
 
     let truncated = pos[j].attach_chain() != 0
-        && propagate_attachment_offsets(pos, len, j, direction, nesting_level - 1);
+        && propagate_attachment_offsets(pos, len, j, direction, nesting_level - 1, math);
 
     match kind {
         attach_type::MARK => {
-            pos[i].x_offset += pos[j].x_offset;
-            pos[i].y_offset += pos[j].y_offset;
+            pos[i].x_offset = math.add(pos[i].x_offset, pos[j].x_offset);
+            pos[i].y_offset = math.add(pos[i].y_offset, pos[j].y_offset);
 
             // i is the position of the mark; j is the base.
             if j < i {
@@ -55,13 +59,13 @@ fn propagate_attachment_offsets(
                 // And currently the only way in OpenType.
                 if direction.is_forward() {
                     for k in j..i {
-                        pos[i].x_offset -= pos[k].x_advance;
-                        pos[i].y_offset -= pos[k].y_advance;
+                        pos[i].x_offset = math.sub(pos[i].x_offset, pos[k].x_advance);
+                        pos[i].y_offset = math.sub(pos[i].y_offset, pos[k].y_advance);
                     }
                 } else {
                     for k in j + 1..i + 1 {
-                        pos[i].x_offset += pos[k].x_advance;
-                        pos[i].y_offset += pos[k].y_advance;
+                        pos[i].x_offset = math.add(pos[i].x_offset, pos[k].x_advance);
+                        pos[i].y_offset = math.add(pos[i].y_offset, pos[k].y_advance);
                     }
                 }
             } else {
@@ -69,22 +73,22 @@ fn propagate_attachment_offsets(
                 // to a base after it in the logical order.
                 if direction.is_forward() {
                     for k in i..j {
-                        pos[i].x_offset += pos[k].x_advance;
-                        pos[i].y_offset += pos[k].y_advance;
+                        pos[i].x_offset = math.add(pos[i].x_offset, pos[k].x_advance);
+                        pos[i].y_offset = math.add(pos[i].y_offset, pos[k].y_advance);
                     }
                 } else {
                     for k in i + 1..j + 1 {
-                        pos[i].x_offset -= pos[k].x_advance;
-                        pos[i].y_offset -= pos[k].y_advance;
+                        pos[i].x_offset = math.sub(pos[i].x_offset, pos[k].x_advance);
+                        pos[i].y_offset = math.sub(pos[i].y_offset, pos[k].y_advance);
                     }
                 }
             }
         }
         attach_type::CURSIVE => {
             if direction.is_horizontal() {
-                pos[i].y_offset += pos[j].y_offset;
+                pos[i].y_offset = math.add(pos[i].y_offset, pos[j].y_offset);
             } else {
-                pos[i].x_offset += pos[j].x_offset;
+                pos[i].x_offset = math.add(pos[i].x_offset, pos[j].x_offset);
             }
         }
         _ => {}
@@ -112,6 +116,8 @@ pub mod GPOS {
 
         let len = buffer.len;
         let direction = buffer.direction;
+        let mut math = buffer.position_math;
+        math.stage = super::super::vertical_position::VerticalPositionStage::Attachment;
 
         // Handle attachments
         if buffer.scratch_flags & HB_BUFFER_SCRATCH_FLAG_HAS_GPOS_ATTACHMENT != 0 {
@@ -125,8 +131,12 @@ pub mod GPOS {
                             i,
                             direction,
                             MAX_NESTING_LEVEL,
+                            &mut math,
                         ) {
                             buffer.refuse(ShapingRefusal::AttachmentNestingLimit);
+                        }
+                        if math.failure.is_some() {
+                            break;
                         }
                     }
                 }
@@ -139,13 +149,18 @@ pub mod GPOS {
                             i,
                             direction,
                             MAX_NESTING_LEVEL,
+                            &mut math,
                         ) {
                             buffer.refuse(ShapingRefusal::AttachmentNestingLimit);
+                        }
+                        if math.failure.is_some() {
+                            break;
                         }
                     }
                 }
             }
         }
+        buffer.position_math = math;
     }
 }
 

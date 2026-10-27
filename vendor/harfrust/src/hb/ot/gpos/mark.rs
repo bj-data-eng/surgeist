@@ -28,16 +28,26 @@ impl MarkArrayExt for MarkArray<'_> {
         // If this subtable doesn't have an anchor for this base and this class
         // return `None` such that the subsequent subtables have a chance at it.
 
-        let (base_x, base_y) = ctx.face.ot_tables.resolve_anchor(base_anchor);
-        let (mark_x, mark_y) = ctx.face.ot_tables.resolve_anchor(mark_anchor);
+        let (base_x, base_y) = ctx
+            .face
+            .ot_tables
+            .resolve_anchor(base_anchor, &mut ctx.buffer.position_math);
+        let (mark_x, mark_y) = ctx
+            .face
+            .ot_tables
+            .resolve_anchor(mark_anchor, &mut ctx.buffer.position_math);
 
+        if ctx.buffer.position_math.failure.is_some() {
+            return None;
+        }
         ctx.buffer
             .unsafe_to_break(Some(glyph_pos), Some(ctx.buffer.idx + 1));
 
         let idx = ctx.buffer.idx;
-        let pos = ctx.buffer.cur_pos_mut();
-        pos.x_offset = base_x - mark_x;
-        pos.y_offset = base_y - mark_y;
+        let math = &mut ctx.buffer.position_math;
+        let pos = &mut ctx.buffer.pos[idx];
+        pos.x_offset = math.sub(base_x, mark_x);
+        pos.y_offset = math.sub(base_y, mark_y);
         pos.set_attach_type(attach_type::MARK);
         pos.set_attach_chain((glyph_pos as isize - idx as isize) as i16);
 

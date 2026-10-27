@@ -535,6 +535,9 @@ pub(crate) fn apply_lookup(
     };
 
     for record in lookups {
+        if ctx.buffer.position_math.failure.is_some() {
+            return;
+        }
         if !ctx.buffer.successful {
             break;
         }
@@ -562,6 +565,9 @@ pub(crate) fn apply_lookup(
 
         if ctx.recurse(record.lookup_list_index.get()).is_none() {
             continue;
+        }
+        if ctx.buffer.position_math.failure.is_some() {
+            return;
         }
 
         let new_len = ctx.buffer.backtrack_len() + ctx.buffer.lookahead_len();
@@ -926,6 +932,9 @@ pub mod OT {
         }
 
         pub fn recurse(&mut self, sub_lookup_index: u16) -> Option<()> {
+            if self.buffer.position_math.failure.is_some() {
+                return None;
+            }
             if self.nesting_level_left == 0 {
                 self.buffer.refuse(ShapingRefusal::LookupNestingLimit);
                 self.buffer.successful = false;

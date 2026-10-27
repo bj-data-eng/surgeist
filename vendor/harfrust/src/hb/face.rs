@@ -293,6 +293,16 @@ impl<'a> crate::Shaper<'a> {
         buffer: UnicodeBuffer,
         features: &[Feature],
     ) -> GlyphBuffer {
+        self.shape_with_plan_inner(plan, buffer, features, None)
+    }
+
+    pub(crate) fn shape_with_plan_inner(
+        &self,
+        plan: &ShapePlan,
+        buffer: UnicodeBuffer,
+        features: &[Feature],
+        mut metrics: Option<&mut super::vertical_position::MetricSource<'_>>,
+    ) -> GlyphBuffer {
         let mut buffer = buffer.0;
         buffer.enter();
 
@@ -319,16 +329,23 @@ impl<'a> crate::Shaper<'a> {
             }
             // Save the original direction, we use it later.
             let target_direction = buffer.direction;
-            shape_internal(&mut hb_ot_shape_context_t {
+            let mut context = hb_ot_shape_context_t {
                 plan,
                 face: self,
                 buffer: &mut buffer,
                 target_direction,
                 features,
-            });
+            };
+            if let Some(source) = metrics.as_deref_mut() {
+                super::ot_shape::shape_internal_with_metrics(&mut context, Some(source));
+            } else {
+                shape_internal(&mut context);
+            }
         }
 
-        super::default_ignorable::finish(&mut buffer);
+        if !metrics.is_some_and(|source| source.failed) && buffer.position_math.failure.is_none() {
+            super::default_ignorable::finish(&mut buffer);
+        }
         buffer.leave();
 
         GlyphBuffer(buffer)
