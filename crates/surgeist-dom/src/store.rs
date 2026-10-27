@@ -799,7 +799,10 @@ impl DomLimits {
     pub const fn meta_theme_color_scratch_bytes(self) -> usize {
         self.meta_theme_scratch
     }
-    /// Complete finite CSS-owned UTF16/property allowance; unconfigured is unavailable.
+    /// Finite CSS-owned UTF16 preparation, work, live-byte and retained-byte
+    /// allowance for the `color-scheme` value; unconfigured is unavailable. The
+    /// component syntax limits come from the `CssParser` that DOM constructs for
+    /// the parse, not from this allowance.
     pub const fn with_meta_color_scheme_limits(
         mut self,
         limits: surgeist_css::source::CssUtf16PropertyValueLimits,

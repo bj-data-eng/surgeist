@@ -224,10 +224,14 @@ empty current sheet list. This DOM capability stores no preference mirror and
 does not consume or bypass original parsed pending association contributions.
 
 `DomLimits::with_meta_processing_work` admits cumulative Meta work.
-`with_meta_theme_color_scratch_bytes` and `with_meta_color_scheme_limits` select
-the corresponding finite CSS processing allowances; unconfigured processing
-cannot silently acquire them. `with_meta_color_scheme_retained_bytes` separately
-bounds aggregate selected CSS payload across the canonical Documents;
+`with_meta_theme_color_scratch_bytes` selects the finite theme-color scratch
+allowance. `with_meta_color_scheme_limits` selects the `color-scheme` value's
+UTF-16 preparation limits and its whole-operation work, live-byte and
+retained-byte bounds; the component syntax limits come from the `CssParser` DOM
+builds for each parse, which uses the default component limits. Unconfigured
+processing cannot silently acquire either allowance.
+`with_meta_color_scheme_retained_bytes` separately bounds aggregate selected CSS
+payload across the canonical Documents;
 `DomUsage::meta_color_scheme_retained_bytes` reads their actual retained usage.
 Source execution also admits actual simultaneous
 parser and retained-result storage through its original controller. Equal

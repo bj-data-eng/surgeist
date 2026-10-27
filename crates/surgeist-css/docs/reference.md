@@ -2121,8 +2121,11 @@ invalidation; cross-crate composition remains root-owned.
 The [how-to guide](how-to.md#inspect-a-known-declaration) shows property/value
 inspection and exact authored text. Each ordinary `CssPropertyValue` wrapper exposes its
 sole checked semantic value through `value()`. Downstream matches of
-enums marked `#[non_exhaustive]` require a wildcard arm. Closed enums such as
-`CssImportance` and `CssSupportStatus` remain exhaustively matchable.
+enums marked `#[non_exhaustive]` require a wildcard arm; value and fact enums,
+including `CssSupportStatus`, are all marked. `CssImportance` is exhaustive,
+because CSS Cascade defines exactly two importance states. The crate
+documentation's API evolution section lists every enum that is exhaustive on
+purpose.
 The [authored-value explanation](explanation.md#symbolic-values-and-compatibility)
 describes these symbolic boundaries.
 

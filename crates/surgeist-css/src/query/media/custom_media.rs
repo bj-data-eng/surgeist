@@ -51,6 +51,7 @@ impl CssCustomMediaName {
 }
 /// An authored definition body, without definition lookup or evaluation.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum CssCustomMediaBody {
     /// `true`: the definition always evaluates to true.
     True,

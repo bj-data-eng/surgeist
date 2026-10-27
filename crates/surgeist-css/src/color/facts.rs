@@ -38,6 +38,7 @@ impl CssColorFactIdentity {
 
 /// Current-color interpretation uses initial properties or an actual resolved value.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum CssColorPropertyFacts {
     /// With no context element, the initial current color is CanvasText.
     InitialProperties,
@@ -49,6 +50,7 @@ pub enum CssColorPropertyFacts {
 
 /// The effective source-selected scheme, not inferred from `normal`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssColorSchemeFact {
     /// The used scheme is light; `light-dark()` selects its first color.
     Light,
@@ -104,6 +106,7 @@ impl CssColorPaletteEntry {
 
 /// Known profile availability differs from facts that have not been supplied.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssColorProfileAvailability {
     /// Availability has not been observed; reaching the profile is an unavailable-fact error.
     Unknown,
@@ -170,6 +173,7 @@ impl<'a> CssColorProfileBinding<'a> {
 
 /// A profile conversion capability or concrete applicable conversion result.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum CssColorProfileConversion<'a> {
     /// The selected conversion operation is not implemented for this actual profile.
     Unsupported {
@@ -220,6 +224,7 @@ impl<'a> CssColorProfileConversionRecord<'a> {
 
 /// Device processing knowledge; Unknown does not select a known fallback.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum CssDeviceColorFact<'a> {
     /// Device processing knowledge has not been supplied; reaching `device-cmyk()` is an unavailable-fact error.
     Unknown,

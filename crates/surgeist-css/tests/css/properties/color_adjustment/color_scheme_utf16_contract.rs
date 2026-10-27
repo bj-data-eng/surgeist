@@ -26,6 +26,33 @@ fn limits() -> CssUtf16PropertyValueLimits {
     }
 }
 
+#[test]
+fn default_property_value_limits_are_the_envelope_of_the_default_preparation_limits() {
+    let preparation = CssUtf16InputLimits::default();
+    assert_eq!(
+        CssUtf16PropertyValueLimits::default(),
+        CssUtf16PropertyValueLimits {
+            input: preparation,
+            max_work: preparation.max_work,
+            max_live_bytes: preparation.max_retained_bytes,
+            max_retained_bytes: preparation.max_retained_bytes,
+        }
+    );
+}
+
+#[test]
+fn default_property_value_limits_admit_an_ordinary_value() {
+    let report = CssColorScheme::parse_utf16(
+        &CssParser::new(CssParserContext::default(), Default::default()),
+        Arc::new("light dark".encode_utf16().collect()),
+        Default::default(),
+        |_| Ok::<_, ()>(()),
+        |_| {},
+    )
+    .unwrap();
+    assert!(report.result().is_ok());
+}
+
 fn parse_in(context: CssParserContext, units: Vec<u16>) -> CssColorSchemeParseReport {
     CssColorScheme::parse_utf16(
         &CssParser::new(context, Default::default()),

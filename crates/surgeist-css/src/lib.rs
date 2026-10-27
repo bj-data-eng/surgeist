@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 #![deny(unfulfilled_lint_expectations)]
+#![warn(missing_debug_implementations)]
 #![warn(missing_docs)]
 #![recursion_limit = "512"]
 //! Browser-recovering CSS ingestion for Surgeist.
@@ -267,13 +268,55 @@
 //!
 //! # API evolution
 //!
-//! Public enums marked `#[non_exhaustive]` require a wildcard arm in downstream
-//! matches. Closed enums, including [`CssImportance`](crate::declaration::CssImportance) and [`CssSupportStatus`](crate::conformance::CssSupportStatus),
-//! remain exhaustively matchable. This inspection model does not change parsing,
-//! recovery, or diagnostics.
+//! Value enums and fact enums are `#[non_exhaustive]`, so a downstream match
+//! needs a wildcard arm, including for the three-state
+//! [`CssSupportStatus`](crate::conformance::CssSupportStatus). Error kinds are
+//! private behind predicates and accessors. Three kinds of enum are exhaustive
+//! on purpose:
 //!
-//! Evolving authored-syntax enums intentionally require a wildcard in external
-//! matches. These representative exhaustive matches therefore do not compile:
+//! - The protocol enums of the controlled color parse in [`color::controlled`]:
+//!   the step, action and outcome enums and the bank, fact-read and kernel
+//!   enums an action names. Matching every variant is the compile-time proof
+//!   that a consumer services every action.
+//! - The admission-callback vocabularies
+//!   [`CssSourceRetentionAction`](crate::source::CssSourceRetentionAction) and
+//!   [`CssUtf16ValueAdmission`](crate::source::CssUtf16ValueAdmission): a
+//!   callback that missed a charge kind would let work escape its bounded
+//!   admission, so a new kind must fail to compile in every callback.
+//! - [`CssImportance`](crate::declaration::CssImportance), because CSS Cascade
+//!   defines exactly two importance states and cascade consumers match both to
+//!   order precedence.
+//!
+//! This inspection model does not change parsing, recovery, or diagnostics.
+//!
+//! This match on the spec-closed importance states compiles without a wildcard:
+//!
+//! ```
+//! use surgeist_css::declaration::CssImportance;
+//!
+//! fn describe(value: CssImportance) -> &'static str {
+//!     match value {
+//!         CssImportance::Normal => "normal",
+//!         CssImportance::Important => "important",
+//!     }
+//! }
+//! assert_eq!(describe(CssImportance::Important), "important");
+//! ```
+//!
+//! Evolving enums intentionally require a wildcard in external matches. These
+//! representative exhaustive matches therefore do not compile:
+//!
+//! ```compile_fail,E0004
+//! use surgeist_css::conformance::CssSupportStatus;
+//!
+//! fn describe(value: CssSupportStatus) -> &'static str {
+//!     match value {
+//!         CssSupportStatus::Complete => "complete",
+//!         CssSupportStatus::Partial => "partial",
+//!         CssSupportStatus::RecognizedUnsupported => "recognized unsupported",
+//!     }
+//! }
+//! ```
 //!
 //! ```compile_fail
 //! use surgeist_css::query::media::CssMediaQueryModifier;
@@ -401,7 +444,7 @@ pub use report::{CssParseReport, CssValidationFailure};
 /// name or implement them.
 pub(crate) mod sealed {
     /// The crate-issued identity of one numeric root marker.
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug)]
     pub struct Root(pub(crate) crate::numeric::value::RootKind);
 
     /// Seals `CssNumericRoot`; only CSS implements it.

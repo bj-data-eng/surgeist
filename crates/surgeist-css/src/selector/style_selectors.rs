@@ -9,6 +9,7 @@ use crate::source::CssParsedOrigin;
 /// nesting context. An enclosing style ancestor through a scope remains an
 /// explicit fact; it does not change scope anchors into nesting selectors.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssStyleSelectorContext {
     /// No enclosing style or scope: leading relative combinators are invalid.
     Ordinary,

@@ -60,6 +60,7 @@ impl Default for CssAuthoredColorOrdinaryLimits {
     }
 }
 /// The outcome of resolving one authored color, borrowing the authored color and the fact set.
+#[derive(Debug)]
 pub struct CssAuthoredColorResult<'authored, 'facts> {
     root: &'authored CssColor,
     facts: &'facts CssColorFacts<'facts>,

@@ -105,6 +105,8 @@ pub const fn surgeist_css::color::controlled::CssColorOperationOwner::layout_byt
 pub const fn surgeist_css::color::controlled::CssColorOperationOwner::new() -> Self
 impl core::default::Default for surgeist_css::color::controlled::CssColorOperationOwner
 pub fn surgeist_css::color::controlled::CssColorOperationOwner::default() -> Self
+impl core::fmt::Debug for surgeist_css::color::controlled::CssColorOperationOwner
+pub fn surgeist_css::color::controlled::CssColorOperationOwner::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::color::controlled::CssColorParse<'owner, 'facts>
 impl<'owner, 'facts> surgeist_css::color::controlled::CssColorParse<'owner, 'facts>
 pub const fn surgeist_css::color::controlled::CssColorParse<'owner, 'facts>::action_bytes() -> usize
@@ -113,6 +115,8 @@ pub const fn surgeist_css::color::controlled::CssColorParse<'owner, 'facts>::ini
 pub const fn surgeist_css::color::controlled::CssColorParse<'owner, 'facts>::register_bytes() -> usize
 pub fn surgeist_css::color::controlled::CssColorParse<'owner, 'facts>::start(owner: &'owner mut surgeist_css::color::controlled::CssColorOperationOwner, kind: surgeist_css::color::CssColorInputKind, length: usize, request: surgeist_css::color::CssColorGrammarRequest, facts: &'facts surgeist_css::color::CssColorFacts<'facts>, expected: surgeist_css::color::CssColorFactIdentity) -> core::result::Result<Self, surgeist_css::color::CssColorError>
 pub fn surgeist_css::color::controlled::CssColorParse<'owner, 'facts>::step(self) -> surgeist_css::color::controlled::CssColorParseStep<'owner, 'facts>
+impl core::fmt::Debug for surgeist_css::color::controlled::CssColorParse<'_, '_>
+pub fn surgeist_css::color::controlled::CssColorParse<'_, '_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::color::controlled::CssColorReadFact<'owner, 'facts>
 impl<'owner, 'facts> surgeist_css::color::controlled::CssColorReadFact<'owner, 'facts>
 pub const fn surgeist_css::color::controlled::CssColorReadFact<'owner, 'facts>::fact(&self) -> surgeist_css::color::controlled::CssColorFactRead
@@ -130,6 +134,8 @@ pub struct surgeist_css::color::controlled::CssColorSlot<'owner>
 impl<'owner> surgeist_css::color::controlled::CssColorSlot<'owner>
 pub const fn surgeist_css::color::controlled::CssColorSlot<'owner>::bank(&self) -> surgeist_css::color::controlled::CssColorBank
 pub const fn surgeist_css::color::controlled::CssColorSlot<'owner>::record_bytes() -> usize
+impl core::fmt::Debug for surgeist_css::color::controlled::CssColorSlot<'_>
+pub fn surgeist_css::color::controlled::CssColorSlot<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::color::controlled::CssColorSlotReceipt<'owner, 'facts>
 impl<'owner, 'facts> surgeist_css::color::controlled::CssColorSlotReceipt<'owner, 'facts>
 pub fn surgeist_css::color::controlled::CssColorSlotReceipt<'owner, 'facts>::into_parse(self) -> surgeist_css::color::controlled::CssColorParse<'owner, 'facts>
@@ -165,7 +171,7 @@ pub surgeist_css::color::CssAbsoluteColorExclusion::CurrentColor
 pub surgeist_css::color::CssAbsoluteColorExclusion::DeviceCmyk
 pub surgeist_css::color::CssAbsoluteColorExclusion::LightDark
 pub surgeist_css::color::CssAbsoluteColorExclusion::SystemColor
-pub enum surgeist_css::color::CssAuthoredColorOutcome
+#[non_exhaustive] pub enum surgeist_css::color::CssAuthoredColorOutcome
 pub surgeist_css::color::CssAuthoredColorOutcome::StandardFailure(surgeist_css::color::CssAuthoredColorStandardFailure)
 pub surgeist_css::color::CssAuthoredColorOutcome::Used(surgeist_color::value::Color)
 #[non_exhaustive] pub enum surgeist_css::color::CssColorComponent
@@ -184,7 +190,7 @@ pub surgeist_css::color::CssColorFactDefect::DuplicateProfile::second: usize
 pub surgeist_css::color::CssColorFactDefect::Foreign
 pub surgeist_css::color::CssColorFactDefect::InvalidDevice
 pub surgeist_css::color::CssColorFactDefect::InvalidProfileMetadata
-pub enum surgeist_css::color::CssColorGrammarRequest
+#[non_exhaustive] pub enum surgeist_css::color::CssColorGrammarRequest
 pub surgeist_css::color::CssColorGrammarRequest::PrefixColor
 pub surgeist_css::color::CssColorGrammarRequest::WholeColor
 #[non_exhaustive] pub enum surgeist_css::color::CssColorHue
@@ -193,17 +199,17 @@ pub surgeist_css::color::CssColorHue::AngleCalculation(surgeist_css::numeric::Cs
 pub surgeist_css::color::CssColorHue::None
 pub surgeist_css::color::CssColorHue::Number(surgeist_css::color::CssColorNumberLiteral)
 pub surgeist_css::color::CssColorHue::NumberCalculation(surgeist_css::numeric::CssCalculation<surgeist_css::numeric::CssNumber>)
-pub enum surgeist_css::color::CssColorInput<'source>
+#[non_exhaustive] pub enum surgeist_css::color::CssColorInput<'source>
 pub surgeist_css::color::CssColorInput::Utf16(&'source [u16])
 pub surgeist_css::color::CssColorInput::Utf8(&'source [u8])
 impl surgeist_css::color::CssColorInput<'_>
 pub const fn surgeist_css::color::CssColorInput<'_>::is_empty(self) -> bool
 pub const fn surgeist_css::color::CssColorInput<'_>::kind(self) -> surgeist_css::color::CssColorInputKind
 pub const fn surgeist_css::color::CssColorInput<'_>::len(self) -> usize
-pub enum surgeist_css::color::CssColorInputKind
+#[non_exhaustive] pub enum surgeist_css::color::CssColorInputKind
 pub surgeist_css::color::CssColorInputKind::Utf16
 pub surgeist_css::color::CssColorInputKind::Utf8
-pub enum surgeist_css::color::CssColorOrdinaryOutcome
+#[non_exhaustive] pub enum surgeist_css::color::CssColorOrdinaryOutcome
 pub surgeist_css::color::CssColorOrdinaryOutcome::StandardFailure(surgeist_css::color::CssColorStandardFailure)
 pub surgeist_css::color::CssColorOrdinaryOutcome::Used(surgeist_color::value::Color)
 #[non_exhaustive] pub enum surgeist_css::color::CssColorOrdinaryResource
@@ -213,7 +219,7 @@ pub surgeist_css::color::CssColorOrdinaryResource::ArithmeticRecords
 pub surgeist_css::color::CssColorOrdinaryResource::EvaluationRecords
 pub surgeist_css::color::CssColorOrdinaryResource::InputUnits
 pub surgeist_css::color::CssColorOrdinaryResource::PathSteps
-pub enum surgeist_css::color::CssColorPathStep
+#[non_exhaustive] pub enum surgeist_css::color::CssColorPathStep
 pub surgeist_css::color::CssColorPathStep::Alpha
 pub surgeist_css::color::CssColorPathStep::Channel(usize)
 pub surgeist_css::color::CssColorPathStep::ExpressionOperand(usize)
@@ -222,27 +228,27 @@ pub surgeist_css::color::CssColorPathStep::MixColor(usize)
 pub surgeist_css::color::CssColorPathStep::MixWeight(usize)
 pub surgeist_css::color::CssColorPathStep::Second
 pub surgeist_css::color::CssColorPathStep::Source
-pub enum surgeist_css::color::CssColorProfileAvailability
+#[non_exhaustive] pub enum surgeist_css::color::CssColorProfileAvailability
 pub surgeist_css::color::CssColorProfileAvailability::Absent
 pub surgeist_css::color::CssColorProfileAvailability::Invalid
 pub surgeist_css::color::CssColorProfileAvailability::Loaded
 pub surgeist_css::color::CssColorProfileAvailability::NotLoaded
 pub surgeist_css::color::CssColorProfileAvailability::Unknown
-pub enum surgeist_css::color::CssColorProfileConversion<'a>
+#[non_exhaustive] pub enum surgeist_css::color::CssColorProfileConversion<'a>
 pub surgeist_css::color::CssColorProfileConversion::Resolved(surgeist_css::color::CssColorProfileConversionRecord<'a>)
 pub surgeist_css::color::CssColorProfileConversion::Unavailable
 pub surgeist_css::color::CssColorProfileConversion::Unavailable::profile: surgeist_css::color::CssColorFactIdentity
 pub surgeist_css::color::CssColorProfileConversion::Unsupported
 pub surgeist_css::color::CssColorProfileConversion::Unsupported::profile: surgeist_css::color::CssColorFactIdentity
-pub enum surgeist_css::color::CssColorPropertyFacts
+#[non_exhaustive] pub enum surgeist_css::color::CssColorPropertyFacts
 pub surgeist_css::color::CssColorPropertyFacts::Current(surgeist_color::value::Color)
 pub surgeist_css::color::CssColorPropertyFacts::InitialProperties
 pub surgeist_css::color::CssColorPropertyFacts::Unavailable
-pub enum surgeist_css::color::CssColorSchemeFact
+#[non_exhaustive] pub enum surgeist_css::color::CssColorSchemeFact
 pub surgeist_css::color::CssColorSchemeFact::Dark
 pub surgeist_css::color::CssColorSchemeFact::Light
 pub surgeist_css::color::CssColorSchemeFact::Unavailable
-pub enum surgeist_css::color::CssColorStandardFailureKind
+#[non_exhaustive] pub enum surgeist_css::color::CssColorStandardFailureKind
 pub surgeist_css::color::CssColorStandardFailureKind::ColorGrammar
 pub surgeist_css::color::CssColorStandardFailureKind::ComponentGrammar
 pub surgeist_css::color::CssColorStandardFailureKind::InvalidComponents
@@ -263,7 +269,7 @@ pub surgeist_css::color::CssColorUnsupported::ContextualUnit(surgeist_css::numer
 pub surgeist_css::color::CssColorUnsupported::CustomInterpolation
 pub surgeist_css::color::CssColorUnsupported::ProfileConversion
 pub surgeist_css::color::CssColorUnsupported::ReverseProfile
-pub enum surgeist_css::color::CssDeviceColorFact<'a>
+#[non_exhaustive] pub enum surgeist_css::color::CssDeviceColorFact<'a>
 pub surgeist_css::color::CssDeviceColorFact::Absent
 pub surgeist_css::color::CssDeviceColorFact::Invalid
 pub surgeist_css::color::CssDeviceColorFact::Resolved(surgeist_css::color::CssColorProfileConversionRecord<'a>)
@@ -905,7 +911,7 @@ pub surgeist_css::conformance::CssSpecificationTier::Snapshot2026PreCrException
 pub surgeist_css::conformance::CssSpecificationTier::Snapshot2026Reliable
 pub surgeist_css::conformance::CssSpecificationTier::Snapshot2026Stable
 pub surgeist_css::conformance::CssSpecificationTier::SurgeistExtension
-pub enum surgeist_css::conformance::CssSupportStatus
+#[non_exhaustive] pub enum surgeist_css::conformance::CssSupportStatus
 pub surgeist_css::conformance::CssSupportStatus::Complete
 pub surgeist_css::conformance::CssSupportStatus::Partial
 pub surgeist_css::conformance::CssSupportStatus::RecognizedUnsupported
@@ -1112,14 +1118,6 @@ pub fn surgeist_css::declaration::CssSpecifiedDeclarationEntry::visit_retained_s
 pub struct surgeist_css::declaration::CssSubstitutionDependentValue
 impl surgeist_css::declaration::CssSubstitutionDependentValue
 pub fn surgeist_css::declaration::CssSubstitutionDependentValue::as_css(&self) -> &str
-pub struct surgeist_css::declaration::CssVariableFallback
-impl surgeist_css::declaration::CssVariableFallback
-pub fn surgeist_css::declaration::CssVariableFallback::as_css(&self) -> &str
-pub fn surgeist_css::declaration::CssVariableFallback::references(&self) -> &[surgeist_css::declaration::CssVariableReference]
-pub struct surgeist_css::declaration::CssVariableReference
-impl surgeist_css::declaration::CssVariableReference
-pub const fn surgeist_css::declaration::CssVariableReference::fallback(&self) -> core::option::Option<&surgeist_css::declaration::CssVariableFallback>
-pub const fn surgeist_css::declaration::CssVariableReference::name(&self) -> &surgeist_css::declaration::CssCustomPropertyName
 pub mod surgeist_css::diagnostic
 #[non_exhaustive] pub enum surgeist_css::diagnostic::CssDeclarationContextRef<'a>
 pub surgeist_css::diagnostic::CssDeclarationContextRef::CustomProperty(&'a surgeist_css::declaration::CssCustomPropertyName)
@@ -1390,10 +1388,10 @@ pub surgeist_css::numeric::CssCalculationExpressionRef::Variable(surgeist_css::n
 impl<'a> surgeist_css::numeric::CssCalculationExpressionRef<'a>
 pub fn surgeist_css::numeric::CssCalculationExpressionRef<'a>::numeric_type(self) -> surgeist_css::numeric::CssNumericType
 pub fn surgeist_css::numeric::CssCalculationExpressionRef<'a>::origin(self) -> &'a surgeist_css::component::CssValueOrigin
-pub enum surgeist_css::numeric::CssCalculationProductOperator
+#[non_exhaustive] pub enum surgeist_css::numeric::CssCalculationProductOperator
 pub surgeist_css::numeric::CssCalculationProductOperator::Divide
 pub surgeist_css::numeric::CssCalculationProductOperator::Multiply
-pub enum surgeist_css::numeric::CssCalculationSumOperator
+#[non_exhaustive] pub enum surgeist_css::numeric::CssCalculationSumOperator
 pub surgeist_css::numeric::CssCalculationSumOperator::Add
 pub surgeist_css::numeric::CssCalculationSumOperator::Subtract
 #[non_exhaustive] pub enum surgeist_css::numeric::CssCalculationType
@@ -1503,7 +1501,7 @@ pub surgeist_css::numeric::CssLengthUnit::Vmin
 pub surgeist_css::numeric::CssLengthUnit::Vw
 impl surgeist_css::numeric::CssLengthUnit
 pub const fn surgeist_css::numeric::CssLengthUnit::as_str(self) -> &'static str
-pub enum surgeist_css::numeric::CssMathFunction
+#[non_exhaustive] pub enum surgeist_css::numeric::CssMathFunction
 pub surgeist_css::numeric::CssMathFunction::Abs
 pub surgeist_css::numeric::CssMathFunction::Acos
 pub surgeist_css::numeric::CssMathFunction::Asin
@@ -1544,13 +1542,13 @@ pub enum surgeist_css::numeric::CssNumber
 impl surgeist_css::numeric::CssNumericRoot for surgeist_css::numeric::CssNumber
 impl surgeist_css::numeric::CssRange<surgeist_css::numeric::CssNumber> for surgeist_css::numeric::CssNonNegative
 impl surgeist_css::numeric::CssRange<surgeist_css::numeric::CssNumber> for surgeist_css::values::font::CssFontWeightRange
-pub enum surgeist_css::numeric::CssNumericConstant
+#[non_exhaustive] pub enum surgeist_css::numeric::CssNumericConstant
 pub surgeist_css::numeric::CssNumericConstant::E
 pub surgeist_css::numeric::CssNumericConstant::Infinity
 pub surgeist_css::numeric::CssNumericConstant::NaN
 pub surgeist_css::numeric::CssNumericConstant::NegativeInfinity
 pub surgeist_css::numeric::CssNumericConstant::Pi
-pub enum surgeist_css::numeric::CssNumericDimension
+#[non_exhaustive] pub enum surgeist_css::numeric::CssNumericDimension
 pub surgeist_css::numeric::CssNumericDimension::Angle
 pub surgeist_css::numeric::CssNumericDimension::Flex
 pub surgeist_css::numeric::CssNumericDimension::Frequency
@@ -1579,7 +1577,7 @@ impl surgeist_css::numeric::CssRange<surgeist_css::numeric::CssResolution> for s
 pub surgeist_css::numeric::CssResolutionUnit::Dpcm
 pub surgeist_css::numeric::CssResolutionUnit::Dpi
 pub surgeist_css::numeric::CssResolutionUnit::Dppx
-pub enum surgeist_css::numeric::CssRoundingStrategy
+#[non_exhaustive] pub enum surgeist_css::numeric::CssRoundingStrategy
 pub surgeist_css::numeric::CssRoundingStrategy::Down
 pub surgeist_css::numeric::CssRoundingStrategy::Nearest
 pub surgeist_css::numeric::CssRoundingStrategy::ToZero
@@ -1592,7 +1590,7 @@ impl surgeist_css::numeric::CssRange<surgeist_css::numeric::CssTime> for surgeis
 #[non_exhaustive] pub enum surgeist_css::numeric::CssTimeUnit
 pub surgeist_css::numeric::CssTimeUnit::Milliseconds
 pub surgeist_css::numeric::CssTimeUnit::Seconds
-pub enum surgeist_css::numeric::CssTreeCountingFunction
+#[non_exhaustive] pub enum surgeist_css::numeric::CssTreeCountingFunction
 pub surgeist_css::numeric::CssTreeCountingFunction::SiblingCount
 pub surgeist_css::numeric::CssTreeCountingFunction::SiblingIndex
 pub struct surgeist_css::numeric::CssCalculation<T: surgeist_css::numeric::CssNumericRoot>
@@ -3617,7 +3615,7 @@ pub surgeist_css::query::media::CssContrastPreference::Custom
 pub surgeist_css::query::media::CssContrastPreference::Less
 pub surgeist_css::query::media::CssContrastPreference::More
 pub surgeist_css::query::media::CssContrastPreference::NoPreference
-pub enum surgeist_css::query::media::CssCustomMediaBody
+#[non_exhaustive] pub enum surgeist_css::query::media::CssCustomMediaBody
 pub surgeist_css::query::media::CssCustomMediaBody::False
 pub surgeist_css::query::media::CssCustomMediaBody::Media(surgeist_css::query::media::CssMediaQueryList)
 pub surgeist_css::query::media::CssCustomMediaBody::True
@@ -3966,7 +3964,7 @@ pub surgeist_css::query::supports::CssSupportsLeaf::Named(surgeist_css::query::s
 pub surgeist_css::query::supports::CssSupportsLeaf::Selector(surgeist_css::selector::CssSelector)
 impl surgeist_css::query::CssConditionLeaf for surgeist_css::query::supports::CssSupportsLeaf
 pub type surgeist_css::query::supports::CssSupportsLeaf::Backing = surgeist_css::query::condition::LexicalBacking
-pub enum surgeist_css::query::supports::CssSupportsTestChild
+#[non_exhaustive] pub enum surgeist_css::query::supports::CssSupportsTestChild
 pub surgeist_css::query::supports::CssSupportsTestChild::AtRule(surgeist_css::query::supports::CssSupportsAtRuleTest)
 pub surgeist_css::query::supports::CssSupportsTestChild::Declaration(surgeist_css::query::supports::CssSupportsTestDeclaration)
 pub surgeist_css::query::supports::CssSupportsTestChild::QualifiedRule(surgeist_css::query::supports::CssSupportsQualifiedRuleTest)
@@ -3976,7 +3974,7 @@ impl surgeist_css::query::supports::CssSupportsTestChild
 pub fn surgeist_css::query::supports::CssSupportsTestChild::parse(parser: &surgeist_css::CssParser, source: impl core::convert::AsRef<str>) -> surgeist_css::CssParseReport<core::option::Option<surgeist_css::query::supports::CssSupportsTestChild>>
 impl surgeist_css::source::CssRetainedSources for surgeist_css::query::supports::CssSupportsTestChild
 pub fn surgeist_css::query::supports::CssSupportsTestChild::visit_retained_sources(&self, sources: &mut surgeist_css::source::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::CssSourceRetentionError>
-pub enum surgeist_css::query::supports::CssSupportsTestChildRef<'a>
+#[non_exhaustive] pub enum surgeist_css::query::supports::CssSupportsTestChildRef<'a>
 pub surgeist_css::query::supports::CssSupportsTestChildRef::AtRule(&'a surgeist_css::query::supports::CssSupportsAtRuleTest)
 pub surgeist_css::query::supports::CssSupportsTestChildRef::Declaration(&'a surgeist_css::query::supports::CssSupportsTestDeclaration)
 pub surgeist_css::query::supports::CssSupportsTestChildRef::QualifiedRule(&'a surgeist_css::query::supports::CssSupportsQualifiedRuleTest)
@@ -5001,6 +4999,8 @@ pub struct surgeist_css::rule::keyframes::CssKeyframeSelectorMatcher<'query>
 impl<'query> surgeist_css::rule::keyframes::CssKeyframeSelectorMatcher<'query>
 pub fn surgeist_css::rule::keyframes::CssKeyframeSelectorMatcher<'query>::matches(&mut self, other: &surgeist_css::rule::keyframes::CssKeyframeSelectorList) -> core::result::Result<bool, surgeist_css::rule::keyframes::CssKeyframeSelectorComparisonError>
 pub fn surgeist_css::rule::keyframes::CssKeyframeSelectorMatcher<'query>::try_new(query: &'query surgeist_css::rule::keyframes::CssKeyframeSelectorList, limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<Self, surgeist_css::rule::keyframes::CssKeyframeSelectorComparisonError>
+impl core::fmt::Debug for surgeist_css::rule::keyframes::CssKeyframeSelectorMatcher<'_>
+pub fn surgeist_css::rule::keyframes::CssKeyframeSelectorMatcher<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::rule::keyframes::CssKeyframesIdent(_)
 impl surgeist_css::rule::keyframes::CssKeyframesIdent
 pub fn surgeist_css::rule::keyframes::CssKeyframesIdent::as_str(&self) -> &str
@@ -5306,20 +5306,20 @@ impl surgeist_css::rule::CssRule
 pub fn surgeist_css::rule::CssRule::serialize_specified(&self, limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::serialization::CssSerializationError>
 impl surgeist_css::source::CssRetainedSources for surgeist_css::rule::CssRule
 pub fn surgeist_css::rule::CssRule::visit_retained_sources(&self, sources: &mut surgeist_css::source::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::CssSourceRetentionError>
-pub enum surgeist_css::rule::CssRuleAdmissionContext
+#[non_exhaustive] pub enum surgeist_css::rule::CssRuleAdmissionContext
 pub surgeist_css::rule::CssRuleAdmissionContext::Group
 pub surgeist_css::rule::CssRuleAdmissionContext::Scope(surgeist_css::rule::CssStyleAncestor)
 pub surgeist_css::rule::CssRuleAdmissionContext::ScopedGroup(surgeist_css::rule::CssStyleAncestor)
 pub surgeist_css::rule::CssRuleAdmissionContext::Style
 pub surgeist_css::rule::CssRuleAdmissionContext::Stylesheet
-pub enum surgeist_css::rule::CssRuleSyntaxKind
+#[non_exhaustive] pub enum surgeist_css::rule::CssRuleSyntaxKind
 pub surgeist_css::rule::CssRuleSyntaxKind::AtRule
 pub surgeist_css::rule::CssRuleSyntaxKind::Qualified
-pub enum surgeist_css::rule::CssScopeNestingContext
+#[non_exhaustive] pub enum surgeist_css::rule::CssScopeNestingContext
 pub surgeist_css::rule::CssScopeNestingContext::None
 pub surgeist_css::rule::CssScopeNestingContext::Scope
 pub surgeist_css::rule::CssScopeNestingContext::Style
-pub enum surgeist_css::rule::CssStyleAncestor
+#[non_exhaustive] pub enum surgeist_css::rule::CssStyleAncestor
 pub surgeist_css::rule::CssStyleAncestor::Absent
 pub surgeist_css::rule::CssStyleAncestor::Present
 pub struct surgeist_css::rule::CssAtRuleName(_)
@@ -5612,7 +5612,7 @@ pub surgeist_css::selector::CssAttributeMatcher::Includes(alloc::string::String)
 pub surgeist_css::selector::CssAttributeMatcher::Prefix(alloc::string::String)
 pub surgeist_css::selector::CssAttributeMatcher::Substring(alloc::string::String)
 pub surgeist_css::selector::CssAttributeMatcher::Suffix(alloc::string::String)
-pub enum surgeist_css::selector::CssLanguageRangeKind
+#[non_exhaustive] pub enum surgeist_css::selector::CssLanguageRangeKind
 pub surgeist_css::selector::CssLanguageRangeKind::Identifier
 pub surgeist_css::selector::CssLanguageRangeKind::String
 #[non_exhaustive] pub enum surgeist_css::selector::CssNamespaceConstraint
@@ -5730,7 +5730,7 @@ pub surgeist_css::selector::CssQualifiedNamePrefix::Any
 pub surgeist_css::selector::CssQualifiedNamePrefix::ExplicitNone
 pub surgeist_css::selector::CssQualifiedNamePrefix::Named(surgeist_css::rule::CssNamespacePrefix)
 pub surgeist_css::selector::CssQualifiedNamePrefix::Unqualified
-pub enum surgeist_css::selector::CssScopeSelectorCssomContext
+#[non_exhaustive] pub enum surgeist_css::selector::CssScopeSelectorCssomContext
 pub surgeist_css::selector::CssScopeSelectorCssomContext::End
 pub surgeist_css::selector::CssScopeSelectorCssomContext::Start(surgeist_css::rule::CssScopeNestingContext)
 #[non_exhaustive] pub enum surgeist_css::selector::CssSelector
@@ -5767,7 +5767,7 @@ impl surgeist_css::selector::CssStyleSelector
 pub const fn surgeist_css::selector::CssStyleSelector::selector(&self) -> &surgeist_css::selector::CssSelector
 impl surgeist_css::source::CssRetainedSources for surgeist_css::selector::CssStyleSelector
 pub fn surgeist_css::selector::CssStyleSelector::visit_retained_sources(&self, sources: &mut surgeist_css::source::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::CssSourceRetentionError>
-pub enum surgeist_css::selector::CssStyleSelectorContext
+#[non_exhaustive] pub enum surgeist_css::selector::CssStyleSelectorContext
 pub surgeist_css::selector::CssStyleSelectorContext::Nested
 pub surgeist_css::selector::CssStyleSelectorContext::Ordinary
 pub surgeist_css::selector::CssStyleSelectorContext::Scoped(surgeist_css::rule::CssStyleAncestor)
@@ -6174,6 +6174,8 @@ pub const fn surgeist_css::source::CssSourceRetention<'admit>::steps(&self) -> u
 pub const fn surgeist_css::source::CssSourceRetention<'admit>::usage(&self) -> surgeist_css::source::CssSourceStorageUsage
 pub fn surgeist_css::source::CssSourceRetention<'admit>::visit<T: surgeist_css::source::CssRetainedSources + ?core::marker::Sized>(&mut self, value: &T) -> core::result::Result<(), surgeist_css::source::CssSourceRetentionError>
 pub fn surgeist_css::source::CssSourceRetention<'admit>::with_admission(bytes: usize, maximum_visits: usize, maximum_depth: usize, admit: &'admit mut dyn core::ops::function::FnMut(surgeist_css::source::CssSourceRetentionAction) -> bool) -> core::result::Result<Self, surgeist_css::source::CssSourceRetentionError>
+impl core::fmt::Debug for surgeist_css::source::CssSourceRetention<'_>
+pub fn surgeist_css::source::CssSourceRetention<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_css::source::CssSourceRetentionError
 impl surgeist_css::source::CssSourceRetentionError
 pub const fn surgeist_css::source::CssSourceRetentionError::allocation() -> Self
@@ -6252,6 +6254,8 @@ pub surgeist_css::source::CssUtf16PropertyValueLimits::input: surgeist_css::sour
 pub surgeist_css::source::CssUtf16PropertyValueLimits::max_live_bytes: usize
 pub surgeist_css::source::CssUtf16PropertyValueLimits::max_retained_bytes: usize
 pub surgeist_css::source::CssUtf16PropertyValueLimits::max_work: usize
+impl core::default::Default for surgeist_css::source::CssUtf16PropertyValueLimits
+pub fn surgeist_css::source::CssUtf16PropertyValueLimits::default() -> Self
 pub struct surgeist_css::source::CssUtf16ValueStorage
 impl surgeist_css::source::CssUtf16ValueStorage
 pub const fn surgeist_css::source::CssUtf16ValueStorage::bytes(self) -> usize
@@ -7351,7 +7355,7 @@ pub surgeist_css::values::common::CssRequestUrlModifierRef::ReferrerPolicy(surge
 #[non_exhaustive] pub enum surgeist_css::values::common::CssUrlCrossOrigin
 pub surgeist_css::values::common::CssUrlCrossOrigin::Anonymous
 pub surgeist_css::values::common::CssUrlCrossOrigin::UseCredentials
-pub enum surgeist_css::values::common::CssUrlFunction
+#[non_exhaustive] pub enum surgeist_css::values::common::CssUrlFunction
 pub surgeist_css::values::common::CssUrlFunction::Src
 pub surgeist_css::values::common::CssUrlFunction::Url
 #[non_exhaustive] pub enum surgeist_css::values::common::CssUrlModifier
@@ -10881,7 +10885,7 @@ impl surgeist_css::values::view_transition::CssViewTransitionIdent
 pub fn surgeist_css::values::view_transition::CssViewTransitionIdent::as_str(&self) -> &str
 pub fn surgeist_css::values::view_transition::CssViewTransitionIdent::retained_buffer_bytes(&self) -> usize
 pub fn surgeist_css::values::view_transition::CssViewTransitionIdent::try_new(value: surgeist_css::values::common::CssCustomIdent) -> core::option::Option<Self>
-pub enum surgeist_css::CssParserMode
+#[non_exhaustive] pub enum surgeist_css::CssParserMode
 pub surgeist_css::CssParserMode::Quirks
 pub surgeist_css::CssParserMode::Standards
 pub struct surgeist_css::CssParseReport<T>

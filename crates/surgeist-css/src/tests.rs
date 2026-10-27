@@ -5,8 +5,8 @@
 //! through the public API is tested in `tests/css`.
 
 use crate::declaration::{
-    CssAuthoredDeclarationValue, CssCustomPropertyName, CssCustomPropertyValue, CssDeclaration,
-    CssDeclarationList, CssSubstitutionDependentValue, CssVariableFallback, CssVariableReference,
+    CssAuthoredDeclarationValue, CssCustomPropertyValue, CssDeclaration, CssDeclarationList,
+    CssSubstitutionDependentValue,
 };
 use crate::query::container::{CssContainerName, CssContainerPrelude};
 use crate::query::media::CssMediaQueryList;
@@ -582,24 +582,6 @@ fn variable_dependent_value_preserves_authored_css() {
     let authored = CssAuthoredDeclarationValue::try_new("var(--space)").unwrap();
     let value = CssSubstitutionDependentValue::new(authored);
     assert_eq!(value.as_css(), "var(--space)");
-}
-
-#[test]
-fn variable_reference_and_fallback_accessors_preserve_authored_css() {
-    let fallback_reference =
-        CssVariableReference::new(CssCustomPropertyName::try_new("--fallback").unwrap(), None);
-    let fallback = CssVariableFallback::new(
-        CssAuthoredDeclarationValue::try_new("calc(1px + var(--fallback))").unwrap(),
-        vec![fallback_reference.clone()],
-    );
-    let reference = CssVariableReference::new(
-        CssCustomPropertyName::try_new("--space").unwrap(),
-        Some(fallback),
-    );
-    assert_eq!(reference.name().as_str(), "--space");
-    let fallback = reference.fallback().unwrap();
-    assert_eq!(fallback.as_css(), "calc(1px + var(--fallback))");
-    assert_eq!(fallback.references(), &[fallback_reference]);
 }
 
 // Checked public list admission makes these old invalid retained graphs

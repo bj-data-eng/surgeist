@@ -15,6 +15,25 @@ pub struct CssUtf16PropertyValueLimits {
     /// Maximum retained bytes of the resulting source and output.
     pub max_retained_bytes: usize,
 }
+impl Default for CssUtf16PropertyValueLimits {
+    /// Operation ceilings that start from [`CssUtf16InputLimits::default`].
+    ///
+    /// `input` is that default, `max_work` is `input.max_work`, and
+    /// `max_live_bytes` and `max_retained_bytes` are `input.max_retained_bytes`.
+    /// The operation charges its own parse steps and live observations on top of
+    /// the preparation's work, and holds the source and its output together, so
+    /// it can refuse an input that preparation alone would admit. A caller with
+    /// larger inputs passes explicit limits.
+    fn default() -> Self {
+        let input = CssUtf16InputLimits::default();
+        Self {
+            input,
+            max_work: input.max_work,
+            max_live_bytes: input.max_retained_bytes,
+            max_retained_bytes: input.max_retained_bytes,
+        }
+    }
+}
 
 /// Actual owned payload, including fixed output/source headers. Opaque allocator
 /// and Arc control-block overhead is outside the repository payload tariff.

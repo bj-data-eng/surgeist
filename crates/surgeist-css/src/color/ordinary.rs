@@ -24,6 +24,7 @@ use surgeist_color::Color;
 
 /// The actual borrowed original source; UTF16 is never converted lossily.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum CssColorInput<'source> {
     /// UTF-8 text borrowed as bytes.
     Utf8(&'source [u8]),
@@ -241,6 +242,7 @@ impl From<CssColorError> for CssColorResolveError {
 }
 /// A fixed source-qualified outcome after all ordinary scratch is retired.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum CssColorOrdinaryOutcome {
     /// The input parsed to this used color.
     Used(Color),
@@ -249,6 +251,7 @@ pub enum CssColorOrdinaryOutcome {
 }
 /// Borrows the actual original source and fact envelope; no graph/anchor/scratch
 /// escapes. A failed result is not a native color or an inferred fallback.
+#[derive(Debug)]
 pub struct CssColorOrdinaryResult<'source, 'facts> {
     input: CssColorInput<'source>,
     facts: &'facts CssColorFacts<'facts>,

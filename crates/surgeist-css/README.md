@@ -150,8 +150,10 @@ grammars, including arbitrary substitution fallbacks. Concrete values, CSS-wide
 keywords and substitution-dependent declarations retain their authored meaning;
 the front does not perform cascade or substitution.
 
-`CssUtf16PropertyValueLimits` combines preparation and component syntax limits
-with whole-operation work, simultaneous live payload and retained-result bounds.
+`CssUtf16PropertyValueLimits` holds the preparation limits for the original
+UTF16 input and the whole-operation bounds on charged work, simultaneous live
+payload and retained result. The component limits that charge the lexical input
+come from the `CssParser` passed to the operation, not from this allowance.
 The caller's fallible admission callback receives work and prospective or actual
 live storage observations before processing continues. A separate infallible
 release callback observes storage only after it is dropped or transferred. This

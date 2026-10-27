@@ -53,5 +53,5 @@ pub use syntax::{
     CssAuthoredDeclarationValue, CssAuthoredFunctionArguments, CssCustomDeclaration,
     CssCustomPropertyDeclaredValue, CssCustomPropertyName, CssCustomPropertyValue, CssDeclaration,
     CssDeclarationBody, CssDeclarationList, CssGlobalKeyword, CssImportance,
-    CssSubstitutionDependentValue, CssVariableFallback, CssVariableReference,
+    CssSubstitutionDependentValue,
 };

@@ -14,6 +14,7 @@ use crate::{CssParseReport, CssParserContext};
 
 /// Preliminary generic rule classification, independent of supported grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssRuleSyntaxKind {
     /// A qualified rule with a real (possibly EOF-closed) body.
     Qualified,
@@ -25,6 +26,7 @@ pub enum CssRuleSyntaxKind {
 ///
 /// These contexts carry grammar permission, not live CSSOM ancestry or identity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssRuleAdmissionContext {
     /// Isolated stylesheet grammar; ordering against an existing sheet is downstream.
     Stylesheet,

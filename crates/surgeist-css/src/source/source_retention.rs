@@ -304,6 +304,21 @@ pub struct CssSourceRetention<'admit> {
     maximum_depth: usize,
     admission: Admission<'admit>,
 }
+impl std::fmt::Debug for CssSourceRetention<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CssSourceRetention")
+            .field("sources", &self.sources.len())
+            .field("usage", &self.usage)
+            .field("bytes", &self.bytes)
+            .field("visits", &self.visits)
+            .field("maximum_visits", &self.maximum_visits)
+            .field("depth", &self.depth)
+            .field("maximum_depth", &self.maximum_depth)
+            .field("has_admission_callback", &self.admission.callback.is_some())
+            .field("admission_refused", &self.admission.refused)
+            .finish()
+    }
+}
 impl<'admit> CssSourceRetention<'admit> {
     /// Constructs a collector without a caller admission predicate.
     ///

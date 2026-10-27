@@ -69,6 +69,7 @@ impl CssRuleList {
 /// An enclosing style rule supplies declaration and parent-selector permission,
 /// including through scopes. This does not bind or invent a parent selector.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssStyleAncestor {
     /// No enclosing style rule supplies style ancestry.
     Absent,

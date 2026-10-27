@@ -1040,6 +1040,7 @@ impl CssPseudoClass {
 
 /// The authored token form of a language range.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssLanguageRangeKind {
     /// The range was written as an identifier.
     Identifier,

@@ -645,6 +645,7 @@ fn support_status_kind(status: CssSupportStatus) -> &'static str {
         CssSupportStatus::Complete => "complete",
         CssSupportStatus::Partial => "partial",
         CssSupportStatus::RecognizedUnsupported => "recognized unsupported",
+        _ => "future support status",
     }
 }
 
@@ -692,6 +693,7 @@ fn representative_evolving_kind(
     let calculation = match calculation {
         CssCalculationSumOperator::Add => "calculation add",
         CssCalculationSumOperator::Subtract => "calculation subtract",
+        _ => "future calculation operator",
     };
     let timing = match timing {
         CssAnimationDirection::Normal => "timing normal",
@@ -759,7 +761,7 @@ fn public_surface_sheet_reports_expose_retained_syntax_and_structured_recovery()
 }
 
 #[test]
-fn public_surface_closed_enums_are_exhaustive_and_evolving_enums_use_wildcards() {
+fn public_surface_spec_closed_importance_is_exhaustive_and_value_and_fact_enums_use_wildcards() {
     assert_eq!(importance_kind(CssImportance::Normal), "normal");
     assert_eq!(importance_kind(CssImportance::Important), "important");
     assert_eq!(support_status_kind(CssSupportStatus::Complete), "complete");

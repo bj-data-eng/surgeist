@@ -445,6 +445,7 @@ fn used(input: CssColorInput<'_>, facts: &CssColorFacts<'_>) -> Outcome {
         Ok(result) => match result.outcome() {
             CssColorOrdinaryOutcome::Used(value) => Outcome::Used(value),
             CssColorOrdinaryOutcome::StandardFailure(_) => Outcome::StandardFailure,
+            other => Outcome::Unexpected(format!("{other:?}")),
         },
         Err(error) => classify(&error),
     }
@@ -470,6 +471,7 @@ fn authored(source: &str, facts: &CssColorFacts<'_>) -> Option<Outcome> {
             Ok(result) => match result.outcome() {
                 CssAuthoredColorOutcome::Used(value) => Outcome::Used(*value),
                 CssAuthoredColorOutcome::StandardFailure(_) => Outcome::StandardFailure,
+                other => Outcome::Unexpected(format!("{other:?}")),
             },
             Err(error) => classify(&error),
         },

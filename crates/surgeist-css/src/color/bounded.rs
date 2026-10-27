@@ -10,6 +10,7 @@ use super::operation as core;
 
 /// Encoding of the original immutable input. UTF8 reads are bytes, not chars.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssColorInputKind {
     /// The input is a sequence of bytes holding UTF-8 text; offsets and lengths count bytes.
     Utf8,
@@ -32,6 +33,7 @@ impl CssColorInputKind {
 }
 /// Whether the actual parent requires one color or the entire declared input.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssColorGrammarRequest {
     /// One color is parsed from the start of the input; the consumed range may end before the input does.
     PrefixColor,
@@ -242,6 +244,7 @@ impl std::fmt::Display for CssColorError {
 impl std::error::Error for CssColorError {}
 /// The canonical reason and original input range for standard failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssColorStandardFailureKind {
     /// The input is not a valid `<color>`; no color function or other color syntax matched.
     ColorGrammar,

@@ -145,6 +145,7 @@ pub struct CssAuthoredColorStandardFailure {
 }
 /// The result of resolving an authored color: a used color or a standard failure.
 #[derive(Debug, PartialEq)]
+#[non_exhaustive]
 pub enum CssAuthoredColorOutcome {
     /// The authored color resolved to this used color.
     Used(surgeist_color::Color),

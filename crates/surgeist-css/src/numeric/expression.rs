@@ -396,6 +396,7 @@ impl<'a> NumericInputContext<'a> {
 
 /// A dimensional axis in the CSS numeric type algebra.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssNumericDimension {
     /// The `<length>` axis.
     Length,
@@ -950,6 +951,7 @@ pub enum CssCalculationValueRef<'a> {
 }
 /// A numeric constant keyword of a calculation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssNumericConstant {
     /// `e`: Euler's number.
     E,
@@ -991,6 +993,7 @@ impl CssNumericConstant {
 }
 /// A math function of a calculation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssMathFunction {
     /// `calc()`: evaluates one calculation.
     Calc,
@@ -1094,6 +1097,7 @@ pub(crate) fn is_math_function(name: &str) -> bool {
 }
 /// The rounding strategy of `round()`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssRoundingStrategy {
     /// `nearest`: the closer of the two neighboring multiples, the upper one on a tie.
     Nearest,
@@ -1116,6 +1120,7 @@ impl CssRoundingStrategy {
 }
 /// The operator joining one term of a calculation sum to the previous term.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssCalculationSumOperator {
     /// `+`: addition.
     Add,
@@ -1124,6 +1129,7 @@ pub enum CssCalculationSumOperator {
 }
 /// The operator joining one factor of a calculation product to the previous factor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssCalculationProductOperator {
     /// `*`: multiplication.
     Multiply,
@@ -1135,6 +1141,7 @@ pub enum CssCalculationProductOperator {
 /// These remain symbolic and are admitted only by container size construction,
 /// not by the context-free numeric constructors.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssTreeCountingFunction {
     /// `sibling-count()`: the total number of child elements of the element's parent.
     SiblingCount,

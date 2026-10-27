@@ -162,8 +162,7 @@ fn facts(case: &str, observation: &mut Observation) -> Vec<String> {
                     actions: 1,
                 },
             )
-            .err()
-            .expect("input-unit refusal");
+            .expect_err("input-unit refusal");
             chain(&error)
         }
         "color-ordinary-operation" => chain(&unavailable_current_color()),
@@ -583,6 +582,5 @@ fn unavailable_current_color() -> CssColorResolveError {
         facts.identity(),
         CssColorOrdinaryLimits::default(),
     )
-    .err()
-    .expect("unavailable current colour")
+    .expect_err("unavailable current colour")
 }

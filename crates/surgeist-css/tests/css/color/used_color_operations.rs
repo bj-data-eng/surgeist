@@ -294,8 +294,7 @@ fn malformed_utf8_input_is_a_semantic_color_error_at_its_original_unit() {
             facts.identity(),
             limits(),
         )
-        .err()
-        .expect("malformed UTF-8 has no used color");
+        .expect_err("malformed UTF-8 has no used color");
         (
             input,
             error

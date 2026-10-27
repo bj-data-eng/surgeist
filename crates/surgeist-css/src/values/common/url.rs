@@ -6,6 +6,7 @@ use crate::declaration::CssAuthoredFunctionArguments;
 
 /// The two authored function identities in the selected Values 4 `<url>` grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum CssUrlFunction {
     /// `url()`: the authored `url()` function.
     Url,

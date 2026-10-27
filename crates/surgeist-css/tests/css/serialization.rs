@@ -7,4 +7,5 @@ mod misc_property_serialization;
 mod normalization_contract;
 mod normalization_stack;
 mod primitive_specified_serialization;
+mod rule_error_equality;
 mod specified_value_failure_display;
