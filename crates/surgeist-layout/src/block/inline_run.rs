@@ -12,6 +12,15 @@ type TextFragmentGroup<Node, S> = (
     Option<Point<S>>,
 );
 
+struct RetainedAtomicChild<'input, Node, S: LayoutScalar> {
+    node: Node,
+    source_index: usize,
+    projection: InlineParticipantProjection<'input, S>,
+    request: ComputeInputOf<S>,
+    output: ComputeOutputOf<S>,
+    margin: Edges<S>,
+}
+
 pub(super) fn inline_run_end<'input, Tree, M>(
     tree: &mut Tree,
     container: <Tree as Traverse>::Node,
@@ -806,7 +815,14 @@ where
             });
         }
 
-        atomic_children.push((child, source_index, projection, output));
+        atomic_children.push(RetainedAtomicChild {
+            node: child,
+            source_index,
+            projection,
+            request: child_request,
+            output,
+            margin: child_margin,
+        });
     }
     let logical_content_box_inset = constants.logical_content_box_inset();
     let provider_error = std::cell::RefCell::new(None);
@@ -1158,29 +1174,29 @@ where
             || tree
                 .text_computation()
                 .is_some_and(|state| state.formatted_active());
+        let numeric_input = MixedInlineRunInputOf {
+            inline_baseline_context: constants.inline_baseline_context,
+            groups: tree
+                .group_computation()
+                .map(|groups| groups.snapshot())
+                .unwrap_or_default(),
+            wrapping,
+            text_wrap_style: constants.wrap_style,
+            line_box_context,
+            observe_tail: tail != crate::text_layout::fit::TailContext::Unrestricted,
+            available_inline_extent,
+            flow_axes: constants.flow_axes,
+            text_align: constants.text_align,
+            text_align_last: constants.text_align_last,
+            indent: resolve_text_indent(container, constants.text_indent, available_inline_extent)?,
+            indent_state,
+            participants,
+        };
+        // The callbacks are sequential. A receiving fact is resolved before
+        // any candidate band query, without aliasing the mutable child owner.
+        let numeric_tree = std::cell::RefCell::new(&mut *tree);
         let result = layout_mixed_inline_run_with_formatted_observation(
-            MixedInlineRunInputOf {
-                inline_baseline_context: constants.inline_baseline_context,
-                groups: tree
-                    .group_computation()
-                    .map(|groups| groups.snapshot())
-                    .unwrap_or_default(),
-                wrapping,
-                text_wrap_style: constants.wrap_style,
-                line_box_context,
-                observe_tail: tail != crate::text_layout::fit::TailContext::Unrestricted,
-                available_inline_extent,
-                flow_axes: constants.flow_axes,
-                text_align: constants.text_align,
-                text_align_last: constants.text_align_last,
-                indent: resolve_text_indent(
-                    container,
-                    constants.text_indent,
-                    available_inline_extent,
-                )?,
-                indent_state,
-                participants,
-            },
+            numeric_input,
             |block_start, block_end| {
                 let query_block_start = cursor_block + block_start;
                 let query_block_end = cursor_block + block_end;
@@ -1188,7 +1204,7 @@ where
                     float_exclusions.query_rectangular_line_band(query_block_start, query_block_end)
                 } else {
                     match float_exclusions.query_provider_band(
-                        tree,
+                        &**numeric_tree.borrow(),
                         container,
                         query_block_start,
                         query_block_end,
@@ -1219,8 +1235,29 @@ where
                     - cursor_block
             },
             observe_formatted,
+            |source_index, expected| {
+                if provider_error.borrow().is_some() {
+                    return Err(
+                        crate::inline_wrapping::NumericWrappingError::InvalidAtomicReceiverBasis,
+                    );
+                }
+                match resolve_atomic_receiver(
+                    &mut **numeric_tree.borrow_mut(),
+                    container,
+                    &mut atomic_children,
+                    source_index,
+                    expected,
+                    constants.flow_axes,
+                ) {
+                    Ok(strut) => Ok(strut),
+                    Err(error) => {
+                        *provider_error.borrow_mut() = Some(error);
+                        Err(crate::inline_wrapping::NumericWrappingError::InvalidAtomicReceiverBasis)
+                    }
+                }
+            },
         );
-        // Provider errors retain their exact context even if provisional fallback
+        // Child/provider errors retain their exact context even if provisional
         // geometry makes a rejected Balance trial fail its private replay proof.
         if let Some(error) = provider_error.borrow_mut().take() {
             return Err(error);
@@ -1440,7 +1477,14 @@ where
         .collect::<BTreeMap<_, _>>();
     let mut content_size = report_size;
     let mut scroll_content_size = text_content_size;
-    for (child, source_index, child_style, output) in atomic_children {
+    for RetainedAtomicChild {
+        node: child,
+        source_index,
+        projection: child_style,
+        output,
+        ..
+    } in atomic_children
+    {
         let source = atomic_sources[&source_index];
         let logical_size = constants.flow_axes.logical_size(source.item.size);
         let projected_location =
@@ -1720,75 +1764,16 @@ fn atomic_inline_box_participant<S: LayoutScalar, M>(
                 })
         })
         .flatten();
-    if let Some((name, fact)) =
-        named_atomic_demand(&child_style, context).selected_fact(output.named_baselines)
+    if let crate::InlineBaselineContext::Named(name) = context
+        && child_style.vertical_align == VerticalAlign::Baseline
     {
-        let synthesized = matches!(fact, crate::BaselineFactOf::Absent);
-        let physical = match fact {
-            crate::BaselineFactOf::Unknown => {
-                return Err(LayoutErrorKindOf::MissingContext(
-                    crate::LayoutMissingContext::NamedInlineBaseline,
-                ));
-            }
-            crate::BaselineFactOf::Available(value) => {
-                if value.axis() != containing_flow_axes.block_axis() {
-                    return Err(LayoutErrorKindOf::InvalidInput(
-                        LayoutInvalidInputOf::InlineBaseline(
-                            crate::InlineBaselineError::AxisMismatch {
-                                expected: containing_flow_axes.block_axis(),
-                                actual: value.axis(),
-                            },
-                        ),
-                    ));
-                }
-                value.offset()
-            }
-            crate::BaselineFactOf::Absent => {
-                let edge = |side| match side {
-                    crate::PhysicalSide::Top => -margin.top,
-                    crate::PhysicalSide::Bottom => output.size.height + margin.bottom,
-                    crate::PhysicalSide::Left => -margin.left,
-                    crate::PhysicalSide::Right => output.size.width + margin.right,
-                };
-                let under = edge(containing_flow_axes.line_under());
-                match name {
-                    crate::BaselineName::Alphabetic => under,
-                    crate::BaselineName::Central => {
-                        edge(containing_flow_axes.line_over()) / S::from_f64(2.0)
-                            + under / S::from_f64(2.0)
-                    }
-                }
-            }
-        };
-        if !physical.is_finite() {
-            return Err(LayoutErrorKindOf::InvalidInput(
-                LayoutInvalidInputOf::InvalidNumeric { value: physical },
-            ));
-        }
-        let physical = if synthesized && used_overflow.is_scroll_container() {
-            crate::BaselineCoordinateOf::try_new(containing_flow_axes.block_axis(), physical)
-                .and_then(|coordinate| coordinate.clamped_to_border(output.size))
-                .map_err(|crate::FiniteScalarErrorOf::NonFinite { value }| {
-                    LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value })
-                })?
-                .offset()
-        } else {
-            physical
-        };
-        let logical = if containing_flow_axes
-            .logical_axis_progression(crate::LogicalAxis::Block)
-            .is_decreasing()
-        {
-            logical_size.block - physical
-        } else {
-            physical
-        };
-        if !logical.is_finite() {
-            return Err(LayoutErrorKindOf::InvalidInput(
-                LayoutInvalidInputOf::InvalidNumeric { value: logical },
-            ));
-        }
-        selected_inner_baseline = Some(logical);
+        selected_inner_baseline = Some(named_atomic_baseline(
+            &child_style,
+            output,
+            margin,
+            containing_flow_axes,
+            name,
+        )?);
     }
     Ok(AtomicInlineBoxParticipant {
         baseline_reference: if child_style.vertical_align == VerticalAlign::Baseline {
@@ -1805,6 +1790,189 @@ fn atomic_inline_box_participant<S: LayoutScalar, M>(
         scrollbar_size: child_scrollbar_size(&child_style),
         first_baseline: selected_inner_baseline,
         alignment: child_style.vertical_align.into(),
+    })
+}
+
+fn named_atomic_baseline<S: LayoutScalar, M>(
+    child_style: &BlockChildProjection<'_, S>,
+    output: ComputeOutputOf<S>,
+    margin: Edges<S>,
+    containing_flow_axes: FlowAxes,
+    name: crate::BaselineName,
+) -> Result<S, LayoutErrorKindOf<S, M>> {
+    let logical_size = containing_flow_axes.logical_size(output.size);
+    let used_overflow = UsedOverflow::from_computed(
+        child_style.common.overflow,
+        child_style.common.item_is_replaced,
+    );
+    let (_, fact) = crate::output::NamedBaselineDemand::for_source(
+        name,
+        child_style.baseline_source,
+        child_style.display,
+    )
+    .selected_fact(output.named_baselines)
+    .expect("a resolved named source requests exactly one fact");
+    let synthesized = matches!(fact, crate::BaselineFactOf::Absent);
+    let physical = match fact {
+        crate::BaselineFactOf::Unknown => {
+            return Err(LayoutErrorKindOf::MissingContext(
+                crate::LayoutMissingContext::NamedInlineBaseline,
+            ));
+        }
+        crate::BaselineFactOf::Available(value) => {
+            if value.axis() != containing_flow_axes.block_axis() {
+                return Err(LayoutErrorKindOf::InvalidInput(
+                    LayoutInvalidInputOf::InlineBaseline(
+                        crate::InlineBaselineError::AxisMismatch {
+                            expected: containing_flow_axes.block_axis(),
+                            actual: value.axis(),
+                        },
+                    ),
+                ));
+            }
+            value.offset()
+        }
+        crate::BaselineFactOf::Absent => {
+            let edge = |side| match side {
+                crate::PhysicalSide::Top => -margin.top,
+                crate::PhysicalSide::Bottom => output.size.height + margin.bottom,
+                crate::PhysicalSide::Left => -margin.left,
+                crate::PhysicalSide::Right => output.size.width + margin.right,
+            };
+            let under = edge(containing_flow_axes.line_under());
+            match name {
+                crate::BaselineName::Alphabetic => under,
+                crate::BaselineName::Central => {
+                    edge(containing_flow_axes.line_over()) / S::from_f64(2.0)
+                        + under / S::from_f64(2.0)
+                }
+            }
+        }
+    };
+    if !physical.is_finite() {
+        return Err(LayoutErrorKindOf::InvalidInput(
+            LayoutInvalidInputOf::InvalidNumeric { value: physical },
+        ));
+    }
+    let physical = if synthesized && used_overflow.is_scroll_container() {
+        crate::BaselineCoordinateOf::try_new(containing_flow_axes.block_axis(), physical)
+            .and_then(|coordinate| coordinate.clamped_to_border(output.size))
+            .map_err(|crate::FiniteScalarErrorOf::NonFinite { value }| {
+                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value })
+            })?
+            .offset()
+    } else {
+        physical
+    };
+    let logical = if containing_flow_axes
+        .logical_axis_progression(crate::LogicalAxis::Block)
+        .is_decreasing()
+    {
+        logical_size.block - physical
+    } else {
+        physical
+    };
+    if !logical.is_finite() {
+        return Err(LayoutErrorKindOf::InvalidInput(
+            LayoutInvalidInputOf::InvalidNumeric { value: logical },
+        ));
+    }
+    Ok(logical)
+}
+
+fn resolve_atomic_receiver<'input, Tree, S, M>(
+    tree: &mut Tree,
+    container: Tree::Node,
+    children: &mut [RetainedAtomicChild<'input, Tree::Node, S>],
+    source_index: usize,
+    expected: crate::InlineBaselineContext,
+    axes: FlowAxes,
+) -> LayoutResultOf<Tree::Node, crate::inline::ReferencedInlineStrutOf<S>, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let invalid = |node| {
+        LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(node),
+            LayoutOperation::ChildLayout,
+            LayoutErrorKindOf::InternalInvariant(
+                crate::LayoutInternalInvariant::InvalidAtomicReceiverBasis,
+            ),
+        )
+    };
+    let index = children
+        .binary_search_by_key(&source_index, |row| row.source_index)
+        .map_err(|_| invalid(container))?;
+    let row = &mut children[index];
+    let InlineParticipantKindOf::Box(style) = row.projection.kind() else {
+        return Err(invalid(row.node));
+    };
+    let crate::InlineBaselineContext::Named(name) = expected else {
+        return Err(invalid(row.node));
+    };
+    if row.request.containing_flow_axes() != axes
+        || !matches!(
+            style.vertical_align,
+            VerticalAlign::Top | VerticalAlign::Bottom
+        )
+        || !style.float.is_none()
+    {
+        return Err(invalid(row.node));
+    }
+    let demand =
+        crate::output::NamedBaselineDemand::for_source(name, style.baseline_source, style.display);
+    let (_, fact) = demand
+        .selected_fact(row.output.named_baselines)
+        .expect("an actual named receiver selects one fact");
+    if matches!(fact, crate::BaselineFactOf::Unknown)
+        && row.request.run_mode() == RunMode::ComputeSize
+        && row.request.named_baseline_demand() == crate::output::NamedBaselineDemand::None
+    {
+        // Refine only the missing fact under the original computation frame.
+        // Complete performed outputs are never speculatively placed again.
+        let refined =
+            tree.compute_child(row.node, row.request.with_named_baseline_demand(demand))?;
+        if refined.size != row.output.size {
+            return Err(invalid(row.node));
+        }
+        let (_, fact) = demand
+            .selected_fact(refined.named_baselines)
+            .expect("the retained source still selects one named fact");
+        let pair = row.output.named_baselines.get(name);
+        let pair = if style.baseline_source.prefers_last(style.display) {
+            crate::BaselinePairOf::new(pair.first(), fact)
+        } else {
+            crate::BaselinePairOf::new(fact, pair.last())
+        };
+        row.output.named_baselines = row.output.named_baselines.with(name, pair);
+    }
+    let inner =
+        named_atomic_baseline(&style, row.output, row.margin, axes, name).map_err(|kind| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(row.node),
+                LayoutOperation::ChildLayout,
+                kind,
+            )
+        })?;
+    let margin = axes.logical_edges(row.margin);
+    let metrics = crate::inline::InlineMetricContributionOf {
+        baseline: margin.block_start + inner,
+        after_baseline: axes.logical_size(row.output.size).block - inner + margin.block_end,
+    };
+    for value in [metrics.baseline, metrics.after_baseline] {
+        if !value.is_finite() {
+            return Err(LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(row.node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value }),
+            ));
+        }
+    }
+    Ok(crate::inline::ReferencedInlineStrutOf {
+        metrics,
+        reference: expected,
+        source: crate::inline::InlineStrutSource::Atomic { source_index },
     })
 }
 

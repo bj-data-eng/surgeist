@@ -120,6 +120,7 @@ fn phantom<S: LayoutScalar>(direction: Direction) {
         |_, _| panic!("indent does not authorize a phantom band"),
         |_, _| panic!("indent does not authorize phantom clearance"),
         true,
+        crate::inline::unavailable_atomic_receiver,
     )
     .unwrap();
     assert_eq!(observed.inline_extent, S::ZERO);
@@ -179,6 +180,7 @@ fn zero_atomic<S: LayoutScalar>(direction: Direction) {
             block
         },
         true,
+        crate::inline::unavailable_atomic_receiver,
     )
     .unwrap();
     assert!(
@@ -247,6 +249,7 @@ fn zero_forced<S: LayoutScalar>(direction: Direction) {
             block
         },
         true,
+        crate::inline::unavailable_atomic_receiver,
     )
     .unwrap();
     assert!(calls.get() > 0);
@@ -444,6 +447,7 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
             block
         },
         true,
+        crate::inline::unavailable_atomic_receiver,
     )
     .unwrap();
     assert!(calls.get() > 0);
@@ -550,6 +554,7 @@ fn scoped_metric_witness<S: LayoutScalar>(
         |_, _| panic!("metric validation or phantom completion cannot demand a float band"),
         |_, _| panic!("metric validation or phantom completion cannot demand clearance"),
         true,
+        crate::inline::unavailable_atomic_receiver,
     );
     if conflicting {
         assert_eq!(
