@@ -335,6 +335,11 @@ pub surgeist_text::FontMetricField::Leading
 pub surgeist_text::FontMetricField::Size
 pub surgeist_text::FontMetricField::StrikeoutCenter
 pub surgeist_text::FontMetricField::StrikeoutThickness
+pub surgeist_text::FontMetricField::UprightCentral
+pub surgeist_text::FontMetricField::UprightEmOver
+pub surgeist_text::FontMetricField::UprightEmUnder
+pub surgeist_text::FontMetricField::UprightUsedOver
+pub surgeist_text::FontMetricField::UprightUsedUnder
 pub surgeist_text::FontMetricField::VerticalAdvance
 pub surgeist_text::FontMetricField::VerticalOriginX
 pub surgeist_text::FontMetricField::VerticalOriginY
@@ -1145,6 +1150,13 @@ pub surgeist_text::UnsupportedTextStyleReason::RequiresParagraphBaseDirection
 pub surgeist_text::UnsupportedTextStyleReason::RequiresProcessedSourceLayout
 pub surgeist_text::UnsupportedTextStyleReason::RequiresStandaloneIndentPolicy
 pub surgeist_text::UnsupportedTextStyleReason::RequiresTextFlowPolicy
+pub enum surgeist_text::UprightMetricProvenance
+pub surgeist_text::UprightMetricProvenance::RawBaseline(surgeist_text::FontBaselineProvenance)
+pub surgeist_text::UprightMetricProvenance::SynthesizedUprightEmAtNominalPen
+pub surgeist_text::UprightMetricProvenance::VheaTypographic
+pub enum surgeist_text::UprightMetricReference
+pub surgeist_text::UprightMetricReference::FontDesignX
+pub surgeist_text::UprightMetricReference::NominalVerticalPenX
 pub enum surgeist_text::VerticalAlign
 pub surgeist_text::VerticalAlign::Baseline
 pub surgeist_text::VerticalAlign::Middle
@@ -1486,6 +1498,8 @@ impl<'a> surgeist_text::EffectiveFontInstance<'a>
 pub fn surgeist_text::EffectiveFontInstance<'a>::glyph_outline(&self, glyph_id: u32, expected_catalogue: &surgeist_text::FontCatalogueIdentity) -> surgeist_text::Result<surgeist_text::GlyphOutlineGeometry<'a>>
 impl<'a> surgeist_text::EffectiveFontInstance<'a>
 pub fn surgeist_text::EffectiveFontInstance<'a>::metrics(&self, expected_catalogue: &surgeist_text::FontCatalogueIdentity) -> surgeist_text::Result<surgeist_text::FontMetrics<'a>>
+impl<'a> surgeist_text::EffectiveFontInstance<'a>
+pub fn surgeist_text::EffectiveFontInstance<'a>::upright_metrics(&self, expected_catalogue: &surgeist_text::FontCatalogueIdentity, script: surgeist_text::FontBaselineScript) -> surgeist_text::Result<surgeist_text::UprightFontMetrics<'a>>
 impl<'a> surgeist_text::EffectiveFontInstance<'a>
 pub fn surgeist_text::EffectiveFontInstance<'a>::vertical_glyph_metrics(&self, glyph_id: u32, expected: &surgeist_text::FontCatalogueIdentity) -> surgeist_text::Result<surgeist_text::VerticalGlyphMetrics<'a>>
 pub struct surgeist_text::Error
@@ -2937,6 +2951,20 @@ pub const fn surgeist_text::TextTransformSet::none() -> Self
 pub const fn surgeist_text::TextTransformSet::with_case(self, case: surgeist_text::CaseTransform) -> Self
 pub const fn surgeist_text::TextTransformSet::with_full_size_kana(self, enabled: bool) -> Self
 pub const fn surgeist_text::TextTransformSet::with_full_width(self, enabled: bool) -> Self
+pub struct surgeist_text::UprightFontMetrics<'a>
+impl<'a> surgeist_text::UprightFontMetrics<'a>
+pub const fn surgeist_text::UprightFontMetrics<'a>::base_absence(&self) -> core::option::Option<surgeist_text::FontBaselineAbsence>
+pub const fn surgeist_text::UprightFontMetrics<'a>::base_script(&self) -> core::option::Option<[u8; 4]>
+pub const fn surgeist_text::UprightFontMetrics<'a>::central_coordinate_or_distance(&self) -> f64
+pub const fn surgeist_text::UprightFontMetrics<'a>::em_over(&self) -> f64
+pub const fn surgeist_text::UprightFontMetrics<'a>::em_under(&self) -> f64
+pub const fn surgeist_text::UprightFontMetrics<'a>::instance(&self) -> &surgeist_text::EffectiveFontInstance<'a>
+pub const fn surgeist_text::UprightFontMetrics<'a>::provenance(&self) -> surgeist_text::UprightMetricProvenance
+pub const fn surgeist_text::UprightFontMetrics<'a>::reference(&self) -> surgeist_text::UprightMetricReference
+pub const fn surgeist_text::UprightFontMetrics<'a>::script(&self) -> surgeist_text::FontBaselineScript
+pub const fn surgeist_text::UprightFontMetrics<'a>::units_per_em(&self) -> u16
+pub const fn surgeist_text::UprightFontMetrics<'a>::used_over(&self) -> f64
+pub const fn surgeist_text::UprightFontMetrics<'a>::used_under(&self) -> f64
 pub struct surgeist_text::ValidatedOptions
 impl surgeist_text::ValidatedOptions
 pub const fn surgeist_text::ValidatedOptions::authored(self) -> surgeist_text::Options

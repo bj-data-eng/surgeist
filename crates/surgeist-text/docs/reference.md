@@ -36,7 +36,7 @@ private implementation organization.
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
 | Original analysis and layout | `AnalyzedSource`, `AnalysisIdentity`, `System`, `Builder`, `SystemOptions` | [analyzed.rs](../src/analyzed.rs), [system.rs](../src/system.rs) |
 | Font catalogue | `FontCatalogueMode`, issued `FontCatalogueIdentity`, `System::register_fonts` and `refresh_fonts` | [catalogue.rs](../src/catalogue.rs) |
-| Font resources and metrics | `FontData`, `FontFace`, `EffectiveFontInstance`, `FontMetrics`, `StrikeoutMetrics`, `VerticalGlyphMetrics`, `FontBaselineMeasurement` | [font.rs](../src/font.rs), [font/metrics.rs](../src/font/metrics.rs), [vertical glyph metrics](../src/font/metrics/vertical.rs), [named baselines](../src/font/metrics/baseline.rs) |
+| Font resources and metrics | `FontData`, `FontFace`, `EffectiveFontInstance`, `FontMetrics`, `StrikeoutMetrics`, `VerticalGlyphMetrics`, `FontBaselineMeasurement`, `UprightFontMetrics` | [font.rs](../src/font.rs), [font/metrics.rs](../src/font/metrics.rs), [vertical glyph metrics](../src/font/metrics/vertical.rs), [named baselines](../src/font/metrics/baseline.rs) |
 | Borrowed readback | `RunView`, positioned `GlyphPlacement`, actual decorations | [views.rs](../src/views.rs) |
 | Prepared hyphenation | `PreparedWord`, `PreparedHyphenationCut`, borrowed views, `PreparedWordPortion`, `HyphenationResource`, `HyphenationProvenance` | [hyphenation.rs](../src/protocol/hyphenation.rs), [resource support](hyphenation-resources.md) |
 | Finalized logical prefixes | `TextSeam`, `FinalizedPrefixView`, `FinalizedSharedUnitView`, `FinalizedLine::prefix_at` | [prefix.rs](../src/protocol/prefix.rs), [composition guide](composed-lines.md) |
@@ -633,6 +633,51 @@ hinted measurement and vertical paragraph shaping/placement remain outside this
 operation. Queries preserve existing line metrics, glyphs, selections and cache
 activity. [Metric provenance](font-metrics-provenance.md) records the parser and
 qualification ownership.
+
+## Used upright font metrics
+
+`EffectiveFontInstance::upright_metrics(expected_catalogue, script)` resolves
+font-wide em sides and Central with actual instance/script custody. Its
+`UprightFontMetrics` retains the publication, canonical coordinates, size, UPEM,
+reference, provenance and BASE script/absence. It performs no font matching or
+glyph-zero query and does not admit an upright paragraph.
+
+`UprightMetricReference::FontDesignX` means absolute coordinates, positive right,
+from qualified raw VerticalX BASE/em evidence. The same raw owner supplies both
+edges and Central, retaining authored/derived provenance, valid CFF coordinates
+and fractional variable BASE effects. A malformed or unsupported consumed BASE
+reference fails instead of selecting a missing-data heuristic.
+
+When that raw reference is genuinely unavailable, valid vhea1.1 em sides use
+`NominalVerticalPenX`: signed distances from the declared nominal vertical pen.
+The existing strict MVAR owner resolves `vasc`/`vdsc` at the actual canonical
+instance, preserving its whole-design-unit rounding. `vlgp` does not affect this
+query. Valid vhea1.0 or true absence instead yields one em centered on that pen,
+with `SynthesizedUprightEmAtNominalPen` provenance. Horizontal A/D, line gap,
+strikeout and unrelated outline tables do not supply these cross metrics.
+Malformed required data and unsupported consumed versions retain precise errors.
+The font-wide query does not consume `vmtx` glyph advances or sidebearings; their
+paired-table validation remains with the nominal glyph query. This observation
+does not certify the validity of the complete font.
+
+All values scale once to the actual size. `em_under` and `em_over` share the
+reference of `central_coordinate_or_distance`; `used_under` and `used_over` are
+distances from that Central. Native symmetric vhea and synthesized centered em
+can have equal values with distinct provenance. Changing horizontal A/D may
+change independently synthesized nominal glyph advance/origin Y without changing
+these cross metrics. The [used-reference determination](../../../references/font-used-upright-baselines--native-determination.md)
+owns this policy; raw baseline and nominal glyph queries remain unchanged.
+
+The maintained provider's metric-supplied operation takes an explicit
+`VerticalOriginReference`: absolute design X gives effective origin C for each
+actual substituted glyph, while nominal-pen-relative c gives nominal Ox(g)+c.
+It applies this reference before positioning and attachment, without relabelling
+the nominal metric carrier. Equal references produce equal geometry. Checked
+provider constructors accept only exact half-design-unit values in their declared
+range. A valid fractional BASE observation can therefore succeed while a
+provider reference conversion precisely refuses `NotHalfUnit`; it is not rounded
+or treated as malformed. Whole-upright analysis, shaping, placement and consumer
+adapters retain their separate capability boundaries.
 
 ## Defaults and validation
 

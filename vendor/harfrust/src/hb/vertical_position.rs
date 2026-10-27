@@ -40,6 +40,91 @@ impl VerticalNominalMetrics {
     }
 }
 
+/// Explicit horizontal reference applied before actual vertical positioning.
+///
+/// Values are exact doubled unscaled design units. Relative zero is the genuine
+/// nominal vertical pen; it is not a different compatibility mode.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum VerticalOriginReference {
+    /// Absolute horizontal font-design coordinate, shared by all actual glyphs.
+    FontDesignX {
+        /// Twice the absolute design-X coordinate.
+        coordinate_twice: i32,
+    },
+    /// Distance from each actual glyph's supplied nominal vertical origin.
+    NominalVerticalPenX {
+        /// Twice the signed distance from the nominal vertical pen.
+        offset_twice: i32,
+    },
+}
+impl VerticalOriginReference {
+    /// Constructs an absolute design-X reference without rounding.
+    ///
+    /// # Errors
+    /// Rejects nonfinite values, values outside the doubled-i32 range, and
+    /// finite in-range values not exactly on the half-design-unit grid.
+    pub fn try_font_design_x(coordinate: f64) -> Result<Self, VerticalOriginReferenceError> {
+        Ok(Self::FontDesignX {
+            coordinate_twice: reference_coordinate(coordinate)?,
+        })
+    }
+    /// Constructs a nominal-pen-relative design distance without rounding.
+    ///
+    /// # Errors
+    /// Rejects nonfinite values, values outside the doubled-i32 range, and
+    /// finite in-range values not exactly on the half-design-unit grid.
+    pub fn try_nominal_vertical_pen_x(offset: f64) -> Result<Self, VerticalOriginReferenceError> {
+        Ok(Self::NominalVerticalPenX {
+            offset_twice: reference_coordinate(offset)?,
+        })
+    }
+    fn origin_twice(self, nominal: i32) -> i64 {
+        match self {
+            Self::FontDesignX { coordinate_twice } => i64::from(coordinate_twice),
+            Self::NominalVerticalPenX { offset_twice } => {
+                i64::from(nominal) + i64::from(offset_twice)
+            }
+        }
+    }
+}
+/// Failure to encode a caller's valid coordinate in the provider's actual grid.
+/// This is a reference input error, not a malformed-font classification.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VerticalOriginReferenceError {
+    /// The supplied coordinate or distance is NaN or infinite.
+    NonFinite,
+    /// Its exact doubled value lies outside the signed-i32 input range.
+    OutOfRange,
+    /// A finite in-range value cannot be represented without rounding.
+    NotHalfUnit,
+}
+impl core::fmt::Display for VerticalOriginReferenceError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::NonFinite => "vertical origin reference is nonfinite",
+            Self::OutOfRange => "vertical origin reference exceeds the half-unit input range",
+            Self::NotHalfUnit => "vertical origin reference is not an exact half design unit",
+        })
+    }
+}
+impl core::error::Error for VerticalOriginReferenceError {}
+fn reference_coordinate(value: f64) -> Result<i32, VerticalOriginReferenceError> {
+    if !value.is_finite() {
+        return Err(VerticalOriginReferenceError::NonFinite);
+    }
+    let twice = value * 2.0;
+    if !(f64::from(i32::MIN)..=f64::from(i32::MAX)).contains(&twice) {
+        return Err(VerticalOriginReferenceError::OutOfRange);
+    }
+    let encoded = twice as i32;
+    // In range, encoded is trunc(twice). The exact zero residual admits only
+    // integral doubled values; no epsilon or rounding changes the half grid.
+    if f64::from(encoded) - twice != 0.0 {
+        return Err(VerticalOriginReferenceError::NotHalfUnit);
+    }
+    Ok(encoded)
+}
+
 /// Actual positioning owner that could not represent a coordinate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VerticalPositionStage {
@@ -215,7 +300,10 @@ impl Shaper<'_> {
     ///
     /// The supplier must describe this configured face and instance. It is
     /// invocation-local and receives no unrelated glyph queries. The result
-    /// retains exact half-design-unit origins. Selected AAT paths are unsupported;
+    /// retains exact half-design-unit origins. `reference` supplies the effective
+    /// horizontal origin before GPOS and attachment: absolute design X replaces
+    /// the nominal origin; a nominal-pen distance adds to it. The supplier remains
+    /// nominal, and advance/origin Y are unchanged. Selected AAT paths are unsupported;
     /// dormant tables do not refuse an OpenType-selected plan. Ordinary shaping
     /// and its design-unit results are unchanged.
     ///
@@ -239,6 +327,7 @@ impl Shaper<'_> {
         plan: &ShapePlan,
         mut buffer: UnicodeBuffer,
         features: &[Feature],
+        reference: VerticalOriginReference,
         mut supplier: impl FnMut(u32) -> Result<VerticalNominalMetrics, E>,
     ) -> Result<VerticalGlyphBuffer, VerticalShapeError<E>> {
         if let ShapingStatus::Refused(reason) = buffer.0.shaping_status() {
@@ -278,6 +367,7 @@ impl Shaper<'_> {
             };
             let mut source = MetricSource {
                 query: &mut query,
+                reference,
                 failed: false,
             };
             self.shape_with_plan_inner(plan, buffer, features, Some(&mut source))
@@ -297,6 +387,7 @@ impl Shaper<'_> {
 
 pub(crate) struct MetricSource<'a> {
     pub query: &'a mut dyn FnMut(u32) -> Option<VerticalNominalMetrics>,
+    reference: VerticalOriginReference,
     pub failed: bool,
 }
 impl MetricSource<'_> {
@@ -315,7 +406,7 @@ impl MetricSource<'_> {
         let previous = math.stage;
         math.stage = VerticalPositionStage::Nominal;
         let advance = math.coordinate(-i64::from(metrics.advance) * 2);
-        let x = math.coordinate(-i64::from(metrics.origin_x_twice));
+        let x = math.coordinate(-self.reference.origin_twice(metrics.origin_x_twice));
         let y = math.coordinate(-i64::from(metrics.origin_y) * 2);
         math.stage = previous;
         math.failure.is_none().then_some((advance, x, y))

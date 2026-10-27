@@ -4,8 +4,8 @@
 use crate::hb::completion_fixture::words;
 use crate::{
     script, Direction, Feature, GlyphBuffer, ShapePlan, Shaper, ShapingRefusal, ShapingStatus,
-    UnicodeBuffer, VerticalGlyphBuffer, VerticalNominalMetrics, VerticalPositionStage,
-    VerticalShapeContextError, VerticalShapeError,
+    UnicodeBuffer, VerticalGlyphBuffer, VerticalNominalMetrics, VerticalOriginReference,
+    VerticalPositionStage, VerticalShapeContextError, VerticalShapeError,
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::{convert::Infallible, mem::size_of};
@@ -36,9 +36,13 @@ fn make_plan(font: &Shaper<'_>, input: &UnicodeBuffer, features: &[Feature]) -> 
 fn vertical(font: &Shaper<'_>, text: &str, features: &[Feature]) -> VerticalGlyphBuffer {
     let input = input(text, Direction::TopToBottom);
     let plan = make_plan(font, &input, features);
-    font.shape_vertical_with_metrics(&plan, input, features, |gid| {
-        Ok::<_, Infallible>(font::metrics(font, gid))
-    })
+    font.shape_vertical_with_metrics(
+        &plan,
+        input,
+        features,
+        VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+        |gid| Ok::<_, Infallible>(font::metrics(font, gid)),
+    )
     .unwrap()
 }
 fn ordinary(
@@ -169,14 +173,20 @@ fn actual_glyph_zero_and_signed_scalar_records_are_consumed_without_inventory_sc
         let plan = make_plan(font, &input, &[]);
         let mut asked = Vec::new();
         let result = font
-            .shape_vertical_with_metrics(&plan, input, &[], |gid| {
-                asked.push(gid);
-                if gid == u32::from(font::A) {
-                    Ok::<_, &'static str>(VerticalNominalMetrics::new(0, -3, -20))
-                } else {
-                    Err("unrequested corrupt record")
-                }
-            })
+            .shape_vertical_with_metrics(
+                &plan,
+                input,
+                &[],
+                VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+                |gid| {
+                    asked.push(gid);
+                    if gid == u32::from(font::A) {
+                        Ok::<_, &'static str>(VerticalNominalMetrics::new(0, -3, -20))
+                    } else {
+                        Err("unrequested corrupt record")
+                    }
+                },
+            )
             .unwrap();
         assert!(asked.iter().all(|&gid| gid == u32::from(font::A)));
         assert!(!asked.is_empty());
@@ -212,10 +222,16 @@ fn supplier_queries_actual_replacement_and_ligature_glyphs_after_real_gsub() {
             let plan = make_plan(font, &input, &[]);
             let mut queried = Vec::new();
             let result = font
-                .shape_vertical_with_metrics(&plan, input, &[], |gid| {
-                    queried.push(gid);
-                    Ok::<_, Infallible>(font::metrics(font, gid))
-                })
+                .shape_vertical_with_metrics(
+                    &plan,
+                    input,
+                    &[],
+                    VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+                    |gid| {
+                        queried.push(gid);
+                        Ok::<_, Infallible>(font::metrics(font, gid))
+                    },
+                )
                 .unwrap();
             assert!(!queried.is_empty());
             assert!(queried.iter().all(|&gid| gid == u32::from(font::R)));
@@ -363,10 +379,16 @@ fn missing_space_fallback_queries_real_digit_and_punctuation_and_preserves_raw_d
             let plan = make_plan(font, &input, &[]);
             let mut asked = Vec::new();
             let result = font
-                .shape_vertical_with_metrics(&plan, input, &[], |gid| {
-                    asked.push(gid);
-                    Ok::<_, Infallible>(font::metrics(font, gid))
-                })
+                .shape_vertical_with_metrics(
+                    &plan,
+                    input,
+                    &[],
+                    VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+                    |gid| {
+                        asked.push(gid);
+                        Ok::<_, Infallible>(font::metrics(font, gid))
+                    },
+                )
                 .unwrap();
             assert_eq!(positions(&result)[0].1.to_bits(), expected.to_bits());
             if text == "\u{2007}" {
@@ -390,14 +412,20 @@ fn later_distinct_needed_glyph_preserves_original_supplier_error_and_invocation_
         let input = input("AB", Direction::TopToBottom);
         let plan = make_plan(font, &input, &[]);
         let mut asked = Vec::new();
-        let error = failure(font.shape_vertical_with_metrics(&plan, input, &[], |gid| {
-            asked.push(gid);
-            if gid == u32::from(font::B) {
-                Err(SupplierError { marker: 0x1527 })
-            } else {
-                Ok(font::metrics(font, gid))
-            }
-        }));
+        let error = failure(font.shape_vertical_with_metrics(
+            &plan,
+            input,
+            &[],
+            VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+            |gid| {
+                asked.push(gid);
+                if gid == u32::from(font::B) {
+                    Err(SupplierError { marker: 0x1527 })
+                } else {
+                    Ok(font::metrics(font, gid))
+                }
+            },
+        ));
         assert!(asked.contains(&u32::from(font::A)) && asked.contains(&u32::from(font::B)));
         assert!(matches!(
             error,
@@ -454,15 +482,19 @@ fn nominal_and_actual_gpos_attachment_fallback_overflows_refuse_at_their_owner_s
             let features = feature(b"mark");
             let input = input(text, Direction::TopToBottom);
             let plan = make_plan(font, &input, &features);
-            let error = failure(
-                font.shape_vertical_with_metrics(&plan, input, &features, |gid| {
+            let error = failure(font.shape_vertical_with_metrics(
+                &plan,
+                input,
+                &features,
+                VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+                |gid| {
                     Ok::<_, Infallible>(if gid == u32::from(font::A) {
                         record
                     } else {
                         font::metrics(font, gid)
                     })
-                }),
-            );
+                },
+            ));
             assert!(
                 matches!(error, VerticalShapeError::CoordinateRange { stage: actual } if actual == stage)
             );
@@ -516,10 +548,16 @@ fn actual_prelatched_growth_work_lookup_and_attachment_refusals_win_over_would_f
             assert_eq!(source.0.shaping_status(), ShapingStatus::Refused(reason));
             let plan = make_plan(font, &source, &[]);
             let mut called = false;
-            let error = failure(font.shape_vertical_with_metrics(&plan, source, &[], |_| {
-                called = true;
-                Err::<VerticalNominalMetrics, _>(SupplierError { marker: 7 })
-            }));
+            let error = failure(font.shape_vertical_with_metrics(
+                &plan,
+                source,
+                &[],
+                VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+                |_| {
+                    called = true;
+                    Err::<VerticalNominalMetrics, _>(SupplierError { marker: 7 })
+                },
+            ));
             assert!(!called);
             assert!(matches!(error, VerticalShapeError::Refused(actual) if actual == reason));
         }
@@ -579,10 +617,16 @@ fn wrong_direction_and_plan_properties_refuse_without_supplier_or_ordinary_api_a
             let source = input("A", direction);
             let plan = ShapePlan::new(font, plan_direction, Some(plan_script), None, &[]);
             let mut called = false;
-            let error = failure(font.shape_vertical_with_metrics(&plan, source, &[], |_| {
-                called = true;
-                Ok::<_, Infallible>(font::metrics(font, 35))
-            }));
+            let error = failure(font.shape_vertical_with_metrics(
+                &plan,
+                source,
+                &[],
+                VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+                |_| {
+                    called = true;
+                    Ok::<_, Infallible>(font::metrics(font, 35))
+                },
+            ));
             assert!(!called);
             assert!(matches!(error, VerticalShapeError::Context(actual) if actual == expected));
         }
@@ -613,10 +657,16 @@ fn selected_native_kerx_refuses_but_dormant_data_with_actual_ot_gpos_admits() {
                 assert_eq!(plan.apply_kerx, !ot);
                 assert_eq!(plan.apply_gpos, ot);
                 let mut asked = false;
-                let result = font.shape_vertical_with_metrics(&plan, source, &features, |gid| {
-                    asked = true;
-                    Ok::<_, Infallible>(font::metrics(font, gid))
-                });
+                let result = font.shape_vertical_with_metrics(
+                    &plan,
+                    source,
+                    &features,
+                    VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+                    |gid| {
+                        asked = true;
+                        Ok::<_, Infallible>(font::metrics(font, gid))
+                    },
+                );
                 if ot {
                     assert!(asked);
                     assert_eq!(
@@ -702,13 +752,16 @@ fn selected_real_morx_kern_and_tracking_plans_refuse_before_supplier() {
                 }
             };
             let mut called = false;
-            let error =
-                failure(
-                    configured.shape_vertical_with_metrics(&plan, source, &features, |_| {
-                        called = true;
-                        Err::<VerticalNominalMetrics, _>(SupplierError { marker: 9 })
-                    }),
-                );
+            let error = failure(configured.shape_vertical_with_metrics(
+                &plan,
+                source,
+                &features,
+                VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+                |_| {
+                    called = true;
+                    Err::<VerticalNominalMetrics, _>(SupplierError { marker: 9 })
+                },
+            ));
             assert!(!called);
             assert!(matches!(error, VerticalShapeError::Context(actual) if actual == expected));
         });
@@ -726,9 +779,13 @@ fn real_recursive_gsub_limit_remains_refused_in_the_new_operation() {
             control.shaping_status(),
             ShapingStatus::Refused(ShapingRefusal::LookupNestingLimit)
         );
-        let error = failure(font.shape_vertical_with_metrics(&plan, source, &[], |gid| {
-            Ok::<_, Infallible>(font::metrics(font, gid))
-        }));
+        let error = failure(font.shape_vertical_with_metrics(
+            &plan,
+            source,
+            &[],
+            VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+            |gid| Ok::<_, Infallible>(font::metrics(font, gid)),
+        ));
         assert!(matches!(
             error,
             VerticalShapeError::Refused(ShapingRefusal::LookupNestingLimit)
@@ -748,9 +805,13 @@ fn joining_profile_custody_is_revalidated_and_unicode_clear_removes_old_binding(
             .unwrap();
         source.set_direction(Direction::TopToBottom);
         let plan = make_plan(font, &source, &[]);
-        let error = failure(font.shape_vertical_with_metrics(&plan, source, &[], |gid| {
-            Ok::<_, Infallible>(font::metrics(font, gid))
-        }));
+        let error = failure(font.shape_vertical_with_metrics(
+            &plan,
+            source,
+            &[],
+            VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+            |gid| Ok::<_, Infallible>(font::metrics(font, gid)),
+        ));
         assert!(matches!(
             error,
             VerticalShapeError::Refused(ShapingRefusal::JoiningInput)
@@ -765,9 +826,13 @@ fn joining_profile_custody_is_revalidated_and_unicode_clear_removes_old_binding(
         clean.set_direction(Direction::TopToBottom);
         let plan = make_plan(font, &clean, &[]);
         let result = font
-            .shape_vertical_with_metrics(&plan, clean, &[], |gid| {
-                Ok::<_, Infallible>(font::metrics(font, gid))
-            })
+            .shape_vertical_with_metrics(
+                &plan,
+                clean,
+                &[],
+                VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+                |gid| Ok::<_, Infallible>(font::metrics(font, gid)),
+            )
             .unwrap();
         assert_eq!(ids(&result), [(35, 13)]);
         assert_eq!(positions(&result), [(0.0, -1200.0, -500.5, -900.0)]);
@@ -781,10 +846,16 @@ fn valid_empty_ttb_result_has_empty_receipt_no_supplier_and_clear_reuses_as_ordi
         let plan = make_plan(font, &source, &[]);
         let mut called = false;
         let empty = font
-            .shape_vertical_with_metrics(&plan, source, &[], |_| {
-                called = true;
-                Err::<VerticalNominalMetrics, _>(SupplierError { marker: 8 })
-            })
+            .shape_vertical_with_metrics(
+                &plan,
+                source,
+                &[],
+                VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+                |_| {
+                    called = true;
+                    Err::<VerticalNominalMetrics, _>(SupplierError { marker: 8 })
+                },
+            )
             .unwrap();
         assert!(!called);
         assert!(empty.is_empty());
@@ -826,13 +897,19 @@ fn supplier_error_source_retains_the_original_owned_error_without_string_flatten
         let mut supplied = Some(OwnedSupplierError { marker });
         let source = input("A", Direction::TopToBottom);
         let plan = make_plan(font, &source, &[]);
-        let error = failure(font.shape_vertical_with_metrics(&plan, source, &[], |_| {
-            Err::<VerticalNominalMetrics, _>(
-                supplied
-                    .take()
-                    .expect("first actual supplier failure is retained"),
-            )
-        }));
+        let error = failure(font.shape_vertical_with_metrics(
+            &plan,
+            source,
+            &[],
+            VerticalOriginReference::NominalVerticalPenX { offset_twice: 0 },
+            |_| {
+                Err::<VerticalNominalMetrics, _>(
+                    supplied
+                        .take()
+                        .expect("first actual supplier failure is retained"),
+                )
+            },
+        ));
         let retained = core::error::Error::source(&error)
             .unwrap()
             .downcast_ref::<OwnedSupplierError>()
@@ -852,3 +929,6 @@ fn supplier_error_source_retains_the_original_owned_error_without_string_flatten
 
 #[path = "vertical_fallback_origin_tests.rs"]
 mod fallback_origin;
+
+#[path = "vertical_reference_tests.rs"]
+mod reference_tests;
