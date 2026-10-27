@@ -219,6 +219,12 @@ impl Shaper<'_> {
     /// dormant tables do not refuse an OpenType-selected plan. Ordinary shaping
     /// and its design-unit results are unchanged.
     ///
+    /// As with [`Self::shape_with_plan`], callers must supply a plan valid for
+    /// this configured face and compatible language, features and feature-variation
+    /// selection. [`crate::ShapePlanKey`] compares the reusable selection properties;
+    /// callers retain responsibility for the face. This operation checks the
+    /// direction/script agreement and selected-profile limits described below.
+    ///
     /// # Errors
     /// Returns [`VerticalShapeError::Context`] for mismatched direction/script
     /// or a selected unsupported native plan path. An actual supplier failure
