@@ -14,7 +14,7 @@ path = "src/lib.rs"
 [dependencies]
 accesskit = { version = "=0.24.1", optional = true }
 fontique = { version = "=0.9.0", default-features = false, features = ["std", "system"] }
-harfrust = { version = "=0.6.2", default-features = false, features = ["std"] }
+harfrust = { path = "../../vendor/harfrust", version = "=0.6.2", default-features = false, features = ["std"] }
 hypher = { version = "=0.1.8", default-features = false, features = ["alloc", "english"] }
 icu_casemap = { version = "=2.2.0", default-features = false, features = ["compiled_data"] }
 icu_locale = { version = "=2.2.0", default-features = false, features = ["compiled_data"] }
