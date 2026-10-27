@@ -1,8 +1,9 @@
 use super::property_input::NativeValueRange;
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
-    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token, match_ignore_ascii_case,
+    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token,
 };
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
 use super::values::{

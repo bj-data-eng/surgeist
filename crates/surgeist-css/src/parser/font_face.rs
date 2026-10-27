@@ -1,8 +1,9 @@
 use cssparser::{
     AtRuleParser, BasicParseErrorKind, CowRcStr, DeclarationParser, Delimiter, ParseError,
     ParseErrorKind, Parser, ParserState, QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser,
-    Token, match_ignore_ascii_case,
+    Token,
 };
+use surgeist_css_parser::match_ignore_ascii_case;
 
 pub(crate) mod unicode_range;
 

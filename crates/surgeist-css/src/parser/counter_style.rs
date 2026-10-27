@@ -1,8 +1,8 @@
 use cssparser::{
     AtRuleParser, BasicParseErrorKind, CowRcStr, DeclarationParser, ParseError, ParseErrorKind,
     Parser, ParserState, QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, SourceLocation,
-    match_ignore_ascii_case,
 };
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::background::parse_image;
 use super::property_input::{NativeValueRange, adapt_native};

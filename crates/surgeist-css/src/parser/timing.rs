@@ -2,7 +2,8 @@ use super::combinators::{Combinator, Operand, Tail, commit, fill, parse_group};
 use super::property_input::Parser;
 use crate::diagnostic::CssFeatureId;
 use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::{Token, match_ignore_ascii_case};
+use cssparser::Token;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{parse_custom_ident_from_str_at, parse_nonnegative_number};
 use crate::numeric::{CssNonNegative, CssNumeric, CssPositive, CssTime};

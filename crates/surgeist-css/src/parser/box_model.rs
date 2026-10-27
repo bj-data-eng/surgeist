@@ -3,7 +3,7 @@ use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
 use super::property_input::Parser;
 use crate::diagnostic::CssFeatureId;
 use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::match_ignore_ascii_case;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{parse_shadow_length, parse_shadow_nonnegative_length};
 use crate::values::box_model::CssBoxDecorationBreak;

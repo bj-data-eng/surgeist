@@ -1,6 +1,7 @@
 use super::property_input::Parser;
 use crate::diagnostic::error::property::{ParseError, ParseErrorKind};
-use cssparser::{Token, match_ignore_ascii_case};
+use cssparser::Token;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::color::{
     next_is_mix_weight, parse_authored_mix_weight, parse_color_interpolation_method,

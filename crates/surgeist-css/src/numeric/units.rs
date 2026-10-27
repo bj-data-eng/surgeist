@@ -35,7 +35,7 @@ macro_rules! unit_registry {
     ($( $dimension:ident :: $enum:ident :: $variant:ident => $suffix:literal $(| $alias:literal)*, $ratio:expr; )*) => {
         /// Decodes an authored unit, ASCII case-insensitively.
         pub(crate) fn parse(unit: &str) -> Option<CssNumericUnit> {
-            Some(cssparser::match_ignore_ascii_case! { unit,
+            Some(surgeist_css_parser::match_ignore_ascii_case! { unit,
                 $( $suffix $(| $alias)* => CssNumericUnit::$dimension($enum::$variant), )*
                 "fr" => CssNumericUnit::Flex,
                 _ => return None,

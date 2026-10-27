@@ -13,7 +13,7 @@ use crate::values::text::{
     CssTextShadowList, CssTextSide, CssTextUnderlineOffset, CssTextUnderlineOffsetLength,
     CssTextUnderlinePosition, CssUnderlinePosition, CssUnderlinePositionVertical,
 };
-use cssparser::match_ignore_ascii_case;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 macro_rules! keyword {
     ($parser:ident, $ty:ident, $($text:literal => $variant:ident),+ $(,)?) => {

@@ -2,7 +2,8 @@ use super::combinators::{Combinator, Tail, keyword, parse_group};
 use super::property_input::Parser;
 use super::values::parse_nonnegative_length;
 use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::{Token, match_ignore_ascii_case};
+use cssparser::Token;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{
     LiteralTokens, NumericType, parse_integer_literal, parse_integer_value, parse_numeric_function,

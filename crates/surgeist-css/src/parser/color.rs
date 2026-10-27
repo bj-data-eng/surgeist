@@ -1,7 +1,8 @@
 use super::property_input::Parser;
 use crate::diagnostic::error::property::ParseError;
-use cssparser::{Token, match_ignore_ascii_case};
+use cssparser::Token;
 use surgeist_color::{ColorSpace, HueInterpolation};
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::parse_numeric_function;
 use crate::color::{

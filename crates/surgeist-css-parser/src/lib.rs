@@ -9,13 +9,12 @@
 //! tokenizer, the parsing results and token streams, the parser entry points
 //! and algorithms, the `An+B` microsyntax, and token serialization. It gives
 //! syntax no CSS meaning. Properties, values, rules, selectors, queries and
-//! recovery diagnostics belong to `surgeist-css`, which is to build CSS
-//! language interpretation on this crate.
+//! recovery diagnostics belong to `surgeist-css`, which builds CSS language
+//! interpretation on this crate.
 //!
-//! The crate depends on no other Surgeist crate. The dependency is to run from
+//! The crate depends on no other Surgeist crate. The dependency runs from
 //! `surgeist-css` to this crate, never the other way, because Syntax 3 is a
 //! layer below every CSS grammar rather than a consumer of CSS values.
-//! `surgeist-css` does not depend on this crate yet.
 //!
 //! The behavioral authority is the pinned CSS Syntax Module Level 3 edition
 //! recorded in the repository's `references/SOURCE-EDITIONS.md` (the "CSS

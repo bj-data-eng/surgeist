@@ -22,7 +22,7 @@ symbolic values remain unresolved until that owner has the required context.
 [CSS](../crates/surgeist-css/README.md) owns authored syntax, recovery and
 source/fact-qualified resolution. [CSS parser](../crates/surgeist-css-parser/README.md)
 owns CSS Syntax 3 tokenization and parsing, without giving syntax a CSS
-meaning; CSS is to build its language interpretation on it. Unlike the
+meaning; CSS builds its language interpretation on it. Unlike the
 [HTML parser](../crates/surgeist-html-parser/README.md), which sits above the HTML
 values it constructs, the CSS parser sits below every CSS grammar and
 depends on no Surgeist crate. [Color](../crates/surgeist-color/README.md)

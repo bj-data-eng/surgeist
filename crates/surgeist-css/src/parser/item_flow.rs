@@ -8,7 +8,7 @@
 
 use super::property_input::{Parser, ParserState};
 use crate::diagnostic::error::property::ParseError;
-use cssparser::match_ignore_ascii_case;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::grid::parse_flow_tolerance;
 use crate::diagnostic::error::property::{Error, basic, unexpected_at};

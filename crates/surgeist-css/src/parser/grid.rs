@@ -1,7 +1,8 @@
 use super::property_input::Parser;
 use super::values::parse_length_percentage;
 use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
-use cssparser::{Token, match_ignore_ascii_case};
+use cssparser::Token;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::values::{next_is_delim, parse_positive_integer_value};
 use crate::component::{CssComponentValueRef, CssValueTokenRef};

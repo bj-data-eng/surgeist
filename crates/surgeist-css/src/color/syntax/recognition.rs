@@ -2,8 +2,8 @@
 
 use crate::color::{CssRelativeColorChannel, CssRelativeColorEnvironment};
 use crate::numeric::CssCalculationType;
-use cssparser::match_ignore_ascii_case;
 use surgeist_color::PredefinedColorSpace;
+use surgeist_css_parser::match_ignore_ascii_case;
 
 /// Token admission, extensions, origins and failures belong to each caller.
 pub(crate) fn predefined_color_space(name: &str) -> Option<PredefinedColorSpace> {

@@ -1,7 +1,7 @@
 use cssparser::{
-    BasicParseErrorKind, Delimiter, ParseError, Parser, ParserState, Token,
-    match_ignore_ascii_case, parse_nth,
+    BasicParseErrorKind, Delimiter, ParseError, Parser, ParserState, Token, parse_nth,
 };
+use surgeist_css_parser::match_ignore_ascii_case;
 
 use super::recovery::{RecoveryState, comma_member_span, recovery_action_for_error};
 use crate::diagnostic::error::{

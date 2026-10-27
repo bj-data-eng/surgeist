@@ -91,7 +91,7 @@ pub(super) fn parse_speech_break<'i, 't>(
     input.skip_whitespace();
     let location = input.current_source_location();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        let value = cssparser::match_ignore_ascii_case! { &ident,
+        let value = surgeist_css_parser::match_ignore_ascii_case! { &ident,
             "none" => CssSpeechBreak::None,
             "x-weak" => CssSpeechBreak::Strength(CssSpeechBreakStrength::XWeak),
             "weak" => CssSpeechBreak::Strength(CssSpeechBreakStrength::Weak),
@@ -151,7 +151,7 @@ pub(super) fn parse_voice_stress<'i, 't>(
     input.skip_whitespace();
     let location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
-    cssparser::match_ignore_ascii_case! { &ident,
+    surgeist_css_parser::match_ignore_ascii_case! { &ident,
         "normal" => Ok(crate::values::speech::CssVoiceStress::Normal),
         "strong" => Ok(crate::values::speech::CssVoiceStress::Strong),
         "moderate" => Ok(crate::values::speech::CssVoiceStress::Moderate),
@@ -185,10 +185,10 @@ pub(super) fn parse_voice_family<'i, 't>(
     ))
 }
 fn voice_age(value: &str) -> Option<crate::values::speech::CssVoiceAge> {
-    cssparser::match_ignore_ascii_case! { value, "child" => Some(crate::values::speech::CssVoiceAge::Child), "young" => Some(crate::values::speech::CssVoiceAge::Young), "old" => Some(crate::values::speech::CssVoiceAge::Old), _ => None }
+    surgeist_css_parser::match_ignore_ascii_case! { value, "child" => Some(crate::values::speech::CssVoiceAge::Child), "young" => Some(crate::values::speech::CssVoiceAge::Young), "old" => Some(crate::values::speech::CssVoiceAge::Old), _ => None }
 }
 fn voice_gender(value: &str) -> Option<crate::values::speech::CssVoiceGender> {
-    cssparser::match_ignore_ascii_case! { value, "male" => Some(crate::values::speech::CssVoiceGender::Male), "female" => Some(crate::values::speech::CssVoiceGender::Female), "neutral" => Some(crate::values::speech::CssVoiceGender::Neutral), _ => None }
+    surgeist_css_parser::match_ignore_ascii_case! { value, "male" => Some(crate::values::speech::CssVoiceGender::Male), "female" => Some(crate::values::speech::CssVoiceGender::Female), "neutral" => Some(crate::values::speech::CssVoiceGender::Neutral), _ => None }
 }
 fn parse_voice_entry<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -258,7 +258,7 @@ pub(super) fn parse_voice_duration<'i, 't>(
     super::timing::parse_duration(input, numeric).map(crate::values::speech::CssVoiceDuration::Time)
 }
 fn voice_level(value: &str) -> Option<crate::values::speech::CssVoiceLevel> {
-    cssparser::match_ignore_ascii_case! { value, "x-low" => Some(crate::values::speech::CssVoiceLevel::XLow), "low" => Some(crate::values::speech::CssVoiceLevel::Low), "medium" => Some(crate::values::speech::CssVoiceLevel::Medium), "high" => Some(crate::values::speech::CssVoiceLevel::High), "x-high" => Some(crate::values::speech::CssVoiceLevel::XHigh), _ => None }
+    surgeist_css_parser::match_ignore_ascii_case! { value, "x-low" => Some(crate::values::speech::CssVoiceLevel::XLow), "low" => Some(crate::values::speech::CssVoiceLevel::Low), "medium" => Some(crate::values::speech::CssVoiceLevel::Medium), "high" => Some(crate::values::speech::CssVoiceLevel::High), "x-high" => Some(crate::values::speech::CssVoiceLevel::XHigh), _ => None }
 }
 pub(super) fn parse_voice_pitch_range<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -359,7 +359,7 @@ pub(super) fn parse_voice_pitch_range<'i, 't>(
     }
 }
 fn voice_rate_keyword(value: &str) -> Option<crate::values::speech::CssVoiceRateKeyword> {
-    cssparser::match_ignore_ascii_case! { value, "normal" => Some(crate::values::speech::CssVoiceRateKeyword::Normal), "x-slow" => Some(crate::values::speech::CssVoiceRateKeyword::XSlow), "slow" => Some(crate::values::speech::CssVoiceRateKeyword::Slow), "medium" => Some(crate::values::speech::CssVoiceRateKeyword::Medium), "fast" => Some(crate::values::speech::CssVoiceRateKeyword::Fast), "x-fast" => Some(crate::values::speech::CssVoiceRateKeyword::XFast), _ => None }
+    surgeist_css_parser::match_ignore_ascii_case! { value, "normal" => Some(crate::values::speech::CssVoiceRateKeyword::Normal), "x-slow" => Some(crate::values::speech::CssVoiceRateKeyword::XSlow), "slow" => Some(crate::values::speech::CssVoiceRateKeyword::Slow), "medium" => Some(crate::values::speech::CssVoiceRateKeyword::Medium), "fast" => Some(crate::values::speech::CssVoiceRateKeyword::Fast), "x-fast" => Some(crate::values::speech::CssVoiceRateKeyword::XFast), _ => None }
 }
 pub(super) fn parse_voice_rate<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -468,7 +468,7 @@ pub(super) fn parse_voice_balance<'i, 't>(
     input.skip_whitespace();
     let location = input.current_source_location();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
-        let keyword = cssparser::match_ignore_ascii_case! { &ident,
+        let keyword = surgeist_css_parser::match_ignore_ascii_case! { &ident,
             "left" => crate::values::speech::CssVoiceBalanceKeyword::Left,
             "center" => crate::values::speech::CssVoiceBalanceKeyword::Center,
             "right" => crate::values::speech::CssVoiceBalanceKeyword::Right,
@@ -508,7 +508,7 @@ pub(super) fn parse_voice_volume<'i, 't>(
                 input.skip_whitespace();
                 let location = input.current_source_location();
                 let ident = input.expect_ident_cloned().map_err(basic)?;
-                Ok(cssparser::match_ignore_ascii_case! { &ident,
+                Ok(surgeist_css_parser::match_ignore_ascii_case! { &ident,
                     "x-soft" => crate::values::speech::CssVoiceVolumeLevel::XSoft,
                     "soft" => crate::values::speech::CssVoiceVolumeLevel::Soft,
                     "medium" => crate::values::speech::CssVoiceVolumeLevel::Medium,
