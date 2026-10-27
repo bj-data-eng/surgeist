@@ -148,7 +148,9 @@ fn previous_authored_token_before(
             .char_indices()
             .rev()
             .find_map(|(index, character)| {
-                matches!(character, '{' | ';' | ':' | ',' | '(' | '[').then_some(index)
+                (matches!(character, '{' | ';' | ':' | ',' | '(' | '[')
+                    && !is_escaped(source, index))
+                .then_some(index)
             })
     };
     match boundary(end) {
@@ -169,6 +171,19 @@ fn previous_authored_token_before(
         Some(index) => last_token_in(source, index + 1, source.get(index + 1..end)?),
         None => last_token_in(source, 0, source.get(..end)?),
     }
+}
+
+/// Whether the byte at `index` is consumed by an escape: an odd run of
+/// backslashes before it ends in one that escapes it (Syntax 3 (2026 CRD)
+/// §4.3.7), so `\{` is part of an ident and does not open a block.
+fn is_escaped(source: &str, index: usize) -> bool {
+    source.as_bytes()[..index]
+        .iter()
+        .rev()
+        .take_while(|&&byte| byte == b'\\')
+        .count()
+        % 2
+        == 1
 }
 
 /// Whether the first token of `rest`, past any comments, is whitespace.
