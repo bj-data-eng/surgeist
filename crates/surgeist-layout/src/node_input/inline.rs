@@ -136,6 +136,9 @@ pub enum TextWrapStyle {
     /// Reduce variation in natural remaining inline space without changing the
     /// ordinary formatted-line count in the supported bounded group profile.
     Balance,
+    /// Use ordinary line-local quality preference, retaining actual legality,
+    /// geometry and element-terminal constraints rather than prior edit results.
+    Stable,
 }
 
 /// The implemented native expansion method, rather than CSS-wide `auto`.

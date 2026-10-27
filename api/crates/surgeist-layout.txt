@@ -817,6 +817,7 @@ pub surgeist_layout::TextScopeAssociation::ParagraphContainer(Node)
 pub enum surgeist_layout::TextWrapStyle
 pub surgeist_layout::TextWrapStyle::Auto
 pub surgeist_layout::TextWrapStyle::Balance
+pub surgeist_layout::TextWrapStyle::Stable
 pub enum surgeist_layout::TrackComponentOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::TrackComponentOf::LineNames(alloc::vec::Vec<alloc::string::String>)
 pub surgeist_layout::TrackComponentOf::Repeat(surgeist_layout::TrackRepetitionOf<S>)

@@ -1,4 +1,6 @@
 //! Native scope avoidance precedes Balance's preference among legal numeric cuts.
+mod stable;
+
 use super::*;
 
 fn fixture<S: l::LayoutScalar>(direction: l::Direction, style: l::TextWrapStyle) -> Tree<S> {

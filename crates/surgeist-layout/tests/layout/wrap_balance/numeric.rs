@@ -1,4 +1,6 @@
 //! Real numeric participants exercise the same normalized selection policy.
+mod stable;
+
 use super::*;
 
 fn numeric_atomic<S: l::LayoutScalar>(

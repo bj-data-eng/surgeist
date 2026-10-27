@@ -79,7 +79,18 @@ Auto. The preference does not narrow containing geometry, change tab or
 percentage bases, or authorize conditional overflow breaks. Numeric atomic and
 control-only runs use the same preference through their existing fitter.
 Intrinsic sizing and forced-only nowrap retain their ordinary behavior. This is
-an unfragmented, unclamped profile; the other CSS wrap styles are not exposed.
+an unfragmented, unclamped profile.
+
+`Stable` selects ordinary line-local quality preference in both Text-backed and
+numeric runs, without Balance's residual-quality search. It retains its distinct
+normalized mode in selection and replay. Actual source legality, scope priorities,
+conditional stages, float/height convergence and terminal constraints still apply.
+For example, `hyphenate_limit_last: Always` can require revisiting earlier choices;
+Stable does not freeze an old line sequence or promise unchanged geometry after
+every suffix edit. Supply coherent current preparation and use ordinary changed-node
+invalidation when changing the mode. See the pinned
+[Text 4 selection rule](../../../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#valdef-text-wrap-style-stable).
+Pretty and AvoidShortLastLine are not exposed.
 
 #### Numeric inline baseline references
 
