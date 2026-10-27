@@ -59,11 +59,15 @@ for an empty body; raw property observers continue to report original facts.
 
 Computed direction is a separate retained authority from used paragraph
 direction. An admitted computed RTL value stays RTL while whole-upright analysis
-uses LTR. Existing captured `ParagraphInput.base_direction` and contextual
-`used_direction` are already-resolved used authorities. A captured used RTL
-claim is contradictory and must fail at the new input boundary; used LTR is
+uses LTR. Existing `ParagraphInput.base_direction` and the issued contextual paragraph
+base are already-resolved used paragraph authorities. A captured paragraph used
+RTL claim is contradictory and must fail at the new input boundary; used LTR is
 admissible. They cannot be relabelled as computed direction and silently replaced.
-Existing `Style.direction` admission is not widened implicitly.
+The nearest-block [tab reference](../crates/surgeist-text/src/tabs.rs) has its own
+used direction, explicitly independent of paragraph bidi. Assigning typography
+to an analysis paragraph neither rewrites nor rejects that independent fact,
+including an RTL block reference accompanying a used-LTR paragraph. Existing
+`Style.direction` admission is not widened implicitly.
 
 Original captured pairing, coverage and ownership validation still runs.
 Neutralization does not admit malformed native captures. Literal source controls
