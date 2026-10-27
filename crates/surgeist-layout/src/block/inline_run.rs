@@ -847,18 +847,17 @@ where
         let actual_content = frame
             .and_then(|frame| frame.output.scroll_geometry)
             .map(|geometry| geometry.content_box());
-        let inset = actual_content.map_or(
-            Point::new(
-                constants.content_box_inset.left,
-                constants.content_box_inset.top,
-            ),
-            |rect| rect.origin(),
-        );
-        let right_inset = frame
-            .zip(actual_content)
-            .map_or(constants.content_box_inset.right, |(frame, rect)| {
-                frame.output.size.width - rect.origin().x - rect.size().width
-            });
+        let content_insets =
+            frame
+                .zip(actual_content)
+                .map_or(constants.content_box_inset, |(frame, rect)| {
+                    Edges::new(
+                        rect.origin().y,
+                        frame.output.size.width - rect.origin().x - rect.size().width,
+                        frame.output.size.height - rect.origin().y - rect.size().height,
+                        rect.origin().x,
+                    )
+                });
         let available = match available_inline_extent {
             AvailableOf::Definite(_) => actual_content.map_or(available_inline_extent, |rect| {
                 AvailableOf::definite(constants.flow_axes.logical_size(rect.size()).inline)
@@ -902,8 +901,7 @@ where
                 }
             }),
             containing_size,
-            inset,
-            right_inset,
+            content_insets,
             cursor_block,
             axes: constants.flow_axes,
             available,
@@ -1053,7 +1051,7 @@ where
                     };
                     let inset_inline = constants
                         .flow_axes
-                        .logical_edges(Edges::new(inset.y, right_inset, S::ZERO, inset.x))
+                        .logical_edges(content_insets)
                         .inline_start;
                     let intrinsic_end_occupation = intrinsic_max
                         .then(|| encounters.borrow().band().end_occupation(&band).to_f64());

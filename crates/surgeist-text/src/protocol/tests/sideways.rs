@@ -3,6 +3,7 @@
 //! the qualified GSUB fixture supplies real distinct retained outlines.
 mod constraints;
 mod movement;
+mod source_ranges;
 
 use super::*;
 use crate::{Affinity, Cursor, Hit, Id, Movement, Point, Range, Rect, Selection, Size};

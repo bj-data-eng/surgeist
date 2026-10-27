@@ -285,8 +285,7 @@ fn intrinsic_with_indent(
                 size: Size::new(width, 10.0),
             },
             containing_size: Size::new(width, 10.0),
-            inset: Point::ZERO,
-            right_inset: 0.0,
+            content_insets: crate::Edges::ZERO,
             cursor_block: 0.0,
             axes: FlowAxes::new(
                 WritingMode::HorizontalTb,

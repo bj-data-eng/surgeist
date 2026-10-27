@@ -407,8 +407,7 @@ pub(crate) struct Context<Node, S: LayoutScalar> {
     pub line_box_context: crate::line_box::LineBoxContext,
     pub frame: Frame<S>,
     pub containing_size: Size<S>,
-    pub inset: Point<S>,
-    pub right_inset: S,
+    pub content_insets: crate::Edges<S>,
     pub cursor_block: S,
     pub axes: FlowAxes,
     pub available: AvailableOf<S>,
@@ -425,14 +424,244 @@ pub(crate) struct Context<Node, S: LayoutScalar> {
 
 impl<Node, S: LayoutScalar> Context<Node, S> {
     fn inline_start_inset(&self) -> S {
-        self.axes
-            .logical_edges(crate::Edges::new(
-                self.inset.y,
-                self.right_inset,
-                S::ZERO,
-                self.inset.x,
+        self.axes.logical_edges(self.content_insets).inline_start
+    }
+
+    fn frame_size(&self) -> Size<S> {
+        match self.frame {
+            Frame::Canonical { size, .. } => size,
+            Frame::Measurement => self.containing_size,
+        }
+    }
+
+    fn line_frame(&self, origin: Point<f64>) -> LineFrame {
+        let size = self.frame_size();
+        LineFrame {
+            axes: self.axes,
+            origin,
+            size: Size::new(size.width.to_f64(), size.height.to_f64()),
+            insets: self.content_insets.map(LayoutScalar::to_f64),
+            cursor_block: self.cursor_block.to_f64(),
+        }
+    }
+}
+
+/// Adapter-local coordinates belong to the fitter; these anchors and rectangles
+/// belong to the actual physical container. FlowAxes maps the available interval
+/// once. Finalized local u already includes bidi and alignment, so it is never
+/// reflected again. Unsupported orientations are refused by Text selection.
+#[derive(Clone, Copy)]
+struct LineFrame {
+    axes: FlowAxes,
+    origin: Point<f64>,
+    size: Size<f64>,
+    insets: crate::Edges<f64>,
+    cursor_block: f64,
+}
+
+impl LineFrame {
+    fn orientation(self) -> LineOrientation {
+        match self.axes.writing_mode() {
+            crate::WritingMode::HorizontalTb => LineOrientation::Horizontal,
+            crate::WritingMode::SidewaysRl => LineOrientation::Sideways,
+            crate::WritingMode::VerticalRl
+            | crate::WritingMode::VerticalLr
+            | crate::WritingMode::SidewaysLr => LineOrientation::Vertical,
+        }
+    }
+
+    fn sideways(self) -> bool {
+        self.orientation() == LineOrientation::Sideways
+    }
+
+    fn inline_origin(self, start: f64, available: f64) -> Result<f64, FitError> {
+        if self.sideways() {
+            let interval = self.axes.physical_point(
+                crate::geometry::LogicalPointOf::new(
+                    add(self.axes.logical_edges(self.insets).inline_start, start)?,
+                    0.0,
+                ),
+                crate::geometry::LogicalSizeOf::new(available, 0.0),
+                self.size,
+            );
+            round(add(self.origin.y, finite(interval.y)?)?)
+        } else {
+            let local_x = if self.axes.direction() == Direction::Rtl {
+                self.size.width - self.insets.right - start - available
+            } else {
+                self.insets.left + start
+            };
+            round(add(self.origin.x, local_x)?)
+        }
+    }
+
+    fn cross(self, block: f64, baseline: f64) -> Result<f64, FitError> {
+        if self.sideways() {
+            add(
+                self.origin.x,
+                finite(self.size.width - add(self.cursor_block, add(block, baseline)?)?)?,
+            )
+        } else {
+            add(
+                add(self.origin.y, self.cursor_block)?,
+                add(block, baseline)?,
+            )
+        }
+    }
+
+    fn block(self, cross: f64, baseline: f64) -> Result<f64, FitError> {
+        if self.sideways() {
+            finite(self.size.width - (cross - self.origin.x) - self.cursor_block - baseline)
+        } else {
+            finite(cross - self.origin.y - self.cursor_block - baseline)
+        }
+    }
+
+    fn canonical_block(
+        self,
+        proposed: f64,
+        minimum: Option<f64>,
+        baseline: f64,
+    ) -> Result<f64, FitError> {
+        let mut canonical = round(self.cross(proposed, baseline)?)?;
+        if let Some(minimum) = minimum {
+            let limit = self.cross(minimum, baseline)?;
+            // Minimum logical block progression is maximum physical X in Srl.
+            // Snap the actual constrained anchor, not its negated displacement.
+            canonical = if self.sideways() {
+                canonical.min(finite(limit.floor())?)
+            } else {
+                canonical.max(finite(limit.ceil())?)
+            };
+        }
+        self.block(canonical, baseline)
+    }
+
+    fn anchor(
+        self,
+        start: f64,
+        available: f64,
+        block: f64,
+        baseline: f64,
+    ) -> Result<LineAnchor, FitError> {
+        Ok(LineAnchor {
+            inline_origin: self.inline_origin(start, available)?,
+            baseline: round(self.cross(block, baseline)?)?,
+        })
+    }
+
+    fn cross_offset(self, cross: f64, offset: f64) -> Result<f64, FitError> {
+        add(cross, if self.sideways() { -offset } else { offset })
+    }
+
+    fn cross_distance(self, from: f64, to: f64) -> Result<f64, FitError> {
+        finite(if self.sideways() {
+            from - to
+        } else {
+            to - from
+        })
+    }
+
+    fn aligned_strut(
+        self,
+        anchor: LineAnchor,
+        feedback: surgeist_text::LineFeedback,
+        metrics: surgeist_text::LineStrut,
+        alignment: surgeist_text::LineBoxAlignment,
+    ) -> Result<surgeist_text::LineStrut, FitError> {
+        let over = if self.sideways() {
+            let offset = match alignment {
+                surgeist_text::LineBoxAlignment::Baseline => -metrics.baseline,
+                surgeist_text::LineBoxAlignment::Top => -feedback.baseline,
+                surgeist_text::LineBoxAlignment::Bottom => {
+                    -feedback.baseline + feedback.line_height - metrics.line_extent
+                }
+            };
+            self.cross_offset(anchor.baseline, offset)?
+        } else {
+            match alignment {
+                surgeist_text::LineBoxAlignment::Baseline => anchor.baseline - metrics.baseline,
+                surgeist_text::LineBoxAlignment::Top => anchor.baseline - feedback.baseline,
+                surgeist_text::LineBoxAlignment::Bottom => {
+                    anchor.baseline - feedback.baseline + feedback.line_height - metrics.line_extent
+                }
+            }
+        };
+        self.strut(over, metrics.baseline, metrics.line_extent)
+    }
+
+    fn strut(
+        self,
+        over: f64,
+        baseline: f64,
+        extent: f64,
+    ) -> Result<surgeist_text::LineStrut, FitError> {
+        let snapped_over = round(over)?;
+        Ok(surgeist_text::LineStrut {
+            baseline: self
+                .cross_distance(snapped_over, round(self.cross_offset(over, baseline)?)?)?,
+            line_extent: self
+                .cross_distance(snapped_over, round(self.cross_offset(over, extent)?)?)?,
+        })
+    }
+
+    fn point(
+        self,
+        anchor: LineAnchor,
+        baseline: f64,
+        inline: f64,
+        cross: f64,
+    ) -> Result<Point<f64>, FitError> {
+        if self.sideways() {
+            Ok(Point::new(
+                add(anchor.baseline, baseline - cross)?,
+                add(anchor.inline_origin, inline)?,
             ))
-            .inline_start
+        } else {
+            Ok(Point::new(
+                add(anchor.inline_origin, inline)?,
+                add(anchor.baseline, cross - baseline)?,
+            ))
+        }
+    }
+
+    fn relative_point<S: LayoutScalar>(self, point: Point<f64>) -> Result<Point<S>, FitError> {
+        Ok(Point::new(
+            number(point.x - self.origin.x)?,
+            number(point.y - self.origin.y)?,
+        ))
+    }
+
+    fn anchor_point(self, anchor: LineAnchor) -> Point<f64> {
+        if self.sideways() {
+            Point::new(anchor.baseline, anchor.inline_origin)
+        } else {
+            Point::new(anchor.inline_origin, anchor.baseline)
+        }
+    }
+
+    fn rect<S: LayoutScalar>(
+        self,
+        anchor: LineAnchor,
+        baseline: f64,
+        rect: Rect,
+    ) -> Result<ScrollRectOf<S>, FitError> {
+        let point = self.point(anchor, baseline, rect.origin.x, rect.origin.y)?;
+        let (origin, size) = if self.sideways() {
+            let end_x = add(point.x, -rect.size.height)?;
+            let end_y = add(point.y, rect.size.width)?;
+            (
+                Point::new(point.x.min(end_x), point.y.min(end_y)),
+                Size::new(rect.size.height.abs(), rect.size.width.abs()),
+            )
+        } else {
+            (point, Size::new(rect.size.width, rect.size.height))
+        };
+        ScrollRectOf::try_new(
+            self.relative_point(origin)?,
+            Size::new(number(size.width)?, number(size.height)?),
+        )
+        .map_err(|_| FitError::InvalidGeometry)
     }
 }
 
@@ -526,11 +755,8 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             unreachable!("analysis lends a resolved original direction")
         }
     };
-    let orientation = if context.axes.writing_mode().is_vertical() {
-        LineOrientation::Vertical
-    } else {
-        LineOrientation::Horizontal
-    };
+    let frame = context.line_frame(origin);
+    let orientation = frame.orientation();
     let available = match context.available {
         AvailableOf::Definite(value) => fit::Available::Definite(value.to_f64()),
         AvailableOf::MinContent => fit::Available::Minimum,
@@ -573,24 +799,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
             reusable,
         },
         band_source,
-        |position, baseline| {
-            let absolute = add(
-                add(origin.y.to_f64(), context.cursor_block.to_f64())?,
-                add(position.proposed, baseline)?,
-            )?;
-            let mut canonical = round(absolute)?;
-            if let Some(minimum) = position.minimum {
-                let absolute_minimum = add(
-                    add(origin.y, context.cursor_block.to_f64())?,
-                    add(minimum, baseline)?,
-                )?;
-                // A real float or clear constraint excludes earlier anchors.
-                // Choose the first permitted point on the same CSS-pixel grid;
-                // ordinary unconstrained placement still uses nearest rounding.
-                canonical = canonical.max(finite(absolute_minimum.ceil())?);
-            }
-            finite(canonical - origin.y.to_f64() - context.cursor_block.to_f64() - baseline)
-        },
+        |position, baseline| frame.canonical_block(position.proposed, position.minimum, baseline),
         |line, band, block, box_struts| {
             Ok(fit::LineAllocations {
                 line_box_struts: canonical_box_struts(
@@ -810,22 +1019,18 @@ fn canonical_controls<Node: Copy + Eq, S: LayoutScalar>(
                 .allocation
                 .strut
                 .map(|strut| {
-                    let top = match strut.alignment {
-                        surgeist_text::LineBoxAlignment::Baseline => {
-                            anchor.baseline - strut.baseline
-                        }
-                        surgeist_text::LineBoxAlignment::Top => anchor.baseline - feedback.baseline,
-                        surgeist_text::LineBoxAlignment::Bottom => {
-                            anchor.baseline - feedback.baseline + feedback.line_height
-                                - strut.line_extent
-                        }
-                    };
-                    let canonical_top = round(top)?;
-                    let baseline = round(add(top, strut.baseline)?)? - canonical_top;
-                    let extent = round(add(top, strut.line_extent)?)? - canonical_top;
+                    let metrics = context.line_frame(origin).aligned_strut(
+                        anchor,
+                        feedback,
+                        surgeist_text::LineStrut {
+                            baseline: strut.baseline,
+                            line_extent: strut.line_extent,
+                        },
+                        strut.alignment,
+                    )?;
                     Ok::<_, FitError>(surgeist_text::ControlStrut {
-                        baseline,
-                        line_extent: extent,
+                        baseline: metrics.baseline,
+                        line_extent: metrics.line_extent,
                         alignment: strut.alignment,
                     })
                 })
@@ -862,22 +1067,13 @@ fn canonical_box_struts<Node, S: LayoutScalar>(
     originals
         .iter()
         .map(|strut| {
-            let top = match strut.alignment {
-                surgeist_text::LineBoxAlignment::Baseline => {
-                    anchor.baseline - strut.metrics.baseline
-                }
-                surgeist_text::LineBoxAlignment::Top => anchor.baseline - feedback.baseline,
-                surgeist_text::LineBoxAlignment::Bottom => {
-                    anchor.baseline - feedback.baseline + feedback.line_height
-                        - strut.metrics.line_extent
-                }
-            };
-            let canonical_top = round(top)?;
             Ok(surgeist_text::LineBoxStrut {
-                metrics: surgeist_text::LineStrut {
-                    baseline: round(add(top, strut.metrics.baseline)?)? - canonical_top,
-                    line_extent: round(add(top, strut.metrics.line_extent)?)? - canonical_top,
-                },
+                metrics: context.line_frame(origin).aligned_strut(
+                    anchor,
+                    feedback,
+                    strut.metrics,
+                    strut.alignment,
+                )?,
                 alignment: strut.alignment,
             })
         })
@@ -904,31 +1100,16 @@ fn canonical_line_strut<Node, S: LayoutScalar>(
         block,
         feedback.baseline,
     )?;
-    let top = add(anchor.baseline, -strut.baseline)?;
-    let canonical_top = round(top)?;
+    let frame = context.line_frame(origin);
+    let over = frame.cross_offset(anchor.baseline, -strut.baseline)?;
+    let canonical_over = round(over)?;
     Ok(Some(surgeist_text::LineStrut {
-        baseline: anchor.baseline - canonical_top,
-        line_extent: round(add(top, strut.line_extent)?)? - canonical_top,
+        baseline: frame.cross_distance(canonical_over, anchor.baseline)?,
+        line_extent: frame.cross_distance(
+            canonical_over,
+            round(frame.cross_offset(over, strut.line_extent)?)?,
+        )?,
     }))
-}
-
-fn line_inline_origin<Node, S: LayoutScalar>(
-    context: &Context<Node, S>,
-    origin: f64,
-    start: f64,
-    available: f64,
-) -> Result<f64, FitError> {
-    let containing_width = match context.frame {
-        Frame::Canonical { size, .. } => size.width,
-        Frame::Measurement => context.containing_size.width,
-    }
-    .to_f64();
-    let local_x = if context.axes.direction() == Direction::Rtl {
-        containing_width - context.right_inset.to_f64() - start - available
-    } else {
-        context.inset.x.to_f64() + start
-    };
-    round(add(origin, local_x)?)
 }
 
 fn line_anchor<Node, S: LayoutScalar>(
@@ -939,13 +1120,9 @@ fn line_anchor<Node, S: LayoutScalar>(
     block: f64,
     baseline: f64,
 ) -> Result<LineAnchor, FitError> {
-    Ok(LineAnchor {
-        inline_origin: line_inline_origin(context, origin.x, start, available)?,
-        baseline: round(add(
-            add(origin.y.to_f64(), context.cursor_block.to_f64())?,
-            add(block, baseline)?,
-        )?)?,
-    })
+    context
+        .line_frame(origin)
+        .anchor(start, available, block, baseline)
 }
 
 fn output<Node: Copy + Eq, S: LayoutScalar>(
@@ -957,6 +1134,8 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     origin: Point<f64>,
     lines: Vec<FittedLine>,
 ) -> Result<Output<Node, S>, FitError> {
+    let frame = context.line_frame(origin);
+    let orientation = frame.orientation();
     let mut report = MixedInlineRunReportOf {
         inline_baseline_context: crate::InlineBaselineContext::Physical,
         first_named_baseline: false,
@@ -1103,10 +1282,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 let (left, _) = slot.inline_bounds();
                 nonformatted_controls.push((
                     actual.node,
-                    Point::new(
-                        number(add(used.inline_origin, left)? - origin.x)?,
-                        number(used.baseline - origin.y)?,
-                    ),
+                    frame.relative_point(frame.point(used, 0.0, left, 0.0)?)?,
                 ));
             }
             for slot in line.finalized.atomic_slots() {
@@ -1120,24 +1296,24 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 }
                 static_positions.push((
                     actual.node,
-                    Point::new(
-                        number(add(used.inline_origin, slot.origin.x)? - origin.x)?,
-                        number(used.baseline - origin.y)?,
-                    ),
+                    frame.relative_point(frame.point(used, 0.0, slot.origin.x, 0.0)?)?,
                 ));
                 outflows.push((entry_index, slot.occurrence, actual.node));
             }
             placements.push(surgeist_text::PlacementEntry::NonFormatted(
                 surgeist_text::NonFormattedLinePlacement {
                     line: completion,
-                    origin: surgeist_text::Point::new(used.inline_origin, used.baseline),
-                    orientation: LineOrientation::Horizontal,
+                    origin: {
+                        let point = frame.anchor_point(used);
+                        surgeist_text::Point::new(point.x, point.y)
+                    },
+                    orientation,
                     atomics: Vec::new(),
                 },
             ));
             continue;
         }
-        let local_baseline = anchor.baseline - origin.y.to_f64() - context.cursor_block.to_f64();
+        let local_baseline = frame.block(anchor.baseline, 0.0)?;
         // Normal-flow allocations and placed metric bounds both contribute to
         // overflow, including lines without a source fragment or ink. Intrinsic
         // allocation uses the exact requested contribution plus signed indent;
@@ -1155,30 +1331,44 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             )?
             .max(0.0),
         };
-        let allocation = ScrollRectOf::try_new(
-            Point::new(
-                number(
-                    line_inline_origin(context, origin.x, line.inline_start, width)? - origin.x,
-                )?,
-                number(add(context.cursor_block.to_f64(), line.flow.start)?)?,
-            ),
-            Size::new(number(width)?, number(feedback.line_height)?),
-        )
-        .map_err(|_| FitError::InvalidGeometry)?;
+        let allocation = if frame.sideways() {
+            frame.rect(
+                LineAnchor {
+                    inline_origin: frame.inline_origin(line.inline_start, width)?,
+                    baseline: frame.cross(line.flow.start, 0.0)?,
+                },
+                0.0,
+                Rect::new(0.0, 0.0, width, feedback.line_height),
+            )?
+        } else {
+            ScrollRectOf::try_new(
+                Point::new(
+                    number(frame.inline_origin(line.inline_start, width)? - origin.x)?,
+                    number(add(context.cursor_block.to_f64(), line.flow.start)?)?,
+                ),
+                Size::new(number(width)?, number(feedback.line_height)?),
+            )
+            .map_err(|_| FitError::InvalidGeometry)?
+        };
         let metric_frame = line.finalized.metric_bounds();
-        let metrics = ScrollRectOf::try_new(
-            Point::new(
-                number(anchor.inline_origin + metric_frame.origin.x - origin.x)?,
-                number(
-                    add(anchor.baseline, -feedback.baseline)? + metric_frame.origin.y - origin.y,
-                )?,
-            ),
-            Size::new(
-                number(metric_frame.size.width)?,
-                number(metric_frame.size.height)?,
-            ),
-        )
-        .map_err(|_| FitError::InvalidGeometry)?;
+        let metrics = if frame.sideways() {
+            frame.rect(anchor, feedback.baseline, metric_frame)?
+        } else {
+            ScrollRectOf::try_new(
+                Point::new(
+                    number(anchor.inline_origin + metric_frame.origin.x - origin.x)?,
+                    number(
+                        add(anchor.baseline, -feedback.baseline)? + metric_frame.origin.y
+                            - origin.y,
+                    )?,
+                ),
+                Size::new(
+                    number(metric_frame.size.width)?,
+                    number(metric_frame.size.height)?,
+                ),
+            )
+            .map_err(|_| FitError::InvalidGeometry)?
+        };
         line_bounds.push(LineBounds {
             allocation,
             metrics,
@@ -1210,26 +1400,14 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             let owner = fragment_owner(binding, associations, view.owner());
             let rect = view
                 .bounds()
-                .map(|rect| {
-                    let x = add(anchor.inline_origin, rect.origin.x)? - origin.x.to_f64();
-                    let y = add(anchor.baseline, rect.origin.y - feedback.baseline)?
-                        - origin.y.to_f64();
-                    ScrollRectOf::try_new(
-                        Point::new(number(x)?, number(y)?),
-                        Size::new(number(rect.size.width)?, number(rect.size.height)?),
-                    )
-                    .map_err(|_| FitError::InvalidGeometry)
-                })
+                .map(|rect| frame.rect(anchor, feedback.baseline, rect))
                 .transpose()?;
             fragments.push((
                 owner,
                 InlineFragmentOutputOf::new(
                     fragment,
                     rect,
-                    Point::new(
-                        number(anchor.inline_origin - origin.x.to_f64())?,
-                        number(anchor.baseline - origin.y.to_f64())?,
-                    ),
+                    frame.relative_point(frame.anchor_point(anchor))?,
                     line_index,
                 ),
             ));
@@ -1246,15 +1424,23 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 .expect("capture admitted every actual control node");
             let (left, right) = slot.inline_bounds();
             let inline_extent = number(finite(right - left)?)?;
-            let physical = Point::new(
-                number(add(anchor.inline_origin, left)? - origin.x)?,
-                number(add(anchor.baseline, slot.slot().y - feedback.baseline)? - origin.y)?,
-            );
-            let logical = context.axes.logical_point(
-                physical,
-                Size::new(inline_extent, S::ZERO),
-                context.containing_size,
-            );
+            let physical = frame.relative_point(frame.point(
+                anchor,
+                feedback.baseline,
+                left,
+                slot.slot().y,
+            )?)?;
+            let physical_size = context
+                .axes
+                .physical_size(crate::geometry::LogicalSizeOf::new(inline_extent, S::ZERO));
+            let containing_size = if frame.sideways() {
+                context.frame_size()
+            } else {
+                context.containing_size
+            };
+            let logical = context
+                .axes
+                .logical_point(physical, physical_size, containing_size);
             report.controls.push(InlineControlSourceOf {
                 kind: control.kind,
                 source_index: control.source_index,
@@ -1348,7 +1534,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         placements.push(surgeist_text::PlacementEntry::Formatted(LinePlacement {
             line: line.finalized,
             anchor,
-            orientation: LineOrientation::Horizontal,
+            orientation,
             atomics: atomic_placements,
         }));
     }

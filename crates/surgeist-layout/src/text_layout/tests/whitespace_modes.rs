@@ -126,8 +126,7 @@ fn intrinsic<S: LayoutScalar>(
                 size,
             },
             containing_size: size,
-            inset: Point::ZERO,
-            right_inset: S::ZERO,
+            content_insets: crate::Edges::ZERO,
             cursor_block: S::ZERO,
             axes: FlowAxes::new(
                 WritingMode::HorizontalTb,

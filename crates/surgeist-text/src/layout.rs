@@ -479,20 +479,25 @@ pub(crate) fn line_baseline(line: &PlacedLine) -> f64 {
     cross_coordinate(line.orientation, line.anchor)
 }
 
+/// Map a baseline-relative local vector through the actual admitted line basis.
+/// Keeping translation separate lets checked consumers preserve their numeric
+/// diagnostic phase without adding and subtracting a font baseline first.
+pub(crate) fn line_vector(line: &PlacedLine, local: Point) -> Point {
+    match line.orientation {
+        LineOrientation::Horizontal => local,
+        LineOrientation::Sideways => Point::new(-local.y, local.x),
+        LineOrientation::Vertical => unreachable!("upright placement was not admitted"),
+    }
+}
+
 /// The sole physical mapping of immutable local line geometry. The raw glyph
 /// provider frame and local baseline are never rotated or rewritten in storage.
 pub(crate) fn line_point(line: &PlacedLine, local: Point) -> Point {
-    match line.orientation {
-        LineOrientation::Horizontal => Point::new(
-            line.anchor.x + local.x,
-            line.anchor.y + (local.y - line.finalized.data.metrics.baseline),
-        ),
-        LineOrientation::Sideways => Point::new(
-            line.anchor.x - (local.y - line.finalized.data.metrics.baseline),
-            line.anchor.y + local.x,
-        ),
-        LineOrientation::Vertical => unreachable!("upright placement was not admitted"),
-    }
+    let vector = line_vector(
+        line,
+        Point::new(local.x, local.y - line.finalized.data.metrics.baseline),
+    );
+    Point::new(line.anchor.x + vector.x, line.anchor.y + vector.y)
 }
 /// Inverse of the admitted line's physical mapping, for actual interaction.
 pub(crate) fn local_point(line: &PlacedLine, physical: Point) -> Point {

@@ -3,7 +3,8 @@
 A Rust library for developers integrating layout into Surgeist document surfaces.
 It computes box, line, and scroll geometry from layout-ready inputs, with block,
 inline, flex, grid, subgrid, and experimental grid-lanes algorithms. Prepared Text
-composition supports normal and last-line alignment, signed indentation and
+composition supports `HorizontalTb` and clockwise `SidewaysRl`, normal and
+last-line alignment, signed indentation and
 explicit U+0020 space expansion; see the [Text input contract](docs/reference.md#node-input).
 Numeric atomic-box flow also supports explicit alphabetic and central
 [baseline matching](docs/reference.md#numeric-inline-baseline-references).

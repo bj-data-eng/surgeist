@@ -431,8 +431,15 @@ empty. Unknown inline topology does not erase genuine canonical paragraph/domain
 facts; missing facts needed by an active proof still refuse. See the [Text/Layout contract](../../../docs/text-layout-contract.md) for
 the shared ownership and placement boundary.
 
-The native profile supports horizontal LTR and RTL text, signed indentation,
-and the preparation's selected font-advance or CSS-stop tab operation.
+The native profile supports horizontal LTR and RTL text and clockwise
+`WritingMode::SidewaysRl`. Prepare the latter with Text's
+`LineOrientation::Sideways`; selection and placement retain that actual
+preparation and its receipts. Paragraph bidi direction and container line-box
+direction remain independent. RTL line-box alignment does not reverse the
+already ordered local glyph geometry again.
+
+Both profiles support signed indentation and the preparation's selected
+font-advance or CSS-stop tab operation.
 For `TabPreparation::CssStops`, Text retains the actual nearest-block metric
 reference; capture checks its used direction against the normalized container.
 Finite used-layout candidates supply `CssStops` with that block edge relative
@@ -573,17 +580,26 @@ frame and source-fragment geometry retained for scrollable overflow. A supplied
 block-end claim is checked against known later in-flow content in the captured
 container; unknown authority is never upgraded from numeric coverage.
 This explicit profile does not implement CSS-wide justification methods,
-BreakSpaces or styled inline hanging barriers. Vertical and sideways Text
-orientations remain explicit unsupported operations. A complete canonical
-frame, line allocation, ordered spacing allocations, and float-band basis governs
-same-invocation retries.
+BreakSpaces or styled inline hanging barriers. `VerticalRl`, `VerticalLr` and
+`SidewaysLr` Text composition remain unsupported. Sideways preparation refuses
+captured atomics, including out-of-flow content; genuine incoming native floats
+outside the paragraph binding remain Layout constraints. Physical Text baseline
+coordinates do not satisfy a named font-baseline request.
+
+Canonical frames, line allocations, ordered spacing allocations and float bands
+govern same-invocation retries.
 An unchanged selection reuses its exact finalized line, including rigid
 translation; a repeated conflicting basis refuses rather than looping.
 The common physical line anchor uses nearest-CSS-pixel rounding while retaining
 fractional Text geometry. A real float transition or explicit clearance imposes
-a minimum position; Layout selects the earliest permitted anchor on that same
-pixel grid and retains the constraint during feedback retries. Completed batches
-own the exact placed Text layout
+a minimum logical block position; Layout selects the earliest permitted anchor on
+that same pixel grid and retains the constraint during feedback retries. For
+clockwise SidewaysRl this is a maximum physical x, snapped downward when the
+nearest anchor would violate it. Actual canonical container origin, used size
+and all four content insets govern placement, including automatic block size.
+Intrinsic sizing and final canonical placement are distinct: a final used frame
+can supply a finite selection span after an intrinsic root sizing request.
+Completed batches own the exact placed Text layout
 and authentic fragment handles; consumers can pass that layout directly to
 Render. Bound Text and dependent ancestor geometry caches are rejected across
 invocations, while unrelated box caches retain their ordinary behavior.
