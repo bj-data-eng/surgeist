@@ -659,27 +659,16 @@ pub(crate) fn move_cursor(
             });
             target.map_or(value, |index| {
                 let line = &layout.lines[index];
-                let metrics = line.finalized.data.metrics;
-                if line.orientation == crate::LineOrientation::Sideways {
-                    let (current, rect) = geometry(layout, value);
-                    let inline = crate::layout::local_point(&layout.lines[current], rect.origin).x;
-                    // Use the same eligible target rows as exact placed
-                    // movement, including real control-only Forced lines.
-                    // The final source validator below owns lossy ambiguity.
-                    return super::position::nearest_inline(layout, index, inline)
-                        .map_or(value, |target| layout.interaction.positions[target].source);
-                }
-                from_point(
-                    layout,
-                    Point::new(
-                        geometry(layout, value).1.origin.x,
-                        crate::layout::line_point(
-                            line,
-                            Point::new(0.0, (metrics.block_min + metrics.block_max) * 0.5),
-                        )
-                        .y,
-                    ),
-                )
+                let (current, rect) = geometry(layout, value);
+                let inline = if line.orientation == crate::LineOrientation::Sideways {
+                    crate::layout::local_point(&layout.lines[current], rect.origin).x
+                } else {
+                    rect.origin.x
+                };
+                // Exact and raw movement select the same genuine target rows.
+                // Final source validation owns any lossy projection ambiguity.
+                super::position::nearest_on_line(layout, index, inline)
+                    .map_or(value, |target| layout.interaction.positions[target].source)
             })
         }
         Movement::PreviousWord | Movement::NextWord => {

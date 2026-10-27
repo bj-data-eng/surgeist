@@ -340,17 +340,28 @@ fn distance(rect: Rect, point: Point, orientation: crate::LineOrientation) -> f6
 /// Selects an actual eligible interaction row on the requested formatted line.
 /// Anchors and genuine struts participate alongside cluster edges; this does
 /// not reconstruct a caret from a source offset or a guessed rectangle.
-pub(super) fn nearest_inline(layout: &PlacedLayout, line: usize, inline: f64) -> Option<usize> {
+/// Horizontal proximity uses physical x; Sideways uses local inline distance.
+pub(super) fn nearest_on_line(layout: &PlacedLayout, line: usize, inline: f64) -> Option<usize> {
+    let coordinate = |index: usize| {
+        if layout.lines[line].orientation == crate::LineOrientation::Sideways {
+            local_x(
+                &layout.lines[line],
+                layout.interaction.positions[index].target,
+            )
+        } else {
+            geometry(layout, index).expect("owned row").rect().origin.x
+        }
+    };
     layout
         .interaction
         .positions
         .iter()
         .enumerate()
         .filter(|(_, row)| row.line == line)
-        .min_by(|(_, a), (_, b)| {
-            (local_x(&layout.lines[line], a.target) - inline)
+        .min_by(|(a, _), (b, _)| {
+            (coordinate(*a) - inline)
                 .abs()
-                .total_cmp(&(local_x(&layout.lines[line], b.target) - inline).abs())
+                .total_cmp(&(coordinate(*b) - inline).abs())
         })
         .map(|(index, _)| index)
 }
@@ -386,25 +397,12 @@ pub(crate) fn movement(layout: &PlacedLayout, index: usize, movement: Movement) 
                 Some(target) => {
                     let sideways =
                         layout.prepared.options.orientation() == crate::LineOrientation::Sideways;
-                    if sideways {
-                        let inline = local_x(&layout.lines[current.line], current.target);
-                        nearest_inline(layout, target, inline).unwrap_or(index)
+                    let inline = if sideways {
+                        local_x(&layout.lines[current.line], current.target)
                     } else {
-                        let x = geometry(layout, index)?.rect().origin.x;
-                        rows.iter()
-                            .enumerate()
-                            .filter(|(_, row)| row.line == target)
-                            .min_by(|(a, _), (b, _)| {
-                                (geometry(layout, *a).expect("owned row").rect().origin.x - x)
-                                    .abs()
-                                    .total_cmp(
-                                        &(geometry(layout, *b).expect("owned row").rect().origin.x
-                                            - x)
-                                            .abs(),
-                                    )
-                            })
-                            .map_or(index, |(index, _)| index)
-                    }
+                        geometry(layout, index)?.rect().origin.x
+                    };
+                    nearest_on_line(layout, target, inline).unwrap_or(index)
                 }
             }
         }
