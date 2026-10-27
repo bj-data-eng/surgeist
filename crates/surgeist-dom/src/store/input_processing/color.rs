@@ -11,12 +11,14 @@ use surgeist_color::{
     Serialization, SerializationAction, SerializationReceipt, SerializationRequest,
     SerializationStep, Transformation,
 };
-use surgeist_css::{
-    CssColorActionLayout, CssColorBank, CssColorError, CssColorFactIdentity, CssColorFacts,
-    CssColorGrammarRequest, CssColorInputKind, CssColorOperationOwner, CssColorParse,
-    CssColorParseAction, CssColorParseOutcome, CssColorParseStep, CssColorPropertyFacts,
-    CssColorSchemeFact, CssColorSlot, CssColorTransform, CssDeviceColorFact,
+use surgeist_css::color::controlled::{
+    CssColorActionLayout, CssColorBank, CssColorOperationOwner, CssColorParse, CssColorParseAction,
+    CssColorParseOutcome, CssColorParseStep, CssColorSlot, CssColorTransform,
     CssUsedColorCheckpoint,
+};
+use surgeist_css::color::{
+    CssColorError, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
+    CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
 };
 use surgeist_html::{HtmlInputColorEffect, HtmlInputColorSerialization, HtmlInputColorSpace};
 
@@ -667,8 +669,8 @@ mod tests {
                 )
                 .map(|output| output.value),
             Err(DomError::InputColorUnavailable(
-                surgeist_css::CssColorUnavailable::Palette(
-                    surgeist_css::CssSystemColor::CanvasText,
+                surgeist_css::color::CssColorUnavailable::Palette(
+                    surgeist_css::color::CssSystemColor::CanvasText,
                 )
             ))
         );

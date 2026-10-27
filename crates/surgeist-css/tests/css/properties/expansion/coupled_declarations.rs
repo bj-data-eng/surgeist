@@ -1,12 +1,14 @@
 use crate::css::support::parse_report as common;
 
 use common::CssParseReportTestExt;
-use surgeist_css::{
-    CssDeclarationBody, CssGlobalKeyword, CssKnownDeclaredValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssParser, CssPropertyNameRef, CssRule,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclarationBody, CssGlobalKeyword};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
 };
+use surgeist_css::rule::CssRule;
 
-fn declarations(source: &str) -> Vec<surgeist_css::CssDeclaration> {
+fn declarations(source: &str) -> Vec<surgeist_css::declaration::CssDeclaration> {
     let sheet = CssParser::default()
         .parse_sheet(source)
         .expect("valid stylesheet");
@@ -28,8 +30,9 @@ fn coupled_adjacent_properties_expose_distinct_typed_values() {
     else {
         panic!("expected typed width declaration");
     };
-    let surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize::LengthPercentage(length)) =
-        value.value()
+    let surgeist_css::values::box_model::CssSizeValue::BoxSize(
+        surgeist_css::values::box_model::CssBoxSize::LengthPercentage(length),
+    ) = value.value()
     else {
         panic!("checked literal width")
     };
@@ -37,8 +40,8 @@ fn coupled_adjacent_properties_expose_distinct_typed_values() {
         panic!("ordinary literal")
     };
     assert!(
-        matches!(component.view(), surgeist_css::CssComponentValueRef::Token(
-        surgeist_css::CssValueTokenRef::Dimension { number, unit }
+        matches!(component.view(), surgeist_css::component::CssComponentValueRef::Token(
+        surgeist_css::component::CssValueTokenRef::Dimension { number, unit }
     ) if number.representation() == "12" && unit.eq_ignore_ascii_case("px"))
     );
     assert_eq!(

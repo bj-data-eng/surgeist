@@ -7,7 +7,23 @@ use crate::css::support::property_admission::assert_numeric_rejected;
 use crate::css::support::serialization_limits::assert_limits as budget;
 use crate::css::support::sole_declaration as declaration;
 use crate::css::support::value_assertions::checked_range;
-use surgeist_css::{CssComponentValue, CssParser, CssSerializationLimits as L, *};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssNonNegative, CssNumber, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::keyframes::{CssKeyframesIdent, CssKeyframesString};
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::animation::{
+    CssAnimation, CssAnimationComponents, CssAnimationDirection, CssAnimationDirectionList,
+    CssAnimationFillMode, CssAnimationFillModeList, CssAnimationIterationCount,
+    CssAnimationIterationCountList, CssAnimationList, CssAnimationName, CssAnimationNameList,
+    CssAnimationPlayState, CssAnimationPlayStateList, CssDelayList, CssDurationList, CssEasing,
+    CssEasingKeyword, CssTransition, CssTransitionList, CssTransitionProperty,
+    CssTransitionPropertyList, CssTransitionPropertyName,
+};
+use surgeist_css::values::common::CssCustomIdent;
 
 fn time(text: &str) -> CssNumeric<CssTime> {
     CssNumeric::<CssTime>::try_from_literal(

@@ -4,11 +4,30 @@
 //! with Cartesian horizontal/vertical and symbolic flow block/inline serialization.
 
 use crate::css::support::serialization_limits::assert_limits as budget;
-use surgeist_css::{
-    CssBlockPosition as B, CssComponentValue, CssComponentValues, CssHorizontalPosition as H,
-    CssInlinePosition as I, CssParser, CssRelativeAxisPosition as R, CssSerializationLimits as L,
-    CssVerticalPosition as V, *,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssCalculation, CssLength, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::background::CssBackgroundPosition;
+use surgeist_css::values::common::CssBoxEdgeKeyword;
+use surgeist_css::values::effects::{CssClipPath, CssClipPathShape, CssMaskLayer};
+use surgeist_css::values::position::CssBlockPosition as B;
+use surgeist_css::values::position::CssHorizontalPosition as H;
+use surgeist_css::values::position::CssInlinePosition as I;
+use surgeist_css::values::position::CssRelativeAxisPosition as R;
+use surgeist_css::values::position::CssVerticalPosition as V;
+use surgeist_css::values::position::{
+    CssCartesianPosition, CssHorizontalPositionKeyword, CssPhysicalPosition, CssPosition,
+    CssPositionList, CssPositionRef, CssVerticalPositionKeyword,
+};
+use surgeist_css::values::shape::{
+    CssBasicShape, CssCircleRadius, CssCircleShape, CssEllipseShape,
+};
+use surgeist_css::values::transform::CssTransformOrigin;
 
 fn lp(text: &str) -> CssNumeric<CssLengthPercentage> {
     if text.contains('(') {

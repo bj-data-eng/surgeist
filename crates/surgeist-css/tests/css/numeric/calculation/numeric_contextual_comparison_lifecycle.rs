@@ -12,7 +12,13 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssCalculation, CssLengthPercentage, CssNumeric, CssNumericDimension, CssPercentage,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::shape::{CssInsetShape, CssInsetShapeOffsets};
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

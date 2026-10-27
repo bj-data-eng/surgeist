@@ -5172,7 +5172,9 @@ pub(in crate::store) mod accounting_tests {
     }
     #[test]
     fn multiple_style_mandatory_tail_cannot_publish_without_closing_revision_headroom() {
-        use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+        use surgeist_css::query::media::CssMediaQueryList;
+        use surgeist_css::source::CssUtf16InputLimits;
+        use surgeist_css::{CssParser, CssParserContext};
         use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(
@@ -5307,7 +5309,9 @@ pub(in crate::store) mod accounting_tests {
         create: &DomStyleRequest,
         cancel: &AtomicBool,
     ) -> DomStyleCssomRoot {
-        use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+        use surgeist_css::query::media::CssMediaQueryList;
+        use surgeist_css::source::CssUtf16InputLimits;
+        use surgeist_css::{CssParser, CssParserContext};
         use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
         let root = DomStyleCssomRoot::new(
             create.cssom_root().unwrap(),

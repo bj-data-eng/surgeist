@@ -6,7 +6,19 @@
 //! separately once available; this target uses existing callable boundaries.
 
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::effects::CssClipPath;
+use surgeist_css::values::shape::CssBasicShape;
 
 fn clip(source: &CssDeclaration) -> &CssClipPath {
     let CssKnownPropertyValueRef::ClipPath(value) =

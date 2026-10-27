@@ -15,8 +15,17 @@ use crate::css::support::known_property as property;
 use crate::css::support::named_property::invalid_named_value as invalid;
 use crate::css::support::named_property::named_fronts as fronts;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssLonghandContributions, CssPropertyKindRef,
+};
 
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()

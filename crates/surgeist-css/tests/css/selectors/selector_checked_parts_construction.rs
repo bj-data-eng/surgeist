@@ -5,16 +5,22 @@
 use crate::css::support::color_and_selector_fixtures::assert_specified_construction_cause as specified_cause;
 use crate::css::support::failure_classes::SerializationFailure as Kind;
 use crate::css::support::validated_selector_in as parsed;
-use surgeist_css::{
-    CssAttributeCaseSensitivity as Case, CssAttributeMatcher as Matcher, CssAttributeName,
-    CssAttributeSelector, CssComplexSelector, CssComplexSelectorPart, CssComponentValueError,
-    CssCompoundSelector, CssCompoundSelectorArgument, CssIdent, CssNamespaceConstraint,
-    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssNthChildPattern, CssNthPattern,
-    CssPseudoClass, CssPseudoSelectorList, CssQualifiedAttributeName,
-    CssQualifiedNamePrefix as Prefix, CssQualifiedSelectorName, CssRelativeSelector,
-    CssRelativeSelectorList, CssSelector, CssSelectorCombinator as Combinator,
-    CssSerializationLimits as Limits, CssSimpleSelector as Simple, CssValueOrigin,
+use surgeist_css::component::{CssComponentValueError, CssValueOrigin};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+use surgeist_css::selector::CssAttributeCaseSensitivity as Case;
+use surgeist_css::selector::CssAttributeMatcher as Matcher;
+use surgeist_css::selector::CssQualifiedNamePrefix as Prefix;
+use surgeist_css::selector::CssSelectorCombinator as Combinator;
+use surgeist_css::selector::CssSimpleSelector as Simple;
+use surgeist_css::selector::{
+    CssAttributeName, CssAttributeSelector, CssComplexSelector, CssComplexSelectorPart,
+    CssCompoundSelector, CssCompoundSelectorArgument, CssNamespaceConstraint, CssNamespaceContext,
+    CssNthChildPattern, CssNthPattern, CssPseudoClass, CssPseudoSelectorList,
+    CssQualifiedAttributeName, CssQualifiedSelectorName, CssRelativeSelector,
+    CssRelativeSelectorList, CssSelector,
 };
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::values::common::CssIdent;
 
 fn ident(value: &str) -> CssIdent {
     CssIdent::try_new(value).unwrap()

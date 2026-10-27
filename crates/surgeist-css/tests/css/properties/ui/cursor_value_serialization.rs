@@ -8,7 +8,24 @@
 use crate::css::support::failure_classes::SerializationFailure as Kind;
 use crate::css::support::failure_classes::serialization_failure;
 use CssSerializationLimits as Limits;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssNonNegative, CssNumber, CssNumeric, CssNumericLiteral, CssResolution, CssResolutionUnit,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssUrl;
+use surgeist_css::values::content::CssContentString;
+use surgeist_css::values::ui::{
+    CssCursor, CssCursorImage, CssCursorImageSource, CssCursorImages, CssCursorKeyword,
+    CssCursorUrlSet, CssCursorUrlSetDescriptor, CssCursorUrlSetOption, CssCursorUrlSetReference,
+};
 
 fn number(value: &str) -> CssNumeric<CssNumber> {
     CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_token(value).unwrap())

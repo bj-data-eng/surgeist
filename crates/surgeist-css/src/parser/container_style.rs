@@ -4,9 +4,17 @@ use super::boolean_condition::{
     parse_component_condition,
 };
 use super::query_components::ComponentCursor as Cursor;
-use crate::container_style::StyleRangeKind;
-use crate::supports::{SupportsLexical, trivia};
-use crate::*;
+use crate::component::{CssBlockKind, CssComponentValue, CssComponentValueRef, CssValueTokenRef};
+use crate::declaration::CssCustomPropertyName;
+use crate::property::CssPropertyGrammar;
+use crate::query::container::container_style::StyleRangeKind;
+use crate::query::container::{
+    CssContainerGeneralEnclosed, CssContainerStyleFeature, CssContainerStyleFeatureName,
+    CssContainerStyleRange, CssContainerStyleRangeOperand, CssContainerStyleValue,
+    CssStyleQueryLeaf,
+};
+use crate::query::supports::construction::{SupportsLexical, trivia};
+use crate::query::{CssCondition, CssQueryComparison};
 use std::ops::Range;
 
 /// A style query, as regions of its lexical root.

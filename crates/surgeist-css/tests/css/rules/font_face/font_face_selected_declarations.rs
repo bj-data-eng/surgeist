@@ -3,7 +3,16 @@ use crate::css::support::failure_classes::SerializationFailure as E;
 use crate::css::support::failure_classes::serialization_failure;
 use CssFontFaceDescriptorKind as K;
 use CssSerializationLimits as L;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssValueOrigin};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDeclarationBlockError, CssFontFaceDescriptor,
+    CssFontFaceDescriptorKind, CssFontFaceDescriptors, CssFontFaceRule,
+    CssSpecifiedFontFaceDeclarationBlock,
+};
+use surgeist_css::rule::page::CssPageDescriptorKind;
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn entries(source: &str) -> Vec<CssFontFaceDescriptor> {
     CssParser::default()

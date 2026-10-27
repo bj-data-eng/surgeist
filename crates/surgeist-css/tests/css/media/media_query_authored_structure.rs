@@ -1,7 +1,18 @@
 //! Media Queries 4/5 lists, features, ranges and `@media` rules through the
 //! public media-query and stylesheet parsers.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::numeric::{
+    CssLengthUnit, CssNumericLiteral, CssRatio, CssResolution, CssResolutionUnit,
+};
+use surgeist_css::query::media::{
+    CssColorSchemePreference, CssHoverCapability, CssMediaFeatureQuery, CssMediaLeaf,
+    CssMediaQuery, CssMediaQueryList, CssMediaQueryModifier, CssMediaRangeRef, CssMediaType,
+    CssPointerCapability,
+};
+use surgeist_css::query::{CssConditionKind, CssConditionList, CssQueryComparison, CssQueryLength};
+use surgeist_css::selector::CssSelector;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
@@ -11,9 +22,12 @@ fn media_query_list_constructor_accepts_empty_and_nonempty_lists() {
     assert!(CssMediaQueryList::new(Vec::new()).queries().is_empty());
     assert!(
         !CssMediaQueryList::new(vec![
-            surgeist_css::CssMediaQuery::parse(&surgeist_css::CssParser::default(), "screen")
-                .into_validation_result()
-                .unwrap()
+            surgeist_css::query::media::CssMediaQuery::parse(
+                &surgeist_css::CssParser::default(),
+                "screen"
+            )
+            .into_validation_result()
+            .unwrap()
         ])
         .queries()
         .is_empty()

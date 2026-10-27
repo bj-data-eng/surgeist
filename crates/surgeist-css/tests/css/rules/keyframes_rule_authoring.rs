@@ -1,7 +1,16 @@
 //! `@keyframes` (CSS Animations 1) authored structure, constructors and strict
 //! parsing through the public stylesheet parser.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::{
+    CssKeyframePercent, CssKeyframeSelector, CssKeyframesIdent, CssKeyframesName, CssKeyframesRule,
+    CssKeyframesString,
+};
+use surgeist_css::values::animation::CssAnimationName;
+use surgeist_css::values::common::CssCustomIdent;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;

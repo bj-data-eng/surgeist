@@ -15,9 +15,19 @@ use crate::css::support::{
     authored_declaration_through_front as declaration, check_property_components as checked,
     discoverable_property as property,
 };
-use surgeist_css::{
-    CssComponentValues, CssDeclaration, CssParser, CssRule, CssSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
 };
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandContributions, CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::CssSerializationLimits as L;
 
 const NAMES: [&str; 3] = ["shape-outside", "shape-image-threshold", "shape-margin"];
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [

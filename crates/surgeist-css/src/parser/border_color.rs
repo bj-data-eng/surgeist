@@ -2,12 +2,13 @@
 
 use super::property_input::Parser;
 use super::side_shapes::{parse_four_sides, parse_side_pair};
-use crate::error::property::{Error, ParseError};
+use crate::diagnostic::error::property::{Error, ParseError};
 
 use super::color::parse_color;
 
-use crate::numeric::NumericInputContext;
-use crate::{CssColor, CssFourSides, CssSidePair};
+use crate::color::CssColor;
+use crate::numeric::expression::NumericInputContext;
+use crate::values::common::{CssFourSides, CssSidePair};
 
 pub(super) fn parse_border_color_pair<'i, 't>(
     input: &mut Parser<'i, 't>,

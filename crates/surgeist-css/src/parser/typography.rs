@@ -2,22 +2,43 @@ use super::color::parse_color;
 use super::combinators::{Combinator, Tail, commit, fill, keyword, parse_group};
 use super::property_input::Parser;
 use super::values::{parse_hinted_number_calculation, parse_length_percentage};
-use crate::error::property::{CssFeatureId, Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::CssFeatureId;
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
 use super::values::{
-    CalculationRoot, LiteralTokens, NumericType, next_is_comma, parse_numeric_function,
-    parse_numeric_type,
+    LiteralTokens, NumericType, next_is_comma, parse_numeric_function, parse_numeric_type,
 };
-use crate::font_variant::CssFontVariant;
-use crate::syntax::*;
-use crate::{
-    CssAbsoluteFontWeight, CssAngle, CssFontSize, CssFontStyle, CssFontStyleKeyword,
-    CssFontSynthesis, CssFontSynthesisPosition, CssFontSynthesisSmallCaps, CssFontSynthesisStyle,
+use crate::numeric::expression::CalculationRoot;
+use crate::numeric::{CssAngle, CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric};
+use crate::numeric::{CssCalculation, CssInteger, CssLength};
+use crate::values::font::CssFontVariant;
+use crate::values::font::{
+    CssAbsoluteFontWeight, CssFontSize, CssFontStyle, CssFontStyleKeyword, CssFontSynthesis,
+    CssFontSynthesisPosition, CssFontSynthesisSmallCaps, CssFontSynthesisStyle,
     CssFontSynthesisValues, CssFontSynthesisWeight, CssFontWeight, CssFontWeightRange,
-    CssFontWidth, CssFontWidthKeyword, CssLengthPercentage, CssLineHeight, CssNonNegative,
-    CssNumber, CssNumeric, CssObliqueAngleRange, CssTextSpacingAdjustment,
+    CssFontWidth, CssFontWidthKeyword, CssObliqueAngleRange,
 };
+use crate::values::font::{
+    CssExplicitFont, CssFontFamilyList, CssFontFamilyName, CssFontValue, CssGenericFontFamily,
+    CssSystemFont,
+};
+use crate::values::text::{
+    CssAutospace, CssAutospaceMode, CssAutospaceValues, CssHangingPunctuation,
+    CssHangingPunctuationEnd, CssHangingPunctuationValues, CssHyphenateCharacter,
+    CssHyphenateLimitChars, CssHyphenateLimitCharsComponent, CssHyphenateLimitLast,
+    CssHyphenateLimitLines, CssHyphenateString, CssHyphens, CssLineBreak, CssSpacingTrim,
+    CssTabSize, CssTextAutospace, CssTextBox, CssTextBoxEdge, CssTextBoxTrim, CssTextBoxValues,
+    CssTextCombineDigitCount, CssTextCombineUpright, CssTextDecoration, CssTextDecorationLine,
+    CssTextDecorationLineComponent, CssTextDecorationStyle, CssTextDecorationThickness,
+    CssTextEdge, CssTextEdgeMetric, CssTextGroupAlign, CssTextIndent, CssTextJustify,
+    CssTextJustifyBase, CssTextOrientation, CssTextOverEdge, CssTextSpacing, CssTextSpacingTrim,
+    CssTextSpacingValues, CssTextTransform, CssTextTransformCase, CssTextTransformSet,
+    CssTextUnderEdge, CssUnicodeBidi, CssVerticalAlign, CssWordSpaceTransform, CssWrapBoundary,
+    CssWrapInside, CssWritingMode,
+};
+use crate::values::text::{CssLineHeight, CssTextSpacingAdjustment};
+use crate::values::ui::CssCaretColor;
 
 pub(super) static IMPLEMENTED_PROPERTY_EXTENSIONS: &[CssFeatureId] =
     &[CssFeatureId::new("ext.property.font-weight-range")];
@@ -25,9 +46,9 @@ pub(super) static IMPLEMENTED_PROPERTY_EXTENSIONS: &[CssFeatureId] =
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
     &[CssFeatureId::new("official.value.opentype-tag")];
 
-pub(super) fn parse_caret_color<'i, 't>(
+pub(crate) fn parse_caret_color<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssCaretColor, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
@@ -39,9 +60,9 @@ pub(super) fn parse_caret_color<'i, 't>(
     Ok(CssCaretColor::Color(Box::new(color)))
 }
 
-pub(super) fn parse_font_size<'i, 't>(
+pub(crate) fn parse_font_size<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontSize, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
@@ -65,9 +86,9 @@ pub(super) fn parse_font_size<'i, 't>(
         .map(CssFontSize::LengthPercentage)
 }
 
-pub(super) fn parse_line_height<'i, 't>(
+pub(crate) fn parse_line_height<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssLineHeight, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("normal"))
@@ -94,12 +115,12 @@ pub(super) fn parse_line_height<'i, 't>(
 
 fn parse_line_height_number<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssNumeric<CssNumber, CssNonNegative>, ParseError<'i, Error>> {
     super::values::parse_nonnegative_number(input, numeric)
 }
 
-pub(super) fn parse_writing_mode<'i, 't>(
+pub(crate) fn parse_writing_mode<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssWritingMode, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -114,9 +135,9 @@ pub(super) fn parse_writing_mode<'i, 't>(
     }
 }
 
-pub(super) fn parse_text_combine_upright<'i, 't>(
+pub(crate) fn parse_text_combine_upright<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextCombineUpright, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
@@ -133,11 +154,11 @@ pub(super) fn parse_text_combine_upright<'i, 't>(
                 Token::Number { .. } => {
                     input.reset(&start);
                     let value = super::values::parse_integer_literal(input, numeric)?;
-                    let count = crate::integer_value::exact_i32(value.numeric().representation())
+                    let count = crate::numeric::integer_value::exact_i32(value.numeric().representation())
                         .and_then(CssTextCombineDigitCount::try_literal);
                     count.ok_or_else(|| unexpected_at(location))?
                 }
-                Token::Function(name) if crate::numeric::is_math_function(name) => {
+                Token::Function(name) if crate::numeric::expression::is_math_function(name) => {
                     let expression = parse_numeric_function(input, &start, numeric, CalculationRoot::Integer)?;
                     CssTextCombineDigitCount::from_calculation(CssCalculation::<CssInteger>::from_expression(expression))
                 }
@@ -149,7 +170,7 @@ pub(super) fn parse_text_combine_upright<'i, 't>(
     }
 }
 
-pub(super) fn parse_text_orientation<'i, 't>(
+pub(crate) fn parse_text_orientation<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextOrientation, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -162,7 +183,7 @@ pub(super) fn parse_text_orientation<'i, 't>(
     }
 }
 
-pub(super) fn parse_unicode_bidi<'i, 't>(
+pub(crate) fn parse_unicode_bidi<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssUnicodeBidi, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -180,7 +201,7 @@ pub(super) fn parse_unicode_bidi<'i, 't>(
 
 pub(super) fn parse_glyph_orientation_vertical<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextOrientation, ParseError<'i, Error>> {
     let start = input.state();
     let location = input.current_source_location();
@@ -203,10 +224,11 @@ pub(super) fn parse_glyph_orientation_vertical<'i, 't>(
                 unexpected_at(numeric.property_error_location(&error, location, offset))
             })?;
             match component.view() {
-                crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension {
-                    number,
-                    ..
-                }) => match crate::exact_decimal::exact_binary32_value(number.representation()) {
+                crate::component::CssComponentValueRef::Token(
+                    crate::component::CssValueTokenRef::Dimension { number, .. },
+                ) => match crate::serialization::exact_decimal::exact_binary32_value(
+                    number.representation(),
+                ) {
                     Some(0.0) => Some(CssTextOrientation::Upright),
                     Some(90.0) => Some(CssTextOrientation::Sideways),
                     _ => None,
@@ -219,9 +241,9 @@ pub(super) fn parse_glyph_orientation_vertical<'i, 't>(
     value.ok_or_else(|| unexpected_at(location))
 }
 
-pub(super) fn parse_text_indent<'i, 't>(
+pub(crate) fn parse_text_indent<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextIndent, ParseError<'i, Error>> {
     // `<length-percentage> && hanging? && each-line?`; any non-identifier
     // commits the length.
@@ -254,9 +276,9 @@ pub(super) fn parse_text_indent<'i, 't>(
     Ok(CssTextIndent::new(length, hanging, each_line))
 }
 
-pub(super) fn parse_vertical_align<'i, 't>(
+pub(crate) fn parse_vertical_align<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssVerticalAlign, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
@@ -276,7 +298,7 @@ pub(super) fn parse_vertical_align<'i, 't>(
     parse_length_percentage(input, numeric).map(CssVerticalAlign::Length)
 }
 
-pub(super) fn parse_font_family_list<'i, 't>(
+pub(crate) fn parse_font_family_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontFamilyList, ParseError<'i, Error>> {
     let families = input.parse_comma_separated(|input| parse_font_family_name(input))?;
@@ -356,9 +378,9 @@ fn parse_font_family_name_with_generics<'i, 't>(
         .ok_or_else(|| unexpected_at(responsible.unwrap_or(end)))
 }
 
-pub(super) fn parse_font<'i, 't>(
+pub(crate) fn parse_font<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontValue, ParseError<'i, Error>> {
     if let Ok(system) = input.try_parse(parse_system_font) {
         return Ok(CssFontValue::System(system));
@@ -457,9 +479,9 @@ fn parse_system_font<'i, 't>(
     }
 }
 
-pub(super) fn parse_font_weight<'i, 't>(
+pub(crate) fn parse_font_weight<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontWeight, ParseError<'i, Error>> {
     let start = input.state();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
@@ -475,7 +497,7 @@ pub(super) fn parse_font_weight<'i, 't>(
 
 pub(super) fn parse_absolute_font_weight<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssAbsoluteFontWeight, ParseError<'i, Error>> {
     /// Fonts 4 `<number [1,1000]>`.
     const FONT_WEIGHT_NUMBER: NumericType<CssNumeric<CssNumber, CssFontWeightRange>> =
@@ -487,7 +509,9 @@ pub(super) fn parse_absolute_font_weight<'i, 't>(
             },
             calculation: |expression| {
                 CssNumeric::<CssNumber, CssFontWeightRange>::from_parser_calculation(
-                    crate::CssCalculation::<crate::CssNumber>::from_expression(expression),
+                    crate::numeric::CssCalculation::<crate::numeric::CssNumber>::from_expression(
+                        expression,
+                    ),
                 )
             },
         };
@@ -503,9 +527,9 @@ pub(super) fn parse_absolute_font_weight<'i, 't>(
     parse_numeric_type(input, numeric, &FONT_WEIGHT_NUMBER).map(CssAbsoluteFontWeight::Number)
 }
 
-pub(super) fn parse_font_style<'i, 't>(
+pub(crate) fn parse_font_style<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontStyle, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
     let ident = input.expect_ident_cloned().map_err(basic)?;
@@ -536,7 +560,7 @@ pub(super) fn common_font_style_keyword(name: &str) -> Option<CssFontStyleKeywor
 
 pub(super) fn parse_font_oblique_angle<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssNumeric<CssAngle, CssObliqueAngleRange>, ParseError<'i, Error>> {
     /// Fonts 4 `<angle [-90deg,90deg]>`.
     const OBLIQUE_ANGLE: NumericType<CssNumeric<CssAngle, CssObliqueAngleRange>> = NumericType {
@@ -547,7 +571,9 @@ pub(super) fn parse_font_oblique_angle<'i, 't>(
         },
         calculation: |expression| {
             CssNumeric::<CssAngle, CssObliqueAngleRange>::from_parser_calculation(
-                crate::CssCalculation::<crate::CssAngle>::from_expression(expression),
+                crate::numeric::CssCalculation::<crate::numeric::CssAngle>::from_expression(
+                    expression,
+                ),
             )
         },
     };
@@ -573,16 +599,16 @@ pub(super) fn parse_font_stretch<'i, 't>(
     }
 }
 
-pub(super) fn parse_font_width<'i, 't>(
+pub(crate) fn parse_font_width<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssFontWidth, ParseError<'i, Error>> {
     if let Ok(keyword) = input.try_parse(parse_font_stretch) {
         return Ok(CssFontWidth::Keyword(keyword));
     }
     /// Fonts 4 `<percentage [0,∞]>`; other numeric tokens fail its literal check.
     const FONT_WIDTH_PERCENTAGE: NumericType<
-        crate::CssNumeric<crate::CssPercentage, crate::CssNonNegative>,
+        crate::numeric::CssNumeric<crate::numeric::CssPercentage, crate::numeric::CssNonNegative>,
     > = NumericType {
         tokens: LiteralTokens::Numeric,
         ..super::values::NONNEGATIVE_PERCENTAGE
@@ -602,7 +628,7 @@ fn parse_css2_font_variant<'i, 't>(
     }
 }
 
-pub(super) fn parse_font_synthesis<'i, 't>(
+pub(crate) fn parse_font_synthesis<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontSynthesis, ParseError<'i, Error>> {
     let state = input.state();
@@ -630,7 +656,7 @@ pub(super) fn parse_font_synthesis<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_font_synthesis_weight<'i, 't>(
+pub(crate) fn parse_font_synthesis_weight<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontSynthesisWeight, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -642,7 +668,7 @@ pub(super) fn parse_font_synthesis_weight<'i, 't>(
     }
 }
 
-pub(super) fn parse_font_synthesis_style<'i, 't>(
+pub(crate) fn parse_font_synthesis_style<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontSynthesisStyle, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -655,7 +681,7 @@ pub(super) fn parse_font_synthesis_style<'i, 't>(
     }
 }
 
-pub(super) fn parse_font_synthesis_small_caps<'i, 't>(
+pub(crate) fn parse_font_synthesis_small_caps<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontSynthesisSmallCaps, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -667,7 +693,7 @@ pub(super) fn parse_font_synthesis_small_caps<'i, 't>(
     }
 }
 
-pub(super) fn parse_font_synthesis_position<'i, 't>(
+pub(crate) fn parse_font_synthesis_position<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontSynthesisPosition, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -679,23 +705,23 @@ pub(super) fn parse_font_synthesis_position<'i, 't>(
     }
 }
 
-pub(super) fn parse_letter_spacing<'i, 't>(
+pub(crate) fn parse_letter_spacing<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextSpacingAdjustment, ParseError<'i, Error>> {
     parse_text_spacing_adjustment(input, numeric)
 }
 
-pub(super) fn parse_word_spacing<'i, 't>(
+pub(crate) fn parse_word_spacing<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextSpacingAdjustment, ParseError<'i, Error>> {
     parse_text_spacing_adjustment(input, numeric)
 }
 
 fn parse_text_spacing_adjustment<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextSpacingAdjustment, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("normal"))
@@ -709,9 +735,9 @@ fn parse_text_spacing_adjustment<'i, 't>(
 /// `<'text-decoration-line'> || <'text-decoration-thickness'> ||
 /// <'text-decoration-style'> || <'text-decoration-color'>`. The line operand
 /// is that longhand's whole grammar, so its keywords stay contiguous.
-pub(super) fn parse_text_decoration<'i, 't>(
+pub(crate) fn parse_text_decoration<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextDecoration, ParseError<'i, Error>> {
     let (mut line, mut style, mut thickness, mut color) = (None, None, None, None);
     parse_group::<4>(
@@ -734,7 +760,7 @@ pub(super) fn parse_text_decoration<'i, 't>(
     Ok(CssTextDecoration::new(line, color, style, thickness))
 }
 
-pub(super) fn parse_text_decoration_line<'i, 't>(
+pub(crate) fn parse_text_decoration_line<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextDecorationLine, ParseError<'i, Error>> {
     parse_text_decoration_line_value(input, Tail::Reject)
@@ -782,7 +808,7 @@ fn parse_text_decoration_line_value<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_text_decoration_style<'i, 't>(
+pub(crate) fn parse_text_decoration_style<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextDecorationStyle, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -797,9 +823,9 @@ pub(super) fn parse_text_decoration_style<'i, 't>(
     }
 }
 
-pub(super) fn parse_text_decoration_thickness<'i, 't>(
+pub(crate) fn parse_text_decoration_thickness<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssTextDecorationThickness, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
@@ -813,7 +839,7 @@ pub(super) fn parse_text_decoration_thickness<'i, 't>(
     parse_length_percentage(input, numeric).map(CssTextDecorationThickness::Length)
 }
 
-pub(super) fn parse_text_transform<'i, 't>(
+pub(crate) fn parse_text_transform<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextTransform, ParseError<'i, Error>> {
     let first = input.state();
@@ -852,7 +878,7 @@ pub(super) fn parse_text_transform<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_wrap_inside<'i, 't>(
+pub(crate) fn parse_wrap_inside<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssWrapInside, ParseError<'i, Error>> {
     let location = input.current_source_location();
@@ -863,7 +889,7 @@ pub(super) fn parse_wrap_inside<'i, 't>(
         _ => Err(location.new_unexpected_token_error::<Error>(Token::Ident(ident))),
     }
 }
-pub(super) fn parse_wrap_boundary<'i, 't>(
+pub(crate) fn parse_wrap_boundary<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssWrapBoundary, ParseError<'i, Error>> {
     let location = input.current_source_location();
@@ -875,7 +901,7 @@ pub(super) fn parse_wrap_boundary<'i, 't>(
         _ => Err(location.new_unexpected_token_error::<Error>(Token::Ident(ident))),
     }
 }
-pub(super) fn parse_line_break<'i, 't>(
+pub(crate) fn parse_line_break<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssLineBreak, ParseError<'i, Error>> {
     let location = input.current_source_location();
@@ -887,7 +913,7 @@ pub(super) fn parse_line_break<'i, 't>(
         _ => Err(location.new_unexpected_token_error::<Error>(Token::Ident(ident))),
     }
 }
-pub(super) fn parse_word_space_transform<'i, 't>(
+pub(crate) fn parse_word_space_transform<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssWordSpaceTransform, ParseError<'i, Error>> {
     let first = input.state();
@@ -921,9 +947,9 @@ pub(super) fn parse_word_space_transform<'i, 't>(
         None => Err(unexpected_at(input.current_source_location())),
     }
 }
-pub(super) fn parse_tab_size<'i, 't>(
+pub(crate) fn parse_tab_size<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssTabSize, ParseError<'i, Error>> {
     // Number-first preserves the authored bare-zero choice. Typed math tries
     // pure roots through the shared original numeric context, never a reparse.
@@ -962,9 +988,9 @@ text_keyword_parser!(parse_spacing_trim, CssSpacingTrim,
     "space-all" => SpaceAll, "normal" => Normal, "space-first" => SpaceFirst,
     "trim-start" => TrimStart, "trim-both" => TrimBoth, "trim-all" => TrimAll);
 
-pub(super) fn parse_hyphenate_character<'i, 't>(
+pub(crate) fn parse_hyphenate_character<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssHyphenateCharacter, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
@@ -983,7 +1009,7 @@ pub(super) fn parse_hyphenate_character<'i, 't>(
 }
 fn parse_hyphenate_integer<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssNumeric<CssInteger, CssNonNegative>, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let integer = super::values::parse_integer_value(input, numeric)?;
@@ -993,7 +1019,7 @@ fn parse_hyphenate_integer<'i, 't>(
 }
 fn parse_hyphenate_chars_component<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssHyphenateLimitCharsComponent, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
@@ -1003,9 +1029,9 @@ fn parse_hyphenate_chars_component<'i, 't>(
     }
     parse_hyphenate_integer(input, numeric).map(CssHyphenateLimitCharsComponent::Integer)
 }
-pub(super) fn parse_hyphenate_limit_chars<'i, 't>(
+pub(crate) fn parse_hyphenate_limit_chars<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssHyphenateLimitChars, ParseError<'i, Error>> {
     let total = parse_hyphenate_chars_component(input, numeric)?;
     let before = if input.is_exhausted() {
@@ -1020,9 +1046,9 @@ pub(super) fn parse_hyphenate_limit_chars<'i, 't>(
     };
     Ok(CssHyphenateLimitChars::try_new(total, before, after).expect("ordered authored slots"))
 }
-pub(super) fn parse_hyphenate_limit_lines<'i, 't>(
+pub(crate) fn parse_hyphenate_limit_lines<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssHyphenateLimitLines, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("no-limit"))
@@ -1032,19 +1058,19 @@ pub(super) fn parse_hyphenate_limit_lines<'i, 't>(
     }
     parse_hyphenate_integer(input, numeric).map(CssHyphenateLimitLines::Integer)
 }
-pub(super) fn parse_hyphenate_limit_zone<'i, 't>(
+pub(crate) fn parse_hyphenate_limit_zone<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssNumeric<CssLengthPercentage>, ParseError<'i, Error>> {
     parse_length_percentage(input, numeric)
 }
-pub(super) fn parse_line_padding<'i, 't>(
+pub(crate) fn parse_line_padding<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssNumeric<CssLength>, ParseError<'i, Error>> {
     super::values::parse_length(input, numeric)
 }
-pub(super) fn parse_text_justify<'i, 't>(
+pub(crate) fn parse_text_justify<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextJustify, ParseError<'i, Error>> {
     // `[ auto | none | inter-word | inter-character | ruby ] || no-compress`.
@@ -1108,7 +1134,7 @@ fn parse_autospace<'i, 't>(
         .map(CssAutospace::Spacing)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
-pub(super) fn parse_text_autospace<'i, 't>(
+pub(crate) fn parse_text_autospace<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextAutospace, ParseError<'i, Error>> {
     if input
@@ -1125,7 +1151,7 @@ pub(super) fn parse_text_autospace<'i, 't>(
     }
     parse_autospace(input).map(CssTextAutospace::Autospace)
 }
-pub(super) fn parse_text_box_trim<'i, 't>(
+pub(crate) fn parse_text_box_trim<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextBoxTrim, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -1151,7 +1177,7 @@ fn parse_text_under_edge<'i, 't>(
         _ => Err(unexpected_at(keyword_location)),
     }
 }
-pub(super) fn parse_text_box_edge<'i, 't>(
+pub(crate) fn parse_text_box_edge<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextBoxEdge, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -1174,7 +1200,7 @@ pub(super) fn parse_text_box_edge<'i, 't>(
         .map(|metric| CssTextBoxEdge::Edge(CssTextEdge::Single(metric)))
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
-pub(super) fn parse_text_box<'i, 't>(
+pub(crate) fn parse_text_box<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextBox, ParseError<'i, Error>> {
     if input
@@ -1193,7 +1219,7 @@ pub(super) fn parse_text_box<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_text_spacing_trim<'i, 't>(
+pub(crate) fn parse_text_spacing_trim<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextSpacingTrim, ParseError<'i, Error>> {
     if input
@@ -1204,7 +1230,7 @@ pub(super) fn parse_text_spacing_trim<'i, 't>(
     }
     parse_spacing_trim(input).map(CssTextSpacingTrim::Trim)
 }
-pub(super) fn parse_text_spacing<'i, 't>(
+pub(crate) fn parse_text_spacing<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTextSpacing, ParseError<'i, Error>> {
     if input
@@ -1228,7 +1254,7 @@ pub(super) fn parse_text_spacing<'i, 't>(
         .map(CssTextSpacing::Components)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
-pub(super) fn parse_hanging_punctuation<'i, 't>(
+pub(crate) fn parse_hanging_punctuation<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssHangingPunctuation, ParseError<'i, Error>> {
     if input

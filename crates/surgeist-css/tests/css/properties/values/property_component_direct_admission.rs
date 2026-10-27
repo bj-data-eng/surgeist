@@ -6,7 +6,20 @@ use crate::css::support::property_expectations;
 
 use crate::css::support::property_admission::GrammarFacts;
 use property_expectations::{BoundaryOutcome, CatalogExpectation};
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssCustomPropertyName, CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
+use surgeist_css::rule::keyframes::CssKeyframeDeclarationList;
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment};
+use surgeist_css::values::box_model::CssMarginValue;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 #[test]
 fn common_authored_property_records_match_typed_source_and_checked_admission() {

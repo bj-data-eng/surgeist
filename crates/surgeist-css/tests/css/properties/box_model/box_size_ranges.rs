@@ -5,9 +5,12 @@
 use crate::css::support::property_admission::{
     assert_checked_rejected, assert_invalid_value, assert_style_attribute_rejected,
 };
-use surgeist_css::{
-    CssComponentValues, CssDeclaration, CssErrorCode, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssParser, CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
 };
 
 const BOX_PROPERTIES: &[CssKnownProperty] = &[

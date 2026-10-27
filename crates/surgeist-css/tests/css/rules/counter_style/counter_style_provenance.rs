@@ -6,7 +6,21 @@ use crate::css::support::rules::origin_text as text;
 use crate::css::support::rules::sole_counter_style as counter;
 use descriptor_phases::*;
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorKind, CssCounterStyleDescriptorRef, CssCounterStyleRange,
+    CssCounterStyleRangeBound, CssCounterStyleRule, CssCounterStyleSpeakAs, CssCounterStyleSystem,
+    CssCounterSymbol,
+};
+use surgeist_css::rule::{CssDescriptorOccurrence, CssRule};
+use surgeist_css::source::{CssParsedOrigin, CssSourceSnapshot};
+use surgeist_css::values::common::{CssIdent, CssUrl, CssUrlFunction, CssUrlModifier};
+use surgeist_css::values::image::{CssImage, CssImageValue};
 
 fn assert_coordinates(origin: &CssParsedOrigin, source: &str) {
     assert_eq!(origin.source().as_str(), source);

@@ -6,7 +6,9 @@ use adapters::{
     EntryPoint, Extractor, FontFaceDescriptorKind, OptionsProfile, PropertyOrDescriptor,
     TopLevelRuleKind, UnsupportedPolicy, UnsupportedReason,
 };
-use surgeist_css::{CssNamespaceContext, CssParser, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssNamespaceContext;
 
 // Registry metadata and the closed extractor discriminator are corpus contracts.
 #[test]
@@ -326,7 +328,7 @@ fn font_descriptor_adapter_keeps_raw_source_and_typed_context() {
             .wrap(
                 "u+?",
                 Some(PropertyOrDescriptor::Property(
-                    surgeist_css::CssKnownProperty::Width
+                    surgeist_css::property::CssKnownProperty::Width
                 )),
             )
             .is_err(),

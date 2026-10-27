@@ -6,11 +6,12 @@
 
 use crate::css::support::failure_classes::SerializationFailure as ErrorKind;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssCalculation, CssComponentValueRef, CssComponentValues, CssFlowTolerance,
-    CssFlowToleranceRef, CssKnownPropertyValueRef, CssLengthPercentage, CssNumeric, CssParser,
-    CssSerializationLimits as Limits, CssValueTokenRef,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::values::box_model::{CssFlowTolerance, CssFlowToleranceRef};
 
 fn constructed(text: &str) -> CssFlowTolerance {
     match text {

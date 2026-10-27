@@ -5,9 +5,10 @@ use std::mem::{align_of, size_of};
 use surgeist_color::{
     ActionLayout, DigitSlot, OperationOwner, Serialization, SerializationReceipt,
 };
-use surgeist_css::{
-    CssColorActionLayout, CssColorFacts, CssColorParse, CssColorParseOutcome, CssColorSlot,
-    CssColorTransform, CssUsedColorCheckpoint,
+use surgeist_css::color::CssColorFacts;
+use surgeist_css::color::controlled::{
+    CssColorActionLayout, CssColorParse, CssColorParseOutcome, CssColorSlot, CssColorTransform,
+    CssUsedColorCheckpoint,
 };
 use surgeist_dom::{DocumentString, DomError};
 use surgeist_html::HtmlInputColorSerialization;

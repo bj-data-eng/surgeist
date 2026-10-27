@@ -1,8 +1,11 @@
-use surgeist_css::{
-    CssCompoundSelector, CssConditionKind, CssErrorCode, CssLanguageRange, CssNamespaceConstraint,
-    CssNamespaceName, CssNamespacePrefix, CssParser, CssPseudoClass, CssPseudoElement,
-    CssPseudoElementSegment, CssRecoveryAction, CssRule, CssSelector, CssSelectorCombinator,
-    CssSupportsLeaf,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule};
+use surgeist_css::selector::{
+    CssCompoundSelector, CssLanguageRange, CssNamespaceConstraint, CssPseudoClass,
+    CssPseudoElement, CssPseudoElementSegment, CssSelector, CssSelectorCombinator,
 };
 
 fn compound_selector(rule: &CssRule) -> &CssCompoundSelector {

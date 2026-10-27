@@ -7,7 +7,22 @@ use crate::css::support::color_and_selector_fixtures::{
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::validated_selector as parsed;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssComplexSelector, CssComplexSelectorPart, CssCompoundSelector, CssCompoundSelectorArgument,
+    CssNamespaceContext, CssNthChildPattern, CssNthPattern, CssParsedStyleSelectors,
+    CssPseudoClass, CssPseudoElement, CssPseudoElementSegment, CssPseudoElementSequence,
+    CssPseudoSelectorList, CssRelativeSelector, CssRelativeSelectorList, CssSelector,
+    CssSelectorCombinator, CssSelectorList, CssSimpleSelector, CssStyleSelector,
+    CssStyleSelectorContext,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssIdent;
 
 const NAMES: [&str; 14] = [
     "defined",

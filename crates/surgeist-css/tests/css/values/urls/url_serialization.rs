@@ -3,11 +3,16 @@
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssIdent, CssImageValue,
-    CssKnownPropertyValueRef, CssParser, CssSerializationLimits, CssUrl, CssUrlFunction,
-    CssUrlModifier, CssUrlModifierFunction, CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueTokenRef,
 };
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::{
+    CssIdent, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
+};
+use surgeist_css::values::image::CssImageValue;
 
 fn limits(nodes: usize, bytes: usize) -> CssSerializationLimits {
     CssSerializationLimits::new(nodes, nodes, bytes)

@@ -8,7 +8,8 @@
 //!   besides declarations, so `@page` is rejected there too.
 //!   <https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-syntax>
 //! - Cascade 5 §6.1: `@import` is valid only at the stylesheet top level.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
 
 const WITHOUT_STYLE_ANCESTOR: &str = "a rule list without a style-rule ancestor";
 const PAGE: &str = "a rule list without a style-rule ancestor that is not itself a @scope body";

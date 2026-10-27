@@ -2,11 +2,13 @@
 use super::*;
 use std::mem::size_of;
 use surgeist_color::Color;
-use surgeist_css::{
-    CssColorActionLayout, CssColorBank, CssColorError, CssColorFactIdentity, CssColorFacts,
-    CssColorGrammarRequest, CssColorInputKind, CssColorOperationOwner, CssColorParse,
-    CssColorParseAction, CssColorParseOutcome, CssColorParseStep, CssColorPropertyFacts,
-    CssColorSchemeFact, CssColorSlot, CssDeviceColorFact,
+use surgeist_css::color::controlled::{
+    CssColorActionLayout, CssColorBank, CssColorOperationOwner, CssColorParse, CssColorParseAction,
+    CssColorParseOutcome, CssColorParseStep, CssColorSlot,
+};
+use surgeist_css::color::{
+    CssColorError, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
+    CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
 };
 
 fn error(error: CssColorError) -> DomError {

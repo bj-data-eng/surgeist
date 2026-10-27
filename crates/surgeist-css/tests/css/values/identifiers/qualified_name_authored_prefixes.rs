@@ -3,11 +3,13 @@
 //! https://www.w3.org/TR/2014/REC-css-namespaces-3-20140320/#css-qnames
 
 use crate::css::support::value_assertions::assert_first_code;
-use surgeist_css::{
-    CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName,
-    CssNamespacePrefix, CssNormalizedItem, CssParsedStyleSelectors, CssParser, CssRecoveryAction,
-    CssRule, CssRuleContextKindRef, CssSelector, CssSelectorCombinator, CssStyleSelectorContext,
-    CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule};
+use surgeist_css::selector::{
+    CssNamespaceConstraint, CssNamespaceContext, CssParsedStyleSelectors, CssSelector,
+    CssSelectorCombinator, CssStyleSelectorContext,
 };
 
 fn context() -> CssNamespaceContext {
@@ -278,15 +280,16 @@ fn undeclared_and_ignored_prefixes_recover_at_the_selected_host_unit() {
         forgiving.diagnostics()[0].action(),
         CssRecoveryAction::DropSelectorListItem
     );
-    let Some(CssSelector::PseudoClass(surgeist_css::CssPseudoClass::Is(list))) = forgiving.syntax()
+    let Some(CssSelector::PseudoClass(surgeist_css::selector::CssPseudoClass::Is(list))) =
+        forgiving.syntax()
     else {
         panic!("retained forgiving host: {forgiving:?}");
     };
     assert_eq!(
         list.items(),
-        [surgeist_css::CssPseudoSelectorListItem::Selector(selector(
-            "svg|leaf", &context
-        ))]
+        [surgeist_css::selector::CssPseudoSelectorListItem::Selector(
+            selector("svg|leaf", &context)
+        )]
     );
     let ignored = CssParser::default().parse_sheet("@namespace svg ident;svg|leaf{}.after{}");
     assert!(matches!(ignored.syntax().rules(), [CssRule::Style(_)]));

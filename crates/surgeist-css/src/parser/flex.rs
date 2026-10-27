@@ -2,14 +2,16 @@
 
 use super::combinators::{Combinator, Tail, fill, parse_group};
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
 use super::sizing::parse_size_value;
-use crate::numeric::NumericInputContext;
-use crate::{
-    CssCalcSize, CssComponentValueLimits, CssFlexBasisValue, CssFlexComponents, CssFlexDirection,
-    CssFlexFlow, CssFlexValue, CssFlexWrap, CssNonNegative, CssNumber, CssNumeric,
+use crate::component::CssComponentValueLimits;
+use crate::numeric::expression::NumericInputContext;
+use crate::numeric::{CssNonNegative, CssNumber, CssNumeric};
+use crate::values::box_model::CssCalcSize;
+use crate::values::layout::{
+    CssFlexBasisValue, CssFlexComponents, CssFlexDirection, CssFlexFlow, CssFlexValue, CssFlexWrap,
 };
 
 pub(super) fn parse_flex_direction<'i, 't>(

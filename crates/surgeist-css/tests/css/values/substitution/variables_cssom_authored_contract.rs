@@ -6,7 +6,13 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::specified_property_value as read;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssDeclarationList, CssGlobalKeyword, CssImportance,
+    CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry, CssSpecifiedDeclarationValueRef,
+};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn declarations(source: &str) -> CssDeclarationList {
     let report = CssParser::default().parse_block_contents(source);

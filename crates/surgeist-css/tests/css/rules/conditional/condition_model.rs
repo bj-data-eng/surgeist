@@ -3,7 +3,14 @@
 //! Contain 3 `<container-condition>`, `<style-query>` and `<scroll-state-query>`,
 //! and Conditional 5 `<boolean-condition>` share the not/and/or/group shape, and
 //! every explicit grouping pair stays a structural layer in each of them.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::query::container::{CssContainerLeaf, CssScrollStateLeaf, CssStyleQueryLeaf};
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{
+    CssCondition, CssConditionKind, CssConditionLeaf, CssConditionList, CssWhenLeaf,
+};
+use surgeist_css::rule::CssRule;
 
 /// The structure of `condition`, with each leaf described by `leaf`.
 fn shape<L: CssConditionLeaf + std::fmt::Debug>(

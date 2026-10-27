@@ -8,10 +8,15 @@ use crate::css::support::admitted_selector as parsed;
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, nth_coefficients as coefficients,
 };
-use surgeist_css::{
-    CssComponentValueRef, CssComponentValues, CssNamespaceContext, CssNthAnPlusB, CssNthPattern,
-    CssNumericTokenKind, CssParser, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
-    CssRule, CssSelector, CssStyleSelector, CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssNumericTokenKind, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceContext, CssNthAnPlusB, CssNthPattern, CssPseudoClass, CssPseudoSelectorListItem,
+    CssSelector, CssStyleSelector,
 };
 
 fn pattern(selector: &CssSelector) -> CssNthPattern {

@@ -3,7 +3,18 @@
 //! D/W/P/T output, authored wrap facet preservation and fixed-child costs.
 
 use crate::css::support::serialization_limits::assert_limits;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::values::box_model::{CssFlowTolerance, CssFlowToleranceRef};
+use surgeist_css::values::layout::{
+    CssItemDirection, CssItemFlow, CssItemPack, CssItemWrap, CssItemWrapMode, CssItemWrapOrder,
+};
 
 const DIRECTIONS: [(CssItemDirection, &str); 5] = [
     (CssItemDirection::Auto, "auto"),

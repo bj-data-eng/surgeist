@@ -1,6 +1,6 @@
 //! The pinned Containment 2 §4 authored value production is fully recognized.
 
-use surgeist_css::{CssSupportStatus, property_support_metadata};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
 
 #[test]
 fn content_visibility_authored_property_support_is_complete() {

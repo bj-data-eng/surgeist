@@ -6,9 +6,11 @@
 use std::collections::BTreeSet;
 
 use serde_json::{Value, json};
-use surgeist_css::{
-    CssDeclarationList, CssImportance, CssKnownPropertyValueRef, CssParser, CssRule, CssSelector,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclarationList, CssImportance};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssSelector;
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
 use crate::css::support::csstree::reconciliation::{

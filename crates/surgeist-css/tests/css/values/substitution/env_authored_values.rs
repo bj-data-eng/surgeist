@@ -1,7 +1,24 @@
 //! Authored environment substitution preserves token identity and boundary policy.
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssValueOrigin,
+};
+use surgeist_css::conformance::{
+    CssFeatureKind, CssSpecificationTier, CssSupportStatus, feature_metadata, specification_source,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::container::CssContainerLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
 fn display(values: CssComponentValues) -> CssDeclaration {
     CssDeclaration::try_from_components(

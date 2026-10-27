@@ -15,7 +15,23 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{
     color_property::color_property_value, parsed_color as color, sole_declaration as declaration,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{CssInteger, CssNonNegative, CssNumeric, CssNumericLiteral};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_palette_values::CssFontPaletteOverride;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssSidePair;
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

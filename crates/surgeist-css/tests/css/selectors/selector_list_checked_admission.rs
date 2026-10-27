@@ -7,11 +7,13 @@ use crate::css::support::color_and_selector_fixtures::{
     assert_unrepresentable_construction,
 };
 use crate::css::support::validated_selector as parsed;
-use surgeist_css::{
-    CssCompoundSelectorArgument, CssErrorCode, CssNamespaceContext, CssNthChildPattern,
-    CssNthPattern, CssParsedStyleSelectors, CssParser, CssPseudoClass, CssPseudoSelectorList,
-    CssPseudoSelectorListItem, CssRecoveryAction, CssRelativeSelector, CssRelativeSelectorList,
-    CssSelector, CssSelectorCombinator, CssSelectorList, CssStyleSelectorContext,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::selector::{
+    CssCompoundSelectorArgument, CssNamespaceContext, CssNthChildPattern, CssNthPattern,
+    CssParsedStyleSelectors, CssPseudoClass, CssPseudoSelectorList, CssPseudoSelectorListItem,
+    CssRelativeSelector, CssRelativeSelectorList, CssSelector, CssSelectorCombinator,
+    CssSelectorList, CssStyleSelectorContext,
 };
 
 fn class() -> CssSelector {

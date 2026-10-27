@@ -7,7 +7,20 @@ use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColorComponent, CssColorSyntax};
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{
+    CssFeatureKind, CssSupportStatus, feature_metadata, property_support_metadata,
+};
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssExpansionError, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandValue, CssLonghandValueRef,
+    CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::values::common::CssBoxSideKind;
 
 fn assert_four_expansion(result: Result<CssExpansion, CssExpansionError>) {
     let CssExpansion::Contributions(values) = result.unwrap() else {

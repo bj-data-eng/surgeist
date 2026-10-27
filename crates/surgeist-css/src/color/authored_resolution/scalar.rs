@@ -1,23 +1,19 @@
 //! One original typed scalar into the existing checked component payload.
 
-use super::super::{
-    channels::Component,
-    component::{CheckedScalar, ComponentContext, SyntaxFailure},
-    expression::{OperandReference, Variable},
-    literal::{LiteralAction, LiteralConversion},
-    protocol::{
-        ColorProtocolError, CssColorBank, CssColorOperationOwner, CssColorSlot, Data, RecordTable,
-    },
-};
+use super::super::channels::Component;
+use super::super::component::{CheckedScalar, ComponentContext, SyntaxFailure};
+use super::super::expression::{OperandReference, Variable};
+use super::super::literal::{LiteralAction, LiteralConversion};
+use super::input::Operand;
+use super::numeric::NumericLowering;
 use super::position::Position;
-use super::{
-    CssColorPathStep,
-    input::Operand,
-    numeric::{self, NumericLowering},
-    site::SiteRecord,
-    spelling::{self, NameSpelling, NumberSpelling},
-};
-use crate::syntax::color::operands::Scalar;
+use super::site::SiteRecord;
+use super::spelling::{NameSpelling, NumberSpelling};
+use super::{numeric, spelling};
+use crate::color::CssColorPathStep;
+use crate::color::controlled::protocol::{ColorProtocolError, Data, RecordTable};
+use crate::color::controlled::{CssColorBank, CssColorOperationOwner, CssColorSlot};
+use crate::color::syntax::operands::Scalar;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Action {
@@ -49,7 +45,7 @@ enum State<'css> {
     },
     Value(Scalar<'css>),
     Number(NumberSpelling<'css>),
-    NameHeader(&'css crate::CssColorProfileComponentName),
+    NameHeader(&'css crate::color::CssColorProfileComponentName),
     Name(NameSpelling<'css>),
     ReadNumber {
         record: usize,
@@ -165,8 +161,12 @@ impl<'css> ScalarLowering<'css> {
         Ok(match &self.state {
             State::Header => self.operand.header_bytes(),
             State::Payload { bytes } => *bytes,
-            State::Value(Scalar::Literal { .. }) => std::mem::size_of::<crate::CssComponentValue>(),
-            State::NameHeader(_) => std::mem::size_of::<crate::CssColorProfileComponentName>(),
+            State::Value(Scalar::Literal { .. }) => {
+                std::mem::size_of::<crate::component::CssComponentValue>()
+            }
+            State::NameHeader(_) => {
+                std::mem::size_of::<crate::color::CssColorProfileComponentName>()
+            }
             State::Numeric(cursor) => cursor.input_bytes()?,
             State::Number(_) | State::Name(_)
                 if matches!(self.action(), Action::ReadByte { .. }) =>
@@ -344,11 +344,11 @@ impl<'css> ScalarLowering<'css> {
             _ => Err(ColorProtocolError::WrongAction),
         }
     }
-    pub(super) fn kernel(&self) -> crate::color::CssColorKernel {
+    pub(super) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
         match &self.state {
             State::Convert(cursor) => cursor.kernel(),
             State::Numeric(cursor) => cursor.kernel(),
-            _ => crate::color::CssColorKernel::Transition,
+            _ => crate::color::controlled::CssColorKernel::Transition,
         }
     }
     pub(super) fn compute(&mut self) -> Result<(), ColorProtocolError> {
@@ -394,7 +394,7 @@ impl<'css> ScalarLowering<'css> {
             }
             State::Name(writer) => {
                 if let spelling::Action::Done { record } = writer.action() {
-                    let name = super::super::protocol::RecordRange {
+                    let name = crate::color::controlled::protocol::RecordRange {
                         start: writer.units_start(),
                         end: record,
                     };

@@ -1,4 +1,6 @@
-use surgeist_css::{CssErrorCode, CssKnownProperty, CssParser, CssRecoveryAction, CssTokenKind};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::property::CssKnownProperty;
 
 struct InvalidEasingCase {
     source: &'static str,

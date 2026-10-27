@@ -1,6 +1,18 @@
 //! Test-only phase extraction for preserved ordinary descriptor assertions.
 #![allow(dead_code)]
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::numeric::{CssInteger, CssNumeric, CssNumericLiteral, CssRange};
+use surgeist_css::rule::counter_style::{
+    CssCounterAdditiveSymbols, CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef,
+    CssCounterStyleName, CssCounterStyleNegative, CssCounterStylePad, CssCounterStyleRange,
+    CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol, CssCounterSymbols,
+};
+use surgeist_css::rule::font_face::CssFontDisplay;
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureDisplayValue, CssFontFeatureDisplayValueRef, CssFontFeatureValue,
+    CssFontFeatureValueDefinition, CssFontFeatureValueIndex, CssFontFeatureValueKind,
+    CssFontFeatureValueRef, CssFontFeatureValuesError,
+};
 pub trait OrdinaryCounterValue {
     fn ordinary_system(&self) -> &CssCounterStyleSystem;
     fn ordinary_negative(&self) -> &CssCounterStyleNegative;

@@ -6,7 +6,11 @@
 //! structural-limit contracts supply coordinates and errors.
 
 use crate::css::support::authored_syntax::assert_position_at as position;
-use surgeist_css::*;
+use surgeist_css::declaration::{CssDeclaration, CssDeclarationList, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::{CssParseReport, CssParser};
 
 fn region(
     origin: &CssParsedOrigin,

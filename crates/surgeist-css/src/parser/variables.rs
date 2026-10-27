@@ -1,22 +1,25 @@
 use super::property_input::{Parser, Site};
-use crate::error::property::ParseError;
-use crate::numeric::NumericInputContext;
-use crate::utf16_value::Control;
-use crate::{
-    CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
-    CssComponentValueRef as Component, CssComponentValues, CssNumericTokenKind, CssValueOrigin,
-    CssValueTokenRef as ValueToken,
+use crate::component::CssComponentValueRef as Component;
+use crate::component::CssValueTokenRef as ValueToken;
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{
+    CssComponentValue, CssComponentValueError, CssComponentValues, CssNumericTokenKind,
+    CssValueOrigin,
 };
+use crate::diagnostic::error::property::ParseError;
+use crate::numeric::expression::NumericInputContext;
+use crate::values::color_adjust::utf16_value::Control;
 use cssparser::{BasicParseErrorKind, Token};
 
-use crate::error::property::{CssFeatureId, Error, basic, invalid_component_value, invalid_syntax};
-use crate::syntax::{
+use crate::declaration::{
     CssAuthoredDeclarationValue, CssCustomPropertyDeclaredValue, CssCustomPropertyName,
     CssCustomPropertyValue,
 };
+use crate::diagnostic::CssFeatureId;
+use crate::diagnostic::error::property::{Error, basic, invalid_component_value, invalid_syntax};
 use crate::validation::parse_global_keyword;
 
-mod attr;
+pub(crate) mod attr;
 
 pub(super) static IMPLEMENTED_DECLARATIONS: &[CssFeatureId] =
     &[CssFeatureId::new("baseline.declaration.custom-property")];
@@ -32,7 +35,7 @@ pub(crate) fn parse_custom_property_name(name: &str) -> Option<CssCustomProperty
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum SubstitutionContext {
+pub(crate) enum SubstitutionContext {
     KnownProperty,
     CustomProperty,
     ExistingVarOnlyQuery,
@@ -160,7 +163,7 @@ pub(crate) fn collect_authored_declaration_value<'i, 't>(
                 return Err(location.new_error(BasicParseErrorKind::EndOfInput));
             }
             let component = collected
-                .map_err(crate::CssNumericConstructionError::component)
+                .map_err(crate::numeric::CssNumericConstructionError::component)
                 .map_err(|error| {
                     let location = numeric.property_error_location(&error, location, offset);
                     if let Some(detail) = error.component_error() {
@@ -326,7 +329,7 @@ fn var_mismatch_with_control(
         return Ok(Some(VarMismatch::MissingName));
     };
     step(control)?;
-    if !matches!(name.view(), Component::Token(ValueToken::Ident(name)) if crate::CssCustomPropertyName::accepts_ident_token(name))
+    if !matches!(name.view(), Component::Token(ValueToken::Ident(name)) if crate::declaration::CssCustomPropertyName::accepts_ident_token(name))
     {
         return Ok(Some(
             if matches!(name.view(), Component::Token(ValueToken::Ident(_))) {
@@ -384,15 +387,17 @@ fn env_valid_with_control(
                 if number.kind() == CssNumericTokenKind::Integer =>
             {
                 let nonnegative = if let Some(control) = control {
-                    crate::integer_value::nonnegative_integer_literal_controlled(argument, control)
-                        .map_err(|_| {
-                            CssComponentValueError::new(
-                                CssComponentValueErrorKind::CapacityOverflow,
-                                argument.origin().clone(),
-                            )
-                        })?
+                    crate::numeric::integer_value::nonnegative_integer_literal_controlled(
+                        argument, control,
+                    )
+                    .map_err(|_| {
+                        CssComponentValueError::new(
+                            CssComponentValueErrorKind::CapacityOverflow,
+                            argument.origin().clone(),
+                        )
+                    })?
                 } else {
-                    crate::CssNumericLiteral::<crate::CssInteger>::try_from_component(
+                    crate::numeric::CssNumericLiteral::<crate::numeric::CssInteger>::try_from_component(
                         argument.clone(),
                     )
                     .is_ok_and(|value| !value.is_negative())
@@ -401,13 +406,15 @@ fn env_valid_with_control(
                     return Ok(false);
                 }
             }
-            Component::Function(function) if crate::numeric::is_math_function(function.name()) => {
+            Component::Function(function)
+                if crate::numeric::expression::is_math_function(function.name()) =>
+            {
                 let result = if let Some(control) = control {
                     numeric
                         .unwrap_or(&NumericInputContext::Checked)
                         .check_component_controlled(
                             argument,
-                            crate::numeric::CalculationRoot::Integer,
+                            crate::numeric::expression::CalculationRoot::Integer,
                             control,
                         )
                         .map_err(|_| {
@@ -417,17 +424,20 @@ fn env_valid_with_control(
                             )
                         })?
                 } else if let Some(numeric) = numeric {
-                    numeric.check_component(argument, crate::numeric::CalculationRoot::Integer)
-                } else {
-                    crate::numeric::check_component(
+                    numeric.check_component(
                         argument,
-                        crate::numeric::CalculationRoot::Integer,
+                        crate::numeric::expression::CalculationRoot::Integer,
+                    )
+                } else {
+                    crate::numeric::expression::check_component(
+                        argument,
+                        crate::numeric::expression::CalculationRoot::Integer,
                     )
                 };
                 if let Err(error) = result {
                     if matches!(
                         error.kind(),
-                        crate::CssNumericConstructionErrorKind::ResourceLimit
+                        crate::numeric::expression::CssNumericConstructionErrorKind::ResourceLimit
                     ) {
                         return Err(error.component_error().cloned().unwrap_or_else(|| {
                             CssComponentValueError::new(

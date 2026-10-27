@@ -1,8 +1,7 @@
 //! Public-consumer expectations from the adopted Blink Page/margin witness.
-use surgeist_css::{
-    CssBlockContext, CssBlockFragment, CssPageDescriptorValue, CssPageSelectorList, CssParser,
-    CssRule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::rule::page::{CssPageDescriptorValue, CssPageSelectorList};
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule};
 
 #[test]
 fn named_page_is_admitted() {
@@ -42,11 +41,15 @@ fn declaration_only_page_has_adopted_cssom_output() {
 }
 
 use crate::css::support::failure_classes::SerializationFailure;
-use surgeist_css::{
-    CssImportance, CssMarginBox, CssMarginDeclarationBlock, CssMarginRule, CssPageBody,
-    CssPageDeclaration, CssPageDeclarationBlock, CssPageDescriptor, CssPageDescriptorKind as K,
-    CssPageDescriptorValueRef as V, CssPagePseudo as P, CssSerializationLimits as Limits,
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::rule::page::CssPageDescriptorKind as K;
+use surgeist_css::rule::page::CssPageDescriptorValueRef as V;
+use surgeist_css::rule::page::CssPagePseudo as P;
+use surgeist_css::rule::page::{
+    CssMarginBox, CssMarginDeclarationBlock, CssMarginRule, CssPageBody, CssPageDeclaration,
+    CssPageDeclarationBlock, CssPageDescriptor,
 };
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 #[test]
 fn complete_page_selector_getter_preserves_compounds_lists_and_original_coordinates() {
     let source = " /*😀*/ \\69 nvoice:FIRST:left, :blank:recto:verso ";
@@ -188,7 +191,7 @@ fn page_and_margin_recovery_drop_invalid_owned_units_without_losing_neighbors() 
     crate::css::support::value_assertions::assert_first_diagnostic(
         report.diagnostics(),
         "@page { size:bogus; size:A4; @top-left bad {content:'bad'} @top-right {content:'good'; size:A4; width:3px} marks:crop; }",
-        surgeist_css::CssErrorCode::InvalidDescriptorValue,
+        surgeist_css::diagnostic::CssErrorCode::InvalidDescriptorValue,
         "bogus",
     );
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
@@ -325,10 +328,10 @@ fn page_cumulative_budget_reports_margin_child_and_retry_preserves_source() {
 
 #[test]
 fn selected_page_terminal_edits_preserve_sources_and_do_not_expand_the_original_shorthand() {
-    use surgeist_css::{
-        CssPageRuleView, CssSpecifiedDeclarationValueRef, CssSpecifiedPageDeclarationBlock as B,
-        CssSpecifiedPageDeclarationEntry as E,
-    };
+    use surgeist_css::declaration::CssSpecifiedDeclarationValueRef;
+    use surgeist_css::rule::page::CssPageRuleView;
+    use surgeist_css::rule::page::CssSpecifiedPageDeclarationBlock as B;
+    use surgeist_css::rule::page::CssSpecifiedPageDeclarationEntry as E;
     let source = "@page invoice:first { margin:1px 2px; size:A4; margin-left:3px; }";
     let report = CssParser::default().parse_sheet(source);
     let CssRule::Page(page) = &report.syntax().rules()[0] else {
@@ -344,8 +347,8 @@ fn selected_page_terminal_edits_preserve_sources_and_do_not_expand_the_original_
         .find_map(|v| match v {
             E::Property(v)
                 if v.property_name()
-                    == surgeist_css::CssPropertyNameRef::Known(
-                        surgeist_css::CssKnownProperty::MarginTop,
+                    == surgeist_css::property::CssPropertyNameRef::Known(
+                        surgeist_css::property::CssKnownProperty::MarginTop,
                     ) =>
             {
                 Some(v.clone())
@@ -420,10 +423,10 @@ fn selected_page_terminal_edits_preserve_sources_and_do_not_expand_the_original_
 }
 #[test]
 fn selected_page_and_margin_views_preserve_pending_occurrence_and_order_and_reject_wrong_domains() {
-    use surgeist_css::{
-        CssMarginRuleView, CssPageRuleView, CssSpecifiedDeclarationBlock,
-        CssSpecifiedPageDeclarationBlock as B, CssSpecifiedPageDeclarationEntry as E,
-    };
+    use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
+    use surgeist_css::rule::page::CssSpecifiedPageDeclarationBlock as B;
+    use surgeist_css::rule::page::CssSpecifiedPageDeclarationEntry as E;
+    use surgeist_css::rule::page::{CssMarginRuleView, CssPageRuleView};
     let report = CssParser::default().parse_sheet(
         "@page { margin-top:var(--m); @top-left { content:'X'; color:red } @bottom-center{} }",
     );
@@ -501,7 +504,7 @@ fn selected_page_and_margin_views_preserve_pending_occurrence_and_order_and_reje
 }
 #[test]
 fn edited_page_and_margin_projection_share_atomic_node_projection_and_byte_limits() {
-    use surgeist_css::{CssMarginRuleView, CssPageRuleView};
+    use surgeist_css::rule::page::{CssMarginRuleView, CssPageRuleView};
     let report =
         CssParser::default().parse_sheet("@page named { size:A4; @top-left {content:'X'} }");
     let CssRule::Page(page) = &report.syntax().rules()[0] else {

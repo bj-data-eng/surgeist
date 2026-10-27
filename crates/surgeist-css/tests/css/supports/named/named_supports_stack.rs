@@ -1,10 +1,13 @@
 //! Deep generic test bodies retain their authored payload on an ordinary caller stack.
 
-use surgeist_css::{
-    CssComponentValueLimits, CssComponentValues, CssErrorCode, CssNormalizedItem, CssParser,
-    CssRule, CssSupportsConditionName, CssSupportsConditionRule, CssSupportsTestBody,
-    CssSupportsTestItem,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::query::supports::{
+    CssSupportsConditionName, CssSupportsTestBody, CssSupportsTestItem,
 };
+use surgeist_css::rule::{CssRule, CssSupportsConditionRule};
 
 const CHILD: &str = "SURGEIST_NAMED_SUPPORTS_STACK_CHILD";
 const TEST: &str = "css::supports::named::named_supports_stack::deep_named_supports_lifecycle_fits_two_mib_caller_stack";

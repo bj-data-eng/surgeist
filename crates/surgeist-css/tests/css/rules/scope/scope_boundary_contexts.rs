@@ -2,7 +2,14 @@
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-scope
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#syntax-examples
 use crate::css::support::rules::clean_sheet as sheet;
-use surgeist_css::*;
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::{
+    CssRule, CssRuleConstructionError, CssScopeNestingContext, CssScopeRule, CssSheet,
+};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorList, CssRelativeSelector,
+    CssScopeSelectorList, CssSelector, CssSelectorCombinator, CssStyleSelector,
+};
 
 fn relative(combinator: CssSelectorCombinator, selector: CssSelector) -> CssScopeSelectorList {
     CssScopeSelectorList::try_new(vec![CssStyleSelector::Relative(CssRelativeSelector::new(

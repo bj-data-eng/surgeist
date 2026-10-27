@@ -6,7 +6,16 @@
 //! model's required both-style-and-color-auto interpretation or initial value.
 
 use crate::css::support::property_admission::GrammarFacts;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::source::CssSourcePosition;
 
 const AUTO_SPELLINGS: &[&str] = &["auto", "AuTo", r"\61 uto"];
 const DISTINCT_AUTO_COMPONENTS: &[&str] = &[

@@ -1,10 +1,17 @@
 #![forbid(unsafe_code)]
-use super::*;
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{CssComponentValue, CssValueOrigin};
+use crate::component::{CssComponentValueRef, CssValueTokenRef};
+use crate::diagnostic::CssRecoveryAction;
+use crate::parser::named_supports::{PartitionIssue, partition};
+use crate::query::supports::CssSupportsTestItem;
+use crate::source::CssSourceSnapshot;
+use crate::syntax_consumption::SyntaxNode;
 use crate::syntax_consumption::{
     CheckedLexeme, SyntaxInput, SyntaxInputLimits, SyntaxToken, SyntaxTokenFault, TokenPayload,
     normalize, source_document,
 };
-use crate::{CssComponentValueErrorKind, CssComponentValueRef, CssValueTokenRef};
+use cssparser::Token;
 use std::borrow::Cow;
 
 fn checked(component: &CssComponentValue) -> SyntaxToken<'_> {
@@ -28,10 +35,10 @@ fn identity(actual: &CssValueOrigin, expected: &CssValueOrigin) {
 
 #[test]
 fn actual_named_partition_keeps_error_membership_when_origins_are_nonmonotonic_or_programmatic() {
-    let head = crate::component_values::parse_component_values("head:yes;bad_a:").unwrap();
-    let good = crate::component_values::parse_component_values(";good:yes;bad_b:").unwrap();
-    let bad_c = crate::component_values::parse_component_values(";bad_c:").unwrap();
-    let last = crate::component_values::parse_component_values(";last:yes;").unwrap();
+    let head = crate::component::values::parse_component_values("head:yes;bad_a:").unwrap();
+    let good = crate::component::values::parse_component_values(";good:yes;bad_b:").unwrap();
+    let bad_c = crate::component::values::parse_component_values(";bad_c:").unwrap();
+    let last = crate::component::values::parse_component_values(";last:yes;").unwrap();
     let late_text = format!("{}\"broken\n", " ".repeat(32));
     let late_snapshot = CssSourceSnapshot::new(&late_text);
     let late_document = source_document(&late_text, &late_snapshot, 0).unwrap();

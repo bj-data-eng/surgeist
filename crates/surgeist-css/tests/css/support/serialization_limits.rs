@@ -12,7 +12,10 @@
 
 use std::fmt::Debug;
 
-use surgeist_css::*;
+use surgeist_css::rule::CssSheet;
+use surgeist_css::serialization::{
+    CssRuleSerializationError, CssSerializationError, CssSerializationLimits,
+};
 
 use super::failure_classes::{SerializationFailure, serialization_failure};
 

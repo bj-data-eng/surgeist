@@ -1,13 +1,14 @@
 //! Numeric leaf conversion, retaining unit/type separately from channel policy.
 
 use super::decimal::{GradScale, NumberAction, NumberConversion, ScaleAction};
-use super::protocol::{
-    ColorProtocolError, CssColorSlot, Data, LexicalRecord, LexicalTable, RecordTable,
-};
 use super::tokens::ClassifiedToken;
+use crate::color::controlled::CssColorSlot;
+use crate::color::controlled::protocol::{
+    ColorProtocolError, Data, LexicalRecord, LexicalTable, RecordTable,
+};
 use crate::numeric::bounded_decimal::DecimalOutcome;
+use crate::numeric::{CssAngleUnit, CssNumericType, CssNumericUnit};
 use crate::tokenization::tokenizer::NumberKind;
-use crate::{CssAngleUnit, CssNumericType, CssNumericUnit};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LiteralValue {
@@ -21,9 +22,10 @@ pub(crate) struct LiteralValue {
 
 #[cfg(test)]
 mod tests {
-    use super::super::protocol::{ActionDescription, CssColorOperationOwner, LexicalOperation};
     use super::super::tokens::{TokenAction, TokenReader};
     use super::*;
+    use crate::color::controlled::CssColorOperationOwner;
+    use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
     use crate::tokenization::bounded::InputKind;
 
     fn lexical<'a>(operation: &mut LexicalOperation<'a>, input: &[u8]) -> Vec<CssColorSlot<'a>> {
@@ -123,19 +125,23 @@ mod tests {
             (
                 "12PX",
                 12.0,
-                Some(CssNumericUnit::Length(crate::CssLengthUnit::Px)),
+                Some(CssNumericUnit::Length(crate::numeric::CssLengthUnit::Px)),
                 false,
             ),
             (
                 "3ms",
                 3.0,
-                Some(CssNumericUnit::Time(crate::CssTimeUnit::Milliseconds)),
+                Some(CssNumericUnit::Time(
+                    crate::numeric::CssTimeUnit::Milliseconds,
+                )),
                 false,
             ),
             (
                 "2DPCM",
                 2.0,
-                Some(CssNumericUnit::Resolution(crate::CssResolutionUnit::Dpcm)),
+                Some(CssNumericUnit::Resolution(
+                    crate::numeric::CssResolutionUnit::Dpcm,
+                )),
                 false,
             ),
         ] {
@@ -154,7 +160,7 @@ mod tests {
             assert_eq!(value.percentage, percentage);
             assert_eq!(
                 value.ty,
-                crate::numeric::literal_type(expected_unit, percentage)
+                crate::numeric::expression::literal_type(expected_unit, percentage)
             );
         }
         for invalid in [" DEG", "deg ", "değ", "gradx", "㎐", "pXx"] {
@@ -402,23 +408,23 @@ impl<'owner> LiteralConversion<'owner> {
         self.scratch_end = self.scratch_end.max(end);
         Ok(())
     }
-    pub(crate) fn kernel(&self) -> super::CssColorKernel {
+    pub(crate) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
         match &self.stage {
             Stage::Decimal(cursor) | Stage::Scaled(cursor) => {
                 if matches!(cursor.action(), NumberAction::Done(_)) {
-                    super::CssColorKernel::Literal
+                    crate::color::controlled::CssColorKernel::Literal
                 } else {
                     cursor.kernel()
                 }
             }
             Stage::Scale(cursor) => {
                 if cursor.action() == ScaleAction::Done {
-                    super::CssColorKernel::Transition
+                    crate::color::controlled::CssColorKernel::Transition
                 } else {
-                    super::CssColorKernel::ScaleDigit
+                    crate::color::controlled::CssColorKernel::ScaleDigit
                 }
             }
-            _ => super::CssColorKernel::Transition,
+            _ => crate::color::controlled::CssColorKernel::Transition,
         }
     }
     pub(crate) fn compute(&mut self) -> Result<(), ColorProtocolError> {
@@ -488,7 +494,7 @@ impl<'owner> LiteralConversion<'owner> {
             value,
             unit,
             percentage,
-            ty: crate::numeric::literal_type(unit, percentage),
+            ty: crate::numeric::expression::literal_type(unit, percentage),
             overflowed,
         });
         Ok(())

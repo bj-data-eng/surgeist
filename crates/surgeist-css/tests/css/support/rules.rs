@@ -1,7 +1,27 @@
 //! Helpers shared by the at-rule and rule-structure tests, and typed
 //! rejection evidence for their grammar failures.
 
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssDeclarationContextRef, CssError, CssErrorCode, CssTokenSummary};
+use surgeist_css::normalize::{
+    CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet, CssRuleContext,
+    CssRuleContextKindRef,
+};
+use surgeist_css::property::{CssKnownProperty, CssPropertyName, CssPropertyValueError};
+use surgeist_css::rule::counter_style::CssCounterStyleRule;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontDisplay, CssFontFaceDescriptorKind,
+    CssFontFaceDescriptorValue, CssFontFaceRule,
+};
+use surgeist_css::rule::keyframes::CssKeyframesRule;
+use surgeist_css::rule::page::{CssPagePseudo, CssPageRule};
+use surgeist_css::rule::{CssAtRuleName, CssDescriptorName, CssImportRule, CssRule, CssSheet};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssScopeSelectorList, CssSelector, CssStyleSelector,
+};
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::{CssParseReport, CssParser};
 
 /// The sheet of the clean parse of `source`.
 #[track_caller]

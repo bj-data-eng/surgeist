@@ -2,7 +2,30 @@
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandValueRef, CssPropertyGrammar,
+    CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{
+    CssBoxCalcSize, CssBoxSize, CssCalcSize, CssCalcSizeBasisRef, CssMaxSizeValue, CssSizeValue,
+};
+use surgeist_css::values::layout::{
+    CssFlexBasisRef, CssFlexBasisValue, CssFlexComponents, CssFlexValue,
+};
 
 fn one_component(text: &str) -> CssComponentValue {
     let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();

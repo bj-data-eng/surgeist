@@ -1,13 +1,20 @@
 //! Raw values use font-face grammar without inventing a descriptor-name occurrence.
 //! Unicode-range expectations follow CSS Syntax 3 sections 4.3.14 and 5.5.11.
 
-use surgeist_css::{
-    CssAbsoluteFontWeight, CssAuthoredFontFaceDescriptorValue, CssAuthoredFontFeatureSettings,
-    CssComponentValue, CssErrorCode, CssFontDisplay, CssFontFaceDescriptorKind as Kind,
-    CssFontFaceDescriptorValue as Value, CssFontFaceFamily, CssFontFaceSource,
-    CssFontFaceSourceList, CssFontFaceStyle, CssFontFaceWeight, CssFontFaceWidth, CssFontLocalName,
-    CssFontWeightRange, CssFontWidth, CssNonNegative, CssNumber, CssNumeric, CssParser,
-    CssPercentage, CssRecoveryAction, CssRule, CssUnicodeRange, CssUnicodeRangeList,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssNonNegative, CssNumber, CssNumeric, CssPercentage};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue as Value;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontDisplay, CssFontFaceFamily, CssFontFaceSource,
+    CssFontFaceSourceList, CssFontLocalName, CssUnicodeRange, CssUnicodeRangeList,
+};
+use surgeist_css::values::font::{
+    CssAbsoluteFontWeight, CssAuthoredFontFeatureSettings, CssFontFaceStyle, CssFontFaceWeight,
+    CssFontFaceWidth, CssFontWeightRange, CssFontWidth,
 };
 
 fn local_x() -> CssFontFaceSourceList {
@@ -78,7 +85,7 @@ fn every_descriptor_kind_returns_its_source_neutral_typed_value() {
             Kind::FontStyle,
             "italic",
             Value::FontStyle(CssFontFaceStyle::Keyword(
-                surgeist_css::CssFontStyleKeyword::Italic,
+                surgeist_css::values::font::CssFontStyleKeyword::Italic,
             )),
         ),
         (
@@ -177,7 +184,7 @@ fn incomplete_unicode_range_names_the_last_authored_raw_token() {
         assert_eq!(
             detail
                 .encountered()
-                .map(surgeist_css::CssTokenSummary::authored),
+                .map(surgeist_css::diagnostic::CssTokenSummary::authored),
             last,
             "{source:?}"
         );
@@ -193,9 +200,9 @@ fn unicode_range_values_need_no_surrounding_font_face_and_keep_original_token_po
         Kind::UnicodeRange,
     );
     assert!(report.is_clean(), "{report:?}");
-    let Some(surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(Value::UnicodeRange(
-        ranges,
-    ))) = report.syntax()
+    let Some(surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::Ordinary(
+        Value::UnicodeRange(ranges),
+    )) = report.syntax()
     else {
         panic!("typed ranges");
     };
@@ -280,16 +287,21 @@ fn src_member_recovery_and_implicit_closures_commit_only_retained_components() {
     }
     // Checked construction cannot silently recover that same original input.
     let source = "local(X),{}";
-    let error = surgeist_css::CssAuthoredFontFaceDescriptorValue::try_from_components(
-        Kind::Src,
-        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), source)
+    let error =
+        surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::try_from_components(
+            Kind::Src,
+            surgeist_css::component::CssComponentValues::parse(
+                &surgeist_css::CssParser::default(),
+                source,
+            )
             .unwrap(),
-        Default::default(),
-    )
-    .unwrap_err();
+            Default::default(),
+        )
+        .unwrap_err();
     assert!(error.diagnostic().is_some());
-    let surgeist_css::CssSerializedOrigin::Token(surgeist_css::CssValueOrigin::Parsed(origin)) =
-        error.origin()
+    let surgeist_css::component::CssSerializedOrigin::Token(
+        surgeist_css::component::CssValueOrigin::Parsed(origin),
+    ) = error.origin()
     else {
         panic!("the failed source member retains its real token origin");
     };
@@ -360,9 +372,9 @@ fn stylesheet_occurrences_keep_real_names_and_last_valid_values() {
     let display = face.descriptors().effective(Kind::FontDisplay).unwrap();
     assert!(matches!(
         display.value(),
-        surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(Value::FontDisplay(
-            CssFontDisplay::Block
-        ))
+        surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::Ordinary(
+            Value::FontDisplay(CssFontDisplay::Block)
+        )
     ));
     assert_eq!(
         display.position().unwrap().byte_offset().value(),

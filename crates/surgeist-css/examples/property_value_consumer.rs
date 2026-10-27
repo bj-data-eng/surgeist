@@ -10,13 +10,23 @@
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#using-variables
 //! Source identity, coordinates and clean-report equality are Surgeist contracts.
 
-use surgeist_css::{
-    CssAuthoredDeclarationValue, CssComponentValue, CssComponentValueRef, CssComponentValues,
-    CssCustomPropertyName, CssDeclaration, CssErrorCode, CssFourSides, CssGlobalKeyword,
-    CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssMarginValue, CssParsedOrigin,
-    CssParser, CssPropertyNameRef, CssPropertyTarget, CssRule, CssSerializedOrigin, CssValueOrigin,
-    CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::declaration::{
+    CssAuthoredDeclarationValue, CssCustomPropertyName, CssDeclaration, CssGlobalKeyword,
+    CssImportance,
+};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::values::box_model::CssMarginValue;
+use surgeist_css::values::common::CssFourSides;
 
 fn known_value(property: CssKnownProperty, value: &str) -> CssDeclaration {
     CssDeclaration::try_from_components(

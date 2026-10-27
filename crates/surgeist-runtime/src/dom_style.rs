@@ -36,10 +36,10 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use surgeist_css::{
-    CssMediaQueryList, CssParser, CssParserContext, CssParserMode, CssRetainedPayloadError,
-    CssRule, CssSourceRetention, CssUtf16InputLimits,
-};
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::CssRule;
+use surgeist_css::source::{CssRetainedPayloadError, CssSourceRetention, CssUtf16InputLimits};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 use surgeist_cssom::{
     CssomBatch, CssomCommit, CssomContext, CssomEditGuard, CssomInput, CssomInputData,
     CssomInputRole, CssomInputVersion, CssomOwnerMediaInput, CssomSheetAttributeEdit,
@@ -103,7 +103,7 @@ pub enum DomStyleRuntimeError {
     /// The CSSOM owner refused its actual mutation.
     Cssom(surgeist_cssom::CssomError),
     /// Real CSS input preparation/parsing failed, including cancellation.
-    Css(surgeist_css::CssUtf16InputError<DomError>),
+    Css(surgeist_css::source::CssUtf16InputError<DomError>),
     /// Runtime's own finite bank/work/identity admission failed.
     Admission,
     /// A caller replaced an actual owner or supplied a conflicting binding.
@@ -244,7 +244,7 @@ impl DomStyleProcessedSheet {
         &self.sheet
     }
     /// Recovered diagnostics from the actual separate media input.
-    pub fn media_diagnostics(&self) -> &[surgeist_css::CssRecoveryDiagnostic] {
+    pub fn media_diagnostics(&self) -> &[surgeist_css::diagnostic::CssRecoveryDiagnostic] {
         match &self.processing {
             Processing::Created(c) => c.media_diagnostics(),
             Processing::Attributes(edit) => edit.diagnostics(),
@@ -292,7 +292,7 @@ enum ProcessingRef<'a> {
     Attributes(&'a CssomSheetAttributeEdit),
 }
 impl ProcessingRef<'_> {
-    fn diagnostics(&self) -> &[surgeist_css::CssRecoveryDiagnostic] {
+    fn diagnostics(&self) -> &[surgeist_css::diagnostic::CssRecoveryDiagnostic] {
         match self {
             Self::Created(value) => value.media_diagnostics(),
             Self::Attributes(value) => value.diagnostics(),
@@ -371,7 +371,7 @@ enum ImportDependencies {
 /// Classify the actual processed rules before their report moves into CSSOM.
 /// Recovery diagnostics and media values do not establish critical imports.
 fn import_dependencies_with<E>(
-    report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
+    report: &surgeist_css::CssParseReport<surgeist_css::rule::CssSheet>,
     mut step: impl FnMut() -> Result<(), E>,
 ) -> Result<ImportDependencies, E> {
     step()?;

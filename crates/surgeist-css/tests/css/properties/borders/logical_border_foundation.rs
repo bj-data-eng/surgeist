@@ -7,7 +7,22 @@ use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssColorComponent, CssColorHue};
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem, CssRuleContext,
+    CssRuleContextKindRef,
+};
+use surgeist_css::numeric::CssAngleUnit;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownPropertyValueRef,
+    CssLonghandValue, CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::border::{CssBorder, CssLineStyle, CssLineWidth};
 
 const SIDES: [&str; 4] = [
     "border-block-start",

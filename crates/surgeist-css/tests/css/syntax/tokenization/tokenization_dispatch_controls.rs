@@ -8,9 +8,9 @@
 
 use std::ops::Range;
 
-use surgeist_css::{
-    CssBlockKind, CssComponentValueRef, CssComponentValues, CssParser, CssValueOrigin,
-    CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssBlockKind, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
 
 fn assert_origin(origin: &CssValueOrigin, source: &str, expected: Range<usize>) {

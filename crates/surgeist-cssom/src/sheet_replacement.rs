@@ -1,7 +1,9 @@
 //! Bounded detached stylesheet replacement and terminal cleanup.
 use crate::{css_adapter::parse, *};
 use std::sync::Arc;
-use surgeist_css::*;
+use surgeist_css::CssParserContext;
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::rule::CssSheet;
 
 /// Exact owner-qualified operation identity; never the publication revision alone.
 #[derive(Clone, Debug, Eq, PartialEq)]

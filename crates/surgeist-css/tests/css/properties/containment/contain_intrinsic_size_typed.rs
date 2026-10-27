@@ -1,10 +1,13 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::{assert_component_rejected, assert_numeric_rejected};
-use surgeist_css::{
-    CssCalculation, CssComponentValue, CssComponentValues, CssContainIntrinsicSizeFallback,
-    CssContainIntrinsicSizeValue, CssLength, CssNonNegative, CssNumeric, CssParser,
-    CssSerializationLimits, CssSidePair, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{CssCalculation, CssLength, CssNonNegative, CssNumeric};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{
+    CssContainIntrinsicSizeFallback, CssContainIntrinsicSizeValue,
 };
+use surgeist_css::values::common::CssSidePair;
 
 fn component(text: &str) -> CssComponentValue {
     let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
@@ -59,10 +62,9 @@ fn checked_nonnegative_length_preserves_exact_literal_domain() {
     );
     let negative_zero =
         CssNumeric::<CssLength, CssNonNegative>::try_from_component(component("-0px")).unwrap();
-    let surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension {
-        number,
-        ..
-    }) = negative_zero
+    let surgeist_css::component::CssComponentValueRef::Token(
+        surgeist_css::component::CssValueTokenRef::Dimension { number, .. },
+    ) = negative_zero
         .literal()
         .map(|literal| literal.component())
         .unwrap()

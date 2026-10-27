@@ -12,7 +12,14 @@
 //! This characterizes Standalone/Mix projection, not computed LCH/OKLCH hue.
 
 use crate::css::support::parsed_color as parsed;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorMix, CssColorMixComponent,
+    CssColorNumberLiteral, CssColorPercentageLiteral, CssColorSyntax, CssHslColor, CssHwbColor,
+    CssLchColor, CssNamedColor,
+};
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{CssAngle, CssCalculation, CssCalculationType, CssNumber};
 
 fn literal(text: &str) -> CssColorComponent {
     let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();

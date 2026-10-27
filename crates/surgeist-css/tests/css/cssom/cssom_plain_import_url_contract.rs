@@ -8,10 +8,11 @@ use crate::css::support::serialization_limits::LimitFailure;
 use crate::css::support::value_assertions::assert_first_diagnostic;
 use crate::css::support::value_assertions::clean_rule as rule;
 use std::error::Error;
-use surgeist_css::{
-    CssImportTarget, CssParser, CssRule, CssSerializationError, CssSerializationLimits as Limits,
-    CssSerializedOrigin, CssValueOrigin,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::rule::{CssImportTarget, CssRule};
+use surgeist_css::serialization::CssSerializationError;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 fn exact_location(target: &str, decoded: &str, expected: &str) {
     let source = format!("@import {target};");
@@ -320,7 +321,7 @@ fn recovered_media_keeps_provider_failure_origin_and_retry_without_mutation() {
     assert_first_diagnostic(
         report.diagnostics(),
         "@import 'x' screen,???;",
-        surgeist_css::CssErrorCode::InvalidMediaQuery,
+        surgeist_css::diagnostic::CssErrorCode::InvalidMediaQuery,
         "???",
     );
     let before = report.clone();

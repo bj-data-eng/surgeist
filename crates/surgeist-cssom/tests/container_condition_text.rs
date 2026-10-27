@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use surgeist_css::CssSerializationLimits;
+use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::{
     CssomContext, CssomEditGuard, CssomError, CssomInputRole, CssomInputVersion, CssomLimits,
     CssomSheetInputs, CssomStore,

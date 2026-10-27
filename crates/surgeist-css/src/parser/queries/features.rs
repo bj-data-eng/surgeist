@@ -5,14 +5,30 @@ use super::super::query_components::{
     query_range_chain,
 };
 use super::{MediaInput, media_committed_error, media_terminal_error};
-use crate::error::{CssError, basic, invalid_syntax, unexpected_at};
-use crate::media::{MediaFeatureShape, MediaFeatureSyntax};
-use crate::media_features::{MediaRangeState, MediaValueFamily};
-use crate::numeric::{CalculationRoot, NumericInputContext};
-use crate::syntax::*;
-use crate::{
+use crate::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
     CssValueOrigin, CssValueTokenRef,
+};
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::{basic, invalid_syntax, unexpected_at};
+use crate::numeric::expression::CssCalculationExpression;
+use crate::numeric::expression::{CalculationRoot, NumericInputContext};
+use crate::numeric::{
+    CssCalculation, CssCalculationType, CssInteger, CssLength, CssNumber, CssResolution,
+};
+use crate::query::CssQueryComparison;
+use crate::query::media::construction::{MediaFeatureShape, MediaFeatureSyntax};
+use crate::query::media::media_features::{MediaRangeState, MediaValueFamily};
+use crate::query::media::{
+    CssColorSchemePreference, CssContrastPreference, CssDisplayMode, CssForcedColorsMode,
+    CssGridMode, CssHoverCapability, CssMediaColorGamut, CssMediaDynamicRange,
+    CssMediaEnvironmentBlending, CssMediaFeatureKind, CssMediaFeatureQuery, CssMediaGrid,
+    CssMediaInteger, CssMediaInvertedColors, CssMediaLength, CssMediaNavigationControls,
+    CssMediaOverflowBlock, CssMediaOverflowInline, CssMediaRange, CssMediaRangeRef, CssMediaRatio,
+    CssMediaReducedDataPreference, CssMediaResolution, CssMediaScripting, CssMediaUpdate,
+    CssOrientation, CssPointerCapability, CssReducedMotionPreference,
+    CssReducedTransparencyPreference, CssScanMode, CssUnknownMediaFeature,
+    CssUnknownMediaFeatureReason,
 };
 use cssparser::{ParseError, Parser, Token, match_ignore_ascii_case};
 
@@ -79,11 +95,11 @@ pub(super) fn classify_generic_media_feature<'i>(
 pub(super) fn construct_when_media_feature(
     component: CssComponentValue,
     limits: CssComponentValueLimits,
-) -> Result<crate::CssWhenMediaFeature, crate::CssConditionConstructionError> {
-    use crate::{CssConditionConstructionError, CssWhenMediaFeatureKind};
+) -> Result<crate::query::CssWhenMediaFeature, crate::query::CssConditionConstructionError> {
+    use crate::query::{CssConditionConstructionError, CssWhenMediaFeatureKind};
     let invalid = || {
         CssConditionConstructionError::from(
-            crate::when::ConditionConstructionKind::InvalidMediaFeatureGrammar {
+            crate::query::when::ConditionConstructionKind::InvalidMediaFeatureGrammar {
                 origin: component.origin().clone(),
             },
         )
@@ -114,10 +130,13 @@ pub(super) fn construct_when_media_feature(
     })();
     let admitted = result.map_err(|error| {
         if let cssparser::ParseErrorKind::Custom(error) = &error.kind
-            && let crate::ErrorKind::InvalidComponentValue(component) = error.kind()
+            && let crate::diagnostic::error::ErrorKind::InvalidComponentValue(component) =
+                error.kind()
         {
             return CssConditionConstructionError::from(
-                crate::when::ConditionConstructionKind::Component(component.as_ref().clone()),
+                crate::query::when::ConditionConstructionKind::Component(
+                    component.as_ref().clone(),
+                ),
             );
         }
         invalid()
@@ -126,7 +145,7 @@ pub(super) fn construct_when_media_feature(
         AdmittedMediaFeature::Feature(feature, _) => CssWhenMediaFeatureKind::Feature(feature),
         AdmittedMediaFeature::Unknown(feature) => CssWhenMediaFeatureKind::UnknownFeature(feature),
     };
-    Ok(crate::CssWhenMediaFeature::new(kind, component))
+    Ok(crate::query::CssWhenMediaFeature::new(kind, component))
 }
 fn known_generic_name(name_text: &str, shape: &MediaFeatureShape) -> Option<MediaFeatureName> {
     if let Some(id) = CssMediaFeatureKind::from_name(name_text) {
@@ -479,15 +498,16 @@ pub(super) fn media_numeric_error<'i>(
     source: &str,
     input: &Parser<'i, '_>,
     numeric: &MediaInput<'_>,
-    error: crate::CssNumericConstructionError,
+    error: crate::numeric::CssNumericConstructionError,
 ) -> ParseError<'i, CssError> {
     if let Some(component) = error.component_error() {
         // No component at a grammar boundary is an absent operand, not a bad
         // authored token. Other component failures remain terminal and typed.
-        let absent = component.kind == crate::CssComponentValueErrorKind::InvalidToken
+        let absent = component.kind
+            == crate::component::values::CssComponentValueErrorKind::InvalidToken
             && matches!(component.origin(), CssValueOrigin::Parsed(origin) if origin.span().start()==origin.span().end());
         if !absent {
-            return crate::error::invalid_component_value(
+            return crate::diagnostic::error::invalid_component_value(
                 input.current_source_location(),
                 component.clone(),
             );
@@ -509,7 +529,7 @@ fn parse_media_numeric<'i, 't>(
     let component = numeric
         .collect(input)
         .map_err(|error| media_numeric_error(source, input, numeric, error))?;
-    let values = crate::numeric::CalculationComponents::single(component)
+    let values = crate::numeric::expression::CalculationComponents::single(component)
         .map_err(|_| invalid_syntax(input.current_source_location()))?;
     numeric
         .admit(values, root)
@@ -536,8 +556,11 @@ fn parse_media_ratio<'i, 't>(
     let denominator_is_omitted = input.try_parse(|p| p.expect_delim('/')).is_err();
     let denominator = if denominator_is_omitted {
         CssCalculation::<CssNumber>::try_from_components(
-            crate::CssComponentValues::try_new(
-                vec![crate::CssComponentValue::try_number("1").expect("default denominator")],
+            crate::component::CssComponentValues::try_new(
+                vec![
+                    crate::component::CssComponentValue::try_number("1")
+                        .expect("default denominator"),
+                ],
                 Default::default(),
             )
             .expect("single default denominator"),

@@ -4,10 +4,11 @@
 use crate::css::support::failure_classes::SerializationFailure as ResourceKind;
 use crate::css::support::value_assertions::clean_media_query as query;
 use crate::css::support::value_assertions::media_resource_kind as resource_kind;
-use surgeist_css::{
-    CssMediaQuery, CssMediaQueryList, CssParser, CssRecoveryAction,
-    CssSerializationLimits as Limits, CssSerializedOrigin, CssValueOrigin,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 #[test]
 fn single_query_requires_exactly_one_list_member_and_preserves_recovery_diagnostics() {

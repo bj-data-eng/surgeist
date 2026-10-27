@@ -1,7 +1,18 @@
 //! Container queries (Conditional Rules 5) and `@container` rules through the
 //! public stylesheet parser and constructors.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssError;
+use surgeist_css::query::container::{
+    CssContainerFeatureQuery, CssContainerLeaf, CssContainerLengthRef, CssContainerName,
+    CssContainerOrientationRef, CssContainerRatioRef, CssContainerScrollFeature,
+    CssContainerStuckKeyword, CssContainerStuckValueRef, CssContainerStyleFeature,
+    CssContainerStyleFeatureName, CssScrollStateLeaf, CssStyleQueryLeaf,
+};
+use surgeist_css::query::media::{CssMediaRangeRef, CssOrientation};
+use surgeist_css::query::{CssCondition, CssConditionKind, CssConditionList, CssQueryComparison};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssSelector;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;

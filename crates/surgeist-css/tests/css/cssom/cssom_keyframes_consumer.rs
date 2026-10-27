@@ -1,6 +1,8 @@
 //! Literal expectations from CSSOM's selected 2026 CSSKeyframesRule branch.
 
-use surgeist_css::{CssParser, CssRule, CssSerializationLimits};
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn rule(source: &str) -> CssRule {
     let report = CssParser::default().parse_sheet(source);

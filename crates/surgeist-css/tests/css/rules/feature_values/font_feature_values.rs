@@ -2,7 +2,9 @@ use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
 use crate::css::support::rules::{ExpectedRejection, invalid_descriptor, rejected_bang};
-use surgeist_css::{CssError, CssNamespaceContext, CssParser};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssError;
+use surgeist_css::selector::CssNamespaceContext;
 
 // Fonts 4 (7 September 2026), section 6.9.2 and frozen WebKit select the
 // authored index policy; section 6.9.1's contradictory ranges remain unresolved.
@@ -78,13 +80,19 @@ fn font_feature_values_rejects_missing_or_generic_family_preludes() {
     }
 }
 
-use surgeist_css::{
-    CssErrorCode, CssFontDisplay, CssFontFaceFamily, CssFontFeatureDisplayOccurrence,
-    CssFontFeatureValueBlock as Block, CssFontFeatureValueDefinition as Definition,
-    CssFontFeatureValueIndex as Index, CssFontFeatureValueKind as Kind,
-    CssFontFeatureValueName as Name, CssFontFeatureValuesItem, CssFontFeatureValuesRule,
-    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem, CssRule,
-    CssRuleContextKindRef,
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem, CssRuleContextKindRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{CssFontDisplay, CssFontFaceFamily};
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueBlock as Block;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueDefinition as Definition;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueIndex as Index;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueKind as Kind;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueName as Name;
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureDisplayOccurrence, CssFontFeatureValuesItem, CssFontFeatureValuesRule,
 };
 
 fn authored(source: &str) -> CssFontFeatureValuesRule {
@@ -258,9 +266,9 @@ fn checked_construction_normalizes_decimal_syntax_without_inventing_source() {
     let block = Block::try_new(Kind::Swash, vec![definition]).unwrap();
     assert!(block.position().is_none());
     let display = CssFontFeatureDisplayOccurrence::new(
-        surgeist_css::CssFontFeatureDisplayValue::try_from_components(
-            surgeist_css::CssComponentValues::try_new(
-                vec![surgeist_css::CssComponentValue::try_ident("swap").unwrap()],
+        surgeist_css::rule::font_feature_values::CssFontFeatureDisplayValue::try_from_components(
+            surgeist_css::component::CssComponentValues::try_new(
+                vec![surgeist_css::component::CssComponentValue::try_ident("swap").unwrap()],
                 Default::default(),
             )
             .unwrap(),
@@ -550,7 +558,7 @@ fn eof_retains_accepted_rules_with_real_closure_diagnostics() {
             .diagnostics()
             .iter()
             .all(|diagnostic| diagnostic.action()
-                == surgeist_css::CssRecoveryAction::RetainWithImplicitClosure)
+                == surgeist_css::diagnostic::CssRecoveryAction::RetainWithImplicitClosure)
     );
 }
 #[test]
@@ -659,7 +667,7 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
             .unwrap();
         assert_eq!(
             selectors.selectors()[0].binding(),
-            surgeist_css::CssSelectorBinding::ScopeAnchors
+            surgeist_css::normalize::CssSelectorBinding::ScopeAnchors
         );
         assert!(selectors.parent().is_none());
         assert!(selectors.scope_context().is_some());
@@ -675,7 +683,7 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
         for (order, name) in ["red", "blue"].into_iter().enumerate() {
             let declaration = declarations[order];
             assert_eq!(declaration.order(), order);
-            let surgeist_css::CssKnownPropertyValueRef::Color(value) = declaration
+            let surgeist_css::property::CssKnownPropertyValueRef::Color(value) = declaration
                 .source()
                 .known()
                 .unwrap()
@@ -720,11 +728,11 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
         };
         assert_eq!(
             outer_selectors.selectors()[0].selector(),
-            &surgeist_css::CssSelector::Class("root".into())
+            &surgeist_css::selector::CssSelector::Class("root".into())
         );
         assert_eq!(
             outer_selectors.selectors()[0].binding(),
-            surgeist_css::CssSelectorBinding::Absolute
+            surgeist_css::normalize::CssSelectorBinding::Absolute
         );
         assert!(outer_selectors.parent().is_none());
         assert!(outer_selectors.scope_context().is_none());
@@ -764,8 +772,8 @@ fn inherited_scope_keeps_scoped_declaration_and_selector_semantics_across_chunks
         };
         assert_eq!(
             root.unwrap().selectors(),
-            &[surgeist_css::CssStyleSelector::Selector(
-                surgeist_css::CssSelector::Class("inner".into())
+            &[surgeist_css::selector::CssStyleSelector::Selector(
+                surgeist_css::selector::CssSelector::Class("inner".into())
             )]
         );
         assert!(limit.is_none());

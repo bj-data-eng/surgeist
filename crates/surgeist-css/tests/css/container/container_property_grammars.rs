@@ -8,7 +8,22 @@
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#variables-in-shorthands
 //! No new type/variant assumptions, containment execution, or variable resolution.
 use crate::css::support::authored_syntax::important_known_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueTokenRef,
+};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandContribution, CssLonghandContributions, CssLonghandValue, CssPropertyGrammar,
+    CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::container::{
+    CssContainerLeaf, CssContainerStyleFeature, CssContainerStyleFeatureName, CssStyleQueryLeaf,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
 const CONDITIONAL5: &str = "https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/";
 

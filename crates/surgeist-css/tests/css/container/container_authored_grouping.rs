@@ -4,10 +4,14 @@
 //! Section 5.4 permits explicit grouped operands and homogeneous operator lists.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule
 use crate::css::support::authored_syntax::{component_list as components, component_token};
-use surgeist_css::{
-    CssBlockKind, CssComponentValue, CssComponentValueRef, CssCondition, CssContainerLeaf,
-    CssErrorCode, CssGeneralEnclosed, CssParser, CssRecoveryAction, CssRule, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueRef, CssValueOrigin,
 };
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::container::CssContainerLeaf;
+use surgeist_css::query::{CssCondition, CssGeneralEnclosed};
+use surgeist_css::rule::CssRule;
 
 fn parsed_condition(query: &str) -> CssCondition<CssContainerLeaf> {
     let source = format!("@container {query} {{}}");

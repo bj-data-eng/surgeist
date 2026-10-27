@@ -2,27 +2,49 @@ use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
 
-use surgeist_css::{
-    CssAnimationDirection, CssAuthoredFontFeature, CssAuthoredFontFeatureList,
-    CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssCalculationSumOperator,
+use surgeist_css::CssParser;
+use surgeist_css::color::{
     CssColorComponent, CssColorInterpolationMethod, CssColorMixPercentage, CssColorSyntax,
-    CssComponentValue, CssConditionKind, CssConditionList, CssCounterStyleRange,
-    CssCounterStyleSpeakAs, CssCounterSymbol, CssDefinedFalseMediaReason, CssErrorCode,
-    CssExclusionReason, CssFeatureKind, CssFontFamilyNameKind, CssFontSize, CssFontSizeAdjust,
+    CssRelativeColorChannel, CssRelativeColorEnvironment, CssRelativeColorExpressionValue,
+    CssRelativeColorFunction, CssRelativeColorResultDomain, CssSystemColor,
+};
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::conformance::{
+    CssExclusionReason, CssFeatureKind, CssSpecificationTier, CssSupportStatus,
+    conformance_exclusion, feature_metadata, property_support_metadata, specification_source,
+};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{
+    CssCalculationSumOperator, CssInteger, CssLengthPercentage, CssNonNegative, CssNumeric,
+    CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+};
+use surgeist_css::query::media::{
+    CssDefinedFalseMediaReason, CssMediaLeaf, CssMediaQuery, CssMediaQueryModifier, CssMediaType,
+};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssConditionKind, CssConditionList};
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleRange, CssCounterStyleSpeakAs, CssCounterSymbol,
+};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule};
+use surgeist_css::selector::{
+    CssLanguageRange, CssNamespaceConstraint, CssPseudoClass, CssPseudoElement,
+    CssPseudoElementSegment, CssSelector, CssSelectorCombinator,
+};
+use surgeist_css::values::animation::CssAnimationDirection;
+use surgeist_css::values::font::{
+    CssAuthoredFontFeature, CssAuthoredFontFeatureList, CssAuthoredFontFeatureSettings,
+    CssAuthoredFontFeatureValue, CssFontFamilyNameKind, CssFontSize, CssFontSizeAdjust,
     CssFontSynthesis, CssFontSynthesisValues, CssFontVariantCaps, CssFontVariantEastAsianValues,
     CssFontVariantLigatureState, CssFontVariantLigatureValues, CssFontVariantNumericFigure,
     CssFontVariantNumericValues, CssFontVariantPosition, CssFontVariantValues,
-    CssGenericFontFamily, CssGridAutoFlowAxis, CssImportance, CssInteger, CssKnownDeclaredValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLanguageRange, CssLengthPercentage,
-    CssMediaLeaf, CssMediaQuery, CssMediaQueryModifier, CssMediaType, CssNamespaceConstraint,
-    CssNamespaceName, CssNamespacePrefix, CssNonNegative, CssNumeric, CssNumericLiteral,
-    CssOpenTypeTag, CssParser, CssPropertyNameRef, CssPseudoClass, CssPseudoElement,
-    CssPseudoElementSegment, CssRecoveryAction, CssRelativeColorChannel,
-    CssRelativeColorEnvironment, CssRelativeColorExpressionValue, CssRelativeColorFunction,
-    CssRelativeColorResultDomain, CssRule, CssSelector, CssSelectorCombinator,
-    CssSpecificationTier, CssSupportStatus, CssSupportsLeaf, CssSystemColor, conformance_exclusion,
-    feature_metadata, property_support_metadata, specification_source,
+    CssGenericFontFamily, CssOpenTypeTag,
 };
+use surgeist_css::values::layout::CssGridAutoFlowAxis;
 
 #[test]
 fn public_surface_exposes_checked_private_field_namespace_models() {
@@ -589,7 +611,7 @@ fn rule_kind(rule: &CssRule) -> &'static str {
     }
 }
 
-fn error_kind(error: &surgeist_css::CssError) -> &'static str {
+fn error_kind(error: &surgeist_css::diagnostic::CssError) -> &'static str {
     match error.code() {
         CssErrorCode::UnknownProperty => "unknown property",
         CssErrorCode::InvalidPropertyValue => "invalid property value",
@@ -779,7 +801,7 @@ fn public_surface_style_attributes_preserve_importance_custom_and_substitution_s
     let custom = &report.syntax()[1];
     assert!(matches!(
         custom.body(),
-        surgeist_css::CssDeclarationBody::Custom(_)
+        surgeist_css::declaration::CssDeclarationBody::Custom(_)
     ));
     assert!(custom.known().is_none());
     let custom = custom.custom().expect("custom declaration");
@@ -840,9 +862,11 @@ fn public_surface_known_declarations_expose_coupled_authored_value_views() {
         panic!("expected width wrapper");
     };
     assert_eq!(value.as_css(), "calc(100% - 12px)");
-    assert!(matches!(value.value(), surgeist_css::CssSizeValue::BoxSize(
-        surgeist_css::CssBoxSize::LengthPercentage(length)
-    ) if length.calculation().is_some()));
+    assert!(
+        matches!(value.value(), surgeist_css::values::box_model::CssSizeValue::BoxSize(
+        surgeist_css::values::box_model::CssBoxSize::LengthPercentage(length)
+    ) if length.calculation().is_some())
+    );
     assert!(width.global().is_none());
     assert!(width.substitution_dependent().is_none());
 
@@ -850,7 +874,7 @@ fn public_surface_known_declarations_expose_coupled_authored_value_views() {
     assert_eq!(known_declared_value_kind(color.declared_value()), "global");
     assert_eq!(
         color.global(),
-        Some(surgeist_css::CssGlobalKeyword::Inherit)
+        Some(surgeist_css::declaration::CssGlobalKeyword::Inherit)
     );
     assert!(color.property_value().is_none());
     assert!(color.substitution_dependent().is_none());
@@ -1037,10 +1061,11 @@ fn public_surface_emits_required_recovery_actions() {
 
 #[test]
 fn public_surface_font_format_models_preserve_the_single_authored_production() {
-    use surgeist_css::{
+    use surgeist_css::rule::font_face::{
         CssFontFaceUrlSource, CssFontFormat, CssFontFormatHint, CssFontFormatString,
-        CssFontTechHint, CssUrl,
+        CssFontTechHint,
     };
+    use surgeist_css::values::common::CssUrl;
     for text in ["", "zebra", "WoFf2", " woff2 "] {
         let value = CssFontFormatString::new(text);
         assert_eq!(value.as_str(), text);
@@ -1071,7 +1096,7 @@ fn public_surface_font_format_models_preserve_the_single_authored_production() {
 
 #[test]
 fn public_surface_font_face_descriptor_current_models_are_checked() {
-    use surgeist_css::{
+    use surgeist_css::values::font::{
         CssAbsoluteFontWeight, CssFontFaceWeight, CssFontFaceWidth, CssFontWidth,
         CssFontWidthKeyword,
     };

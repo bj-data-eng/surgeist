@@ -2,7 +2,9 @@
 //! native protocol; no Runtime Window/task bank or event receipt is fabricated.
 use super::*;
 use crate::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest};
-use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
 
 fn cancel() -> AtomicBool {

@@ -1,26 +1,36 @@
 //! Admitted typed feeding, path backing and the canonical reached resolver.
 //!
 //! This controlled authored protocol is crate-private (#1286, #1353 5.7): its
-//! only driver is the ordinary [`resolve_authored_color`](super::resolve_authored_color)
+//! only driver is the ordinary [`resolve_authored_color`](super::ordinary::resolve_authored_color)
 //! front. It classifies the shared resolver's pending work with the same
 //! typed classification as the public source parse.
 
-use super::{
-    lowering::{Action as FeedAction, Lowering},
-    path::{PathState, PreparedSite},
-    position::Position,
-    site::SiteRecord,
-    *,
+use super::lowering::Action as FeedAction;
+use super::lowering::Lowering;
+use super::path::{PathState, PreparedSite};
+use super::position::Position;
+use super::site::SiteRecord;
+use crate::color::CssColor;
+#[cfg(test)]
+use crate::color::authored_resolution::path::CssColorPathInspectionLayout;
+use crate::color::authored_resolution::path::{
+    CssColorPathBuffer, CssColorPathCapacityObservation, CssColorPathHandle,
+    CssColorPathReservationLayout, CssColorPathReservationStatus,
 };
+use crate::color::component::SyntaxFailure;
+use crate::color::controlled::bounded::Pending;
+use crate::color::controlled::protocol::{ColorProtocolError, Data};
+use crate::color::controlled::{
+    CssColorBank, CssColorFactRead, CssColorKernel, CssColorOperationOwner, CssColorSlot, bounded,
+};
+use crate::color::grammar::Site;
+use crate::color::operation as core;
+use crate::color::{CssColorComponentPath, CssColorPathStep};
 use crate::color::{
-    bounded::{self, Pending},
-    component::SyntaxFailure,
-    grammar::Site,
-    operation as core,
-    protocol::Data,
-    *,
+    CssColorError, CssColorFactDefect, CssColorFactIdentity, CssColorFacts,
+    CssColorStandardFailureKind,
 };
-use crate::{CssColor, CssValueOrigin};
+use crate::component::CssValueOrigin;
 use std::mem::size_of;
 
 /// A failure of the private authored protocol: a reached semantic failure, or
@@ -211,10 +221,12 @@ impl<'path, 'css, 'authored: 'css, 'facts>
         path: &'path mut CssColorPathBuffer,
     ) -> Result<Self, AuthoredError> {
         if facts.identity() != expected {
-            return Err(CssColorError::from(crate::color::ColorErrorKind::Facts(
-                CssColorFactDefect::Foreign,
-            ))
-            .into());
+            return Err(
+                CssColorError::from(crate::color::bounded::ColorErrorKind::Facts(
+                    CssColorFactDefect::Foreign,
+                ))
+                .into(),
+            );
         }
         let path = PathState::initialize(owner, path)?;
         let work = Work::Feed(Lowering::start(path.owner(), path.phase(), root));

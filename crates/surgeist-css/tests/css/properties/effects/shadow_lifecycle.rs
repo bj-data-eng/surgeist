@@ -7,7 +7,12 @@
 //! && reorders complete groups, not individual tokens inside a group.
 
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssPropertyKindRef,
+};
 
 fn reject_interrupted(property: &str, value: &str) {
     let prefix = "/* 🦀 */ ";

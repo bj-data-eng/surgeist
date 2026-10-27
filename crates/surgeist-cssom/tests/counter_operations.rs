@@ -1,4 +1,7 @@
-use surgeist_css::*;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDefinitionStatus, CssCounterStyleDescriptorKind,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::CssCounterStyleRule;
 use surgeist_cssom::*;
 

@@ -7,10 +7,10 @@
 //! Expected values are independent of the parser, serializer, and cssparser table.
 
 use crate::css::support::parsed_color;
-use surgeist_css::{
-    CssColor, CssHexColor, CssKnownProperty, CssNamedColor, CssParser, CssRecoveryAction,
-    CssSystemColor,
-};
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssHexColor, CssNamedColor, CssSystemColor};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::CssKnownProperty;
 
 const NAMED_COLORS: [(&str, [u8; 3]); 148] = [
     ("aliceblue", [240, 248, 255]),

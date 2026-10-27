@@ -5,7 +5,18 @@
 //! Conditions, ancestry and pseudo-element identities remain symbolic.
 use crate::css::support::rules::normalized_declarations as declarations;
 use crate::css::support::rules::rule_at;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::{CssDeclarationList, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet, CssRuleContext,
+    CssRuleContextKindRef, CssSelectorBinding, CssSelectorContext,
+};
+use surgeist_css::query::supports::CssSupportsTestItem;
+use surgeist_css::query::{CssCondition, CssWhenLeaf};
+use surgeist_css::rule::{CssMediaRule, CssRule, CssSheet, CssWhenRule};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector, CssStyleSelector};
 
 fn selectors(rule: &CssRuleContext) -> &CssSelectorContext {
     match rule.kind() {

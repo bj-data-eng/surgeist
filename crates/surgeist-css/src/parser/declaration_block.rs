@@ -1,7 +1,19 @@
 //! Raw current block-contents declaration projection over the original source.
-use super::*;
+use crate::component::CssComponentValueLimits;
+use crate::declaration::{CssDeclaration, CssDeclarationList};
+use crate::diagnostic::CssError;
+use crate::diagnostic::CssRecoveryAction;
+use crate::diagnostic::error::{invalid_syntax, property_name_error};
+use crate::parser::recovery::{RecoveryState, StyleContextCaptures};
+use crate::parser::{
+    DeclarationMode, block_item_diagnostic_from_start, fragments, parse_declaration_core, recovery,
+    syntax_bridge,
+};
+use crate::property::properties::resolve_property_name;
+use crate::source::CssSourceSnapshot;
 use crate::syntax_consumption::{self as syntax, CursorItem, TokenKind};
-use crate::{CssComponentValueLimits, CssParseReport, CssParserContext, CssRecoveryAction};
+use crate::{CssParseReport, CssParserContext};
+use cssparser::{CowRcStr, Delimiter, ParseError, Parser, ParserInput, ParserState};
 
 pub(crate) fn parse_with_context(
     source: &str,
@@ -62,7 +74,7 @@ pub(super) trait Receiver {
     where
         Self: 'i;
     fn retained(&self, _declaration: &Self::Declaration, _recovery: &RecoveryState) {}
-    fn take_diagnostics(&mut self) -> Vec<crate::CssRecoveryDiagnostic> {
+    fn take_diagnostics(&mut self) -> Vec<crate::diagnostic::CssRecoveryDiagnostic> {
         Vec::new()
     }
 }
@@ -155,7 +167,7 @@ fn parse_contents_with_snapshot<R: Receiver>(
             .iter()
             .find_map(|node| {
                 (document.nodes[*node].token().kind()
-                    == TokenKind::Closing(crate::CssBlockKind::CurlyBracket))
+                    == TokenKind::Closing(crate::component::CssBlockKind::CurlyBracket))
                 .then(|| document.range(*node).expect("source closer").start)
             })
             .unwrap_or(source.len());
@@ -258,7 +270,7 @@ fn parse_contents_with_snapshot<R: Receiver>(
             };
             let custom = generic.is_ok()
                 && matches!(document.nodes[node].token().kind(), TokenKind::Ident(name) if name.starts_with("--"));
-            let action = if custom || crate::error::is_resource_parse_error(&error) {
+            let action = if custom || crate::diagnostic::error::is_resource_parse_error(&error) {
                 cursor = declaration_cursor;
                 CssRecoveryAction::DropDeclaration
             } else {
@@ -267,7 +279,7 @@ fn parse_contents_with_snapshot<R: Receiver>(
             let end_byte = offset(&cursor);
             advance_to(&mut input, end_byte);
             let span_end = dropped_end(&cursor, end_byte, action);
-            let resource = crate::error::is_resource_parse_error(&error);
+            let resource = crate::diagnostic::error::is_resource_parse_error(&error);
             if let Some(diagnostic) =
                 block_item_diagnostic_from_start(source, error, start_byte, span_end, action)
             {

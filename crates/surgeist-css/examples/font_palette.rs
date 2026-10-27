@@ -1,9 +1,8 @@
 #![forbid(unsafe_code)]
 //! Inspect a symbolic palette mix without loading or mixing a font palette.
-use surgeist_css::{
-    CssContributions, CssExpansion, CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent,
-    CssKnownPropertyValueRef, CssParser,
-};
+use surgeist_css::CssParser;
+use surgeist_css::property::{CssContributions, CssExpansion, CssKnownPropertyValueRef};
+use surgeist_css::values::font::{CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent};
 
 fn main() {
     let report = CssParser::default()

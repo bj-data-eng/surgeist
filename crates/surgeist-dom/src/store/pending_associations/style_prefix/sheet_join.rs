@@ -2,7 +2,8 @@
 use super::*;
 use crate::parsed_style::DomParsedHtmlStyleSheetError as Error;
 use crate::{DomCommit, DomStamp, DomStyleAssociationId, DomStyleCssomRoot, DomStyleSheet};
-use surgeist_css::{CssRecoveryDiagnostic, CssSourceRetention, CssSourceRetentionAction};
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::source::{CssSourceRetention, CssSourceRetentionAction};
 use surgeist_cssom::{
     CssomBatch, CssomCommit, CssomCommitRetirement, CssomContext, CssomEditGuard, CssomInputRole,
     CssomSheetConstruction, CssomSheetId, CssomSheetInputs, CssomSnapshot, CssomStore,
@@ -543,7 +544,7 @@ impl DomParsedHtmlStyleSheetPreparation<'_, '_, '_> {
         self.step(cancel)?;
         for rule in supplied.sheet.syntax().rules() {
             self.step(cancel)?;
-            if matches!(rule, surgeist_css::CssRule::Import(_)) {
+            if matches!(rule, surgeist_css::rule::CssRule::Import(_)) {
                 resources = crate::DomParsedHtmlStyleResources::ImportsUnresolved;
                 break;
             }
@@ -575,7 +576,7 @@ impl DomParsedHtmlStyleSheetPreparation<'_, '_, '_> {
     }
 }
 fn validate_source(
-    source: Option<&surgeist_css::CssParseSource>,
+    source: Option<&surgeist_css::source::CssParseSource>,
     expected: &[u16],
     mode: surgeist_html::HtmlDocumentMode,
     meter: &Meter,
@@ -658,7 +659,7 @@ fn admit_construction(
                 }
                 sources
                     .complete_payload_bytes_admitted()
-                    .map_err(|_| surgeist_css::CssSourceRetentionError::caller_admission())
+                    .map_err(|_| surgeist_css::source::CssSourceRetentionError::caller_admission())
             })(),
         }
     };

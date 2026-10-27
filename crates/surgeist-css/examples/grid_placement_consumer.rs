@@ -2,7 +2,10 @@
 
 //! A host may inspect authored Grid placement without resolving layout lines.
 
-use surgeist_css::{CssGridLine, CssKnownPropertyValueRef, CssParser, CssValueOrigin};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::layout::CssGridLine;
 
 fn main() {
     let report = CssParser::default()

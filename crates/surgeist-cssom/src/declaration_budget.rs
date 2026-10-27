@@ -1,6 +1,10 @@
 //! Conservative accounting for a composed declaration request.
 use crate::CssomError;
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValueLimits;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::property::{CssKnownProperty, CssPropertyKindRef};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssBoxSideKind;
 
 /// Work reserved for one composed source request. Each provider receives a disjoint allowance.
 #[derive(Clone, Copy, Debug)]

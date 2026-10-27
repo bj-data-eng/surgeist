@@ -2,10 +2,11 @@
 //! recovery discards malformed members. Retention diagnostics describe only
 //! functions surviving that recovery, not all lexically open functions.
 
-use surgeist_css::{
-    CssNamespaceContext, CssParsedStyleSelectors, CssParser, CssPseudoClass,
-    CssPseudoSelectorListItem, CssRecoveryAction, CssRecoveryDiagnostic, CssSelector,
-    CssStyleSelectorContext,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssPseudoClass, CssPseudoSelectorListItem,
+    CssSelector, CssStyleSelectorContext,
 };
 
 fn assert_retained_closures(

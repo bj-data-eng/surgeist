@@ -11,7 +11,22 @@ use crate::css::support::color_and_selector_fixtures::{
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{parsed_color as color, sole_declaration as declaration};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssAbsoluteColorEligibility, CssAbsoluteColorExclusion};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::background::CssBackground;
+use surgeist_css::values::effects::{CssMaskLayer, CssMaskList};
+use surgeist_css::values::image::{CssImage, CssImageValue};
 
 fn background(css: &str) -> CssBackground {
     let source = declaration(&format!("background:{css}"));

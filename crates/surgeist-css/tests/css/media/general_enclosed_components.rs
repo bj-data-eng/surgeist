@@ -1,7 +1,11 @@
-use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssConditionKind, CssParser,
-    CssRule, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
 };
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::CssRule;
 
 // Authored syntax preserves the complete opaque enclosure, including escapes,
 // comments and exact numeric spelling. Coordinates address the original sheet.
@@ -79,12 +83,12 @@ fn programmatic_function_preserves_parsed_child_and_delimiter_origins() {
     );
 }
 
-fn enclosed(source: &str) -> surgeist_css::CssGeneralEnclosed {
+fn enclosed(source: &str) -> surgeist_css::query::CssGeneralEnclosed {
     let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
     let [component] = values.items() else {
         panic!("expected exactly one component");
     };
-    surgeist_css::CssGeneralEnclosed::try_from_component(component.clone()).unwrap()
+    surgeist_css::query::CssGeneralEnclosed::try_from_component(component.clone()).unwrap()
 }
 
 #[test]
@@ -99,7 +103,7 @@ fn cloned_parsed_components_retain_the_complete_authored_slice_and_closure() {
     ] {
         let value = enclosed(source);
         let rebuilt =
-            surgeist_css::CssGeneralEnclosed::try_from_component(value.component().clone())
+            surgeist_css::query::CssGeneralEnclosed::try_from_component(value.component().clone())
                 .unwrap();
         assert_eq!(value.authored(), Some(source));
         assert_eq!(rebuilt.authored(), Some(source));
@@ -134,8 +138,8 @@ fn supplied_enclosures_have_no_fabricated_authored_span_even_with_parsed_childre
     let children = CssComponentValues::parse(&CssParser::default(), "1e+003").unwrap();
     let expected_origin = children.items()[0].origin().clone();
     for value in [
-        surgeist_css::CssGeneralEnclosed::try_function("future", children.clone()).unwrap(),
-        surgeist_css::CssGeneralEnclosed::try_parenthesized(children).unwrap(),
+        surgeist_css::query::CssGeneralEnclosed::try_function("future", children.clone()).unwrap(),
+        surgeist_css::query::CssGeneralEnclosed::try_parenthesized(children).unwrap(),
     ] {
         assert_eq!(value.authored(), None);
         assert_eq!(value.position(), None);
@@ -153,7 +157,7 @@ fn supplied_enclosures_have_no_fabricated_authored_span_even_with_parsed_childre
     }
     let empty = CssComponentValues::try_new(vec![], Default::default()).unwrap();
     assert_eq!(
-        surgeist_css::CssGeneralEnclosed::try_function("future", empty.clone())
+        surgeist_css::query::CssGeneralEnclosed::try_function("future", empty.clone())
             .unwrap()
             .serialize_tokens(Default::default())
             .unwrap()
@@ -161,7 +165,7 @@ fn supplied_enclosures_have_no_fabricated_authored_span_even_with_parsed_childre
         "future()"
     );
     assert_eq!(
-        surgeist_css::CssGeneralEnclosed::try_parenthesized(empty)
+        surgeist_css::query::CssGeneralEnclosed::try_parenthesized(empty)
             .unwrap()
             .serialize_tokens(Default::default())
             .unwrap()
@@ -176,11 +180,12 @@ fn wrong_outer_components_report_the_supplied_origin() {
         let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();
         let component = values.items()[0].clone();
         let origin = component.origin().clone();
-        let error = surgeist_css::CssGeneralEnclosed::try_from_component(component).unwrap_err();
+        let error =
+            surgeist_css::query::CssGeneralEnclosed::try_from_component(component).unwrap_err();
         assert!(error.is_wrong_outer_component());
         assert_eq!(error.origin(), &origin);
     }
-    let error = surgeist_css::CssGeneralEnclosed::try_from_component(
+    let error = surgeist_css::query::CssGeneralEnclosed::try_from_component(
         CssComponentValue::try_ident("x").unwrap(),
     )
     .unwrap_err();
@@ -190,7 +195,7 @@ fn wrong_outer_components_report_the_supplied_origin() {
 #[test]
 fn constructor_errors_preserve_component_syntax_and_depth_failures() {
     let empty = CssComponentValues::try_new(vec![], Default::default()).unwrap();
-    let error = surgeist_css::CssGeneralEnclosed::try_function("url", empty).unwrap_err();
+    let error = surgeist_css::query::CssGeneralEnclosed::try_function("url", empty).unwrap_err();
     let Some(component) = error.component_error() else {
         panic!("expected a component construction error");
     };
@@ -202,11 +207,14 @@ fn constructor_errors_preserve_component_syntax_and_depth_failures() {
     )
     .unwrap();
     for _ in 0..256 {
-        let block = CssComponentValue::try_block(surgeist_css::CssBlockKind::Parenthesis, children)
-            .unwrap();
+        let block = CssComponentValue::try_block(
+            surgeist_css::component::CssBlockKind::Parenthesis,
+            children,
+        )
+        .unwrap();
         children = CssComponentValues::try_new(vec![block], Default::default()).unwrap();
     }
-    let error = surgeist_css::CssGeneralEnclosed::try_parenthesized(children).unwrap_err();
+    let error = surgeist_css::query::CssGeneralEnclosed::try_parenthesized(children).unwrap_err();
     let Some(component) = error.component_error() else {
         panic!("expected the component depth limit");
     };
@@ -227,7 +235,7 @@ fn equality_compares_spelling_and_source_text_but_not_snapshot_identity() {
     assert!(!left.source().same_snapshot(right.source()));
     assert_ne!(first, enclosed("future(01.00000000000000000000000002)"));
     assert_ne!(enclosed("future(1)"), enclosed("future(1"));
-    let supplied = surgeist_css::CssGeneralEnclosed::try_function(
+    let supplied = surgeist_css::query::CssGeneralEnclosed::try_function(
         "future",
         CssComponentValues::try_new(
             vec![CssComponentValue::try_token("01.00000000000000000000000001").unwrap()],
@@ -291,7 +299,7 @@ fn supports_fallback_collects_only_its_own_enclosure_and_shares_the_sheet_snapsh
         );
         snapshots.push(origin.source());
         assert_eq!(
-            surgeist_css::CssGeneralEnclosed::try_from_component(value.component().clone())
+            surgeist_css::query::CssGeneralEnclosed::try_from_component(value.component().clone())
                 .unwrap(),
             *value
         );

@@ -1,7 +1,17 @@
 //! Detached Page declaration construction through the checked Page front.
 use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssDeclarationList, CssImportance,
+};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::page::CssPageBody;
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 const MARGINS: [CssKnownProperty; 5] = [
     CssKnownProperty::Margin,

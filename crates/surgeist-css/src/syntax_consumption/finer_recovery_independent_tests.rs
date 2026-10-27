@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 use super::*;
-use crate::{CssComponentValueLimits, CssHashFlag, CssNumericTokenKind};
+use crate::component::{CssComponentValueLimits, CssHashFlag, CssNumericTokenKind};
 
 fn origin_identity(actual: &CssValueOrigin, expected: &CssValueOrigin) {
     assert_eq!(actual, expected);
@@ -27,13 +27,13 @@ fn origin_identity(actual: &CssValueOrigin, expected: &CssValueOrigin) {
 
 #[test]
 fn direct_checked_and_native_promotion_preserves_payload_groups_and_origin_identity() {
-    let first = crate::component_values::parse_component_values("é").unwrap();
-    let second = crate::component_values::parse_component_values("é").unwrap();
-    let number = crate::component_values::parse_component_values("+01").unwrap();
-    let hash = crate::component_values::parse_component_values("#12").unwrap();
-    let function = crate::component_values::parse_component_values("f(a/**/b)").unwrap();
-    let block = crate::component_values::parse_component_values("{x}").unwrap();
-    let implicit_function = crate::component_values::parse_component_values("g(z").unwrap();
+    let first = crate::component::values::parse_component_values("é").unwrap();
+    let second = crate::component::values::parse_component_values("é").unwrap();
+    let number = crate::component::values::parse_component_values("+01").unwrap();
+    let hash = crate::component::values::parse_component_values("#12").unwrap();
+    let function = crate::component::values::parse_component_values("f(a/**/b)").unwrap();
+    let block = crate::component::values::parse_component_values("{x}").unwrap();
+    let implicit_function = crate::component::values::parse_component_values("g(z").unwrap();
     let values = [
         first.items()[0].clone(),
         second.items()[0].clone(),
@@ -51,7 +51,7 @@ fn direct_checked_and_native_promotion_preserves_payload_groups_and_origin_ident
         0,
     )
     .unwrap();
-    let promoted = crate::component_values::promote_nodes(
+    let promoted = crate::component::values::parse::promote_nodes(
         &document,
         &document.lists[document.root],
         CssComponentValueLimits::default(),
@@ -149,7 +149,7 @@ fn direct_checked_and_native_promotion_preserves_payload_groups_and_origin_ident
     for text in ["f(a/**/b){x}", "f(a"] {
         let snapshot = CssSourceSnapshot::new(text);
         let document = source_document(text, &snapshot, 0).unwrap();
-        let promoted = crate::component_values::promote_nodes(
+        let promoted = crate::component::values::parse::promote_nodes(
             &document,
             &document.lists[document.root],
             CssComponentValueLimits::default(),
@@ -229,7 +229,7 @@ fn direct_checked_and_native_promotion_preserves_payload_groups_and_origin_ident
             )
         })
         .unwrap();
-    let failure = crate::component_values::promote_nodes(
+    let failure = crate::component::values::parse::promote_nodes(
         &document,
         &[error_node],
         CssComponentValueLimits::default(),

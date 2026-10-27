@@ -1,23 +1,19 @@
 //! Iterative typed numerical lowering into the existing canonical evaluator.
 
-use super::super::{
-    expression::{
-        ExpressionDescriptor, ExpressionRecord, Number, NumericLeaf, OperandReference, Variable,
-    },
-    literal::{LiteralAction, LiteralConversion},
-    protocol::{
-        ColorProtocolError, CssColorBank, CssColorOperationOwner, CssColorSlot, Data, RecordTable,
-    },
+use super::super::expression::{
+    ExpressionDescriptor, ExpressionRecord, Number, NumericLeaf, OperandReference, Variable,
 };
-use super::CssColorPathStep;
+use super::super::literal::{LiteralAction, LiteralConversion};
 use super::input::Operand;
 use super::position::Position;
 use super::site::{SiteRecord, TraversalRecord};
 use super::spelling::{self, NameSpelling, NumberSpelling};
+use crate::color::CssColorPathStep;
+use crate::color::controlled::protocol::{ColorProtocolError, Data, RecordTable};
+use crate::color::controlled::{CssColorBank, CssColorOperationOwner, CssColorSlot};
+use crate::component::{CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
+use crate::numeric::{CssNumericLiteralRef, CssNumericType};
 use crate::numeric::{bounded_expression as engine, color_operands as tree};
-use crate::{
-    CssComponentValueRef, CssNumericLiteralRef, CssNumericType, CssValueOrigin, CssValueTokenRef,
-};
 
 #[derive(Clone, Copy)]
 pub(crate) struct Frame<'css> {
@@ -149,7 +145,7 @@ enum State<'css> {
     },
     ProfileName {
         frame: Frame<'css>,
-        name: &'css crate::CssColorProfileComponentName,
+        name: &'css crate::color::CssColorProfileComponentName,
     },
     Name {
         frame: Frame<'css>,
@@ -279,9 +275,11 @@ impl<'css> NumericLowering<'css> {
             State::Header { .. } => tree::header_bytes(),
             State::Child(frame) => tree::child_bytes(frame.header.kind),
             State::Syntax(_) => tree::syntax_item_bytes(),
-            State::Literal { .. } => std::mem::size_of::<crate::CssComponentValue>(),
-            State::ProfileName { .. } => std::mem::size_of::<crate::CssColorProfileComponentName>(),
-            State::Unit { unit, .. } => std::mem::size_of::<crate::CssComponentValue>()
+            State::Literal { .. } => std::mem::size_of::<crate::component::CssComponentValue>(),
+            State::ProfileName { .. } => {
+                std::mem::size_of::<crate::color::CssColorProfileComponentName>()
+            }
+            State::Unit { unit, .. } => std::mem::size_of::<crate::component::CssComponentValue>()
                 .checked_add(unit.map_or(0, str::len))
                 .ok_or(ColorProtocolError::Overflow)?,
             State::Number { .. } | State::Name { .. }
@@ -408,16 +406,20 @@ impl<'css> NumericLowering<'css> {
                 let matched = matches!(
                     (frame.operator, item.view()),
                     (
-                        tree::Operator::Sum(crate::CssCalculationSumOperator::Add),
+                        tree::Operator::Sum(crate::numeric::CssCalculationSumOperator::Add),
                         CssComponentValueRef::Token(CssValueTokenRef::Delim('+')),
                     ) | (
-                        tree::Operator::Sum(crate::CssCalculationSumOperator::Subtract),
+                        tree::Operator::Sum(crate::numeric::CssCalculationSumOperator::Subtract),
                         CssComponentValueRef::Token(CssValueTokenRef::Delim('-')),
                     ) | (
-                        tree::Operator::Product(crate::CssCalculationProductOperator::Multiply),
+                        tree::Operator::Product(
+                            crate::numeric::CssCalculationProductOperator::Multiply
+                        ),
                         CssComponentValueRef::Token(CssValueTokenRef::Delim('*')),
                     ) | (
-                        tree::Operator::Product(crate::CssCalculationProductOperator::Divide),
+                        tree::Operator::Product(
+                            crate::numeric::CssCalculationProductOperator::Divide
+                        ),
                         CssComponentValueRef::Token(CssValueTokenRef::Delim('/')),
                     )
                 );
@@ -460,7 +462,7 @@ impl<'css> NumericLowering<'css> {
                 let unit = literal.canonical_unit();
                 let percentage = literal
                     .numeric_type()
-                    .is(crate::CssNumericDimension::Percentage);
+                    .is(crate::numeric::CssNumericDimension::Percentage);
                 self.state = State::Number {
                     frame,
                     writer: NumberSpelling::start(
@@ -752,10 +754,10 @@ impl<'css> NumericLowering<'css> {
             Commit::Link { frame, root },
         )
     }
-    pub(super) fn kernel(&self) -> crate::color::CssColorKernel {
+    pub(super) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
         match &self.state {
             State::Convert { cursor, .. } => cursor.kernel(),
-            _ => crate::color::CssColorKernel::Transition,
+            _ => crate::color::controlled::CssColorKernel::Transition,
         }
     }
     pub(super) fn compute(&mut self) -> Result<(), ColorProtocolError> {
@@ -776,7 +778,7 @@ impl<'css> NumericLowering<'css> {
             State::Name { frame, writer } => {
                 if let spelling::Action::Done { record } = writer.action() {
                     let frame = *frame;
-                    let units = super::super::protocol::RecordRange {
+                    let units = crate::color::controlled::protocol::RecordRange {
                         start: writer.units_start(),
                         end: record,
                     };
@@ -966,13 +968,15 @@ mod tests {
     use crate::color::grammar::GrammarInput;
 
     /// The `<color>` the production `color` property parser admits for `source`.
-    fn production_color(source: &str) -> crate::CssColor {
+    fn production_color(source: &str) -> crate::color::CssColor {
         let report = crate::CssParser::default().parse_property_value(
             source,
-            crate::CssPropertyTextTarget::Property(crate::CssPropertyNameRef::Known(
-                crate::CssKnownProperty::Color,
-            )),
-            crate::CssImportance::Normal,
+            crate::property::CssPropertyTextTarget::Property(
+                crate::property::CssPropertyNameRef::Known(
+                    crate::property::CssKnownProperty::Color,
+                ),
+            ),
+            crate::declaration::CssImportance::Normal,
         );
         // CSS Syntax 3 (CRD 2026-10-01) §5.5.10 closes an unclosed function at
         // EOF as a parse error that retains the value.
@@ -981,12 +985,12 @@ mod tests {
                 .diagnostics()
                 .iter()
                 .all(|diagnostic| diagnostic.action()
-                    == crate::CssRecoveryAction::RetainWithImplicitClosure),
+                    == crate::diagnostic::CssRecoveryAction::RetainWithImplicitClosure),
             "{source}: {:?}",
             report.diagnostics()
         );
         let declaration = report.into_parts().0.expect("retained color value");
-        let Some(crate::CssKnownPropertyValueRef::Color(value)) =
+        let Some(crate::property::CssKnownPropertyValueRef::Color(value)) =
             declaration.known().and_then(|known| known.property_value())
         else {
             panic!("typed color: {declaration:?}");
@@ -1014,8 +1018,8 @@ mod tests {
             };
             let calculation = if recovered.is_none() {
                 Some(
-                    crate::CssCalculation::<crate::CssNumber>::try_from_components(
-                        crate::component_values::parse_component_values(source).unwrap(),
+                    crate::numeric::CssCalculation::<crate::numeric::CssNumber>::try_from_components(
+                        crate::component::values::parse_component_values(source).unwrap(),
                         Default::default(),
                     )
                     .unwrap(),
@@ -1024,7 +1028,7 @@ mod tests {
                 None
             };
             let node = if let Some(color) = &recovered {
-                let crate::CssColorComponent::NumberCalculation(value) =
+                let crate::color::CssColorComponent::NumberCalculation(value) =
                     &color.rgb_value().unwrap().channels()[2]
                 else {
                     panic!("original recovered calculation")

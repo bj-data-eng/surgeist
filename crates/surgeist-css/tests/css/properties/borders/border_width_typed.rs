@@ -2,7 +2,16 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_component_rejected;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{CssLength, CssNonNegative, CssNumeric, CssNumericDimension};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::border::{CssBorder, CssLineStyle, CssLineWidth};
+use surgeist_css::values::common::{CssBoxSideKind, CssFourSides, CssSidePair};
 
 fn length(number: &str, unit: &str) -> CssLineWidth {
     CssLineWidth::Length(

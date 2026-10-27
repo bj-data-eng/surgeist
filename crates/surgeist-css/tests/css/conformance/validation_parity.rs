@@ -1,7 +1,9 @@
-use surgeist_css::{
-    CssConditionKind, CssDeclarationList, CssErrorCode, CssMediaFeatureQuery, CssMediaLeaf,
-    CssMediaQuery, CssParseReport, CssParser, CssRecoveryAction, CssRule, CssSheet,
-};
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery};
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn assert_sheet_parity(source: &str) -> CssParseReport<CssSheet> {
     let ordinary = CssParser::default().parse_sheet(source);
@@ -207,7 +209,7 @@ fn validation_namespace_statement_eof_retains_the_same_payload_as_terminated_inp
     };
     assert_eq!(
         diagnostic.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         diagnostic.action(),
@@ -398,9 +400,9 @@ fn validation_page_rules_match_ordinary_retention_and_recovery() {
             .map(|declaration| declaration.known().unwrap().property())
             .collect::<Vec<_>>(),
         [
-            surgeist_css::CssKnownProperty::Color,
-            surgeist_css::CssKnownProperty::MarginTop,
-            surgeist_css::CssKnownProperty::MarginBottom
+            surgeist_css::property::CssKnownProperty::Color,
+            surgeist_css::property::CssKnownProperty::MarginTop,
+            surgeist_css::property::CssKnownProperty::MarginBottom
         ]
     );
 
@@ -418,7 +420,7 @@ fn validation_page_rules_match_ordinary_retention_and_recovery() {
     let [retained] = page.declarations().properties().as_slice() else {
         panic!("only valid negative margin remains")
     };
-    let surgeist_css::CssKnownPropertyValueRef::MarginBottom(value) =
+    let surgeist_css::property::CssKnownPropertyValueRef::MarginBottom(value) =
         retained.known().unwrap().property_value().unwrap()
     else {
         panic!("negative physical margin")

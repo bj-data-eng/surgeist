@@ -1,7 +1,10 @@
 //! Existing-callable admission oracles from Selectors4 WD20260122 §3.10 and
 //! normative Appendix B. Unknown nonfunctional -webkit- pseudo-elements are
 //! valid authored selectors; their match-nothing meaning is downstream.
-use surgeist_css::{CssNamespaceContext, CssParser, CssRecoveryAction, CssRule, CssSelector};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
 
 fn admitted(source: &str) {
     let selector = CssSelector::parse(

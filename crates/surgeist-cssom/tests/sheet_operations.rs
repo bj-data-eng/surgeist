@@ -1,6 +1,10 @@
 //! Public consumer expectations from the selected CSSOM §6.1/§6.2 sheet algorithms.
-use surgeist_css::CssRule;
-use surgeist_css::*;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::CssSheet;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 use surgeist_cssom::*;
 
 fn version(role: CssomInputRole, identity: &str, revision: u64) -> CssomInputVersion {

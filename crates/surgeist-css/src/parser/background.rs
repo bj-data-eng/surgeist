@@ -7,7 +7,8 @@ use super::side_shapes::parse_auto_or;
 use super::values::{
     parse_length_percentage, parse_nonnegative_length, parse_nonnegative_length_percentage,
 };
-use crate::error::property::{CssFeatureId, Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::CssFeatureId;
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
 use super::position::{
@@ -15,11 +16,36 @@ use super::position::{
 };
 use super::url::parse_url;
 use super::values::{
-    CalculationRoot, next_is_comma, parse_hinted_number_calculation, parse_nonnegative_number,
+    next_is_comma, parse_hinted_number_calculation, parse_nonnegative_number,
     parse_nonnegative_percentage,
 };
-use crate::CssAutoOr;
-use crate::syntax::*;
+use crate::color::CssColorInterpolation;
+use crate::numeric::expression::CalculationRoot;
+use crate::numeric::{CssLength, CssLengthPercentage, CssNonNegative, CssNumeric};
+use crate::values::background::{
+    CssBackground, CssBackgroundAttachment, CssBackgroundAttachmentList, CssBackgroundBox,
+    CssBackgroundBoxList, CssBackgroundLayer, CssBackgroundLayerBoxes, CssBackgroundRepeat,
+    CssBackgroundRepeatList, CssBackgroundRepeatStyle, CssBackgroundSize, CssBackgroundSizeList,
+};
+use crate::values::border::{
+    CssBorderImage, CssBorderImageOutset, CssBorderImageOutsetComponent, CssBorderImageRepeat,
+    CssBorderImageRepeatKeyword, CssBorderImageSlice, CssBorderImageSliceComponent,
+    CssBorderImageWidth, CssBorderImageWidthComponent,
+};
+use crate::values::common::CssAutoOr;
+use crate::values::effects::{CssFilterImage, CssFilterImageInput, CssFilterImageString};
+use crate::values::image::{
+    CssAngularColorStop, CssAngularColorStopList, CssAngularColorStopListItem,
+    CssAngularColorStopPosition, CssColorStopList, CssColorStopListItem, CssConicGradient,
+    CssGradient, CssGradientColorStop, CssHorizontalGradientSide, CssImage,
+    CssImageConstructionError, CssImageOrientation, CssImageRendering, CssImageValue,
+    CssImageValueList, CssLightDarkImage, CssLinearGradient, CssLinearGradientDirection,
+    CssObjectFit, CssRadialEllipseSize, CssRadialExtent, CssRadialGradient, CssRadialShape,
+    CssRadialSize, CssSideOrCorner, CssVerticalGradientSide,
+};
+use crate::values::position::CssPosition;
+#[cfg(test)]
+use crate::values::position::{CssCartesianPosition, CssHorizontalPosition, CssVerticalPosition};
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("official.value.position"),
@@ -50,17 +76,17 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("interop.value.light-dark-image"),
 ];
 
-pub(super) fn parse_image_layer_list<'i, 't>(
+pub(crate) fn parse_image_layer_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssImageValueList, ParseError<'i, Error>> {
     let images = input.parse_comma_separated(|input| parse_image_value(input, numeric))?;
     CssImageValueList::try_new(images).ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_background<'i, 't>(
+pub(crate) fn parse_background<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackground, ParseError<'i, Error>> {
     // List post-condition: only the final layer may carry the color, so a
     // color is rejected as soon as another layer follows it.
@@ -79,7 +105,7 @@ pub(super) fn parse_background<'i, 't>(
 
 fn parse_background_layer<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<
     (CssBackgroundLayer, Option<super::property_input::Site<'i>>),
     ParseError<'i, Error>,
@@ -107,7 +133,9 @@ fn parse_background_layer<'i, 't>(
                         image = Some(value);
                         Ok(true)
                     }
-                    Err(error) if crate::error::property::is_resource_parse_error(&error) => {
+                    Err(error)
+                        if crate::diagnostic::error::property::is_resource_parse_error(&error) =>
+                    {
                         Err(error)
                     }
                     Err(_) if next_is_light_dark(input) => Ok(false),
@@ -227,7 +255,7 @@ pub(super) fn parse_background_repeat<'i, 't>(
 /// to the caller's boundary (list comma or shorthand group).
 pub(super) fn parse_background_size<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundSize, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
     let state = input.state();
@@ -250,7 +278,7 @@ pub(super) fn parse_background_size<'i, 't>(
 /// Parses one image-only value through the canonical complete graph boundary.
 pub(super) fn parse_image<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssImage, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
@@ -270,20 +298,23 @@ fn image_construction_error<'i>(
     let kind = if error.is_not_image() {
         return unexpected_at(location);
     } else if error.is_nesting_limit() {
-        crate::CssComponentValueErrorKind::NestingLimit
+        crate::component::values::CssComponentValueErrorKind::NestingLimit
     } else {
         debug_assert!(error.is_capacity_overflow(), "{error:?}");
-        crate::CssComponentValueErrorKind::CapacityOverflow
+        crate::component::values::CssComponentValueErrorKind::CapacityOverflow
     };
-    crate::error::property::invalid_component_value(
+    crate::diagnostic::error::property::invalid_component_value(
         location,
-        crate::CssComponentValueError::new(kind, start.value_origin().expect("image token origin")),
+        crate::component::CssComponentValueError::new(
+            kind,
+            start.value_origin().expect("image token origin"),
+        ),
     )
 }
 
 pub(super) fn parse_image_value<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssImageValue, ParseError<'i, Error>> {
     let state = input.state();
     let filter =
@@ -309,7 +340,7 @@ pub(super) fn parse_image_value<'i, 't>(
                     error.component_error().map_or_else(
                         || unexpected_at(location),
                         |detail| {
-                            crate::error::property::invalid_component_value(
+                            crate::diagnostic::error::property::invalid_component_value(
                                 location,
                                 detail.clone(),
                             )
@@ -318,7 +349,10 @@ pub(super) fn parse_image_value<'i, 't>(
                 })?;
                 let string =
                     CssFilterImageString::try_from_component(component).map_err(|error| {
-                        crate::error::property::invalid_component_value(string_location, error)
+                        crate::diagnostic::error::property::invalid_component_value(
+                            string_location,
+                            error,
+                        )
                     })?;
                 CssFilterImageInput::from_string(string)
             } else {
@@ -365,16 +399,16 @@ fn next_is_light_dark(input: &mut Parser<'_, '_>) -> bool {
     result
 }
 
-pub(super) fn parse_border_image_source<'i, 't>(
+pub(crate) fn parse_border_image_source<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssImageValue, ParseError<'i, Error>> {
     parse_image_value(input, numeric)
 }
 
-pub(super) fn parse_border_image_slice<'i, 't>(
+pub(crate) fn parse_border_image_slice<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageSlice, ParseError<'i, Error>> {
     let mut values = Vec::new();
     let mut fill = input
@@ -402,7 +436,7 @@ pub(super) fn parse_border_image_slice<'i, 't>(
 
 pub(super) fn parse_border_image_slice_component<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageSliceComponent, ParseError<'i, Error>> {
     if let Ok(calculation) =
         input.try_parse(|input| parse_hinted_number_calculation(input, numeric))
@@ -419,9 +453,9 @@ pub(super) fn parse_border_image_slice_component<'i, 't>(
 
 /// `[ <length-percentage [0,∞]> | <number [0,∞]> | auto ]{1,4}`, leaving a
 /// following component to the caller's boundary.
-pub(super) fn parse_border_image_width<'i, 't>(
+pub(crate) fn parse_border_image_width<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageWidth, ParseError<'i, Error>> {
     let values = repeat_up_to(input, 4, |input| {
         parse_border_image_width_component(input, numeric)
@@ -448,7 +482,7 @@ fn repeat_up_to<'i, 't, T>(
 
 fn parse_border_image_width_component<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageWidthComponent, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
@@ -470,9 +504,9 @@ fn parse_border_image_width_component<'i, 't>(
         .map(CssBorderImageWidthComponent::LengthPercentage)
 }
 
-pub(super) fn parse_border_image_outset<'i, 't>(
+pub(crate) fn parse_border_image_outset<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageOutset, ParseError<'i, Error>> {
     // `[ <length [0,∞]> | <number [0,∞]> ]{1,4}`, leaving a following
     // component to the caller's boundary.
@@ -485,7 +519,7 @@ pub(super) fn parse_border_image_outset<'i, 't>(
 
 fn parse_border_image_outset_component<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImageOutsetComponent, ParseError<'i, Error>> {
     if let Ok(number) = input.try_parse(|input| parse_nonnegative_number(input, numeric)) {
         return Ok(CssBorderImageOutsetComponent::Number(number));
@@ -493,7 +527,7 @@ fn parse_border_image_outset_component<'i, 't>(
     parse_nonnegative_length(input, numeric).map(CssBorderImageOutsetComponent::Length)
 }
 
-pub(super) fn parse_border_image_repeat<'i, 't>(
+pub(crate) fn parse_border_image_repeat<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBorderImageRepeat, ParseError<'i, Error>> {
     // `[ stretch | repeat | round | space ]{1,2}`, leaving a following
@@ -536,16 +570,16 @@ pub(super) fn next_starts_border_image_slice<'i, 't>(input: &mut Parser<'i, 't>)
     let starts = match input.next() {
         Ok(Token::Number { .. } | Token::Percentage { .. }) => true,
         Ok(Token::Ident(value)) => value.eq_ignore_ascii_case("fill"),
-        Ok(Token::Function(name)) => crate::numeric::is_math_function(name),
+        Ok(Token::Function(name)) => crate::numeric::expression::is_math_function(name),
         Ok(_) | Err(_) => false,
     };
     input.reset(&state);
     starts
 }
 
-pub(super) fn parse_border_image<'i, 't>(
+pub(crate) fn parse_border_image<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssBorderImage, ParseError<'i, Error>> {
     // `<'border-image-source'> || <'border-image-slice'> [ /
     // <'border-image-width'> | / <'border-image-width'>? /
@@ -592,9 +626,9 @@ pub(super) fn parse_border_image<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_image_orientation<'i, 't>(
+pub(crate) fn parse_image_orientation<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssImageOrientation, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("from-image"))
@@ -630,7 +664,7 @@ pub(super) fn parse_image_orientation<'i, 't>(
     }
 }
 
-pub(super) fn parse_image_rendering<'i, 't>(
+pub(crate) fn parse_image_rendering<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssImageRendering, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -647,7 +681,7 @@ pub(super) fn parse_image_rendering<'i, 't>(
     }
 }
 
-pub(super) fn parse_object_fit<'i, 't>(
+pub(crate) fn parse_object_fit<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssObjectFit, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -682,7 +716,7 @@ fn next_is_gradient<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
 
 fn parse_gradient<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssGradient, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let name = input.expect_function().map_err(basic)?.to_ascii_lowercase();
@@ -708,7 +742,7 @@ fn parse_gradient<'i, 't>(
 
 fn parse_linear_gradient<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssLinearGradient, ParseError<'i, Error>> {
     let mut interpolation = parse_optional_gradient_interpolation(input)?;
     let direction = next_starts_linear_gradient_direction(input)
@@ -742,7 +776,7 @@ fn next_starts_linear_gradient_direction<'i, 't>(input: &mut Parser<'i, 't>) -> 
     let starts = match input.next() {
         Ok(Token::Ident(value)) => value.eq_ignore_ascii_case("to"),
         Ok(Token::Number { .. } | Token::Dimension { .. }) => true,
-        Ok(Token::Function(name)) => crate::numeric::is_math_function(name),
+        Ok(Token::Function(name)) => crate::numeric::expression::is_math_function(name),
         Ok(_) | Err(_) => false,
     };
     input.reset(&state);
@@ -751,7 +785,7 @@ fn next_starts_linear_gradient_direction<'i, 't>(input: &mut Parser<'i, 't>) -> 
 
 fn parse_linear_gradient_direction<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssLinearGradientDirection, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("to"))
@@ -797,7 +831,7 @@ fn parse_side_or_corner<'i, 't>(
 
 fn parse_color_stop_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssColorStopList, ParseError<'i, Error>> {
     let mut items = vec![CssColorStopListItem::Stop(Box::new(
         parse_gradient_color_stop(input, numeric)?,
@@ -824,7 +858,7 @@ fn parse_color_stop_list<'i, 't>(
 
 fn parse_gradient_color_stop<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssGradientColorStop, ParseError<'i, Error>> {
     let color = parse_color(input, numeric)?;
     let mut positions = Vec::new();
@@ -842,7 +876,7 @@ fn parse_gradient_color_stop<'i, 't>(
 
 fn parse_gradient_line_position<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssNumeric<CssLengthPercentage>, ParseError<'i, Error>> {
     parse_length_percentage(input, numeric)
 }
@@ -852,7 +886,7 @@ enum ParsedRadialSize<'i> {
     Extent(CssRadialExtent),
     Explicit {
         values: Vec<(
-            Cow<'i, crate::CssComponentValue>,
+            Cow<'i, crate::component::CssComponentValue>,
             super::property_input::Site<'i>,
         )>,
         location: super::property_input::Site<'i>,
@@ -861,7 +895,7 @@ enum ParsedRadialSize<'i> {
 
 fn parse_radial_gradient<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssRadialGradient, ParseError<'i, Error>> {
     let mut interpolation = parse_optional_gradient_interpolation(input)?;
     let prelude = if next_starts_radial_prelude(input) {
@@ -898,7 +932,7 @@ fn next_starts_radial_prelude<'i, 't>(input: &mut Parser<'i, 't>) -> bool {
         ),
         Ok(Token::Dimension { .. } | Token::Percentage { .. }) => true,
         Ok(Token::Number { value, .. }) => *value == 0.0,
-        Ok(Token::Function(name)) => crate::numeric::is_math_function(name),
+        Ok(Token::Function(name)) => crate::numeric::expression::is_math_function(name),
         Ok(_) | Err(_) => false,
     };
     input.reset(&state);
@@ -913,7 +947,7 @@ type RadialPrelude = (
 
 fn parse_radial_gradient_prelude<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<RadialPrelude, ParseError<'i, Error>> {
     let start = input.current_source_location();
     let mut shape = None;
@@ -962,7 +996,7 @@ fn parse_radial_gradient_prelude<'i, 't>(
 
 fn parse_conic_gradient<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssConicGradient, ParseError<'i, Error>> {
     let mut interpolation = parse_optional_gradient_interpolation(input)?;
     let from = if input
@@ -1012,7 +1046,7 @@ fn parse_conic_gradient<'i, 't>(
 
 fn parse_angular_color_stop<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssAngularColorStop, ParseError<'i, Error>> {
     let color = parse_color(input, numeric)?;
     let mut positions = Vec::new();
@@ -1029,7 +1063,7 @@ fn parse_angular_color_stop<'i, 't>(
 
 fn parse_angular_position<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssAngularColorStopPosition, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
@@ -1072,7 +1106,7 @@ fn parse_radial_size_component<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<
     (
-        Cow<'i, crate::CssComponentValue>,
+        Cow<'i, crate::component::CssComponentValue>,
         super::property_input::Site<'i>,
     ),
     ParseError<'i, Error>,
@@ -1082,7 +1116,7 @@ fn parse_radial_size_component<'i, 't>(
     let location = input.current_source_location();
     match input.next().map_err(basic)? {
         Token::Number { .. } | Token::Dimension { .. } | Token::Percentage { .. } => {}
-        Token::Function(name) if crate::numeric::is_math_function(name) => {}
+        Token::Function(name) if crate::numeric::expression::is_math_function(name) => {}
         token => return Err(location.new_unexpected_token_error::<Error>(token.clone())),
     }
     input.reset(&state);
@@ -1109,7 +1143,7 @@ fn parse_radial_extent<'i, 't>(
 fn validate_radial_size<'i>(
     shape: Option<CssRadialShape>,
     size: ParsedRadialSize<'i>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssRadialSize, ParseError<'i, Error>> {
     match size {
         ParsedRadialSize::Extent(extent) => Ok(CssRadialSize::Extent(extent)),
@@ -1117,42 +1151,47 @@ fn validate_radial_size<'i>(
             let mut values = values.into_iter();
             let value = match (values.next(), values.next(), values.next()) {
                 (Some((radius, radius_location)), None, None) => {
-                    let radius =
-                        if matches!(radius.view(), crate::CssComponentValueRef::Function(_)) {
-                            let components = crate::numeric::CalculationComponents::single(radius)
+                    let radius = if matches!(
+                        radius.view(),
+                        crate::component::CssComponentValueRef::Function(_)
+                    ) {
+                        let components =
+                            crate::numeric::expression::CalculationComponents::single(radius)
                                 .expect("one radial operand");
-                            let expression = numeric
-                                .admit(components, CalculationRoot::Length)
-                                .map_err(|_| unexpected_at(radius_location))?;
-                            CssNumeric::<CssLength, CssNonNegative>::from_parser_calculation(
-                                crate::CssCalculation::<crate::CssLength>::from_expression(
+                        let expression = numeric
+                            .admit(components, CalculationRoot::Length)
+                            .map_err(|_| unexpected_at(radius_location))?;
+                        CssNumeric::<CssLength, CssNonNegative>::from_parser_calculation(
+                                crate::numeric::CssCalculation::<crate::numeric::CssLength>::from_expression(
                                     expression,
                                 ),
                             )
-                        } else {
-                            CssNumeric::<CssLength, CssNonNegative>::try_from_component(
-                                radius.into_owned(),
-                            )
-                        };
+                    } else {
+                        CssNumeric::<CssLength, CssNonNegative>::try_from_component(
+                            radius.into_owned(),
+                        )
+                    };
                     CssRadialSize::Circle(radius.map_err(|_| unexpected_at(radius_location))?)
                 }
                 (Some(horizontal), Some(vertical), None) => {
                     let admit = |(component, component_location): (
-                        Cow<'i, crate::CssComponentValue>,
+                        Cow<'i, crate::component::CssComponentValue>,
                         super::property_input::Site<'i>,
                     )| {
                         let value = if matches!(
                             component.view(),
-                            crate::CssComponentValueRef::Function(_)
+                            crate::component::CssComponentValueRef::Function(_)
                         ) {
                             let components =
-                                crate::numeric::CalculationComponents::single(component)
-                                    .expect("one radial operand");
+                                crate::numeric::expression::CalculationComponents::single(
+                                    component,
+                                )
+                                .expect("one radial operand");
                             let expression = numeric
                                 .admit(components, CalculationRoot::LengthPercentage)
                                 .map_err(|_| unexpected_at(component_location))?;
                             CssNumeric::<CssLengthPercentage, CssNonNegative>::from_parser_calculation(
-                                    crate::CssCalculation::<crate::CssLengthPercentage>::from_expression(
+                                    crate::numeric::CssCalculation::<crate::numeric::CssLengthPercentage>::from_expression(
                                         expression,
                                     ),
                                 )
@@ -1179,9 +1218,9 @@ fn validate_radial_size<'i>(
     }
 }
 
-pub(super) fn parse_background_size_list<'i, 't>(
+pub(crate) fn parse_background_size_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssBackgroundSizeList, ParseError<'i, Error>> {
     let sizes = input.parse_comma_separated(|input| parse_background_size(input, numeric))?;
     CssBackgroundSizeList::try_new(sizes)
@@ -1190,7 +1229,7 @@ pub(super) fn parse_background_size_list<'i, 't>(
 
 pub(super) fn parse_background_size_component<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<
     CssAutoOr<CssNumeric<CssLengthPercentage, CssNonNegative>>,
     ParseError<'i, Error>,
@@ -1200,7 +1239,7 @@ pub(super) fn parse_background_size_component<'i, 't>(
     })
 }
 
-pub(super) fn parse_background_repeat_list<'i, 't>(
+pub(crate) fn parse_background_repeat_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBackgroundRepeatList, ParseError<'i, Error>> {
     let repeats = input.parse_comma_separated(parse_background_repeat)?;
@@ -1236,7 +1275,7 @@ pub(super) fn parse_background_box<'i, 't>(
     }
 }
 
-pub(super) fn parse_background_box_list<'i, 't>(
+pub(crate) fn parse_background_box_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBackgroundBoxList, ParseError<'i, Error>> {
     let boxes = input.parse_comma_separated(|input| parse_background_box(input))?;
@@ -1244,7 +1283,7 @@ pub(super) fn parse_background_box_list<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_background_attachment_list<'i, 't>(
+pub(crate) fn parse_background_attachment_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBackgroundAttachmentList, ParseError<'i, Error>> {
     let attachments = input.parse_comma_separated(|input| parse_background_attachment(input))?;
@@ -1272,8 +1311,8 @@ mod tests {
     use super::*;
 
     fn parse_position(source: &str) -> CssCartesianPosition {
-        let snapshot = crate::CssSourceSnapshot::new(source);
-        let numeric = crate::numeric::NumericInputContext::parsed(&snapshot);
+        let snapshot = crate::source::CssSourceSnapshot::new(source);
+        let numeric = crate::numeric::expression::NumericInputContext::parsed(&snapshot);
         let document = crate::syntax_consumption::source_document(source, &snapshot, 0)
             .expect("position source document");
         let mut parser = Parser::new(&document);
@@ -1281,7 +1320,7 @@ mod tests {
         parser
             .expect_exhausted()
             .expect("complete generic position");
-        let crate::CssPositionRef::Cartesian(cartesian) = value.view() else {
+        let crate::values::position::CssPositionRef::Cartesian(cartesian) = value.view() else {
             panic!("physical keywords form a Cartesian position");
         };
         cartesian.clone()
@@ -1297,12 +1336,12 @@ mod tests {
         assert!(matches!(
             free.horizontal(),
             CssHorizontalPosition::Offset(offset)
-                if matches!(offset.literal_component().unwrap().view(), crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(number)) if number.representation() == "25")
+                if matches!(offset.literal_component().unwrap().view(), crate::component::CssComponentValueRef::Token(crate::component::CssValueTokenRef::Percentage(number)) if number.representation() == "25")
         ));
         assert!(matches!(
             free.vertical(),
             CssVerticalPosition::Offset(offset)
-                if matches!(offset.literal_component().unwrap().view(), crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
+                if matches!(offset.literal_component().unwrap().view(), crate::component::CssComponentValueRef::Token(crate::component::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
         ));
     }
 
@@ -1313,12 +1352,12 @@ mod tests {
             assert!(matches!(
                 position.horizontal(),
                 CssHorizontalPosition::LeftOffset(offset)
-                    if matches!(offset.literal_component().unwrap().view(), crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
+                    if matches!(offset.literal_component().unwrap().view(), crate::component::CssComponentValueRef::Token(crate::component::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
             ));
             assert!(matches!(
                 position.vertical(),
                 CssVerticalPosition::BottomOffset(offset)
-                    if matches!(offset.literal_component().unwrap().view(), crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Percentage(number)) if number.representation() == "20")
+                    if matches!(offset.literal_component().unwrap().view(), crate::component::CssComponentValueRef::Token(crate::component::CssValueTokenRef::Percentage(number)) if number.representation() == "20")
             ));
         }
 

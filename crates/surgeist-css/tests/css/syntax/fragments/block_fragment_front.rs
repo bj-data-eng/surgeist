@@ -4,7 +4,20 @@
 //! A body reads only the part of `CssBlockContext` it names; a rule list reads
 //! its namespace bindings and style ancestry, and every other body reads nothing.
 //! A feature-value definition block takes its kind as an argument.
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssKnownProperty, CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget,
+};
+use surgeist_css::rule::font_feature_values::{CssFontFeatureValueBlock, CssFontFeatureValueKind};
+use surgeist_css::rule::keyframes::CssKeyframeDeclarationList;
+use surgeist_css::rule::page::CssPageBody;
+use surgeist_css::rule::{
+    CssBlockContext, CssBlockFragment, CssNamespaceName, CssNamespacePrefix, CssRuleList,
+    CssStyleAncestor,
+};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 fn parser() -> CssParser {
     CssParser::default()

@@ -9,16 +9,26 @@ use crate::css::support::authored_syntax::{
 };
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::{
-    CssBlockKind, CssComponentValueRef, CssComponentValues, CssConditionKind,
-    CssCustomPropertyName, CssDeclaration, CssErrorCode, CssGeneralEnclosed, CssImportance,
-    CssKnownProperty, CssKnownPropertyValueRef, CssMediaLeaf, CssMediaQuery, CssMediaQueryList,
-    CssMediaType, CssNamespaceContext, CssParser, CssPropertyNameRef, CssPropertyTarget,
-    CssPropertyTextTarget, CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsDeclaration,
-    CssValueOrigin, CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssBlockKind, CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+    CssValueTokenRef,
 };
+use surgeist_css::declaration::{CssCustomPropertyName, CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery, CssMediaQueryList, CssMediaType};
+use surgeist_css::query::supports::CssSupportsDeclaration;
+use surgeist_css::query::{CssConditionKind, CssGeneralEnclosed};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssNamespaceContext;
 
-fn width(source: &str) -> surgeist_css::CssParseReport<Option<surgeist_css::CssDeclaration>> {
+fn width(
+    source: &str,
+) -> surgeist_css::CssParseReport<Option<surgeist_css::declaration::CssDeclaration>> {
     CssParser::default().parse_property_value(
         source,
         CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),
@@ -36,7 +46,7 @@ fn opaque(query: &CssMediaQuery) -> &CssGeneralEnclosed {
     value
 }
 
-fn root_punctuation(component: &surgeist_css::CssComponentValue) {
+fn root_punctuation(component: &surgeist_css::component::CssComponentValue) {
     let contents = match component.view() {
         CssComponentValueRef::Function(function) => function.values(),
         CssComponentValueRef::Block(block) => block.values(),

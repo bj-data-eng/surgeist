@@ -3,7 +3,21 @@ use crate::css::support::component_values as components;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use crate::css::support::{checked_color as color, declaration_color};
-use surgeist_css::*;
+use surgeist_css::color::{
+    CssAbsoluteColorEligibility, CssColor, CssColorComponent, CssColorNumberLiteral,
+    CssColorPercentageLiteral, CssColorProfileComponentName, CssColorProfileName, CssCustomColor,
+    CssProfileColorExpression, CssProfileColorExpressionRef, CssRelativeCustomColor,
+};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssNumber, CssNumericConstant,
+    CssPercentage,
+};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::{CssParser, CssParserContext};
 
 fn expression(text: &str) -> CssProfileColorExpression {
     CssProfileColorExpression::try_from_components(components(text)).unwrap()

@@ -3,12 +3,15 @@
 //! Values4 §11.12 and §5.2.1 defer integer rounding (half toward +infinity)
 //! and numeric range clamping to computed/used values, preserving specified math.
 
-use surgeist_css::{
-    CssComponentValueLimits, CssComponentValues, CssCounterStyleDescriptorKind as Kind,
-    CssCounterStyleDescriptorValue as Value, CssCounterStyleDescriptorValue,
-    CssCounterStyleDescriptorValueRef as View, CssCounterStyleRule, CssErrorCode, CssParser,
-    CssRecoveryAction, CssRule, CssSerializationLimits as SerializationLimits,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind as Kind;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorValue as Value;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorValueRef as View;
+use surgeist_css::rule::counter_style::{CssCounterStyleDescriptorValue, CssCounterStyleRule};
+use surgeist_css::serialization::CssSerializationLimits as SerializationLimits;
 
 fn rule(body: &str) -> CssCounterStyleRule {
     let source = format!("@counter-style Math {{ {body} }}");

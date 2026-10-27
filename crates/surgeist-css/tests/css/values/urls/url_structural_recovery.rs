@@ -5,10 +5,10 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-url-token
 
 use crate::css::support::value_assertions::assert_first_diagnostic;
-use surgeist_css::{
-    CssErrorCode, CssFontFaceSource, CssParseReport, CssParser, CssRecoveryAction, CssRule,
-    CssSheet,
-};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::font_face::CssFontFaceSource;
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn assert_url(source: &str, expected: &str) -> CssParseReport<CssSheet> {
     let report = CssParser::default().parse_sheet(source);

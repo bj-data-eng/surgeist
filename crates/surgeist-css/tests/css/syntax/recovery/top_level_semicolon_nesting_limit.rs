@@ -7,7 +7,8 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-at-rule
-use surgeist_css::{CssErrorCode, CssParser, CssRecoveryAction};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
 
 const LIMIT: usize = 256;
 

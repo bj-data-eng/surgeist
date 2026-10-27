@@ -10,10 +10,26 @@ use crate::css::support::authored_property;
 use crate::css::support::authored_property::parsed;
 use crate::css::support::failure_classes::SerializationFailure as K;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssDeclaration, CssKnownProperty as P, CssParser,
-    CssRule, CssSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::conformance::{
+    CssSupportStatus, property_support_metadata, specification_source,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::normalize::{CssNormalizationLimits, CssNormalizedItem};
+use surgeist_css::numeric::CssAngleUnit;
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandContributions, CssLonghandValueRef, CssPendingSubstitution,
+    CssPropertyKindRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::image::{CssImageOrientation, CssImageRendering, CssObjectFit};
+use surgeist_css::values::position::{CssHorizontalPosition, CssVerticalPosition};
 
 // Specialized rendering identity/output cases; generic property/initial inventory
 // remains in the shared independent common records.

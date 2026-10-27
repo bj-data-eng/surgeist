@@ -12,7 +12,14 @@ use crate::css::support::descriptor_phases;
 use crate::css::support::rules::{invalid_descriptor, rejected_bang};
 use descriptor_phases::*;
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssError, CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureValueBlock, CssFontFeatureValueDefinition, CssFontFeatureValueIndex,
+    CssFontFeatureValueKind, CssFontFeatureValueName, CssFontFeatureValuesItem,
+};
 
 type Block = CssFontFeatureValueBlock;
 type Definition = CssFontFeatureValueDefinition;

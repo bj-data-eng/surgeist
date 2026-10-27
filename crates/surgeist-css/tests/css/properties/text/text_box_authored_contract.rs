@@ -11,7 +11,22 @@
 //! its later functional implementation. Auto stays symbolic; font metrics,
 //! line-fit-edge execution and trimming are outside this authored contract.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandContribution, CssLonghandContributions, CssPropertyGrammar, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTextTarget, CssPropertyValueError,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 use crate::css::support::authored_property;
 use crate::css::support::failure_classes::serialization_failure;

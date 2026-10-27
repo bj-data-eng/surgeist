@@ -4,8 +4,8 @@
 //! the location of a surplus value and the `auto` keyword are decided here once.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, unexpected_at};
-use crate::{CssAutoOr, CssBoxSideKind, CssFourSides, CssSidePair};
+use crate::diagnostic::error::property::{Error, ParseError, unexpected_at};
+use crate::values::common::{CssAutoOr, CssBoxSideKind, CssFourSides, CssSidePair};
 
 /// Consumes an optional leading `logical` and returns the side assignment it selects.
 pub(super) fn parse_side_kind<'i, 't>(input: &mut Parser<'i, 't>) -> CssBoxSideKind {

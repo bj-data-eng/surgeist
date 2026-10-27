@@ -1,7 +1,8 @@
-use surgeist_css::{
-    CssErrorCode, CssImageValue, CssKnownProperty, CssKnownPropertyValueRef, CssParser,
-    CssPropertyNameRef, CssRecoveryAction, CssRule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::image::CssImageValue;
 
 #[derive(Clone, Copy)]
 struct InvalidDeclaration {
@@ -406,7 +407,7 @@ const fn last_case(
     }
 }
 
-fn property_names(declarations: &surgeist_css::CssDeclarationList) -> Vec<&str> {
+fn property_names(declarations: &surgeist_css::declaration::CssDeclarationList) -> Vec<&str> {
     declarations
         .iter()
         .map(|declaration| match declaration.property_name() {

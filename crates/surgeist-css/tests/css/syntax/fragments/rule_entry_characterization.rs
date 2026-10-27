@@ -1,9 +1,12 @@
 //! Selected Syntax 3 (2026-10-01) §§5, 5.4.6, 5.5.1–5.5.3.
 //! Existing string fronts only; supplied token/component consumers are separate.
-use surgeist_css::{
-    CssConditionKind, CssErrorCode, CssImportTarget, CssImportance, CssNamespaceContext, CssParser,
-    CssRecoveryAction, CssRule, CssSelector, CssSupportsLeaf, CssTokenKind,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::{CssImportTarget, CssRule};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
 
 fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
     let CssRule::Style(style) = rule else {

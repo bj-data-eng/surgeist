@@ -5,7 +5,22 @@
 //! This checks authored grammar and intrinsic lifecycle, not filter execution.
 
 use crate::css::support::property_admission::validated_known_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{
+    CssSpecificationTier, CssSupportStatus, property_support_metadata, specification_source,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssPropertyKindRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::effects::{CssFilter, CssFilterAmount, CssFilterFunction};
 
 const BACKDROP_SOURCE: &str = "https://raw.githubusercontent.com/w3c/csswg-drafts/034f50a78495b619478342d71117cd7ca7e76de7/filter-effects-2/Overview.bs";
 

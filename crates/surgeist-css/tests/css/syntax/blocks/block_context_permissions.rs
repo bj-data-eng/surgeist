@@ -10,12 +10,15 @@ use descriptor_phases::*;
 use crate::css::support::authored_syntax::{
     assert_strict_rejection, known_properties as properties,
 };
-use surgeist_css::{
-    CssDeclarationContextRef, CssDeclarationList, CssErrorCode, CssFontDisplay,
-    CssFontFaceDescriptorKind, CssFontFeatureValueKind, CssFontFeatureValuesItem, CssImportance,
-    CssKeyframeSelector, CssKnownProperty, CssNamespaceContext, CssParser, CssRecoveryAction,
-    CssRule, CssStyleBlock,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclarationList, CssImportance};
+use surgeist_css::diagnostic::{CssDeclarationContextRef, CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::font_face::{CssFontDisplay, CssFontFaceDescriptorKind};
+use surgeist_css::rule::font_feature_values::{CssFontFeatureValueKind, CssFontFeatureValuesItem};
+use surgeist_css::rule::keyframes::CssKeyframeSelector;
+use surgeist_css::rule::{CssRule, CssStyleBlock};
+use surgeist_css::selector::CssNamespaceContext;
 
 fn ordered_style_contents(declarations: &CssDeclarationList, rules: &[CssRule]) {
     assert_eq!(properties(declarations), [CssKnownProperty::Color]);

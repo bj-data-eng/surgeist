@@ -10,7 +10,12 @@
 use crate::css::support::color_components::{assert_component, assert_recovered, component, token};
 use crate::css::support::parsed_color as parsed;
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorNumberLiteral, CssColorPercentageLiteral, CssPredefinedColor,
+};
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{CssCalculation, CssNumber, CssPercentage};
 
 // The source lists seven RGB keywords and three XYZ spellings; xyz denotes D65.
 const SPACES: [(&str, PredefinedColorSpace, &str); 10] = [

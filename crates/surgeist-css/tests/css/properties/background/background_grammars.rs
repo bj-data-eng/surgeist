@@ -1,4 +1,16 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::values::background::{
+    CssBackgroundAttachment, CssBackgroundBox, CssBackgroundBoxList, CssBackgroundLayerBoxes,
+    CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize,
+};
+use surgeist_css::values::common::CssAutoOr;
+use surgeist_css::values::image::{CssGradient, CssImageValue};
+use surgeist_css::values::position::{CssHorizontalPosition, CssVerticalPosition};
 
 #[test]
 fn c13_background_layers_retain_typed_structure() {
@@ -458,9 +470,9 @@ fn background_empty_comma_items_and_eof_report_exact_recovery() {
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }

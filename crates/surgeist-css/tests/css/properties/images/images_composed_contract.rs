@@ -4,7 +4,24 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#urls
 //! https://www.w3.org/TR/2026/WD-css-color-5-20260908/#light-dark
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssAngleOrZero, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::common::{CssUrl, CssUrlFunction};
+use surgeist_css::values::content::{CssContentValue, CssGeneratedContentBodyRef};
+use surgeist_css::values::image::{
+    CssColorStopListItem, CssGradient, CssHorizontalGradientSide, CssImage, CssImageValue,
+    CssLinearGradient, CssLinearGradientDirection, CssRadialGradient, CssRadialShape,
+    CssRadialSize, CssVerticalGradientSide,
+};
 
 fn fronts(property: CssKnownProperty, text: &str) -> Vec<(CssDeclaration, String)> {
     let css = format!("/*😀*/{}:{text}!important", property.canonical_name());

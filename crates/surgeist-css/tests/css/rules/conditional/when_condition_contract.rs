@@ -3,7 +3,22 @@
 //! https://github.com/bj-data-eng/surgeist/issues/647
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::media::{
+    CssMediaFeatureKind, CssMediaFeatureQuery, CssMediaRangeRef, CssUnknownMediaFeatureReason,
+    CssUnknownMediaFeatureRef,
+};
+use surgeist_css::query::{
+    CssCondition, CssConditionKind, CssQueryComparison, CssWhenLeaf, CssWhenMediaFeature,
+    CssWhenMediaFeatureKind,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 fn feature(condition: &CssCondition<CssWhenLeaf>) -> &CssWhenMediaFeature {
     let CssConditionKind::Leaf(CssWhenLeaf::MediaFeature(value)) = condition.kind() else {

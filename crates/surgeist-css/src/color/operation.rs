@@ -3,18 +3,19 @@
 //! Caller storage remains outside this machine. A reached error terminates the
 //! operation without taking any bank; checkpoints contain no scratch index.
 
-use super::Color;
 use super::component::{ComponentAction, SyntaxFailure};
-use super::facts::{CssColorFactIdentity, CssColorFacts};
 use super::grammar::{ColorGrammar, GrammarAction, Site};
-use super::protocol::{
-    ActionDescription as LexicalAction, ColorProtocolError, CssColorBank, CssColorOperationOwner,
-    CssColorSlot, Data, LexicalOperation, LexicalTable, RecordTable,
-};
 use super::resolution::{Action as ResolutionAction, Resolution};
 use super::syntax_pass::{SyntaxAction, SyntaxPass, ValidatedGrammar};
+use crate::color::controlled::protocol::ActionDescription as LexicalAction;
+use crate::color::controlled::protocol::{
+    ColorProtocolError, Data, LexicalOperation, LexicalTable, RecordTable,
+};
+use crate::color::controlled::{CssColorBank, CssColorOperationOwner, CssColorSlot};
+use crate::color::{CssColorFactIdentity, CssColorFacts};
 use crate::tokenization::bounded::InputKind;
 use crate::tokenization::tokenizer::Span;
+use surgeist_color::Color;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum GrammarRequest {
@@ -477,7 +478,8 @@ impl<'owner, 'facts> ColorOperation<'owner, 'facts> {
                     .source()?
                     .lexical
                     .ok_or(ColorProtocolError::WrongAction)?;
-                let super::protocol::LexicalRecord::Token(token) = table.observe(index, slot)?
+                let crate::color::controlled::protocol::LexicalRecord::Token(token) =
+                    table.observe(index, slot)?
                 else {
                     return Err(ColorProtocolError::WrongSlot.into());
                 };
@@ -730,7 +732,9 @@ impl<'owner, 'facts> ColorOperation<'owner, 'facts> {
             Err(Error::Resolution(error))
         }
     }
-    pub(crate) fn additional_fact_read(&self) -> Option<super::bounded::CssColorFactRead> {
+    pub(crate) fn additional_fact_read(
+        &self,
+    ) -> Option<crate::color::controlled::CssColorFactRead> {
         match &self.phase {
             Phase::Resolution(cursor) => cursor.additional_fact_read(),
             _ => None,
@@ -739,8 +743,8 @@ impl<'owner, 'facts> ColorOperation<'owner, 'facts> {
     pub(crate) fn input_kind(&self) -> InputKind {
         self.input.source().expect("source action front door").kind
     }
-    pub(crate) fn kernel(&self) -> super::CssColorKernel {
-        use super::CssColorKernel as K;
+    pub(crate) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
+        use crate::color::controlled::CssColorKernel as K;
         match &self.phase {
             Phase::Lexical(cursor) => match cursor.description() {
                 LexicalAction::ComputeInput => K::Preprocess,
@@ -933,9 +937,9 @@ fn same_lexical(left: &CssColorSlot<'_>, right: &CssColorSlot<'_>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::super::facts::{CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact};
     use super::*;
-    use crate::CssUsedColorCheckpoint;
+    use crate::color::controlled::CssUsedColorCheckpoint;
+    use crate::color::{CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact};
     use surgeist_color::{
         SerializationAction as NumericalAction, SerializationRequest, SerializationStep,
         Transformation,
@@ -1110,8 +1114,8 @@ mod tests {
             let checkpoint = transform(checkpoint, Transformation::ForceOpaqueAlpha);
             let checkpoint = transform(
                 checkpoint,
-                Transformation::Convert(crate::ColorSpace::Predefined(
-                    crate::PredefinedColorSpace::Srgb,
+                Transformation::Convert(surgeist_color::ColorSpace::Predefined(
+                    surgeist_color::PredefinedColorSpace::Srgb,
                 )),
             );
             let checkpoint = transform(checkpoint, Transformation::QuantizeSrgb);
@@ -1218,8 +1222,8 @@ mod tests {
         // the closest finite value; X and Y (0.95 and 1.0 times) stay exact.
         let checkpoint = transform(
             checkpoint,
-            Transformation::Convert(crate::ColorSpace::Predefined(
-                crate::PredefinedColorSpace::XyzD65,
+            Transformation::Convert(surgeist_color::ColorSpace::Predefined(
+                surgeist_color::PredefinedColorSpace::XyzD65,
             )),
         );
         let [x, y, z] = checkpoint.value().channels();

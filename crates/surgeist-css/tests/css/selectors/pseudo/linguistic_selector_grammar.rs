@@ -5,7 +5,8 @@
 //! list of identifiers or strings. These tests preserve authored syntax without
 //! evaluating directionality, language matching, or document inheritance.
 use crate::css::support::color_and_selector_fixtures::assert_selector_rejected as assert_rejected;
-use surgeist_css::{CssNamespaceContext, CssParser, CssPseudoClass, CssSelector};
+use surgeist_css::CssParser;
+use surgeist_css::selector::{CssNamespaceContext, CssPseudoClass, CssSelector};
 
 fn assert_clean_pseudo(source: &str) {
     let report = CssSelector::parse(

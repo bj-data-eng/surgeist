@@ -9,7 +9,16 @@ use crate::css::support::failure_classes::SerializationFailure as Kind;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::assert_node_limits as assert_limits;
 use CssSerializationLimits as Limits;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueLimits, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::container::{
+    CssContainer, CssContainerName, CssContainerNameList, CssContainerNames, CssContainerType,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 #[test]
 fn six_type_states_preserve_semantics_and_use_grammar_order() {

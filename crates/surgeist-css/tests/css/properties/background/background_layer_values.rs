@@ -6,7 +6,21 @@
 
 use crate::css::support::serialization_limits::assert_limits_with_zero as exact_bounds;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{CssBackgroundRepeatStyle as R, CssComponentValue, CssComponentValues, *};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::numeric::{CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::values::background::CssBackgroundRepeatStyle as R;
+use surgeist_css::values::background::{
+    CssBackgroundAttachment, CssBackgroundAttachmentList, CssBackgroundBox, CssBackgroundBoxList,
+    CssBackgroundRepeat, CssBackgroundRepeatList, CssBackgroundSize, CssBackgroundSizeList,
+};
+use surgeist_css::values::common::CssAutoOr;
 
 fn size(css: &str) -> CssBackgroundSizeList {
     let source = declaration(&format!("background-size:{css}"));

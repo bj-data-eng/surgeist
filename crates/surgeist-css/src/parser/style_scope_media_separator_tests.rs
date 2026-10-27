@@ -1,9 +1,14 @@
 #![forbid(unsafe_code)]
 // New cfg(test) parser child; do not change the existing boundary draft/module.
-use super::{
-    BoundedParseContext, StyleContextCaptures, conditional_chains, parse_sheet_bounded, recovery,
-};
-use crate::*;
+use super::{conditional_chains, recovery};
+use crate::declaration::CssDeclaration;
+use crate::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use crate::parser::reconstruction::{BoundedParseContext, parse_sheet_bounded};
+use crate::parser::recovery::StyleContextCaptures;
+use crate::rule::{CssNamespacePrefix, CssRule, CssSheet};
+use crate::selector::{CssNamespaceConstraint, CssSelector, CssStyleSelector};
+use crate::source::{CssSourcePosition, CssSourceSnapshot};
+use crate::{CssParseReport, CssParserContext};
 
 const PREFIX: &str = "/*😀*/\r\n@namespace svg 'urn:original';";
 const AFTER: &str = ".after{color:black}";

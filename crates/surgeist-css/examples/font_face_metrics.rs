@@ -1,11 +1,13 @@
 #![forbid(unsafe_code)]
 //! Inspect typed descriptor payloads without matching or modifying a font.
 
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssComponentValues,
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value, CssFontMetricOverride,
-    CssParser, CssRule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue as Authored;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue as Value;
+use surgeist_css::rule::font_face::CssFontMetricOverride;
 
 fn main() {
     let source = concat!(

@@ -7,7 +7,19 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use property_expectations::{MetadataExpectation, PropertyExpectation};
 use std::collections::HashSet;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty, CssPropertyGrammar,
+    CssPropertyNameRef, CssPropertyTarget, CssPropertyValueError,
+};
 
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("initial", CssGlobalKeyword::Initial),

@@ -2,11 +2,14 @@
 //! Syntax 3's declaration-first block partition governs ambiguous curly input.
 
 use crate::css::support::authored_syntax::{assert_diagnostics, offset_of};
-use surgeist_css::{
-    CssErrorCode, CssImportance, CssParser, CssRule, CssSupportsTestItem, CssValueTokenRef,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueTokenRef;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::query::supports::CssSupportsTestItem;
+use surgeist_css::rule::CssRule;
 
-fn body(source: &str) -> surgeist_css::CssSupportsTestBody {
+fn body(source: &str) -> surgeist_css::query::supports::CssSupportsTestBody {
     let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
@@ -30,7 +33,9 @@ fn declaration_first_accepts_sole_curly_value_and_custom_mixture() {
             .iter()
             .filter(|value| !matches!(
                 value.view(),
-                surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
+                surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(
+                    _
+                ))
             ))
             .count(),
         1
@@ -46,9 +51,12 @@ fn empty_and_whitespace_only_qualified_preludes_retain_nested_tests() {
         let [CssRule::SupportsCondition(rule)] = report.syntax().rules() else {
             panic!("one definition");
         };
-        let constructed = surgeist_css::CssSupportsTestBody::try_from_components(
-            surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), authored)
-                .unwrap(),
+        let constructed = surgeist_css::query::supports::CssSupportsTestBody::try_from_components(
+            surgeist_css::component::CssComponentValues::parse(
+                &surgeist_css::CssParser::default(),
+                authored,
+            )
+            .unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -58,8 +66,9 @@ fn empty_and_whitespace_only_qualified_preludes_retain_nested_tests() {
             };
             assert!(test.prelude().items().iter().all(|value| matches!(
                 value.view(),
-                surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
-                    | surgeist_css::CssComponentValueRef::Comment(_)
+                surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(
+                    _
+                )) | surgeist_css::component::CssComponentValueRef::Comment(_)
             )));
             let [CssSupportsTestItem::Declarations(run)] = test.body().items() else {
                 panic!("nested declaration");
@@ -94,8 +103,8 @@ fn bare_double_hyphen_is_not_a_custom_property_for_mixed_curly_values() {
     assert_diagnostics(
         report.diagnostics(),
         &[(
-            surgeist_css::CssErrorCode::InvalidQualifiedRule,
-            surgeist_css::CssRecoveryAction::DropDeclaration,
+            surgeist_css::diagnostic::CssErrorCode::InvalidQualifiedRule,
+            surgeist_css::diagnostic::CssRecoveryAction::DropDeclaration,
             offset_of(source, "--:"),
         )],
     );
@@ -119,9 +128,12 @@ fn terminal_importance_is_removed_before_noncustom_curly_restriction() {
     ] {
         let source = format!("@supports-condition --t{{{authored}}}");
         let parsed = body(&source);
-        let constructed = surgeist_css::CssSupportsTestBody::try_from_components(
-            surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), authored)
-                .unwrap(),
+        let constructed = surgeist_css::query::supports::CssSupportsTestBody::try_from_components(
+            surgeist_css::component::CssComponentValues::parse(
+                &surgeist_css::CssParser::default(),
+                authored,
+            )
+            .unwrap(),
             Default::default(),
         )
         .unwrap();
@@ -139,8 +151,9 @@ fn terminal_importance_is_removed_before_noncustom_curly_restriction() {
                     .iter()
                     .filter(|value| !matches!(
                         value.view(),
-                        surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
-                            | surgeist_css::CssComponentValueRef::Comment(_)
+                        surgeist_css::component::CssComponentValueRef::Token(
+                            CssValueTokenRef::Whitespace(_)
+                        ) | surgeist_css::component::CssComponentValueRef::Comment(_)
                     ))
                     .count(),
                 1
@@ -151,12 +164,13 @@ fn terminal_importance_is_removed_before_noncustom_curly_restriction() {
                     .iter()
                     .find(|value| !matches!(
                         value.view(),
-                        surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
-                            | surgeist_css::CssComponentValueRef::Comment(_)
+                        surgeist_css::component::CssComponentValueRef::Token(
+                            CssValueTokenRef::Whitespace(_)
+                        ) | surgeist_css::component::CssComponentValueRef::Comment(_)
                     ))
                     .unwrap()
                     .view(),
-                surgeist_css::CssComponentValueRef::Block(_)
+                surgeist_css::component::CssComponentValueRef::Block(_)
             ));
         }
     }
@@ -215,7 +229,7 @@ fn terminal_only_importance_preserves_earlier_bangs_and_unknown_values() {
             .iter()
             .any(|value| matches!(
                 value.view(),
-                surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Delim('!'))
+                surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Delim('!'))
             ))
     );
     assert!(declarations[1].importance_components().is_some());

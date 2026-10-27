@@ -1,6 +1,9 @@
 use crate::css::support::isolated_stack;
 
-use surgeist_css::{CssComponentValues, CssCondition, CssMediaLeaf, CssMediaQuery, CssParser};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::query::CssCondition;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery};
 
 #[test]
 fn deepest_supported_media_construction_and_serialization_fit_an_ordinary_caller_stack() {
@@ -45,14 +48,14 @@ fn deepest_supported_media_construction_and_serialization_fit_an_ordinary_caller
                 Default::default(),
             )
             .unwrap();
-            let surgeist_css::CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(unknown)) =
+            let surgeist_css::query::CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(unknown)) =
                 condition.kind()
             else {
                 panic!("unknown feature with valid numeric value");
             };
             assert_eq!(
                 unknown.reason(),
-                surgeist_css::CssUnknownMediaFeatureReason::UnknownName
+                surgeist_css::query::media::CssUnknownMediaFeatureReason::UnknownName
             );
             assert_eq!(
                 unknown

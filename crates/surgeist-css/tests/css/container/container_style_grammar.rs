@@ -3,7 +3,11 @@
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#style-container
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#typedef-declaration-value
 use crate::css::support::authored_syntax::checked_container_condition as checked;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::query::container::CssContainerLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::CssRule;
 
 fn assert_style(source: &str) {
     let condition = checked(source);

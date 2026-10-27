@@ -9,8 +9,9 @@
 //! provenance and its result construction; this module owns only that shape.
 
 use super::query_components::ComponentCursor;
-use crate::supports::{SupportsLexical, trivia};
-use crate::{CssComponentValue, CssCondition, CssConditionKind, CssConditionList};
+use crate::component::CssComponentValue;
+use crate::query::supports::construction::{SupportsLexical, trivia};
+use crate::query::{CssCondition, CssConditionKind, CssConditionList};
 use std::ops::Range;
 
 /// A boolean condition grammar over its own input.
@@ -176,7 +177,7 @@ pub(super) fn parse_component_condition<'a, G: ComponentOperands<'a>>(
 /// Builds one public condition model from a component-list node tree.
 pub(super) trait BooleanModel<L> {
     /// The public leaf type of the built condition.
-    type Leaf: crate::CssConditionLeaf<Backing = crate::condition::LexicalBacking>;
+    type Leaf: crate::query::CssConditionLeaf<Backing = crate::query::condition::LexicalBacking>;
     fn leaf(leaf: L, lexical: &SupportsLexical) -> Self::Leaf;
 }
 

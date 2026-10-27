@@ -1,7 +1,11 @@
 #![forbid(unsafe_code)]
 //! Public consumer expectations from selected CSSOM §4.4 MediaList algorithms.
 //! The CSS writer's historical modern-value lexical policy remains selected.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
 use surgeist_cssom::*;
 
 fn limits() -> CssSerializationLimits {

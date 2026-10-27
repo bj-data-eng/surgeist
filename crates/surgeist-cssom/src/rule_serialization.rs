@@ -1,8 +1,17 @@
 //! Bounded preparation and native serialization of current live rule payloads.
 use crate::{model::State, *};
 use std::cell::OnceCell;
-use surgeist_css::CssRule;
-use surgeist_css::*;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::CssStyleAncestor;
+use surgeist_css::rule::keyframes::CssKeyframeRuleView;
+use surgeist_css::rule::page::{
+    CssMarginRuleView, CssPageRuleView, CssSpecifiedPageDeclarationBlock,
+};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::{
+    CssGroupPreludeRef, CssRuleGraphInput, CssRuleSerializationLimits, CssSerializationLimits,
+};
 
 /// Limits one current rule text read. Preparation counts actual context/traversal
 /// steps and view nodes; CSS independently owns its one cumulative graph budget.

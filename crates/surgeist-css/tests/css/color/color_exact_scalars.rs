@@ -2,7 +2,15 @@
 use crate::css::support::color_and_selector_fixtures::assert_color_grammar_failure;
 use crate::css::support::declaration_color as color;
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColorComponent, CssColorHue, CssColorMix, CssRelativeColorChannel,
+    CssRelativeColorExpressionValue,
+};
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::CssAngleUnit;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
 
 fn both(text: &str) -> [CssDeclaration; 2] {
     let source = format!("color:{text}!important");

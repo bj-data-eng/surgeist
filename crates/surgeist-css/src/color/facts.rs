@@ -3,11 +3,10 @@
 //! Creating this borrowed envelope does not scan or copy arrays. Operation
 //! actions validate individual headers/units and perform influencing lookups.
 
-use crate::{
-    ColorSpace, CssColorProfileComponentName, CssColorProfileName, CssColorProfileRenderingIntent,
-    CssSystemColor,
-};
+use crate::color::{CssColorProfileComponentName, CssColorProfileName, CssSystemColor};
+use crate::rule::color_profile::CssColorProfileRenderingIntent;
 use surgeist_color::Color;
+use surgeist_color::ColorSpace;
 
 /// Immutable fact-set identity and revision supplied by its actual owner.
 ///

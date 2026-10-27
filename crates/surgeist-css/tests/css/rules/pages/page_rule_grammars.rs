@@ -1,8 +1,12 @@
 use crate::css::support::rules::page_pseudo;
-use surgeist_css::{
-    CssErrorCode, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssMarginValue,
-    CssPagePseudo, CssParser, CssRecoveryAction, CssRule, CssSupportStatus, feature_metadata,
-};
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::page::CssPagePseudo;
+use surgeist_css::values::box_model::CssMarginValue;
 
 #[test]
 fn page_rules_and_pseudos_retain_valid_authored_structure() {
@@ -137,7 +141,7 @@ fn page_margin_declarations_preserve_css2_physical_literal_semantics() {
         .unwrap()
         .property_value()
         .unwrap();
-    let surgeist_css::CssKnownPropertyValueRef::Margin(margin) = margin else {
+    let surgeist_css::property::CssKnownPropertyValueRef::Margin(margin) = margin else {
         panic!("expected typed margin")
     };
     let [top, right, bottom, left] = margin.value().assigned();
@@ -173,7 +177,7 @@ fn page_context_composes_shared_values_including_font_relative_lengths() {
             .known()
             .unwrap()
             .global(),
-        Some(surgeist_css::CssGlobalKeyword::Inherit)
+        Some(surgeist_css::declaration::CssGlobalKeyword::Inherit)
     );
     assert_eq!(
         rule.declarations().properties()[7]
@@ -393,13 +397,13 @@ fn page_rule_and_selector_named_metadata_match_retained_behavior() {
     for (id, kind, spelling, production) in [
         (
             "later.rule.page",
-            surgeist_css::CssFeatureKind::Rule,
+            surgeist_css::conformance::CssFeatureKind::Rule,
             "@page",
             "#syntax-page-selector",
         ),
         (
             "official.selector.page-pseudo",
-            surgeist_css::CssFeatureKind::Selector,
+            surgeist_css::conformance::CssFeatureKind::Selector,
             ":left|:right|:first|:blank",
             "#page-selectors",
         ),

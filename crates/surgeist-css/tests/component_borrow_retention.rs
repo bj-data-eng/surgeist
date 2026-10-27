@@ -1,7 +1,20 @@
 //! Exact retained payloads remain owned; finite RGB output uses Color4 legacy commas.
 #![forbid(unsafe_code)]
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssProfileColorExpression, CssProfileColorExpressionRef,
+    CssRelativeColorChannel, CssRelativeColorEnvironment, CssRelativeColorExpression,
+    CssRelativeColorExpressionValue, CssRelativeColorResultDomain,
+};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::CssCalculationType;
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
 
 fn color(declaration: &CssDeclaration) -> &CssColor {
     let CssKnownPropertyValueRef::Color(value) =

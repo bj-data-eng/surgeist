@@ -1,5 +1,14 @@
 //! Public semantic accessors preserve authored identity and symbolic branches.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::box_model::CssOverflow;
+use surgeist_css::values::layout::{
+    CssAlignmentPosition, CssAlignmentValue, CssBaselinePosition, CssOverflowPosition,
+};
 
 fn parsed(property: CssKnownProperty, css: &str) -> CssDeclaration {
     let report =

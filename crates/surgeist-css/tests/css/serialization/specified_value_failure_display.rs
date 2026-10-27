@@ -1,4 +1,5 @@
-use surgeist_css::{CssSelector, CssSerializationLimits as Limits};
+use surgeist_css::selector::CssSelector;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 const VALUE_FAILURE: &str = "specified value cannot be represented by the selected serializer";
 

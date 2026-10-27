@@ -20,7 +20,7 @@ use crate::view_transition::*;
 use crate::{DocumentString, DomDocumentStamp, DomSnapshot, DomStyleRequest, Namespace, NodeId};
 pub use event::*;
 use std::sync::Arc;
-use surgeist_css::CssViewTransitionIdent;
+use surgeist_css::values::view_transition::CssViewTransitionIdent;
 pub(crate) use url::UrlBasis;
 pub use url::{
     DomSourceUrlObservation, DomSourceUrlOrigin, DomSourceUrlRequest, DomSourceUrlStage,

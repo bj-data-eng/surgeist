@@ -5,7 +5,18 @@
 use crate::css::support::important_declaration as parsed;
 use crate::css::support::retained_checked_declaration;
 use crate::css::support::value_assertions::property_rejection;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssCustomPropertyName, CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssLonghandValueRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::query::container::{
+    CssContainerLeaf, CssContainerStyleFeature, CssStyleQueryLeaf,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
 fn pending_value(declaration: &CssDeclaration, text: &str) {
     let known = declaration.known().unwrap();

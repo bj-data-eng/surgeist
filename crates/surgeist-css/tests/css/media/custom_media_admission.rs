@@ -1,10 +1,14 @@
 //! Pinned MQ5 #custom-mq, #mq-syntax and #error-handling; the profile's
 //! imported Extensions 1 name grammar and adopted feature-candidate precedence.
 //! These tests deliberately use only the public surface preceding custom media.
-use surgeist_css::{
-    CssConditionKind, CssErrorCode, CssMediaLeaf, CssMediaQuery, CssMediaQueryList, CssMediaType,
-    CssNormalizedItem, CssParser, CssRecoveryAction, CssRule, CssUnknownMediaFeatureReason,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{
+    CssMediaLeaf, CssMediaQuery, CssMediaQueryList, CssMediaType, CssUnknownMediaFeatureReason,
 };
+use surgeist_css::rule::CssRule;
 
 #[test]
 fn root_definitions_retain_boolean_query_and_empty_bodies() {
@@ -331,7 +335,7 @@ fn eof_closed_query_body_retains_definition_and_distinct_statement_and_closure_d
         .unwrap();
     assert_eq!(
         statement.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         statement.error().position().byte_offset().value(),
@@ -384,7 +388,7 @@ fn eof_statement_reports_missing_terminator_without_inventing_enclosure() {
     );
     assert_eq!(
         diagnostic.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         diagnostic.error().position().byte_offset().value(),

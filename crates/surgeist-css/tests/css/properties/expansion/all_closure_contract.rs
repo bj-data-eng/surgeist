@@ -4,7 +4,22 @@
 use crate::css::support::authored_property::checked_components;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTextTarget,
+    CssPropertyValueError, CssUniversalReset,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("initial", CssGlobalKeyword::Initial),

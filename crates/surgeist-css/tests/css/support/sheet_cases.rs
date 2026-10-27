@@ -6,7 +6,24 @@
 //! authored identity it reports, so an unrelated earlier failure cannot
 //! satisfy it.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword};
+use surgeist_css::diagnostic::{CssError, CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationValueRef, CssInteger, CssLength,
+    CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric,
+};
+use surgeist_css::property::{CssKnownDeclaration, CssKnownProperty};
+use surgeist_css::query::media::CssMediaLength;
+use surgeist_css::rule::{
+    CssContainerRule, CssLayerBlockRule, CssMediaRule, CssRule, CssStyleRule,
+};
+use surgeist_css::selector::{CssPseudoElement, CssPseudoElementSegment, CssPseudoElementSequence};
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::values::font::CssFontWeightRange;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 

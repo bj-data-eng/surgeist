@@ -1,8 +1,10 @@
-use surgeist_css::{
-    CssErrorCode, CssGlobalKeyword, CssKnownDeclaredValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssParser, CssRecoveryAction, CssTextCombineUpright,
-    CssTextOrientation, CssUnicodeBidi,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
 };
+use surgeist_css::values::text::{CssTextCombineUpright, CssTextOrientation, CssUnicodeBidi};
 
 #[test]
 fn writing_modes_and_legacy_alias_are_typed() {

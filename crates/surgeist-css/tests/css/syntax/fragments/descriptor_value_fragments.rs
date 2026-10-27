@@ -8,16 +8,26 @@ use crate::css::support::authored_syntax::{
     assert_origin_region as origin, assert_position as position, assert_strict_rejection,
     parsed_origin,
 };
-use surgeist_css::{
-    CssComponentValueRef, CssComponentValues, CssCounterStyleDescriptorKind as CounterKind,
-    CssCounterStyleDescriptorValue as CounterValue, CssCounterStyleDescriptorValue,
-    CssCounterStyleDescriptorValueRef as CounterRef, CssCounterStyleRange,
-    CssCounterStyleRangeBound, CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
-    CssErrorCode, CssEscapeFailure, CssFontDisplay, CssFontFeatureDisplayValue,
-    CssFontFeatureValue, CssFontFeatureValueKind as FeatureKind, CssFontFeatureValuesItem,
-    CssImageValue, CssNumericTokenKind, CssParseReport, CssParsedOrigin, CssParser,
-    CssRecoveryAction, CssRule, CssValueOrigin, CssValueTokenRef,
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssNumericTokenKind, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::diagnostic::{CssErrorCode, CssEscapeFailure, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind as CounterKind;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorValue as CounterValue;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorValueRef as CounterRef;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorValue, CssCounterStyleRange, CssCounterStyleRangeBound,
+    CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
+};
+use surgeist_css::rule::font_face::CssFontDisplay;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueKind as FeatureKind;
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureDisplayValue, CssFontFeatureValue, CssFontFeatureValuesItem,
+};
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::values::image::CssImageValue;
+use surgeist_css::{CssParseReport, CssParser};
 
 #[derive(Clone, Copy, Debug)]
 enum Symbol {
@@ -571,7 +581,7 @@ fn five_display_values_and_decoded_keyword_spellings_have_literal_enum_values() 
     assert!(report.is_clean());
     assert!(matches!(
         report.syntax().as_ref().unwrap().view(),
-        surgeist_css::CssFontFeatureDisplayValueRef::Pending(_)
+        surgeist_css::rule::font_feature_values::CssFontFeatureDisplayValueRef::Pending(_)
     ));
 }
 
@@ -674,7 +684,7 @@ fn index_normalization_preserves_exact_integer_token_spellings_for_every_kind() 
         assert!(report.is_clean());
         assert!(matches!(
             report.syntax().as_ref().unwrap().view(),
-            surgeist_css::CssFontFeatureValueRef::Pending(_)
+            surgeist_css::rule::font_feature_values::CssFontFeatureValueRef::Pending(_)
         ));
     }
 }
@@ -1342,8 +1352,8 @@ fn real_counter_rule_owns_names_and_grammar_recovery_with_separate_definition_in
             .prospective()
             .unwrap()
             .definition_status(),
-        surgeist_css::CssCounterStyleDefinitionStatus::Undefined(
-            surgeist_css::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
+        surgeist_css::rule::counter_style::CssCounterStyleDefinitionStatus::Undefined(
+            surgeist_css::rule::counter_style::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
         )
     );
 }

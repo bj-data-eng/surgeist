@@ -3,7 +3,18 @@ use crate::css::support::authored_syntax::assert_diagnostics;
 use crate::css::support::component_values as components;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::media::{
+    CssCustomMediaBody, CssCustomMediaName, CssMediaLeaf, CssMediaQuery, CssMediaQueryList,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssCustomMediaRule, CssRule};
 
 fn list(css: &str) -> CssMediaQueryList {
     let report = CssMediaQueryList::parse(&CssParser::default(), css);

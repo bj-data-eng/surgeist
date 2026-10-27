@@ -6,20 +6,24 @@ use cssparser::{
 use super::parse_descriptor_boundary;
 use super::property_input::{NativeValueRange, adapt_native};
 use super::recovery::RecoveryState;
-use crate::error::{
-    CssError, CssFeatureId, basic, descriptor_name_error, from_parse_error,
-    invalid_component_value, invalid_syntax, unexpected_at, with_at_rule_prelude_context,
-    with_descriptor_context,
+use crate::component::{CssComponentValues, CssSerializedValue};
+use crate::declaration::{CssAuthoredDeclarationValue, CssSubstitutionDependentValue};
+use crate::diagnostic::CssRecoveryDiagnostic;
+use crate::diagnostic::error::{
+    basic, descriptor_name_error, from_parse_error, invalid_component_value, invalid_syntax,
+    unexpected_at, with_at_rule_prelude_context, with_descriptor_context,
 };
-use crate::font_palette_values::CssFontPaletteDescriptorData;
-use crate::numeric::NumericInputContext;
-use crate::{
-    CssAuthoredDeclarationValue, CssComponentValues, CssFontFaceFamily, CssFontPaletteBase,
-    CssFontPaletteDescriptor, CssFontPaletteDescriptorKind, CssFontPaletteDescriptorValue,
-    CssFontPaletteName, CssFontPaletteOverride, CssFontPaletteValuesRule, CssInteger,
-    CssNonNegative, CssNumeric, CssRecoveryDiagnostic, CssSerializedValue, CssSourcePosition,
-    CssSubstitutionDependentValue,
+use crate::diagnostic::{CssError, CssFeatureId};
+use crate::numeric::expression::NumericInputContext;
+use crate::numeric::{CssInteger, CssNonNegative, CssNumeric};
+use crate::rule::font_face::CssFontFaceFamily;
+use crate::rule::font_palette_values::rule::CssFontPaletteDescriptorData;
+use crate::rule::font_palette_values::{
+    CssFontPaletteBase, CssFontPaletteDescriptor, CssFontPaletteDescriptorKind,
+    CssFontPaletteDescriptorValue, CssFontPaletteName, CssFontPaletteOverride,
+    CssFontPaletteValuesRule,
 };
+use crate::source::CssSourcePosition;
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
     &[CssFeatureId::new("later.rule.font-palette-values")];
@@ -190,7 +194,7 @@ pub(crate) fn construct_descriptor_value(
     result.map_err(|error| {
         from_parse_error(
             serialized.as_css(),
-            crate::error::with_descriptor_value_context(
+            crate::diagnostic::error::with_descriptor_value_context(
                 error,
                 "font-palette-values",
                 kind.as_str(),

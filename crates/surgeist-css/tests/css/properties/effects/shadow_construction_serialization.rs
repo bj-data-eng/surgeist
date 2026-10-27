@@ -8,8 +8,25 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssParser, CssSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssCalculation, CssLength, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationError;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::effects::{
+    CssBoxShadow, CssBoxShadowList, CssDropShadow, CssFilter, CssFilterFunction, CssShadow,
 };
 
 #[test]

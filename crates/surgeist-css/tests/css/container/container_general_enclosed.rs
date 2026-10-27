@@ -3,11 +3,15 @@
 use crate::css::support::authored_syntax::assert_diagnostics;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssCondition, CssConditionKind,
-    CssContainerGeneralEnclosed, CssContainerLeaf, CssErrorCode, CssGeneralEnclosed, CssParser,
-    CssRecoveryAction, CssRule, CssSerializedOrigin, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
 };
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::container::{CssContainerGeneralEnclosed, CssContainerLeaf};
+use surgeist_css::query::{CssCondition, CssConditionKind, CssGeneralEnclosed};
+use surgeist_css::rule::CssRule;
 
 fn condition(query: &str) -> CssCondition<CssContainerLeaf> {
     let report =
@@ -28,9 +32,10 @@ fn opaque(value: &CssCondition<CssContainerLeaf>) -> &CssContainerGeneralEnclose
 }
 
 fn assert_color_style(condition: &CssCondition<CssContainerLeaf>) {
-    use surgeist_css::{
-        CssConditionKind, CssContainerStyleFeature, CssContainerStyleFeatureName,
-        CssPropertyGrammar, CssStyleQueryLeaf,
+    use surgeist_css::property::CssPropertyGrammar;
+    use surgeist_css::query::CssConditionKind;
+    use surgeist_css::query::container::{
+        CssContainerStyleFeature, CssContainerStyleFeatureName, CssStyleQueryLeaf,
     };
     let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) = condition.kind() else {
         panic!("recognized ordinary-property style query")
@@ -297,7 +302,7 @@ fn component_depth_limit_rejects_an_oversized_opaque_query() {
 
 #[test]
 fn speculative_query_branches_preserve_terminal_bad_token_categories_and_original_coordinates() {
-    use surgeist_css::CssErrorCode;
+    use surgeist_css::diagnostic::CssErrorCode;
     // Syntax tokenization attributes a bad string to its opening quote and a
     // bad URL to its url( opener, even when an enclosing query probe fails.
     for (query, offending, kind) in [
@@ -466,9 +471,9 @@ fn wrong_outer_syntax_is_rejected_by_the_enclosure_owner_with_its_original_origi
 
 #[test]
 fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_property_payloads() {
-    use surgeist_css::{
-        CssContainerFeatureQuery, CssContainerLengthRef, CssMediaRangeRef, CssQueryComparison,
-    };
+    use surgeist_css::query::CssQueryComparison;
+    use surgeist_css::query::container::{CssContainerFeatureQuery, CssContainerLengthRef};
+    use surgeist_css::query::media::CssMediaRangeRef;
     let values = CssComponentValues::try_new(
         vec![
             CssComponentValue::try_ident("width").unwrap(),
@@ -514,11 +519,13 @@ fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_proper
     let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) = style.kind() else {
         panic!("style")
     };
-    let surgeist_css::CssConditionKind::Leaf(surgeist_css::CssStyleQueryLeaf::Feature(
-        surgeist_css::CssContainerStyleFeature::Boolean(
-            surgeist_css::CssContainerStyleFeatureName::Custom(name),
+    let surgeist_css::query::CssConditionKind::Leaf(
+        surgeist_css::query::container::CssStyleQueryLeaf::Feature(
+            surgeist_css::query::container::CssContainerStyleFeature::Boolean(
+                surgeist_css::query::container::CssContainerStyleFeatureName::Custom(name),
+            ),
         ),
-    )) = query.kind()
+    ) = query.kind()
     else {
         panic!("known custom property presence")
     };
@@ -527,8 +534,9 @@ fn fully_programmatic_known_enclosures_expose_expected_feature_and_custom_proper
 
 #[test]
 fn style_variable_grammar_preserves_valid_references_and_falls_back_for_invalid_references() {
-    use surgeist_css::{
-        CssConditionKind, CssContainerStyleFeature, CssContainerStyleFeatureName, CssStyleQueryLeaf,
+    use surgeist_css::query::CssConditionKind;
+    use surgeist_css::query::container::{
+        CssContainerStyleFeature, CssContainerStyleFeatureName, CssStyleQueryLeaf,
     };
     // Existing authored declaration grammar requires var's first argument to be
     // one custom-property name, with an optional comma and fallback value.
@@ -589,8 +597,9 @@ fn style_variable_grammar_preserves_valid_references_and_falls_back_for_invalid_
 
 #[test]
 fn constructed_style_value_serialization_keeps_adjacent_number_and_identifier_separate() {
-    use surgeist_css::{
-        CssConditionKind, CssContainerStyleFeature, CssContainerStyleFeatureName, CssStyleQueryLeaf,
+    use surgeist_css::query::CssConditionKind;
+    use surgeist_css::query::container::{
+        CssContainerStyleFeature, CssContainerStyleFeatureName, CssStyleQueryLeaf,
     };
     for first in [
         CssComponentValue::try_number("1").unwrap(),
@@ -647,7 +656,8 @@ fn parsed_and_checked_feature(body: &str) -> [CssCondition<CssContainerLeaf>; 2]
 
 #[test]
 fn exact_query_lengths_preserve_underflow_spelling_and_signed_zero() {
-    use surgeist_css::{CssContainerFeatureQuery, CssContainerLengthRef, CssMediaRangeRef};
+    use surgeist_css::query::container::{CssContainerFeatureQuery, CssContainerLengthRef};
+    use surgeist_css::query::media::CssMediaRangeRef;
     for literal in ["-1e-999px", "1e-999px", "-0px", "+0px", "-0"] {
         let programmatic = CssGeneralEnclosed::try_parenthesized(
             CssComponentValues::try_new(
@@ -737,7 +747,8 @@ fn exact_query_numbers_do_not_overflow_through_tokenizer_floats() {
 
 #[test]
 fn exact_ratios_admit_degenerate_zero_and_reject_negative_nonzero_literals() {
-    use surgeist_css::{CssContainerFeatureQuery, CssContainerRatioRef, CssMediaRangeRef};
+    use surgeist_css::query::container::{CssContainerFeatureQuery, CssContainerRatioRef};
+    use surgeist_css::query::media::CssMediaRangeRef;
     for (body, numerator, denominator) in [
         ("aspect-ratio:2 / 3", "2", "3"),
         ("aspect-ratio:-0 / 1", "-0", "1"),

@@ -2,7 +2,15 @@
 //! retargeting that style's selectors to newly entered scopes.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-declarations-rule
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::{
+    CssNestedDeclarationsRule, CssRule, CssScopeRule, CssStyleBlock, CssStyleRule,
+};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
 
 fn run(rule: &CssRule) -> &CssNestedDeclarationsRule {
     let CssRule::NestedDeclarations(run) = rule else {

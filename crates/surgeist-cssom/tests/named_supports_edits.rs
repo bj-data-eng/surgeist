@@ -1,5 +1,9 @@
 //! Public tests for Surgeist's explicitly selected inert named-support policy.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::query::supports::{CssSupportsTestChild, CssSupportsTestItem};
+use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::*;
 
 fn captured_rule(

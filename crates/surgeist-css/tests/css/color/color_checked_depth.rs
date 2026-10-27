@@ -1,6 +1,9 @@
 //! Checked property construction must handle an already valid component graph at
 //! the same public 256-level ceiling as authored parsing, on the default stack.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
 
 #[test]
 fn checked_mixed_colors_preserve_the_shared_component_depth_boundary() {

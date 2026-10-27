@@ -2,11 +2,16 @@
 //! remnants algorithm. Section 4.3.14 consumes valid escapes before recognizing
 //! an unescaped closing parenthesis; the first escape cannot be discarded.
 
-use surgeist_css::{
-    CssComponentValueRef, CssComponentValues, CssDeclarationList, CssErrorCode, CssParser,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSupportsTestItem, CssTokenKind,
-    CssValueOrigin, CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
+};
+use surgeist_css::query::supports::CssSupportsTestItem;
+use surgeist_css::rule::CssRule;
 
 fn assert_bad_url_range(source: &str, end: usize) {
     let error = CssComponentValues::parse(&CssParser::default(), source)

@@ -5,7 +5,20 @@ use crate::css::support::property_admission::{
     assert_checked_value_rejected, assert_declaration_rejected, assert_invalid_value,
 };
 use crate::css::support::{important_declaration, known_property};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::property_support_metadata;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssPropertyGrammar, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::box_model::CssContentVisibility;
 
 const NAME: &str = "content-visibility";
 

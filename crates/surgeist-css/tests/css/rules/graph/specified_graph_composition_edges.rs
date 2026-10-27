@@ -11,12 +11,17 @@ use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::rules::assert_exact_specified_sheet as exact;
 use crate::css::support::rules::clean_sheet as sheet;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::{
-    CssComponentValues, CssCondition, CssContainerPrelude, CssContainerRule, CssCustomMediaBody,
-    CssErrorCode, CssNamespaceContext, CssParser, CssRecoveryAction, CssRule,
-    CssSerializationError, CssSerializationLimits as Limits, CssSheet, CssSupportsLeaf,
-    CssSupportsRule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::CssCondition;
+use surgeist_css::query::container::CssContainerPrelude;
+use surgeist_css::query::media::CssCustomMediaBody;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::{CssContainerRule, CssRule, CssSheet, CssSupportsRule};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationError;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 fn resource(error: &CssSerializationError, kind: Kind, index: Option<usize>) {
     assert_eq!(serialization_failure(error), kind);

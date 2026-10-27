@@ -7,7 +7,21 @@
 use crate::css::support::component_values as components;
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::value_assertions::assert_calculation_rejected;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColorComponent;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{
+    CssAngle, CssCalculation, CssCalculationExpressionRef, CssCalculationType,
+    CssCalculationValueRef, CssFlex, CssFrequency, CssHintedNumber, CssInteger, CssLength,
+    CssLengthPercentage, CssNumber, CssNumericConstant, CssNumericDimension, CssNumericType,
+    CssPercentage, CssResolution, CssTime,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::effects::CssOpacityValue;
 
 const AXES: [CssNumericDimension; 7] = [
     CssNumericDimension::Length,

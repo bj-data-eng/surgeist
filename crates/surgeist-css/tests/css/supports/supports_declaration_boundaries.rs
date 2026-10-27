@@ -11,10 +11,13 @@
 
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::{
-    CssCondition, CssConditionKind, CssImportLayer, CssImportRule, CssImportance, CssMediaLeaf,
-    CssMediaQuery, CssParser, CssRecoveryAction, CssRule, CssSupportsLeaf,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssImportLayer, CssImportRule, CssRule};
 
 const INVALID_DECLARATIONS: &[&str] = &[
     "color:red;",
@@ -223,7 +226,7 @@ fn supports_bad_url_and_bad_string_tokens_cannot_be_declarations_or_opaque_fallb
 
 #[test]
 fn supports_lexical_failures_preserve_typed_errors_and_original_token_positions() {
-    use surgeist_css::CssValueOrigin;
+    use surgeist_css::component::CssValueOrigin;
 
     for (payload, token, kind) in [
         ("url(a b)", "url(", ComponentFailure::BadUrl),

@@ -7,9 +7,25 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_closure_rejected;
 use crate::css::support::sole_declaration;
 use crate::css::support::value_assertions::assert_numeric_rejected;
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssDeclaration, CssParser, CssPropertyTarget,
-    CssSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssInteger, CssNumeric, CssPositive};
+use surgeist_css::property::{
+    CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyValueError,
+};
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::common::CssIdent;
+use surgeist_css::values::content::{
+    CssBookmarkLevel, CssBookmarkState, CssContentCounter, CssContentCounterName, CssContentList,
+    CssContentName, CssContentReferenceMode, CssContentString, CssContentValueItem,
+    CssCounterStyleValue, CssGeneratedContent, CssGeneratedContentBodyRef, CssNamedString,
+    CssNamedStringMode, CssStringSet, CssStringSetEntry,
 };
 
 fn name(value: &str) -> CssContentName {

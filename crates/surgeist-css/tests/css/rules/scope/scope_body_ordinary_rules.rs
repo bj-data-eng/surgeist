@@ -2,7 +2,11 @@
 //! placement and the scoping root (#1386). Placement is a check of the
 //! construction and assembly context, not a separate rule type.
 use crate::css::support::rules::clean_sheet as sheet;
-use surgeist_css::*;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::{
+    CssMediaRule, CssRule, CssRuleConstructionError, CssScopeNestingContext, CssScopeRule, CssSheet,
+};
+use surgeist_css::selector::{CssNamespaceContext, CssScopeSelectorList};
 
 fn context() -> CssNamespaceContext {
     CssNamespaceContext::default()

@@ -1,6 +1,8 @@
 //! Genuine reports and joined first-sheet publication, not final-text replay.
 use super::*;
-use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
 
 pub(super) fn ready(source: &str) -> (Dom, DocumentId, DomParsedHtmlAssociationId) {

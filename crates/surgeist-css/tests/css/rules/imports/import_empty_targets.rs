@@ -2,11 +2,16 @@
 //! Values 4 (2024-03-12) #urls and #empty-urls recognize empty URL values;
 //! Syntax 3 (2026-10-01) #consume-url-token distinguishes them from bad URLs.
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::{
-    CssConditionKind, CssErrorCode, CssImportLayer, CssImportRule, CssImportString,
-    CssImportTarget, CssImportUrl, CssMediaQuery, CssMediaType, CssNamespaceContext, CssParser,
-    CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaQuery, CssMediaType};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::{
+    CssImportLayer, CssImportRule, CssImportString, CssImportTarget, CssImportUrl, CssRule,
 };
+use surgeist_css::selector::CssNamespaceContext;
 
 // Authored spelling, URL-versus-string target, exact decoded value.
 const TARGETS: &[(&str, bool, &str)] = &[
@@ -35,7 +40,7 @@ fn assert_target(import: &CssImportRule, url: bool, decoded: &str) {
 fn decoded_target_constructors_preserve_empty_and_whitespace_values() {
     for value in ["", " ", " \t\n ", "\u{00a0}", " theme.css "] {
         assert_eq!(
-            CssImportUrl::new(surgeist_css::CssUrl::new(value)).as_str(),
+            CssImportUrl::new(surgeist_css::values::common::CssUrl::new(value)).as_str(),
             value
         );
         assert_eq!(CssImportString::new(value).as_str(), value);
@@ -209,7 +214,7 @@ fn an_empty_string_import_at_eof_gets_a_programmatic_semicolon_with_statement_re
     };
     assert_eq!(
         statement.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         statement.action(),
@@ -267,7 +272,7 @@ fn eof_unclosed_empty_urls_retain_targets_with_implicit_closure_diagnostics() {
         };
         assert_eq!(
             statement.error().code(),
-            surgeist_css::CssErrorCode::UnexpectedEnd
+            surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
         );
         assert_eq!(
             statement.action(),
@@ -291,7 +296,7 @@ fn eof_unclosed_empty_urls_retain_targets_with_implicit_closure_diagnostics() {
         );
         assert_eq!(
             closure.error().code(),
-            surgeist_css::CssErrorCode::UnexpectedEnd
+            surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
         );
         assert_eq!(
             closure.action(),

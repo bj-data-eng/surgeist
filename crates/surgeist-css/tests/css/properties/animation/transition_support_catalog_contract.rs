@@ -5,7 +5,11 @@ use crate::css::support::property_admission::Responsible::{self, At, End};
 use crate::css::support::property_admission::{
     assert_checked_rejected, assert_style_attribute_rejected,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{CssKnownProperty, CssPropertyTarget};
 
 fn grammar<'a, T: Copy + Into<Responsible<'a>>>(
     property: CssKnownProperty,

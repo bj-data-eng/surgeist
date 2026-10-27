@@ -3,11 +3,16 @@
 
 use crate::css::support::color_and_selector_fixtures::assert_selector_input_rejected as assert_whole_input_rejected;
 use crate::css::support::color_and_selector_fixtures::assert_strict_validation_rejects;
-use surgeist_css::{
-    CssAttributeCaseSensitivity as Case, CssAttributeMatcher as Matcher,
-    CssNamespaceConstraint as Namespace, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
-    CssParsedStyleSelectors, CssParser, CssQualifiedNamePrefix as Prefix, CssRecoveryAction,
-    CssRelativeSelectorList, CssRule, CssSelector, CssSelectorCombinator, CssStyleSelectorContext,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule};
+use surgeist_css::selector::CssAttributeCaseSensitivity as Case;
+use surgeist_css::selector::CssAttributeMatcher as Matcher;
+use surgeist_css::selector::CssNamespaceConstraint as Namespace;
+use surgeist_css::selector::CssQualifiedNamePrefix as Prefix;
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssRelativeSelectorList, CssSelector,
+    CssSelectorCombinator, CssStyleSelectorContext,
 };
 
 type AttributeOperator = (&'static str, fn(String) -> Matcher);

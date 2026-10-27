@@ -1,7 +1,9 @@
 //! `@layer` (Cascade 5) statement and block forms through the public stylesheet
 //! parser and constructors.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::rule::{CssLayerName, CssLayerStatementRule, CssRule};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;

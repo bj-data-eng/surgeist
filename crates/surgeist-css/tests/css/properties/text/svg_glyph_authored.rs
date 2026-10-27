@@ -6,7 +6,40 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::component_failure;
 use crate::css::support::failure_classes::numeric_failure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValueRef,
+    CssComponentValues, CssNumericTokenKind, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::conformance::{
+    CssFeatureKind, CssSpecificationTier, CssSupportStatus, feature_metadata,
+    property_support_metadata,
+};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::diagnostic::{
+    CssDeclarationContextRef, CssError, CssErrorCode, CssRecoveryAction, CssTokenKind,
+};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssCalculation, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssPendingSubstitution, CssPropertyGrammar, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget, CssPropertyValueError, CssSvgGlyphOrientationVerticalContribution,
+    CssSvgGlyphOrientationVerticalDeclaration, CssSvgGlyphOrientationVerticalValue,
+};
+use surgeist_css::query::supports::{CssSupportsDeclaration, CssSupportsLeaf};
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssRule, CssStyleBlock};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::source::CssSourceSpan;
+use surgeist_css::values::text::CssTextOrientation;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 const SVG: CssParserContext =
     CssParserContext::new(CssParserMode::Standards).with_svg_glyph_orientation_vertical();

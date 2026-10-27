@@ -10,8 +10,19 @@ use authored_property::{ParserFront, assert_source, checked, checked_components,
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::sole_completed_contributions as completed;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::CssTextTransform;
 
 const PROPERTY: P = P::TextTransform;
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [

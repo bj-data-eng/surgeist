@@ -3,7 +3,19 @@
 //! ranges are permitted. Exact ordinary transport and lexical provenance
 //! are adopted Surgeist product contracts, not an arbitrary-precision CSS claim.
 use crate::css::support::value_assertions::property_rejection;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssCalculationType, CssInteger, CssNumeric, CssNumericLiteral};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::box_model::CssZIndexValue;
 
 const OUTSIDE_I32: &[&str] = &[
     "2147483648",

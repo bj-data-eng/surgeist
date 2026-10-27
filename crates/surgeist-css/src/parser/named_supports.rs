@@ -1,17 +1,34 @@
 //! Generic Syntax block partitioning for authored supports-condition tests.
 
-use super::*;
-use crate::error::invalid_component_value;
-use crate::named_supports::*;
+use crate::CssParseReport;
+use crate::component::CssComponentValues;
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueLimits,
+    CssValueOrigin,
+};
+use crate::declaration::CssCustomPropertyName;
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::invalid_component_value;
+use crate::diagnostic::error::{from_parse_error, invalid_syntax, with_at_rule_prelude_context};
+use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
+use crate::parser::recovery::RecoveryState;
+use crate::parser::{fragments, recovery, syntax_bridge};
+use crate::query::supports::CssSupportsConstructionError;
+use crate::query::supports::named_supports::retained_component_recovery;
+use crate::query::supports::{
+    CssSupportsAtRuleTest, CssSupportsConditionName, CssSupportsQualifiedRuleTest,
+    CssSupportsTestBody, CssSupportsTestChild, CssSupportsTestChildRef, CssSupportsTestDeclaration,
+    CssSupportsTestDeclarations, CssSupportsTestItem,
+};
+use crate::rule::CssSupportsConditionRule;
+use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 use crate::syntax_consumption::{
     self as syntax, CursorItem, GroupEnd, ListId, NodeId, SyntaxCursor, SyntaxDocument, SyntaxNode,
     SyntaxRange, TokenKind,
 };
-use crate::{
-    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
-    CssComponentValueLimits, CssParseReport, CssRecoveryAction, CssRecoveryDiagnostic,
-    CssSupportsConstructionError, CssValueOrigin,
-};
+#[cfg(test)]
+use cssparser::Token;
 use cssparser::{ParseError, Parser, ParserState};
 
 enum PartitionIssue {
@@ -34,7 +51,7 @@ impl PartitionIssue {
     }
 }
 
-pub(super) struct NamedSupportsPrelude {
+pub(crate) struct NamedSupportsPrelude {
     pub(super) name: CssSupportsConditionName,
 }
 
@@ -48,7 +65,7 @@ pub(super) fn parse_prelude<'i, 't>(
     let meaningful: Vec<_> = values
         .items()
         .iter()
-        .filter(|value| !crate::supports::trivia(value))
+        .filter(|value| !crate::query::supports::construction::trivia(value))
         .collect();
     let [component] = meaningful.as_slice() else {
         return Err(with_at_rule_prelude_context(
@@ -176,7 +193,11 @@ fn promote(
     document: &SyntaxDocument<'_>,
     nodes: &[NodeId],
 ) -> Result<CssComponentValues, CssComponentValueError> {
-    crate::component_values::promote_nodes(document, nodes, CssComponentValueLimits::default())
+    crate::component::values::parse::promote_nodes(
+        document,
+        nodes,
+        CssComponentValueLimits::default(),
+    )
 }
 
 fn parsed_delimiter(source: &CssSourceSnapshot, offset: usize, expected: u8) -> CssValueOrigin {
@@ -191,7 +212,7 @@ fn parsed_delimiter(source: &CssSourceSnapshot, offset: usize, expected: u8) -> 
 
 fn issue_diagnostic(source: &str, issue: PartitionIssue) -> Option<CssRecoveryDiagnostic> {
     let origin = issue.origin();
-    let position = crate::media::parsed_position(origin)?;
+    let position = crate::query::media::construction::parsed_position(origin)?;
     let location = cssparser::SourceLocation {
         line: position.line().value(),
         column: position.column().value() + 1,
@@ -230,7 +251,7 @@ pub(crate) fn construct_test_body(
     let body = partition(&document, document.root, None, false, &mut issues)?;
     if let Some(issue) = issues.into_iter().next() {
         return Err(CssSupportsConstructionError::from(
-            crate::supports::SupportsConstructionKind::InvalidBodyGrammar {
+            crate::query::supports::construction::SupportsConstructionKind::InvalidBodyGrammar {
                 origin: issue.origin().clone(),
             },
         ));
@@ -647,8 +668,8 @@ pub(crate) fn parse_supports_test_contents_with_limits(
         for origin in body.recovery_origins() {
             if let CssValueOrigin::ImplicitClosure { opening, at } = origin
                 && let Some(diagnostic) = CssRecoveryDiagnostic::new(
-                    crate::error::implicit_eof(source),
-                    crate::CssSourceSpan::new(opening.span().start(), at.span().end())
+                    crate::diagnostic::error::implicit_eof(source),
+                    crate::source::CssSourceSpan::new(opening.span().start(), at.span().end())
                         .expect("actual implicit source extent"),
                     CssRecoveryAction::RetainWithImplicitClosure,
                 )
@@ -706,7 +727,7 @@ pub(crate) fn parse_supports_test_child_with_limits(
 }
 
 #[cfg(test)]
-mod candidate_membership_independent_tests;
+pub(crate) mod candidate_membership_independent_tests;
 
 #[cfg(test)]
 mod tests {
@@ -725,16 +746,16 @@ mod tests {
                 origin: Cow::Borrowed(component.origin()),
             }
         }
-        let before = crate::component_values::parse_component_values(
+        let before = crate::component::values::parse_component_values(
             "                                                  before:yes;",
         )
         .unwrap();
-        let bad = crate::component_values::parse_component_values("bad:;").unwrap();
-        let after = crate::component_values::parse_component_values("after:yes;").unwrap();
+        let bad = crate::component::values::parse_component_values("bad:;").unwrap();
+        let after = crate::component::values::parse_component_values("after:yes;").unwrap();
         let mut tokens: Vec<_> = before
             .items()
             .iter()
-            .filter(|value| !crate::supports::trivia(value))
+            .filter(|value| !crate::query::supports::construction::trivia(value))
             .map(checked)
             .collect();
         tokens.extend(bad.items()[..2].iter().map(checked));

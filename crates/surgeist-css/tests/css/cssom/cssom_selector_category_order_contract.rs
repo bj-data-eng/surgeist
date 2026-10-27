@@ -6,13 +6,19 @@
 use crate::css::support::failure_classes::SerializationFailure as Resource;
 use crate::css::support::serialization_limits::LimitFailure;
 use crate::css::support::validated_selector as parsed;
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssPseudoElementSegment as Segment;
+use surgeist_css::selector::CssSimpleSelector as Simple;
+use surgeist_css::selector::{
     CssAttributeCaseSensitivity, CssAttributeMatcher, CssAttributeName, CssAttributeSelector,
-    CssCompoundSelector, CssIdent, CssNamespaceContext, CssParser, CssPseudoClass,
-    CssPseudoElement, CssPseudoElementSegment as Segment, CssQualifiedAttributeName,
-    CssQualifiedNamePrefix, CssRule, CssSelector, CssSerializationLimits as Limits,
-    CssSimpleSelector as Simple, CssStyleSelector, CssStyleSelectorContext, CssValueOrigin,
+    CssCompoundSelector, CssNamespaceContext, CssPseudoClass, CssPseudoElement,
+    CssQualifiedAttributeName, CssQualifiedNamePrefix, CssSelector, CssStyleSelector,
+    CssStyleSelectorContext,
 };
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::values::common::CssIdent;
 
 const AUTHORED: &str = ".One#X:hover[A='é'].Two#Y:focus[B='two'].One#X:hover[A='é']";
 const SERIALIZED: &str = ".One#X:hover[A=\"é\"].Two#Y:focus[B=\"two\"].One#X:hover[A=\"é\"]";
@@ -229,7 +235,7 @@ fn authored_category_order_keeps_pseudo_element_attachments_order_sensitive() {
         assert!(rejected.syntax().is_none(), "{invalid}: {rejected:?}");
         crate::css::support::value_assertions::assert_first_code(
             rejected.diagnostics(),
-            surgeist_css::CssErrorCode::InvalidSelector,
+            surgeist_css::diagnostic::CssErrorCode::InvalidSelector,
         );
     }
 }
@@ -357,10 +363,10 @@ fn scope_anchor_serializes_at_its_authored_compound_position() {
         .rules()
         .iter()
         .map(|rule| {
-            let surgeist_css::CssRule::Style(style) = rule else {
+            let surgeist_css::rule::CssRule::Style(style) = rule else {
                 panic!("scoped style rule")
             };
-            let [surgeist_css::CssStyleSelector::Selector(selector)] =
+            let [surgeist_css::selector::CssStyleSelector::Selector(selector)] =
                 style.selectors().selectors()
             else {
                 panic!("one scoped selector")

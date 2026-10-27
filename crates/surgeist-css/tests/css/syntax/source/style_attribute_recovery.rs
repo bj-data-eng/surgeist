@@ -1,12 +1,15 @@
 use crate::css::support::authored_syntax::property_names;
-use surgeist_css::{
-    CssDeclarationList, CssErrorCode, CssImportance, CssParseReport, CssParser, CssRecoveryAction,
-    CssRule,
-};
+use surgeist_css::declaration::{CssDeclarationList, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
+use surgeist_css::{CssParseReport, CssParser};
 
 fn style_rule_report(
     source: &str,
-) -> (CssDeclarationList, Vec<surgeist_css::CssRecoveryDiagnostic>) {
+) -> (
+    CssDeclarationList,
+    Vec<surgeist_css::diagnostic::CssRecoveryDiagnostic>,
+) {
     let wrapped = format!(".x {{ {source} }}");
     let report = CssParser::default().parse_sheet(&wrapped);
     let [CssRule::Style(rule)] = report.syntax().rules() else {

@@ -1,6 +1,9 @@
 //! Filter Effects 1 section 6.1 defines an omitted blur radius as 0px.
 //! https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#funcdef-filter-blur
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::effects::{CssFilter, CssFilterFunction};
 
 #[test]
 fn omitted_blur_radius_retains_authored_input_and_specified_zero() {
@@ -84,18 +87,22 @@ fn explicit_blur_radii_keep_their_values_and_authored_spelling() {
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     expected: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view),Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension {number,unit})) if number.representation()==expected && unit==expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view),Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension {number,unit})) if number.representation()==expected && unit==expected_unit)
 }
 
-fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
-    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
-    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+fn exact_literal(
+    component: Option<&surgeist_css::component::CssComponentValue>,
+    css: &str,
+) -> bool {
+    use surgeist_css::component::CssComponentValueRef as Component;
+    use surgeist_css::component::CssValueTokenRef as Token;
+    let expected = surgeist_css::component::CssComponentValue::try_token(css).unwrap();
     match (
-        component.map(surgeist_css::CssComponentValue::view),
+        component.map(surgeist_css::component::CssComponentValue::view),
         expected.view(),
     ) {
         (

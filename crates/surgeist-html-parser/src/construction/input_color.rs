@@ -8,13 +8,15 @@ use super::css_color::Banks;
 use super::css_color::{action_layout, frame, numerical_layout};
 use super::*;
 use provenance::{ColorComputation, ColorValueSource, InputValueComputation};
-use surgeist_css::{
-    CssColorError, CssColorFactIdentity, CssColorFacts, CssColorOperationOwner,
-    CssColorParseOutcome, CssColorPropertyFacts, CssColorSchemeFact, CssColorStandardFailure,
-    CssColorTransform, CssDeviceColorFact, CssUsedColorCheckpoint,
+use surgeist_css::color::controlled::{
+    CssColorOperationOwner, CssColorParseOutcome, CssColorTransform, CssUsedColorCheckpoint,
 };
 #[cfg(test)]
-use surgeist_css::{CssColorParse, CssColorSlot};
+use surgeist_css::color::controlled::{CssColorParse, CssColorSlot};
+use surgeist_css::color::{
+    CssColorError, CssColorFactIdentity, CssColorFacts, CssColorPropertyFacts, CssColorSchemeFact,
+    CssColorStandardFailure, CssDeviceColorFact,
+};
 
 use surgeist_color::{
     Color, ColorSpace, DigitSlot, OperationOwner, PredefinedColorSpace, Serialization,

@@ -1,7 +1,18 @@
 //! Values 4 length units and `calc()` keep authored dimensions in ordinary and
 //! calculation contexts; unknown units and functions are rejected.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssValueTokenRef};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationSumOperator, CssCalculationType,
+    CssCalculationValueRef, CssLengthPercentage, CssLengthUnit, CssNumericUnit,
+};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::box_model::{
+    CssBoxSize, CssFlowToleranceRef, CssMarginValue, CssSizeValue,
+};
+use surgeist_css::values::layout::CssGapValue;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
@@ -395,7 +406,7 @@ fn flow_tolerance_calc_is_preserved_as_css_syntax() {
             let calc = length.calculation().expect("checked flow calculation");
             assert_eq!(
                 calc.numeric_type().percent_hint(),
-                Some(surgeist_css::CssNumericDimension::Length)
+                Some(surgeist_css::numeric::CssNumericDimension::Length)
             );
             assert_eq!(
                 calc.components()

@@ -177,7 +177,9 @@ fn complete_sheet(
     owner: &DomStyleCssomRoot,
     cancel: &AtomicBool,
 ) {
-    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::query::media::CssMediaQueryList;
+    use surgeist_css::source::CssUtf16InputLimits;
+    use surgeist_css::{CssParser, CssParserContext};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
 
     let request = lease

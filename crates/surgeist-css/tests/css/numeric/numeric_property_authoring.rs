@@ -1,7 +1,15 @@
 //! Numeric properties keep property-specific authored models, and their public
 //! constructors reject invalid values.
 
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValue, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssFiniteNumber, CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::box_model::{CssAspectRatioValue, CssBoxSize, CssSizeValue};
+use surgeist_css::values::effects::{CssOpacityScalar, CssOpacityScalarKind, CssOpacityValue};
+use surgeist_css::values::layout::{CssFlexBasisRef, CssFlexBasisValue, CssFlexComponents};
+use surgeist_css::values::ui::CssScrollbarWidth;
 
 use crate::css::support::sheet_cases::*;
 

@@ -2,10 +2,11 @@
 //! Grammar authority: pinned MQ4 2026-02-19 section 3, mq-syntax.
 //! Balanced enclosures retain their own grammar classification alongside grouping.
 
-use surgeist_css::{
-    CssConditionKind, CssErrorCode, CssMediaQuery, CssMediaQueryList, CssMediaType, CssParser,
-    CssRecoveryAction, CssRule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList, CssMediaType};
+use surgeist_css::rule::CssRule;
 
 #[test]
 fn ungrouped_known_conditions_retain_their_operators() {
@@ -295,7 +296,7 @@ fn grouped_eof_closure_is_published_only_for_retained_owners() {
     };
     assert_eq!(
         statement.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         statement.action(),
@@ -322,7 +323,7 @@ fn grouped_eof_closure_is_published_only_for_retained_owners() {
     );
     assert_eq!(
         closure.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         closure.action(),

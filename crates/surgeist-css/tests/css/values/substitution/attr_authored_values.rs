@@ -1,7 +1,17 @@
 //! Additional authored `attr()` boundary cases from pinned CSS Values 5 §§3.1.1, 3.3, 7.7.
 
 use crate::css::support::value_assertions::property_rejection;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssSerializedOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::container::CssContainerLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind,
+};
 
 fn pending_display(text: &str) -> CssDeclaration {
     let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();

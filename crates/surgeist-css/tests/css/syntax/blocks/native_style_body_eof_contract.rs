@@ -2,7 +2,15 @@
 //! Syntax3 CRD 20261001 §§5.5.2, 5.5.9–10 and 8; selected Nesting1
 //! WD20260122 §§3.3–3.4; original-source error and clean-report contracts.
 use crate::css::support::authored_syntax::assert_unclean_sheet as strict;
-use surgeist_css::*;
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
+};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::rule::{CssRule, CssScopeRule, CssSheet, CssStyleBlock, CssStyleRule};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector, CssStyleSelector};
+use surgeist_css::source::CssSourceSpan;
+use surgeist_css::{CssParseReport, CssParser};
 
 fn span(actual: CssSourceSpan, start: usize, end: usize) {
     assert_eq!(actual.start().byte_offset().value(), start);

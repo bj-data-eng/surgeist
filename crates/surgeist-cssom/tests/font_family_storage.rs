@@ -1,5 +1,6 @@
 //! Regression for the published owning foundation's current family storage.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssSheet;
 use surgeist_cssom::*;
 
 fn inputs() -> CssomSheetInputs {

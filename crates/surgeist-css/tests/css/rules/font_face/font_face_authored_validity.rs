@@ -3,7 +3,9 @@
 //! authored rule. Unknown or invalid descriptors use declaration recovery.
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-rule
 
-use surgeist_css::{CssParser, CssRecoveryAction, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::CssRule;
 
 #[test]
 fn missing_matching_descriptors_preserves_clean_authored_font_face() {

@@ -15,11 +15,12 @@
 
 use crate::css::support::property_admission::Responsible::{self, At};
 use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
-use surgeist_css::{
-    CssComponentValues, CssDeclaration, CssErrorCode, CssImportance, CssKnownProperty as Property,
-    CssKnownPropertyValueRef, CssParser, CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction,
-    CssTokenKind,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::property::CssKnownProperty as Property;
+use surgeist_css::property::{CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget};
 
 const TEMPLATE_AXES: [Property; 2] = [Property::GridTemplateRows, Property::GridTemplateColumns];
 
@@ -283,10 +284,11 @@ fn assert_checked(property: Property, authored: &str) {
         retained_tokens.origin_at(retained_tokens.as_css().len()),
         original_tokens.origin_at(original_tokens.as_css().len())
     );
-    let surgeist_css::CssValueOrigin::Parsed(original) = components.items()[0].origin() else {
+    let surgeist_css::component::CssValueOrigin::Parsed(original) = components.items()[0].origin()
+    else {
         panic!("the supplied first token has parsed provenance");
     };
-    let surgeist_css::CssValueOrigin::Parsed(retained) =
+    let surgeist_css::component::CssValueOrigin::Parsed(retained) =
         checked.value_components().items()[0].origin()
     else {
         panic!("checked construction retains the first token's provenance");

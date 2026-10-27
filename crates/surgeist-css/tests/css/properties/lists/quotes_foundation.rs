@@ -4,7 +4,19 @@
 //! Its inherited initial `auto` remains symbolic until language is known.
 
 use crate::css::support::important_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssPropertyKindRef,
+};
+use surgeist_css::values::content::CssQuotes;
 
 fn expansion(source: &CssDeclaration) -> CssLonghandContribution {
     let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()

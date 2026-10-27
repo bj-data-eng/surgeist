@@ -2,7 +2,16 @@
 
 use crate::css::support::property_admission::{ValueTextRejection, assert_value_text_rejected};
 use std::{cell::Cell, sync::Arc};
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValueLimits;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::source::{
+    CssRetainedPayloadError, CssSourceRetention, CssUtf16InputLimits, CssUtf16PropertyValueLimits,
+    CssUtf16ValueStorage,
+};
+use surgeist_css::values::color_adjust::{
+    CssColorScheme, CssColorSchemeKeyword, CssColorSchemeParseReport,
+};
+use surgeist_css::{CssParser, CssParserContext};
 
 fn limits() -> CssUtf16PropertyValueLimits {
     CssUtf16PropertyValueLimits {

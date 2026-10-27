@@ -10,7 +10,20 @@
 use crate::css::support::authored_property;
 use crate::css::support::failure_classes::serialization_failure;
 use authored_property::{ParserFront, assert_source, checked_components};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandContributions, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssContain, CssContainComponent, CssContainComponentList};
 
 const PROPERTY: CssKnownProperty = CssKnownProperty::Contain;
 const FRONTS: [ParserFront; 5] = [

@@ -2,7 +2,12 @@
 //! selected Selectors4 §3.6.4 and the adopted scoped attachment disposition.
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::sole_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssContributions, CssExpansion, CssKnownProperty};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
 
 fn declaration(source: &str) -> CssDeclaration {
     let value = sole_declaration(source);

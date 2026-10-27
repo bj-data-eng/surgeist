@@ -23,8 +23,25 @@ use crate::css::support::named_property::accepted_through_every_front as accepte
 use crate::css::support::named_property::invalid_named_value as invalid;
 use crate::css::support::named_property::named_fronts as fronts;
 use crate::css::support::named_property::sole_completed_contributions as completed;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssInteger, CssLengthPercentage, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssPropertyGrammar, CssPropertyKindRef, CssPropertyValueError,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 const FAMILY: [&str; 6] = [
     "hyphens",

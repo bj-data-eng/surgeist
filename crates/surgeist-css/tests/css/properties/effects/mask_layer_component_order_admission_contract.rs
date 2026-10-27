@@ -6,7 +6,23 @@
 
 use crate::css::support::check_property_components;
 use crate::css::support::position_view::CartesianPosition as _;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::values::background::{
+    CssBackgroundRepeat, CssBackgroundRepeatStyle, CssBackgroundSize,
+};
+use surgeist_css::values::common::CssUrl;
+use surgeist_css::values::effects::{CssMaskLayer, CssMaskList};
+use surgeist_css::values::image::CssImageValue;
+use surgeist_css::values::position::{CssHorizontalPosition, CssVerticalPosition};
 
 const ORDERS: &[&str] = &[
     "url(mask.png) 3.000e1px top / contain no-repeat",

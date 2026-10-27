@@ -3,7 +3,9 @@
 //! import or namespace declarations closes that prelude sequence.
 //! https://www.w3.org/TR/2022/CR-css-cascade-5-20220113/#layer-empty
 
-use surgeist_css::{CssErrorCode, CssParser, CssRecoveryAction, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
 
 fn rule_names(rules: &[CssRule]) -> Vec<&'static str> {
     rules

@@ -22,7 +22,14 @@ fn font_style(
         .capture(snapshot)
         .unwrap()
 }
-use surgeist_css::*;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceFamily,
+};
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureValueKind, CssFontFeatureValueRef, CssFontFeatureValuesFamilyList,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::CssFontFaceDescriptors;
 use surgeist_cssom::*;
 

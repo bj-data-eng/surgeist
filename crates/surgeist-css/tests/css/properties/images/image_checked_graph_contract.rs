@@ -3,7 +3,29 @@
 //! Typed Result admission preserves the published callable graph-rejection expectations.
 //! Color5 checked LightDark and Values4 math/URL providers remain independent controls.
 //! Independent function-depth expectations and matched provider controls.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssLightDarkColor, CssNamedColor};
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssCalculation, CssLength, CssLengthPercentage, CssNonNegative,
+    CssNumeric,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget,
+};
+use surgeist_css::values::common::{
+    CssIdent, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
+};
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop, CssImage,
+    CssImageValue, CssLightDarkImage, CssLinearGradient, CssLinearGradientDirection,
+    CssRadialEllipseSize, CssRadialGradient, CssRadialSize,
+};
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
+};
 
 fn named(name: &str) -> CssColor {
     CssColor::from_named(CssNamedColor::try_new(name).unwrap())

@@ -2,10 +2,11 @@
 
 //! Inspect ordered media operators, explicit grouping and original source positions.
 
-use surgeist_css::{
-    CssCondition, CssConditionKind, CssMediaFeatureKind, CssMediaFeatureQuery, CssMediaLeaf,
-    CssMediaQuery, CssParser,
+use surgeist_css::CssParser;
+use surgeist_css::query::media::{
+    CssMediaFeatureKind, CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery,
 };
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
 fn condition(source: &str) -> CssCondition<CssMediaLeaf> {
     let report = CssMediaQuery::parse(&CssParser::default(), source);

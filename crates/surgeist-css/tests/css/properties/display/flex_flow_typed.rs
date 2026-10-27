@@ -4,7 +4,9 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::layout::{CssFlexDirection, CssFlexFlow, CssFlexWrap};
 
 const PROGRAMMATIC_FLOW: CssFlexFlow =
     CssFlexFlow::new(CssFlexDirection::ColumnReverse, CssFlexWrap::Wrap);

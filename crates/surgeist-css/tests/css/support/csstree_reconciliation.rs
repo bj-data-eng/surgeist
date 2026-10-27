@@ -15,7 +15,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
-use surgeist_css::{CssLanguageRangeKind, CssNamespaceContext};
+use surgeist_css::selector::{CssLanguageRangeKind, CssNamespaceContext};
 
 use super::adapters::{EntryPoint, Extractor as RegistryExtractor};
 use super::{

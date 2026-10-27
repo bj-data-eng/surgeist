@@ -1,9 +1,9 @@
 //! Original UTF-8 offsets and zero-based UTF-16 coordinates are public contracts.
 
 use crate::css::support::authored_syntax::assert_position;
-use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssParser, CssValueOrigin,
-    CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
 
 fn assert_origin(

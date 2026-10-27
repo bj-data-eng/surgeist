@@ -1,8 +1,9 @@
 use crate::css::support::authored_syntax::assert_strict_rejection;
-use surgeist_css::{
-    CssConditionKind, CssContainerFeatureQuery, CssContainerLeaf, CssErrorCode, CssParser,
-    CssRecoveryAction, CssRule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::container::{CssContainerFeatureQuery, CssContainerLeaf};
+use surgeist_css::rule::CssRule;
 
 // Pinned Conditional Rules 5, section 5.4:
 // https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule

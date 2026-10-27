@@ -1,7 +1,10 @@
 //! Clean constructed Supports selectors retain their typed grammar and authored outer origin.
-use surgeist_css::{
-    CssComponentValues, CssCondition, CssConditionKind, CssNamespaceContext, CssParser,
-    CssPseudoClass, CssPseudoSelectorListItem, CssSelector, CssSupportsLeaf, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem, CssSelector,
 };
 
 fn condition(source: &str) -> CssCondition<CssSupportsLeaf> {

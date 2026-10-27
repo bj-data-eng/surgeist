@@ -12,27 +12,37 @@ use super::{
     block_item_diagnostic, collect_declaration_value, is_declaration_recovery_unit,
     parse_descriptor_boundary, top_level_only_at_rule_placement,
 };
-use crate::CssCounterStyleDescriptorKind;
-use crate::descriptor_values::CounterStyleValueData;
-use crate::error::{
-    CssError, basic, descriptor_name_error, unexpected_at, with_descriptor_context,
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::{
+    basic, descriptor_name_error, unexpected_at, with_descriptor_context,
 };
-use crate::syntax::*;
+use crate::numeric::{CssInteger, CssNumeric, CssNumericLiteral};
+use crate::rule::counter_style::CssCounterStyleDescriptorKind;
+use crate::rule::counter_style::descriptor_values::CounterStyleValueData;
+use crate::rule::counter_style::syntax::CssCounterStyleDescriptor;
+use crate::rule::counter_style::{
+    CssCounterAdditiveSymbols, CssCounterAdditiveTuple, CssCounterStyleDescriptors,
+    CssCounterStyleFixedSystem, CssCounterStyleName, CssCounterStyleNegative, CssCounterStylePad,
+    CssCounterStyleRange, CssCounterStyleRangeBound, CssCounterStyleRangeInterval,
+    CssCounterStyleRanges, CssCounterStyleRule, CssCounterStyleSpeakAs, CssCounterStyleSystem,
+    CssCounterSymbol, CssCounterSymbolIdent, CssCounterSymbols,
+};
+use crate::values::content::CssContentString;
 
-pub(super) struct CounterStylePrelude {
+pub(crate) struct CounterStylePrelude {
     name: CssCounterStyleName,
-    origin: crate::CssParsedOrigin,
+    origin: crate::source::CssParsedOrigin,
 }
 
-pub(super) fn parse_counter_style_name<'i, 't>(
+pub(crate) fn parse_counter_style_name<'i, 't>(
     input: &mut Parser<'i, 't>,
-    source_snapshot: &crate::CssSourceSnapshot,
+    source_snapshot: &crate::source::CssSourceSnapshot,
 ) -> Result<CounterStylePrelude, ParseError<'i, CssError>> {
     input.skip_whitespace();
     let token_start = input.position();
     let location = input.current_source_location();
     let name = input.expect_ident_cloned().map_err(basic)?;
-    let origin = crate::CssParsedOrigin::from_range(
+    let origin = crate::source::CssParsedOrigin::from_range(
         source_snapshot,
         token_start.byte_index()..input.position().byte_index(),
     )
@@ -51,19 +61,19 @@ pub(super) fn parse_counter_style_name<'i, 't>(
     Ok(CounterStylePrelude { name, origin })
 }
 
-pub(super) fn parse_counter_style_rule<'i, 't>(
+pub(crate) fn parse_counter_style_rule<'i, 't>(
     source: &'i str,
     prelude: CounterStylePrelude,
     input: &mut Parser<'i, 't>,
     start: &ParserState,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> Result<CssCounterStyleRule, ParseError<'i, CssError>> {
     let descriptors = parse_body(source, input, diagnostics, recovery)?;
     Ok(CssCounterStyleRule::from_parsed(
         prelude.name,
         descriptors,
-        crate::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
+        crate::source::CssSourcePosition::from_cssparser(start.position(), start.source_location()),
         prelude.origin,
     ))
 }
@@ -71,7 +81,7 @@ pub(super) fn parse_counter_style_rule<'i, 't>(
 pub(super) fn parse_body<'i>(
     source: &'i str,
     input: &mut Parser<'i, '_>,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: RecoveryState,
 ) -> Result<CssCounterStyleDescriptors, ParseError<'i, CssError>> {
     let mut occurrences = Vec::new();
@@ -90,9 +100,9 @@ pub(super) fn parse_body<'i>(
             Ok(descriptor) => occurrences.push(descriptor),
             Err((error, failed_unit)) => {
                 let action = if is_declaration_recovery_unit(failed_unit) {
-                    crate::CssRecoveryAction::DropDescriptor
+                    crate::diagnostic::CssRecoveryAction::DropDescriptor
                 } else {
-                    crate::CssRecoveryAction::DropAtRule
+                    crate::diagnostic::CssRecoveryAction::DropAtRule
                 };
                 if let Some(diagnostic) =
                     block_item_diagnostic(source, error, failed_unit, unit_end, action)
@@ -193,7 +203,7 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
         let value_start = input.state();
         input.reset(declaration_start);
         input.expect_ident().map_err(basic)?;
-        let name_origin = crate::CssParsedOrigin::from_range(
+        let name_origin = crate::source::CssParsedOrigin::from_range(
             self.recovery.source_snapshot(),
             declaration_start.position().byte_index()..input.position().byte_index(),
         )
@@ -220,7 +230,7 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
             parse_occurrence(input, self.recovery.source_snapshot(), &name_origin, kind)
         })()
         .map_err(|error| {
-            if crate::error::is_resource_parse_error(&error) {
+            if crate::diagnostic::error::is_resource_parse_error(&error) {
                 error
             } else {
                 with_descriptor_context(error, "counter-style", name.as_ref())
@@ -233,8 +243,8 @@ impl<'i> DeclarationParser<'i> for CounterStyleDescriptorParser<'i> {
 
 fn parse_occurrence<'i, 't>(
     input: &mut Parser<'i, 't>,
-    source_snapshot: &crate::CssSourceSnapshot,
-    name_origin: &crate::CssParsedOrigin,
+    source_snapshot: &crate::source::CssSourceSnapshot,
+    name_origin: &crate::source::CssParsedOrigin,
     descriptor: CssCounterStyleDescriptorKind,
 ) -> Result<CssCounterStyleDescriptor, ParseError<'i, CssError>> {
     parse_descriptor_boundary(input, "counter-style", descriptor.as_str(), |input| {
@@ -242,7 +252,7 @@ fn parse_occurrence<'i, 't>(
             collect_declaration_value(input, source_snapshot, |input| {
                 parse_authored_value(input, descriptor, source_snapshot)
             })?;
-        let value = crate::CssCounterStyleDescriptorValue::from_parsed(
+        let value = crate::rule::counter_style::CssCounterStyleDescriptorValue::from_parsed(
             descriptor,
             value,
             components.clone(),
@@ -255,7 +265,7 @@ fn parse_occurrence<'i, 't>(
 pub(super) fn parse_descriptor_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     kind: CssCounterStyleDescriptorKind,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CounterStyleValueData, ParseError<'i, CssError>> {
     Ok(match kind {
         CssCounterStyleDescriptorKind::System => {
@@ -293,7 +303,7 @@ pub(super) fn parse_descriptor_value<'i, 't>(
 
 fn parse_system<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssCounterStyleSystem, ParseError<'i, CssError>> {
     let ident = input.expect_ident_cloned().map_err(basic)?;
     let system = match_ignore_ascii_case! { &ident,
@@ -326,7 +336,7 @@ fn parse_system<'i, 't>(
 
 fn parse_symbols<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssCounterSymbols, ParseError<'i, CssError>> {
     let mut symbols = Vec::new();
     while !input.is_exhausted() {
@@ -341,7 +351,7 @@ fn parse_symbols<'i, 't>(
 
 fn parse_negative<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssCounterStyleNegative, ParseError<'i, CssError>> {
     let prefix = parse_symbol_component(input, numeric)?;
     let suffix = if input.is_exhausted() {
@@ -355,7 +365,7 @@ fn parse_negative<'i, 't>(
 
 fn parse_range<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssCounterStyleRange, ParseError<'i, CssError>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
@@ -385,7 +395,7 @@ fn parse_range<'i, 't>(
 
 fn parse_range_bound<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssCounterStyleRangeBound, ParseError<'i, CssError>> {
     if input
         .try_parse(|input| input.expect_ident_matching("infinite"))
@@ -405,7 +415,7 @@ fn parse_range_bound<'i, 't>(
 
 fn parse_pad<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssCounterStylePad, ParseError<'i, CssError>> {
     let (minimum_length, symbol) = if let Ok(minimum_length) =
         input.try_parse(|input| parse_nonnegative_integer(input, numeric))
@@ -432,7 +442,7 @@ fn parse_fallback<'i, 't>(
 
 fn parse_additive_symbols<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssCounterAdditiveSymbols, ParseError<'i, CssError>> {
     let mut tuples = Vec::new();
     loop {
@@ -453,7 +463,7 @@ fn parse_additive_symbols<'i, 't>(
 
 fn parse_additive_tuple<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<(CssCounterAdditiveTuple, cssparser::SourceLocation), ParseError<'i, CssError>> {
     let initial_location = input.current_source_location();
     let (weight, symbol, weight_location) =
@@ -500,7 +510,7 @@ fn parse_speak_as<'i, 't>(
 
 fn parse_nonnegative_integer<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssNumeric<CssInteger>, ParseError<'i, CssError>> {
     let location = input.current_source_location();
     let value = adapt_native(
@@ -526,7 +536,7 @@ fn parse_counter_style_name_component<'i, 't>(
 
 fn parse_symbol<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssCounterSymbol, ParseError<'i, CssError>> {
     let symbol = parse_symbol_component(input, numeric)?;
     input.expect_exhausted().map_err(basic)?;
@@ -535,7 +545,7 @@ fn parse_symbol<'i, 't>(
 
 fn parse_symbol_component<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssCounterSymbol, ParseError<'i, CssError>> {
     if let Ok(value) = input.try_parse(Parser::expect_string_cloned) {
         return CssContentString::try_new(value.to_string())
@@ -558,33 +568,41 @@ fn parse_symbol_component<'i, 't>(
 pub(super) fn parse_authored_value<'i>(
     input: &mut Parser<'i, '_>,
     kind: CssCounterStyleDescriptorKind,
-    snapshot: &crate::CssSourceSnapshot,
+    snapshot: &crate::source::CssSourceSnapshot,
 ) -> Result<CounterStyleValueData, ParseError<'i, CssError>> {
     super::descriptor_values::validate_root(input, "counter-style", kind.as_str())?;
     let start = input.state();
-    let components =
-        crate::CssComponentValues::collect_from_parser(input, snapshot).map_err(|error| {
-            crate::error::invalid_component_value(input.current_source_location(), error)
+    let components = crate::component::CssComponentValues::collect_from_parser(input, snapshot)
+        .map_err(|error| {
+            crate::diagnostic::error::invalid_component_value(
+                input.current_source_location(),
+                error,
+            )
         })?;
     input.reset(&start);
-    let numeric = crate::numeric::NumericInputContext::parsed(snapshot);
+    let numeric = crate::numeric::expression::NumericInputContext::parsed(snapshot);
     parse_value_data(input, kind, &components, &numeric)
 }
 fn parse_value_data<'i>(
     input: &mut Parser<'i, '_>,
     kind: CssCounterStyleDescriptorKind,
-    components: &crate::CssComponentValues,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    components: &crate::component::CssComponentValues,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CounterStyleValueData, ParseError<'i, CssError>> {
     if super::variables::descriptor_environment_qualifies(components.items(), numeric).map_err(
-        |error| crate::error::invalid_component_value(input.current_source_location(), error),
+        |error| {
+            crate::diagnostic::error::invalid_component_value(
+                input.current_source_location(),
+                error,
+            )
+        },
     )? {
         let start = input.position();
         super::descriptor_values::consume_remaining_components(input)?;
         return Ok(CounterStyleValueData::Pending(
-            crate::CssSubstitutionDependentValue::new(crate::CssAuthoredDeclarationValue::new(
-                input.slice_from(start),
-            )),
+            crate::declaration::CssSubstitutionDependentValue::new(
+                crate::declaration::CssAuthoredDeclarationValue::new(input.slice_from(start)),
+            ),
         ));
     }
     input.skip_whitespace();
@@ -594,13 +612,14 @@ fn parse_value_data<'i>(
 }
 pub(crate) fn construct_descriptor_value(
     kind: CssCounterStyleDescriptorKind,
-    components: &crate::CssComponentValues,
-    serialized: &crate::CssSerializedValue,
+    components: &crate::component::CssComponentValues,
+    serialized: &crate::component::CssSerializedValue,
 ) -> Result<CounterStyleValueData, CssError> {
     let source = crate::tokenization::prepare(serialized.as_css());
     let mut parser_input = cssparser::ParserInput::new(&source);
     let mut input = Parser::new(&mut parser_input);
-    let numeric = crate::numeric::NumericInputContext::components(components, serialized);
+    let numeric =
+        crate::numeric::expression::NumericInputContext::components(components, serialized);
     let result = (|| {
         super::descriptor_values::validate_root(&mut input, "counter-style", kind.as_str())?;
         parse_descriptor_boundary(&mut input, "counter-style", kind.as_str(), |input| {
@@ -608,9 +627,13 @@ pub(crate) fn construct_descriptor_value(
         })
     })();
     result.map_err(|error| {
-        crate::error::from_parse_error(
+        crate::diagnostic::error::from_parse_error(
             serialized.as_css(),
-            crate::error::with_descriptor_value_context(error, "counter-style", kind.as_str()),
+            crate::diagnostic::error::with_descriptor_value_context(
+                error,
+                "counter-style",
+                kind.as_str(),
+            ),
         )
     })
 }

@@ -9,7 +9,9 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::parsed_color;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn cssom(value: &str) -> String {
     let source = format!("color: {value}");

@@ -6,7 +6,20 @@
 //! Transforms1 2019-02-14 #propdef-transform-box; Compositing1 2024-03-21 #propdef-mix-blend-mode, #propdef-isolation.
 //! These functional tests accompany new specified-text APIs; broader grammar admission is separate.
 use crate::css::support::serialization_limits::assert_node_limits;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::background::CssBlendMode;
+use surgeist_css::values::common::CssBoxEdgeKeyword;
+use surgeist_css::values::effects::CssIsolation;
+use surgeist_css::values::image::{CssImageRendering, CssObjectFit};
+use surgeist_css::values::text::{
+    CssTextDecorationStyle, CssTextTransform, CssTextTransformCase, CssTextTransformSet,
+    CssTextWrap, CssTextWrapMode, CssTextWrapStyle, CssWhiteSpace, CssWhiteSpaceCollapse,
+    CssWhiteSpaceKeyword, CssWordBreak,
+};
+use surgeist_css::values::transform::CssTransformBox;
+use surgeist_css::values::ui::{CssPointerEvents, CssResize, CssUserSelect};
 
 macro_rules! cases {
     ($property:literal, $view:ident, $accessor:ident, [$(($value:expr, $expected:literal)),+ $(,)?]) => {

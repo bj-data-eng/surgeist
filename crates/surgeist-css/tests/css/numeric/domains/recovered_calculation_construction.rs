@@ -4,22 +4,31 @@
 //! public checked constructor admits only closed calculations, whatever its
 //! root type or range.
 
-use surgeist_css::{
-    CssAbsoluteFontWeight, CssAngle, CssAspectRatioValue, CssAuthoredFontFeatureSettings,
-    CssAuthoredFontFeatureValue, CssCalculation, CssComponentValueRef, CssComponentValues, CssFlex,
-    CssFontStyle, CssFontWeight, CssFontWeightRange, CssFontWidth, CssInteger,
-    CssKnownPropertyValueRef, CssLength, CssLengthPercentage, CssLineHeight, CssNonNegative,
-    CssNumber, CssNumeric, CssNumericConstructionError, CssObliqueAngleRange, CssParser,
-    CssPercentage, CssPositive, CssSpecifiedRatio, CssStripeThickness, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssAngle, CssCalculation, CssFlex, CssInteger, CssLength, CssLengthPercentage, CssNonNegative,
+    CssNumber, CssNumeric, CssNumericConstructionError, CssPercentage, CssPositive,
+    CssSpecifiedRatio,
 };
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::box_model::CssAspectRatioValue;
+use surgeist_css::values::font::{
+    CssAbsoluteFontWeight, CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue,
+    CssFontStyle, CssFontWeight, CssFontWeightRange, CssFontWidth, CssObliqueAngleRange,
+};
+use surgeist_css::values::image::CssStripeThickness;
+use surgeist_css::values::text::CssLineHeight;
 
-fn property(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssDeclarationList> {
+fn property(
+    source: &str,
+) -> surgeist_css::CssParseReport<surgeist_css::declaration::CssDeclarationList> {
     let report = CssParser::default().parse_block_contents(source);
     assert_eq!(report.syntax().len(), 1, "{source}");
     // Syntax 3 §5.4.9: the implicit closure at EOF is a parse error.
     crate::css::support::value_assertions::assert_first_code(
         report.diagnostics(),
-        surgeist_css::CssErrorCode::UnexpectedEnd,
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd,
     );
     report
 }
@@ -92,7 +101,7 @@ fn recovered_flex() -> CssCalculation<CssFlex> {
 /// The rejection reports the implicit closure of the recovered root function.
 fn assert_recovered(
     error: CssNumericConstructionError,
-    components: &surgeist_css::CssComponentValues,
+    components: &surgeist_css::component::CssComponentValues,
 ) {
     assert!(error.is_recovered_component(), "{error:?}");
     let [root] = components.items() else {
@@ -239,8 +248,8 @@ fn length_percentage_constructors_reject_recovered_math_and_accept_closed_math()
 fn closed<C>(
     text: &str,
     construct: fn(
-        surgeist_css::CssComponentValues,
-        surgeist_css::CssComponentValueLimits,
+        surgeist_css::component::CssComponentValues,
+        surgeist_css::component::CssComponentValueLimits,
     ) -> Result<C, CssNumericConstructionError>,
 ) -> C {
     construct(

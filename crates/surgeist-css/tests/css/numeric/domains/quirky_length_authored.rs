@@ -5,7 +5,16 @@ use crate::css::support::value_assertions::{
     assert_component_rejected, assert_first_property_diagnostic, assert_property_rejected,
     property_rejection,
 };
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssLength, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyTarget};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::border::CssLineWidth;
+use surgeist_css::values::common::{CssAutoOr, CssSidePair};
+use surgeist_css::values::effects::{CssClip, CssShadow};
+use surgeist_css::values::text::{CssTextShadowLayer, CssTextUnderlineOffsetLength};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
 

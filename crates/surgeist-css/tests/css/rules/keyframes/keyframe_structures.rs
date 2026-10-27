@@ -1,6 +1,9 @@
-use surgeist_css::{CssErrorCode, CssKeyframeSelector, CssParser, CssRecoveryAction, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::CssKeyframeSelector;
 
-fn keyframes(rule: &CssRule) -> &surgeist_css::CssKeyframesRule {
+fn keyframes(rule: &CssRule) -> &surgeist_css::rule::keyframes::CssKeyframesRule {
     let CssRule::Keyframes(keyframes) = rule else {
         panic!("expected keyframes rule");
     };
@@ -38,7 +41,9 @@ fn keyframes_preserve_empty_and_duplicate_authored_structure() {
         fade.blocks()[0].selectors().selectors(),
         [
             CssKeyframeSelector::From,
-            CssKeyframeSelector::Percent(surgeist_css::CssKeyframePercent::try_new(0.0).unwrap()),
+            CssKeyframeSelector::Percent(
+                surgeist_css::rule::keyframes::CssKeyframePercent::try_new(0.0).unwrap()
+            ),
             CssKeyframeSelector::From,
         ]
     );

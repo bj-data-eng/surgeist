@@ -1,12 +1,18 @@
 //! Public recovery and round-trip contracts from CSS Syntax 3 §§3,9–10.
 use crate::css::support::authored_syntax::assert_span_bytes as span;
-use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssCustomPropertyName,
-    CssDeclaration, CssDeclarationList, CssErrorCode, CssFontFaceDescriptorKind, CssImportance,
-    CssKnownProperty, CssMediaQuery, CssMediaType, CssParseReport, CssParser, CssPropertyNameRef,
-    CssPropertyTarget, CssRecoveryAction, CssRule, CssSelector, CssSheet, CssStyleRule,
-    CssValueTokenRef,
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueTokenRef,
 };
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssDeclarationList, CssImportance,
+};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::query::media::{CssMediaQuery, CssMediaType};
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind;
+use surgeist_css::rule::{CssRule, CssSheet, CssStyleRule};
+use surgeist_css::selector::CssSelector;
+use surgeist_css::{CssParseReport, CssParser};
 
 fn style<'a>(rule: &'a CssRule, class: &str) -> &'a CssStyleRule {
     let CssRule::Style(rule) = rule else {

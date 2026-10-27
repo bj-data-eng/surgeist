@@ -4,7 +4,25 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::{CssIdent, CssUrl, CssUrlModifier};
+use surgeist_css::values::content::{
+    CssContentAlternative, CssContentAlternativeItem, CssContentCounter, CssContentCounterName,
+    CssContentCounters, CssContentName, CssContentReferenceMode, CssContentString,
+    CssContentTarget, CssContentValue, CssContentValueItem, CssCounterStyleReference,
+    CssCounterStyleValue, CssCounterSymbolValue, CssGeneratedContent, CssGeneratedContentBodyRef,
+    CssLeaderValue, CssNamedString, CssNamedStringMode, CssSymbolsStyleValue, CssSymbolsSystem,
+    CssTargetCounter, CssTargetText, CssTargetTextMode,
+};
+use surgeist_css::values::image::{CssColorStopListItem, CssGradient, CssImage, CssImageValue};
 
 fn ident(value: &str) -> CssIdent {
     CssIdent::try_new(value).unwrap()

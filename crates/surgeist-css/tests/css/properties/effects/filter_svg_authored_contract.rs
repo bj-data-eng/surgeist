@@ -8,7 +8,23 @@ use crate::css::support::property_admission::assert_same_grammar_facts;
 use crate::css::support::{
     check_named_components as checked_components, detached_checked_declaration as checked,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandContributions, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 const FLOOD: &str = "flood-color";
 const ALPHA: &str = "flood-opacity";

@@ -2,11 +2,12 @@
 
 use super::property_input::Parser;
 use super::side_shapes::parse_side_pair;
-use crate::error::property::{Error, ParseError};
+use crate::diagnostic::error::property::{Error, ParseError};
 
 use super::values::parse_nonnegative_length_percentage;
-use crate::numeric::NumericInputContext;
-use crate::{CssGapValue, CssSidePair};
+use crate::numeric::expression::NumericInputContext;
+use crate::values::common::CssSidePair;
+use crate::values::layout::CssGapValue;
 
 pub(super) fn parse_gap_value<'i, 't>(
     input: &mut Parser<'i, 't>,

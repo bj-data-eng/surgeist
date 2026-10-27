@@ -9,7 +9,18 @@ use crate::css::support::important_speech_components as checked;
 use crate::css::support::important_speech_declaration as declaration;
 use crate::css::support::known_property as property;
 use crate::css::support::named_property::longhand_contributions as expanded;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValue, CssLonghandValueRef, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget, CssUserAgentInitial,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
 
 struct Case {
     name: &'static str,

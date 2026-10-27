@@ -7,7 +7,19 @@
 
 use crate::css::support::declaration_color as color_of;
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorAlphaScalarRef, CssColorComponent, CssColorHue, CssColorNumberLiteral,
+    CssColorPercentageLiteral, CssColorSyntax, CssHslColor, CssHwbColor, CssLabColor, CssLchColor,
+    CssParsedColorAlphaRef, CssPredefinedColor, CssRgbColor,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{CssCalculation, CssCalculationType, CssNumber, CssPercentage};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssLonghandContribution, CssLonghandValueRef,
+};
 
 const FAMILIES: [&str; 8] = ["rgb", "hsl", "hwb", "lab", "lch", "oklab", "oklch", "srgb"];
 

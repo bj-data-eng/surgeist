@@ -1,7 +1,10 @@
 //! Native owner input, source custody, finite admission and exact feedback echoes.
 #![forbid(unsafe_code)]
 use std::{cell::Cell, sync::Arc};
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValueError;
+use surgeist_css::property::CssPropertyGrammar;
+use surgeist_css::source::{CssUtf16InputLimits, CssUtf16Resource};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 use surgeist_cssom::*;
 
 fn version(role: CssomInputRole, name: &str) -> CssomInputVersion {

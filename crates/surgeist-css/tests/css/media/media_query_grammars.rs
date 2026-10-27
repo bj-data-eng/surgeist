@@ -1,9 +1,13 @@
-use surgeist_css::{
-    CssConditionKind, CssDefinedFalseMediaReason, CssErrorCode, CssGridMode, CssMediaFeatureKind,
-    CssMediaFeatureQuery, CssMediaGridRef, CssMediaLeaf, CssMediaQuery, CssMediaQueryModifier,
-    CssMediaRangeRef, CssMediaResolutionRef, CssMediaType, CssParser, CssQueryComparison, CssRatio,
-    CssRecoveryAction, CssRule, CssScanMode,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::CssRatio;
+use surgeist_css::query::media::{
+    CssDefinedFalseMediaReason, CssGridMode, CssMediaFeatureKind, CssMediaFeatureQuery,
+    CssMediaGridRef, CssMediaLeaf, CssMediaQuery, CssMediaQueryModifier, CssMediaRangeRef,
+    CssMediaResolutionRef, CssMediaType, CssScanMode,
 };
+use surgeist_css::query::{CssConditionKind, CssQueryComparison};
+use surgeist_css::rule::CssRule;
 
 fn parsed_feature(query: &str) -> CssMediaFeatureQuery {
     let source = format!("@media {query} {{}}");
@@ -100,7 +104,7 @@ fn balanced_opaque_media_syntax_is_not_malformed_recovery() {
     assert!(matches!(
         condition.kind(),
         CssConditionKind::Leaf(CssMediaLeaf::Feature(CssMediaFeatureQuery::Scripting(
-            surgeist_css::CssMediaScripting::Enabled
+            surgeist_css::query::media::CssMediaScripting::Enabled
         )))
     ));
 }
@@ -178,11 +182,11 @@ fn mq3_boolean_features_preserve_their_typed_names() {
 }
 
 fn assert_numeric_literal(
-    expression: surgeist_css::CssCalculationExpressionRef<'_>,
+    expression: surgeist_css::numeric::CssCalculationExpressionRef<'_>,
     number: &str,
     unit: Option<&str>,
 ) {
-    let surgeist_css::CssCalculationExpressionRef::Value(value) = expression else {
+    let surgeist_css::numeric::CssCalculationExpressionRef::Value(value) = expression else {
         panic!("expected an exact authored numeric literal");
     };
     assert_eq!(value.literal().representation(), number);
@@ -327,7 +331,7 @@ fn known_media_numeric_values_remain_typed_without_evaluation() {
     let CssMediaRangeRef::Plain { value } = range.view() else {
         panic!("plain form")
     };
-    let surgeist_css::CssCalculationExpressionRef::NestedCalc(root) =
+    let surgeist_css::numeric::CssCalculationExpressionRef::NestedCalc(root) =
         value.calculation().expression()
     else {
         panic!("authored calculation")
@@ -468,7 +472,7 @@ fn balanced_nonmatching_feature_bodies_preserve_unknown_or_general_enclosed_synt
             CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(value)) if unknown => {
                 assert_eq!(
                     value.reason(),
-                    surgeist_css::CssUnknownMediaFeatureReason::UnknownName
+                    surgeist_css::query::media::CssUnknownMediaFeatureReason::UnknownName
                 );
                 assert_eq!(value.authored(), Some(css));
             }
@@ -497,7 +501,7 @@ fn balanced_nonmatching_feature_bodies_preserve_unknown_or_general_enclosed_synt
 
 #[test]
 fn unknown_features_retain_names_values_and_failure_classification() {
-    use surgeist_css::CssUnknownMediaFeatureReason::{InvalidValue, UnknownName};
+    use surgeist_css::query::media::CssUnknownMediaFeatureReason::{InvalidValue, UnknownName};
     for (css, reason) in [
         ("(future-feature)", UnknownName),
         ("(min-future-feature: 1px)", UnknownName),
@@ -656,7 +660,7 @@ fn empty_media_list_is_valid_authored_and_constructed_syntax() {
     };
     assert!(media.query().queries().is_empty());
     assert_eq!(
-        &surgeist_css::CssMediaQueryList::new(Vec::new()),
+        &surgeist_css::query::media::CssMediaQueryList::new(Vec::new()),
         media.query()
     );
 
@@ -678,14 +682,16 @@ fn mq4_comparisons_and_discrete_features_remain_typed() {
     ));
     assert!(matches!(
         parsed_feature("(hover: hover)"),
-        CssMediaFeatureQuery::Hover(surgeist_css::CssHoverCapability::Hover)
+        CssMediaFeatureQuery::Hover(surgeist_css::query::media::CssHoverCapability::Hover)
     ));
     assert!(matches!(
         parsed_feature("(prefers-color-scheme: dark)"),
-        CssMediaFeatureQuery::PrefersColorScheme(surgeist_css::CssColorSchemePreference::Dark)
+        CssMediaFeatureQuery::PrefersColorScheme(
+            surgeist_css::query::media::CssColorSchemePreference::Dark
+        )
     ));
     assert!(matches!(
         parsed_feature("(display-mode: standalone)"),
-        CssMediaFeatureQuery::DisplayMode(surgeist_css::CssDisplayMode::Standalone)
+        CssMediaFeatureQuery::DisplayMode(surgeist_css::query::media::CssDisplayMode::Standalone)
     ));
 }

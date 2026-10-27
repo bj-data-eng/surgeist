@@ -7,7 +7,18 @@
 use crate::css::support::important_speech_declaration as declaration;
 use crate::css::support::known_property as property;
 use crate::css::support::named_property::longhand_contributions as expanded;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueTokenRef,
+};
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandValue, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
 
 fn ordinary(name: &str, text: &str) -> CssLonghandValue {
     let values = expanded(&declaration(name, text));

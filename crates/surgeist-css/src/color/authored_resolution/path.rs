@@ -1,7 +1,8 @@
 //! One caller-owned contiguous path allocation with explicit reservation effects.
 
-use super::super::protocol::{ColorProtocolError, CssColorOperationOwner};
-use crate::CssValueOrigin;
+use crate::color::controlled::CssColorOperationOwner;
+use crate::color::controlled::protocol::ColorProtocolError;
+use crate::component::CssValueOrigin;
 use std::mem::{size_of, take};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -458,14 +459,14 @@ mod tests {
     use super::*;
     #[test]
     fn foreign_fact_preflight_does_not_change_phase_epoch_or_capacity() {
-        use super::super::AuthoredError;
+        use crate::color::authored_resolution::controlled::AuthoredError;
         use crate::color::{
             CssColorFactDefect, CssColorFactIdentity, CssColorFacts, CssColorPropertyFacts,
             CssColorSchemeFact, CssDeviceColorFact,
         };
         let mut owner = CssColorOperationOwner::new();
         let mut buffer = CssColorPathBuffer::new();
-        let root = crate::CssColor::transparent();
+        let root = crate::color::CssColor::transparent();
         let facts = CssColorFacts::new(
             CssColorFactIdentity::new(1, 2),
             CssColorPropertyFacts::Unavailable,
@@ -477,7 +478,7 @@ mod tests {
         );
         let phase = owner.current_phase();
         let epoch = buffer.epoch;
-        let result = super::super::CssAuthoredColorOperation::resolve_authored(
+        let result = crate::color::authored_resolution::controlled::CssAuthoredColorOperation::resolve_authored(
             &mut owner,
             &root,
             &facts,

@@ -1,11 +1,14 @@
 //! Namespaces 3 §4: authored prefixes, context-dependent constraints and bounded
 //! name serialization preserve decoded identifier identity.
 
-use surgeist_css::{
-    CssAttributeName, CssIdent, CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName,
-    CssNamespacePrefix, CssParser, CssQualifiedAttributeName, CssQualifiedNamePrefix,
-    CssQualifiedSelectorName, CssSelector, CssSerializedOrigin, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+use surgeist_css::selector::{
+    CssAttributeName, CssNamespaceConstraint, CssNamespaceContext, CssQualifiedAttributeName,
+    CssQualifiedNamePrefix, CssQualifiedSelectorName, CssSelector,
 };
+use surgeist_css::values::common::CssIdent;
 
 fn context(default: Option<&str>) -> CssNamespaceContext {
     CssNamespaceContext::from_bindings(

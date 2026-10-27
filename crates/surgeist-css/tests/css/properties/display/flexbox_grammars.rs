@@ -1,7 +1,10 @@
-use surgeist_css::{
-    CssErrorCode, CssFlexDirection, CssFlexWrap, CssGlobalKeyword, CssKnownDeclaredValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssParser, CssRecoveryAction,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
 };
+use surgeist_css::values::layout::{CssFlexDirection, CssFlexWrap};
 
 #[test]
 fn flex_flow_retains_typed_structure() {

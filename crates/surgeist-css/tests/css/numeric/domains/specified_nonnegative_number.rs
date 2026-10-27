@@ -3,10 +3,12 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssCalculation, CssComponentValue, CssComponentValueRef, CssComponentValues, CssNonNegative,
-    CssNumber, CssNumeric, CssParser, CssSerializationLimits, CssValueOrigin, CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::numeric::{CssCalculation, CssNonNegative, CssNumber, CssNumeric};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn literal(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
     CssNumeric::<CssNumber, CssNonNegative>::try_from_component(

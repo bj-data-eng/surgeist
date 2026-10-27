@@ -1,13 +1,20 @@
 //! Public authored `@font-face` environment-value contracts from CSS Env 1 §3.
 
-use surgeist_css::{
-    CssAbsoluteFontWeight, CssAuthoredFontFaceDescriptorValue as Authored,
-    CssAuthoredFontFaceDescriptorValue, CssAuthoredFontFeatureSettings, CssComponentValues,
-    CssFontDisplay, CssFontFaceDescriptor, CssFontFaceDescriptorKind as Kind,
-    CssFontFaceDescriptorValue as Ordinary, CssFontFaceDescriptors, CssFontFaceSource,
-    CssFontFaceStyle, CssFontFaceWeight, CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword,
-    CssNormalizedItem, CssParser, CssRecoveryAction, CssRule, CssRuleContextKindRef,
-    CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue as Authored;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue as Ordinary;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontDisplay, CssFontFaceDescriptor,
+    CssFontFaceDescriptors, CssFontFaceSource,
+};
+use surgeist_css::values::font::{
+    CssAbsoluteFontWeight, CssAuthoredFontFeatureSettings, CssFontFaceStyle, CssFontFaceWeight,
+    CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword,
 };
 
 fn checked(kind: Kind, text: &str) -> Authored {
@@ -62,7 +69,7 @@ fn every_known_descriptor_defers_env_and_reenters_its_ordinary_grammar() {
             ),
             Ordinary::FontStyle(style) => assert_eq!(
                 style,
-                CssFontFaceStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic)
+                CssFontFaceStyle::Keyword(surgeist_css::values::font::CssFontStyleKeyword::Italic)
             ),
             Ordinary::FontWidth(width) => assert_eq!(
                 width,

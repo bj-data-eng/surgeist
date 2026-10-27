@@ -4,14 +4,19 @@
 //! Reusing their number type must not bypass the pure color expression context.
 
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::{
-    CssCalculation, CssColorComponent, CssColorConstructionError, CssColorHue,
-    CssColorNumberLiteral, CssColorProfileName, CssColorSyntax, CssComponentValue,
-    CssComponentValues, CssCondition, CssConditionKind, CssContainerFeatureQuery, CssContainerLeaf,
-    CssContainerRatioRef, CssCustomColor, CssDeviceCmykColor, CssHslColor, CssHwbColor,
-    CssLabColor, CssLchColor, CssMediaRangeRef, CssNumber, CssParser, CssPredefinedColor,
-    CssRgbColor,
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColorComponent, CssColorConstructionError, CssColorHue, CssColorNumberLiteral,
+    CssColorProfileName, CssColorSyntax, CssCustomColor, CssDeviceCmykColor, CssHslColor,
+    CssHwbColor, CssLabColor, CssLchColor, CssPredefinedColor, CssRgbColor,
 };
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::numeric::{CssCalculation, CssNumber};
+use surgeist_css::query::container::{
+    CssContainerFeatureQuery, CssContainerLeaf, CssContainerRatioRef,
+};
+use surgeist_css::query::media::CssMediaRangeRef;
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
 fn container_number(expression: &str) -> CssCalculation<CssNumber> {
     let source = format!("(aspect-ratio: {expression})");

@@ -4,7 +4,8 @@
 //! they are not coordinate requirements imposed by CSS publications.
 
 use serde_json::{Value, json};
-use surgeist_css::{CssParser, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
 
 use crate::css::support::csstree::adapters::EntryPoint;
 use crate::css::support::csstree::reconciliation::{
@@ -131,7 +132,7 @@ fn unresolved_character_variant_original_retains_font_feature_values_outer_rule(
     assert!(
         matches!(
             report.syntax(),
-            Some(surgeist_css::CssRule::FontFeatureValues(_))
+            Some(surgeist_css::rule::CssRule::FontFeatureValues(_))
         ),
         "{} must retain its independently valid outer family",
         text(row, "id"),

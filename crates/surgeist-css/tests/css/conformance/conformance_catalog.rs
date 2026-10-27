@@ -11,8 +11,40 @@
 use crate::css::support::position_view::CartesianPosition as _;
 use std::collections::{BTreeMap, BTreeSet};
 
-use surgeist_css::*;
-use surgeist_css::{CssNumericLiteral, CssTime};
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::conformance::{
+    CssExclusionReason, CssFeatureKind, CssFeatureMetadata, CssSpecificationTier, CssSupportStatus,
+    conformance_exclusion, conformance_exclusions, feature_catalog, feature_metadata,
+    property_support_metadata, specification_source, specification_sources,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssCalculation, CssCalculationType, CssFrequency, CssFrequencyUnit,
+    CssInteger, CssLength, CssLengthUnit, CssNumber, CssNumeric, CssPercentage, CssResolution,
+    CssResolutionUnit, CssTimeUnit,
+};
+use surgeist_css::numeric::{CssNumericLiteral, CssTime};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
+};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+};
+use surgeist_css::values::animation::CssEasing;
+use surgeist_css::values::background::CssBlendMode;
+use surgeist_css::values::common::CssBoxEdgeKeyword;
+use surgeist_css::values::effects::{CssBoxShadow, CssClipPath, CssFilter, CssFilterFunction};
+use surgeist_css::values::position::{CssHorizontalPosition, CssVerticalPosition};
+use surgeist_css::values::shape::CssBasicShape;
+use surgeist_css::values::transform::{
+    CssTransform, CssTransformFunction, CssTransformPerspective, CssTransformScaleComponent,
+};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 mod expected;
 
@@ -2007,7 +2039,8 @@ fn font_source_complete_grammar_retains_legacy_controls_and_rejects_malformed_sr
         else {
             panic!("expected ordinary source descriptor");
         };
-        let [surgeist_css::CssFontFaceSource::Local(local)] = source.sources() else {
+        let [surgeist_css::rule::font_face::CssFontFaceSource::Local(local)] = source.sources()
+        else {
             panic!("expected the local name");
         };
         assert_eq!(local.as_str(), decoded);
@@ -2025,12 +2058,12 @@ fn font_source_complete_grammar_retains_legacy_controls_and_rejects_malformed_sr
     else {
         panic!("expected ordinary source descriptor");
     };
-    let [surgeist_css::CssFontFaceSource::Url(source)] = value.sources() else {
+    let [surgeist_css::rule::font_face::CssFontFaceSource::Url(source)] = value.sources() else {
         panic!("expected a retained URL source");
     };
     assert_eq!(
         match source.format().unwrap() {
-            surgeist_css::CssFontFormat::String(value) => value.as_str(),
+            surgeist_css::rule::font_face::CssFontFormat::String(value) => value.as_str(),
             _ => panic!("string format"),
         },
         "woff2-variations"
@@ -2038,13 +2071,13 @@ fn font_source_complete_grammar_retains_legacy_controls_and_rejects_malformed_sr
     assert_eq!(
         source
             .format()
-            .and_then(surgeist_css::CssFontFormat::recognized_format),
-        Some(surgeist_css::CssFontFormatHint::Woff2)
+            .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
+        Some(surgeist_css::rule::font_face::CssFontFormatHint::Woff2)
     );
     assert!(source.tech().is_empty());
     assert_eq!(
         source.required_technologies().collect::<Vec<_>>(),
-        [surgeist_css::CssFontTechHint::Variations]
+        [surgeist_css::rule::font_face::CssFontTechHint::Variations]
     );
 }
 
@@ -2536,7 +2569,7 @@ fn transform_perspective_accepts_none_and_zero_and_rejects_invalid_dimensions() 
     assert!(matches!(
         &functions.functions()[1],
         CssTransformFunction::Perspective(CssTransformPerspective::Length(length))
-            if matches!(length.literal().map(|literal| literal.component()).map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == "0")
+            if matches!(length.literal().map(|literal| literal.component()).map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Number(number))) if number.representation() == "0")
     ));
     assert!(
         !CssParser::default()
@@ -3514,17 +3547,17 @@ fn text_combine_upright_uses_selected_level_four_digits_grammar() {
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }
 fn exact_percentage(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }
 
 #[test]

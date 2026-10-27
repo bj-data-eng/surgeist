@@ -7,7 +7,22 @@
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 type Limits = CssSerializationLimits;
 
 // These are specialized ordered shorthand expansion behavior oracles, not a

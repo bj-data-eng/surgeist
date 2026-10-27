@@ -7,7 +7,20 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_numeric_kind;
 use crate::css::support::value_assertions::literal_specified;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssFrequency, CssLength, CssLengthPercentage, CssNonNegative, CssNumber,
+    CssNumeric, CssNumericLiteral, CssSpecifiedRatio, CssTime, CssTimeUnit,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::media::CssMediaQuery;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{CssDelayList, CssDurationList, CssEasing, CssEasingList};
+use surgeist_css::values::effects::{CssOpacityScalar, CssOpacityValue};
 
 fn component(source: &str) -> CssComponentValue {
     let values = CssComponentValues::parse(&CssParser::default(), source).unwrap();

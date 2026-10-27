@@ -5,7 +5,23 @@
 
 use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{CssComponentValue, CssSerializationLimits as L, *};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssAngleUnit, CssLength, CssLengthPercentage, CssNumber, CssNumeric,
+    CssNumericLiteral,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
+};
+use surgeist_css::values::transform::{
+    CssScale, CssScaleValues, CssTransform, CssTransformFunction, CssTransformFunctionList,
+    CssTransformMatrix, CssTransformOrigin, CssTransformScale3d, CssTransformScaleComponent,
+    CssTransformSkew, CssTransformTranslate3d, CssTranslate, CssTranslateValues,
+};
 
 fn number(text: &str) -> CssNumeric<CssNumber> {
     CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_number(text).unwrap())

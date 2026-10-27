@@ -7,7 +7,23 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::normal_declaration;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::serialization_limits::assert_limits as budget;
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{CssLength, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::border::CssBorderRadiusShorthand;
+use surgeist_css::values::common::{CssBoxEdgeKeyword, CssUrl};
+use surgeist_css::values::effects::{CssClipPath, CssClipPathShape};
+use surgeist_css::values::image::CssRadialExtent;
+use surgeist_css::values::position::{
+    CssCartesianPosition, CssHorizontalPosition, CssPosition, CssVerticalPosition,
+};
+use surgeist_css::values::shape::{
+    CssBasicShape, CssCircleRadius, CssCircleShape, CssEllipseRadii, CssEllipseRadius,
+    CssEllipseShape, CssFillRule, CssInsetShape, CssInsetShapeOffsets, CssPolygonPoint,
+    CssPolygonPointList, CssPolygonShape,
+};
 
 fn clip_path(css: &str) -> CssClipPath {
     let declaration = normal_declaration("clip-path", css);

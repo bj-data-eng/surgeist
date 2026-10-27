@@ -7,7 +7,23 @@ use std::error::Error as _;
 
 use crate::css::support::color_components::token as component;
 use crate::css::support::color_property::color_property_value as wrapper;
-use surgeist_css::*;
+use surgeist_css::color::{
+    CssColorComponent, CssColorHue, CssColorMixPercentage, CssColorNumberLiteral,
+    CssColorPercentageLiteral, CssRelativeColorEnvironment, CssRelativeColorExpressionValue,
+    CssRelativeColorResultDomain,
+};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssCalculationExpressionRef, CssCalculationType, CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::common::CssBoxSideKind;
+use surgeist_css::{CssParser, CssParserContext};
 
 fn number<'a>(value: &'a CssColorComponent, expected: &str) -> &'a CssColorNumberLiteral {
     let CssColorComponent::Number(value) = value else {

@@ -5,7 +5,17 @@
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nested-declarations-rule
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-nesting
 use crate::css::support::rules::normalized_declarations as declarations;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem,
+    CssNormalizedSheet, CssRuleContext, CssRuleContextKindRef, CssSelectorBinding,
+    CssSelectorContext,
+};
+use surgeist_css::rule::{CssRule, CssScopeRule, CssStyleBlock};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssSelector, CssSelectorCombinator, CssStyleSelector,
+};
 
 fn rules(sheet: &CssNormalizedSheet) -> Vec<&CssRuleContext> {
     sheet

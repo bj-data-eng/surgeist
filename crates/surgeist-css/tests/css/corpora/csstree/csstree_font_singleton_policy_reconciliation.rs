@@ -5,10 +5,12 @@ use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
 use serde_json::{Value, json};
-use surgeist_css::{
-    CssErrorCode, CssFontFeatureValuesItem, CssNamespaceContext, CssParser, CssRule,
-    CssSourcePosition, CssSourceSpan,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesItem;
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::source::{CssSourcePosition, CssSourceSpan};
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
 use crate::css::support::csstree::reconciliation::{

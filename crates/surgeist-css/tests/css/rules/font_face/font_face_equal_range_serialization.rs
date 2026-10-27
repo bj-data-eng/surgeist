@@ -4,10 +4,10 @@
 use crate::css::support::failure_classes::SerializationFailure as ErrorKind;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ordinary_font_face_descriptor as ordinary;
-use surgeist_css::{
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value, CssFontFaceStyle,
-    CssSerializationLimits as Limits,
-};
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue as Value;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::values::font::CssFontFaceStyle;
 
 // Both retained endpoints consume visits, including the endpoint suppressed in
 // output. Only the returned shorter text consumes the final output byte budget.

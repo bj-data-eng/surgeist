@@ -10,7 +10,19 @@
 
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::numeric_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationType,
+    CssMathFunction, CssNumber, CssNumeric, CssNumericDimension,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::effects::CssOpacityValue;
 
 fn checked(source: &str) -> CssCalculation<CssNumber> {
     let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();

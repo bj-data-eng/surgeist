@@ -1,7 +1,23 @@
 //! `@font-face` (CSS Fonts 4) descriptors, sources and numeric ranges through
 //! the public stylesheet parser and constructors.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::numeric::{CssAngle, CssNonNegative, CssNumber, CssNumeric, CssPercentage};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontDisplay, CssFontFaceDescriptor,
+    CssFontFaceDescriptorKind, CssFontFaceDescriptorValue, CssFontFaceDescriptors,
+    CssFontFaceFamily, CssFontFaceRule, CssFontFaceSource, CssFontFaceSourceList,
+    CssFontFaceUrlSource, CssFontFormat, CssFontFormatHint, CssFontLocalName, CssFontTechHint,
+    CssUnicodeRange, CssUnicodeRangeList,
+};
+use surgeist_css::values::font::{
+    CssAbsoluteFontWeight, CssFontFaceObliqueRange, CssFontFaceStyle, CssFontFaceWeight,
+    CssFontFaceWidth, CssFontStyleKeyword, CssFontWeightRange, CssFontWidth, CssFontWidthKeyword,
+    CssObliqueAngleRange,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
@@ -31,15 +47,23 @@ fn font_face_descriptor_collection_preserves_optional_matching_fields() {
     assert!(empty.effective(CssFontFaceDescriptorKind::Src).is_none());
     assert_eq!(empty.occurrences().len(), 0);
     assert_eq!(
-        CssFontFaceUrlSource::new(surgeist_css::CssUrl::new(""), None, Vec::new())
-            .url()
-            .as_str(),
+        CssFontFaceUrlSource::new(
+            surgeist_css::values::common::CssUrl::new(""),
+            None,
+            Vec::new()
+        )
+        .url()
+        .as_str(),
         ""
     );
     assert_eq!(
-        CssFontFaceUrlSource::new(surgeist_css::CssUrl::new("   "), None, Vec::new())
-            .url()
-            .as_str(),
+        CssFontFaceUrlSource::new(
+            surgeist_css::values::common::CssUrl::new("   "),
+            None,
+            Vec::new()
+        )
+        .url()
+        .as_str(),
         "   "
     );
 
@@ -155,8 +179,8 @@ fn font_face_names_and_urls_preserve_empty_and_whitespace_authored_strings() {
     );
     assert_eq!(
         CssFontFaceUrlSource::new(
-            surgeist_css::CssUrl::new("fonts/avenir.woff2"),
-            Some(surgeist_css::CssFontFormat::Keyword(
+            surgeist_css::values::common::CssUrl::new("fonts/avenir.woff2"),
+            Some(surgeist_css::rule::font_face::CssFontFormat::Keyword(
                 CssFontFormatHint::Woff2
             )),
             vec![CssFontTechHint::Variations]
@@ -170,9 +194,13 @@ fn font_face_names_and_urls_preserve_empty_and_whitespace_authored_strings() {
         assert_eq!(CssFontFaceFamily::try_new(value).unwrap().as_str(), value);
         assert_eq!(CssFontLocalName::try_new(value).unwrap().as_str(), value);
         assert_eq!(
-            CssFontFaceUrlSource::new(surgeist_css::CssUrl::new(value), None, Vec::new())
-                .url()
-                .as_str(),
+            CssFontFaceUrlSource::new(
+                surgeist_css::values::common::CssUrl::new(value),
+                None,
+                Vec::new()
+            )
+            .url()
+            .as_str(),
             value
         );
     }
@@ -184,8 +212,8 @@ fn font_face_source_and_unicode_lists_reject_empty_values() {
     assert_eq!(CssUnicodeRangeList::try_new(Vec::new()), None);
 
     let url = CssFontFaceUrlSource::new(
-        surgeist_css::CssUrl::new("fonts/avenir.woff2"),
-        Some(surgeist_css::CssFontFormat::Keyword(
+        surgeist_css::values::common::CssUrl::new("fonts/avenir.woff2"),
+        Some(surgeist_css::rule::font_face::CssFontFormat::Keyword(
             CssFontFormatHint::Woff2,
         )),
         vec![CssFontTechHint::ColorCOLRv1],

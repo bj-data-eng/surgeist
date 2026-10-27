@@ -10,7 +10,15 @@ use crate::css::support::property_admission::{
     assert_numeric_rejected,
 };
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance, CssSpecifiedDeclarationBlock};
+use surgeist_css::numeric::{CssCalculation, CssNumber, CssNumeric, CssPercentage};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{CssEasing, CssEasingList, CssLinearEasing, CssLinearStop};
 
 fn number(source: &str) -> CssNumeric<CssNumber> {
     CssNumeric::<CssNumber>::try_from_calculation(

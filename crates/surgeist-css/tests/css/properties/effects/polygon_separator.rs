@@ -1,6 +1,7 @@
 //! CSS Shapes 1 (2025-06-12) §3.1 and Values 4 §2.1 require the comma
 //! to be omitted when every preceding optional polygon modifier is absent.
-use surgeist_css::{CssKnownProperty, CssParser, CssPropertyNameRef};
+use surgeist_css::CssParser;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
 
 #[test]
 fn polygon_without_modifiers_starts_with_its_first_point() {

@@ -223,8 +223,8 @@ fn source_storage(
             return false;
         }
         let result = match action {
-            surgeist_css::CssSourceRetentionAction::Step => steps.prefix(hold),
-            surgeist_css::CssSourceRetentionAction::Scratch { live_bytes } => (|| {
+            surgeist_css::source::CssSourceRetentionAction::Step => steps.prefix(hold),
+            surgeist_css::source::CssSourceRetentionAction::Scratch { live_bytes } => (|| {
                 steps.prefix(hold)?;
                 let bytes = backing
                     .bytes
@@ -235,7 +235,8 @@ fn source_storage(
                     steps.cancel,
                 )?;
                 Ok(())
-            })(),
+            })(
+            ),
         };
         match result {
             Ok(()) => true,

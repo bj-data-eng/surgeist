@@ -9,7 +9,9 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#cubic-bezier-easing-functions
 
-use surgeist_css::{CssKnownProperty, CssParser, CssRecoveryAction};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::CssKnownProperty;
 
 fn assert_clean_typed_property(source: &str, expected: CssKnownProperty) {
     let report = CssParser::default().parse_block_contents(source);

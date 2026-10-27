@@ -5,7 +5,8 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-comment
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
-use surgeist_css::{CssParseReport, CssParser, CssRecoveryAction};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::{CssParseReport, CssParser};
 
 // The unit is the last occurrence of its text: every earlier copy lies in a
 // comment, a string or a preceding rule.

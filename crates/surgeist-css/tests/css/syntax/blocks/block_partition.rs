@@ -9,10 +9,12 @@
 //! no-rule outcomes do not. An empty run never creates a placeholder.
 
 use crate::css::support::authored_syntax::assert_diagnostics;
-use surgeist_css::{
-    CssDeclaration, CssErrorCode, CssKnownProperty, CssNormalizedItem, CssParseReport, CssParser,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSheet,
-};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn assert_declaration(value: &CssDeclaration, property: CssKnownProperty, css: &str) {
     assert_eq!(value.known().unwrap().property(), property);

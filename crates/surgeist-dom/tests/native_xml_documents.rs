@@ -614,7 +614,9 @@ fn associated_explicit_input_policy_is_reestablished_in_the_new_closed_environme
 fn actual_style_publication_parks_original_constructor_then_finishes_origin_mime_and_tickets_once()
 {
     use std::sync::{Arc, atomic::Ordering};
-    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::query::media::CssMediaQueryList;
+    use surgeist_css::source::CssUtf16InputLimits;
+    use surgeist_css::{CssParser, CssParserContext};
     use surgeist_cssom::{
         CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs, CssomStore,
     };

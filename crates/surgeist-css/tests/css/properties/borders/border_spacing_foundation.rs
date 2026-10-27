@@ -3,7 +3,19 @@
 //! The one property is an inherited longhand with an effective ordered pair.
 
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssLength, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssPropertyKindRef,
+};
+use surgeist_css::values::common::CssSidePair;
 
 fn spacing(source: &CssDeclaration) -> &CssSidePair<CssNumeric<CssLength, CssNonNegative>> {
     let CssKnownPropertyValueRef::BorderSpacing(value) =
@@ -229,17 +241,21 @@ fn normalization_keeps_mixed_order_and_fails_at_exact_contribution_limit() {
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }
-fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
-    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
-    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+fn exact_literal(
+    component: Option<&surgeist_css::component::CssComponentValue>,
+    css: &str,
+) -> bool {
+    use surgeist_css::component::CssComponentValueRef as Component;
+    use surgeist_css::component::CssValueTokenRef as Token;
+    let expected = surgeist_css::component::CssComponentValue::try_token(css).unwrap();
     match (
-        component.map(surgeist_css::CssComponentValue::view),
+        component.map(surgeist_css::component::CssComponentValue::view),
         expected.view(),
     ) {
         (

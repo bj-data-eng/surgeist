@@ -9,8 +9,19 @@ use crate::css::support::named_property::{
     assert_checked_value_rejected_at, assert_invalid_replacement_at,
 };
 use crate::css::support::serialization_limits::assert_limits as primitive;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssLength, CssNonNegative, CssNumber, CssNumeric};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownPropertyValueRef,
+    CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::values::text::{
+    CssLineBreak, CssTabSize, CssTextTransform, CssTextTransformCase, CssTextTransformSet,
+    CssVerticalAlign, CssWordSpaceTransform, CssWrapBoundary, CssWrapInside,
+};
 
 fn fronts(p: P, text: &str) -> [CssDeclaration; 3] {
     [

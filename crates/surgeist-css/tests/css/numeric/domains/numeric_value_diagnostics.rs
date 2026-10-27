@@ -3,10 +3,12 @@
 //! as encountered and positions the error at it.
 
 use crate::css::support::property_admission::GrammarFacts;
-use surgeist_css::{
-    CssComponentValues, CssDeclaration, CssErrorCode, CssImportance, CssKnownProperty, CssParser,
-    CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget, CssSerializedOrigin,
-    CssTokenKind, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssTokenKind};
+use surgeist_css::property::{
+    CssKnownProperty, CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget,
 };
 
 /// The responsible token: its kind, authored spelling and offset in the value.

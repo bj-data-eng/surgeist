@@ -8,11 +8,13 @@
 
 use std::ops::Range;
 
-use surgeist_css::{
+use surgeist_css::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssHashFlag, CssParser, CssParserContext, CssRule, CssSupportsTestItem, CssValueOrigin,
-    CssValueTokenRef,
+    CssHashFlag, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::query::supports::CssSupportsTestItem;
+use surgeist_css::rule::CssRule;
+use surgeist_css::{CssParser, CssParserContext};
 
 fn assert_span(origin: &CssValueOrigin, source: &str, expected: Range<usize>) {
     let CssValueOrigin::Parsed(origin) = origin else {

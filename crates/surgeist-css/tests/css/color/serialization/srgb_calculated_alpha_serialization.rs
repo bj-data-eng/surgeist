@@ -13,7 +13,16 @@ use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorNumberLiteral, CssColorSyntax, CssHslColor,
+    CssHwbColor, CssRgbColor,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::numeric::{CssCalculation, CssNumber};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssSidePair;
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

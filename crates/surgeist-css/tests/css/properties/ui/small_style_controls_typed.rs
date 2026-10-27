@@ -4,7 +4,20 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin};
+use surgeist_css::conformance::{
+    CssSupportStatus, property_support_metadata, specification_source,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssBoxDecorationBreak, CssOverflowAnchor};
+use surgeist_css::values::ui::{
+    CssWillChange, CssWillChangeFeature, CssWillChangeFeatures, CssWillChangePropertyName,
+};
 
 fn will_change(source: &CssDeclaration) -> &CssWillChange {
     let CssKnownPropertyValueRef::WillChange(value) =

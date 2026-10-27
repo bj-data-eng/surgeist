@@ -2,7 +2,28 @@
 use crate::parser_resources::check_resource_diagnostics;
 use crate::{declaration_budget::DeclarationBudget, declaration_support::PendingPreparation, *};
 use std::sync::Arc;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssDeclarationList, CssImportance,
+    CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry,
+};
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::property::{
+    CssKnownProperty, CssLonghandProperty, CssPropertyGrammar, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTextTarget, CssSvgGlyphOrientationVerticalDeclaration,
+};
+use surgeist_css::rule::font_face::{
+    CssFontFaceDescriptor, CssFontFaceDescriptorKind, CssSpecifiedFontFaceDeclarationBlock,
+};
+use surgeist_css::rule::page::{
+    CssMarginDeclarationBlock, CssPageBlockError, CssPageDeclaration, CssPageDeclarationBlock,
+    CssPageDescriptor, CssPageDescriptorKind, CssSpecifiedPageDeclarationBlock,
+    CssSpecifiedPageDeclarationEntry,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::source::CssDeclarationBlockParseReport;
+use surgeist_css::values::common::CssBoxSideKind;
+use surgeist_css::{CssParser, CssParserContext};
 #[path = "declaration_descriptors.rs"]
 mod descriptors;
 use crate::css_adapter::font_winners;

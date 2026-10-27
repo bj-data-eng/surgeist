@@ -4,7 +4,20 @@
 use crate::css::support::normal_declaration;
 use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{CssLengthPercentage, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::background::{CssBackgroundRepeat, CssBackgroundSize};
+use surgeist_css::values::common::CssUrl;
+use surgeist_css::values::effects::{CssMaskLayer, CssMaskList};
+use surgeist_css::values::image::CssImageValue;
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
+};
 type Limits = CssSerializationLimits;
 
 fn mask_list(css: &str) -> CssMaskList {

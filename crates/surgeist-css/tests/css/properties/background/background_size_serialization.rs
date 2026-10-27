@@ -12,7 +12,12 @@
 
 use crate::css::support::serialization_limits::assert_limits as exact_bounds;
 use crate::css::support::sole_declaration;
-use surgeist_css::{CssComponentValue, CssSerializationLimits as L, *};
+use surgeist_css::component::{CssComponentValue, CssValueOrigin};
+use surgeist_css::numeric::{CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::background::{CssBackgroundSize, CssBackgroundSizeList};
+use surgeist_css::values::common::CssAutoOr;
 
 fn parsed(property: &str, css: &str) -> CssBackgroundSizeList {
     match sole_declaration(&format!("{property}:{css}"))

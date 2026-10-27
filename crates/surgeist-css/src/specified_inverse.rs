@@ -1,21 +1,91 @@
 //! Exact typed inverses for schema-owned shorthand families.
 
-use crate::*;
-use crate::{
-    declaration_serialization::{append_break_between, append_ordinary, append_text_orientation},
-    expansion::SpecifiedInverseValue as Inverse,
-    specified_declaration_block::{
-        CssDeclarationBlockError, CssSpecifiedDeclarationEntry, CssSpecifiedDeclarationValueRef,
-    },
-    specified_rule_serialization::SpecifiedRuleWriter,
+use crate::component::{CssComponentValueRef, CssValueTokenRef};
+use crate::declaration::declaration_serialization::{
+    append_break_between, append_ordinary, append_text_orientation,
 };
+use crate::declaration::{
+    CssDeclarationBlockError, CssSpecifiedDeclarationEntry, CssSpecifiedDeclarationValueRef,
+};
+use crate::numeric::CssNumeric;
+use crate::numeric::{CssNumericRoot, CssRange};
+use crate::property::expansion::SpecifiedInverseValue as Inverse;
+use crate::property::{
+    CssContributionValueRef, CssInitialValueRef, CssKnownProperty, CssLonghandValueRef,
+    CssPropertyKindRef, CssPropertyNameRef,
+};
+#[cfg(test)]
+use crate::property::{CssContributions, CssExpansion, CssLonghandContributions};
+use crate::query::container::CssContainer;
+use crate::serialization::CssSerializationError;
+#[cfg(test)]
+use crate::serialization::CssSerializationLimits;
+use crate::serialization::specified_rule_serialization::SpecifiedRuleWriter;
+use crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind;
+use crate::values::animation::{CssAnimation, CssAnimationComponents, CssTransition};
+use crate::values::animation::{
+    CssAnimationDirection, CssAnimationFillMode, CssAnimationIterationCount, CssAnimationList,
+    CssAnimationName, CssAnimationPlayState, CssEasing, CssEasingKeyword, CssTransitionList,
+};
+use crate::values::background::CssBackgroundLayerBoxes;
+use crate::values::background::{
+    CssBackground, CssBackgroundLayer, CssBackgroundSize, CssBackgroundSizeList,
+};
+use crate::values::border::{
+    CssBorder, CssBorderImage, CssBorderImageOutset, CssBorderImageOutsetComponent,
+    CssBorderImageSlice, CssBorderImageSliceComponent, CssBorderImageWidth,
+    CssBorderImageWidthComponent, CssBorderRadiusShorthand, CssLineStyle, CssLineWidth, CssOutline,
+    CssOutlineColor,
+};
+use crate::values::box_model::CssBoxSize;
+use crate::values::box_model::{
+    CssContainIntrinsicSizeFallback, CssContainIntrinsicSizeValue, CssInsetValue, CssMarginValue,
+    CssMaxSizeValue, CssOverflow, CssOverflowValue, CssPaddingValue, CssSizeValue,
+};
+use crate::values::common::CssBoxSideKind;
+use crate::values::common::{CssAutoOr, CssFourSides, CssSidePair};
+use crate::values::content::CssListStyleValue;
+#[cfg(test)]
+use crate::values::effects::{CssDropShadow, CssFilterFunction};
+use crate::values::effects::{CssMaskBorder, CssMaskClip, CssMaskList};
+use crate::values::effects::{CssMaskLayer, CssMaskLayerBoxes};
+use crate::values::font::{CssExplicitFont, CssFontSynthesisValues, CssFontVariantValues};
+use crate::values::font::{
+    CssFontSynthesis, CssFontSynthesisPosition, CssFontSynthesisSmallCaps, CssFontSynthesisStyle,
+    CssFontSynthesisWeight, CssFontValue, CssFontVariant, CssFontVariantAlternates,
+    CssFontVariantCaps, CssFontVariantEastAsian, CssFontVariantEmoji, CssFontVariantLigatures,
+    CssFontVariantNumeric, CssFontVariantPosition, CssFontVariantValue, CssFontWidth,
+};
+use crate::values::image::CssImageValue;
+#[cfg(test)]
+use crate::values::image::{CssColorStopListItem, CssGradient, CssGradientColorStop};
+use crate::values::layout::{
+    CssColumnRule, CssColumns, CssFlexFlow, CssFlexValue, CssGapValue, CssGrid, CssGridArea,
+    CssGridAutoFlow, CssGridLineRange, CssGridTemplate, CssItemFlow, CssPlaceContentValue,
+    CssPlaceItemsValue, CssPlaceSelfValue, CssScrollSnapAlignment,
+};
+use crate::values::layout::{CssFlexBasisRef, CssFlexComponents, CssGridAutoFlowAxis};
+#[cfg(test)]
+use crate::values::position::CssPositionList;
+use crate::values::speech::{CssCue, CssSpeechBreak};
+use crate::values::text::{
+    CssAutospace, CssTextAlign, CssTextBoxValues, CssTextSpacingValues, CssWhiteSpaceKeyword,
+};
+use crate::values::text::{
+    CssSpacingTrim, CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue,
+    CssTextAutospace, CssTextBox, CssTextBoxEdge, CssTextBoxTrim, CssTextDecoration,
+    CssTextDecorationSkip, CssTextDecorationSkipSelf, CssTextEmphasis, CssTextSpacing,
+    CssTextSpacingTrim, CssTextWrap, CssTextWrapMode, CssWhiteSpace, CssWhiteSpaceCollapse,
+};
+use crate::values::transform::CssOffset;
+use crate::values::ui::{CssCaret, CssCaretColor, CssInterestDelayValue};
 
 type Result<T> = std::result::Result<T, CssDeclarationBlockError>;
 
 type EqualityResult = std::result::Result<bool, CssSerializationError>;
-use crate::specified_serialization::SpecifiedSerializationContext;
+use crate::serialization::specified_serialization::SpecifiedSerializationContext;
 
-mod equality;
+pub(crate) mod equality;
 pub(crate) use equality::BoundedStructuralEquality;
 
 pub(crate) trait InverseValueEquality {
@@ -34,15 +104,15 @@ impl<T: CssNumericRoot, R: CssRange<T>> InverseValueEquality for CssNumeric<T, R
         other: &Self,
         context: &mut SpecifiedSerializationContext,
     ) -> EqualityResult {
-        let literal = match crate::numeric::root_kind::<T>() {
-            crate::numeric::RootKind::Length | crate::numeric::RootKind::LengthPercentage => {
-                self.inverse_literal_eq(other)
-            }
-            crate::numeric::RootKind::Number | crate::numeric::RootKind::Percentage => {
+        let literal = match crate::numeric::value::root_kind::<T>() {
+            crate::numeric::value::RootKind::Length
+            | crate::numeric::value::RootKind::LengthPercentage => self.inverse_literal_eq(other),
+            crate::numeric::value::RootKind::Number
+            | crate::numeric::value::RootKind::Percentage => {
                 match (self.literal_component(), other.literal_component()) {
-                    (Some(a), Some(b)) => {
-                        Some(crate::specified_numeric::ordinary_literal_equal(a, b))
-                    }
+                    (Some(a), Some(b)) => Some(
+                        crate::numeric::specified_numeric::ordinary_literal_equal(a, b),
+                    ),
                     _ => None,
                 }
             }
@@ -490,7 +560,7 @@ macro_rules! longhand_dispatch {
         All, $all_name:literal, [$($all_alias:literal),*], $all_id:literal,
         $all_value:ty, $all_parser:ident, $all_dispatch:block, expansion = $all_kind:ident { $($all_metadata:tt)* };
         $( $variant:ident, $name:literal, [$($alias:literal),*], $id:literal,
-           crate::$value:ident $(<$($argument:ident),+>)?, $parser:ident, $dispatch:block,
+           $value:ident $(<$($argument:ident),+>)?, $parser:ident, $dispatch:block,
            expansion = $kind:ident { $($metadata:tt)* }; )*
     ) => { longhand_dispatch!(@collect []; $( $variant, $value, $kind; )*); };
     (@collect [$($rows:tt)*]; $variant:ident, $value:ident, longhand; $($rest:tt)*) => {
@@ -503,7 +573,7 @@ macro_rules! longhand_dispatch {
         fn ordinary_values_equal(
             left: CssLonghandValueRef<'_>,
             right: CssLonghandValueRef<'_>,
-            context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+            context: &mut crate::serialization::specified_serialization::SpecifiedSerializationContext,
         ) -> std::result::Result<bool, CssSerializationError> {
             match (left, right) {
                 $((CssLonghandValueRef::$variant(a), CssLonghandValueRef::$variant(b)) => fallible_inverse_value_equal!($value, a, b, context),)*
@@ -521,7 +591,7 @@ macro_rules! longhand_dispatch {
         }
     };
 }
-crate::properties::property_schema!(longhand_dispatch, inverse_input, inverse_numeric);
+crate::property::properties::property_schema!(longhand_dispatch, inverse_input, inverse_numeric);
 
 pub(crate) fn visit_value(
     value: CssContributionValueRef<'_>,
@@ -540,7 +610,7 @@ pub(crate) fn visit_value(
 pub(crate) fn values_equal(
     left: CssContributionValueRef<'_>,
     right: CssContributionValueRef<'_>,
-    context: &mut crate::specified_serialization::SpecifiedSerializationContext,
+    context: &mut crate::serialization::specified_serialization::SpecifiedSerializationContext,
 ) -> std::result::Result<bool, CssSerializationError> {
     match (left, right) {
         (
@@ -696,10 +766,11 @@ fn shortest_quad<T: InverseValueEquality>(
     current: &mut usize,
 ) -> std::result::Result<Vec<T>, CssSerializationError> {
     // A comparison failure belongs to the member that would be omitted.
-    let count = crate::common_serialization::shortest_four_side_count(|left, right| {
-        *current = right;
-        values[left].inverse_equal(&values[right], context)
-    })?;
+    let count =
+        crate::serialization::common_serialization::shortest_four_side_count(|left, right| {
+            *current = right;
+            values[left].inverse_equal(&values[right], context)
+        })?;
     values.truncate(count);
     Ok(values)
 }
@@ -1131,13 +1202,13 @@ pub(crate) fn reconstruct(
                 let basis = val!(values, FlexBasis);
                 let auto = matches!(basis.view(), CssFlexBasisRef::Size(CssSizeValue::Auto));
                 let value = if auto
-                    && crate::flex::ordinary_factor(&grow, "0")
-                    && crate::flex::ordinary_factor(&shrink, "0")
+                    && crate::values::layout::flex::ordinary_factor(&grow, "0")
+                    && crate::values::layout::flex::ordinary_factor(&shrink, "0")
                 {
                     CssFlexValue::None
                 } else if auto
-                    && crate::flex::ordinary_factor(&grow, "1")
-                    && crate::flex::ordinary_factor(&shrink, "1")
+                    && crate::values::layout::flex::ordinary_factor(&grow, "1")
+                    && crate::values::layout::flex::ordinary_factor(&shrink, "1")
                 {
                     CssFlexValue::Auto
                 } else {
@@ -1662,11 +1733,12 @@ fn reconstruct_colors(
             let members = [top, right, bottom, left];
             let entries = [top_entry, right_entry];
             // A comparison failure attaches to its left-hand source member.
-            let count = crate::common_serialization::shortest_four_side_count(|a, b| {
-                members[a]
-                    .specified_inverse_eq(members[b], &mut writer.context)
-                    .map_err(|error| entries[a].at(error.into()))
-            })?;
+            let count =
+                crate::serialization::common_serialization::shortest_four_side_count(|a, b| {
+                    members[a]
+                        .specified_inverse_eq(members[b], &mut writer.context)
+                        .map_err(|error| entries[a].at(error.into()))
+                })?;
             let mut sides = Vec::new();
             sides.try_reserve(count).map_err(|_| {
                 CssSerializationError::new(
@@ -2113,7 +2185,7 @@ fn ordinary_one_count(value: &CssAnimationIterationCount) -> bool {
     match value {
         CssAnimationIterationCount::Number(value) => value.literal_component().is_some_and(|value| {
             matches!(value.view(), CssComponentValueRef::Token(CssValueTokenRef::Number(number))
-                if crate::exact_decimal::LexicalDecimal::new(number.representation()).value_eq(&crate::exact_decimal::LexicalDecimal::new("1")))
+                if crate::serialization::exact_decimal::LexicalDecimal::new(number.representation()).value_eq(&crate::serialization::exact_decimal::LexicalDecimal::new("1")))
         }),
         _ => false,
     }
@@ -2122,14 +2194,14 @@ fn ordinary_one_count(value: &CssAnimationIterationCount) -> bool {
 #[cfg(test)]
 mod generic_math_comparison_tests {
     use super::*;
-    use crate::specified_serialization::SpecifiedSerializationContext;
+    use crate::serialization::specified_serialization::SpecifiedSerializationContext;
 
     fn margin(source: &str) -> CssLonghandContributions {
         let report = crate::CssParser::default().parse_block_contents(source);
         assert!(report.is_clean(), "{source}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expansion::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::property::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("ordinary checked margin contribution")
         };
@@ -2252,7 +2324,7 @@ mod composite_math_comparison_tests {
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expansion::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::property::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed intrinsic terminal: {source}")
         };
@@ -2554,7 +2626,7 @@ mod flex_basis_math_comparison_tests {
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expansion::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::property::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed flex basis")
         };
@@ -2816,7 +2888,7 @@ mod mask_position_borrowed_comparison_tests {
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expansion::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::property::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed mask position")
         };
@@ -2951,7 +3023,7 @@ mod column_alias_and_grid_count_comparison_tests {
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expansion::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::property::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed schema terminal: {source}")
         };
@@ -3313,7 +3385,7 @@ mod coordinate_free_inverse_comparison_tests {
         assert!(report.is_clean(), "{source}: {report:?}");
         assert_eq!(report.syntax().len(), 1);
         let CssExpansion::Contributions(CssContributions::Longhands(values)) =
-            crate::expansion::expand_declaration(&report.syntax()[0]).unwrap()
+            crate::property::expansion::expand_declaration(&report.syntax()[0]).unwrap()
         else {
             panic!("completed intrinsic terminal: {source}")
         };

@@ -8,7 +8,23 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::first_token as parsed_token;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssAngleUnit, CssCalculation, CssCalculationType, CssNonNegative,
+    CssNumber, CssNumeric, CssNumericLiteral, CssPercentage, CssZeroLiteral,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{CssCubicBezier, CssCubicBezierX};
+use surgeist_css::values::font::{
+    CssFontVariation, CssFontVariationList, CssFontVariationSettings, CssOpenTypeTag,
+};
+use surgeist_css::values::transform::{
+    CssScaleValues, CssTransformFunction, CssTransformMatrix, CssTransformMatrix3d,
+    CssTransformRotate3d, CssTransformScale, CssTransformScale3d, CssTransformScaleComponent,
+};
 
 fn number(text: &str) -> CssNumeric<CssNumber> {
     CssNumeric::<CssNumber>::try_from_component(CssComponentValue::try_number(text).unwrap())

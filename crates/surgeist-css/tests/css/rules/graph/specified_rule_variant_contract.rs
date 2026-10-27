@@ -1,7 +1,8 @@
 //! Independent exact fixtures for the 19 ordinary / 17 scoped variants at
 //! 31dd36b7. Scope boundary grammar is covered by scope_complete_lifecycle.
 use crate::css::support::rules::assert_exact_specified_sheet as exact;
-use surgeist_css::{CssParser, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
 
 macro_rules! ordinary {
     ($name:ident, $source:literal, $expected:literal) => {

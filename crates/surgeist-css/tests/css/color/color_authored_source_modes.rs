@@ -8,7 +8,19 @@
 //! names an unclosed function's last authored token, while checked
 //! construction refuses the implicit closure itself.
 
-use surgeist_css::*;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorSyntax, CssProfileColorExpressionRef,
+    CssRelativeColorExpressionValue, CssRelativeColorFunction, CssRelativeColorResultDomain,
+};
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssError, CssErrorCode};
+use surgeist_css::numeric::CssAngleUnit;
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget, CssPropertyValueError,
+};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn color_of(declaration: &CssDeclaration) -> CssColor {
     let Some(CssKnownPropertyValueRef::Color(value)) =

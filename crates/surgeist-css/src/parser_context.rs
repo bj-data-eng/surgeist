@@ -1,6 +1,16 @@
 //! Explicit authored document mode and glyph definition, independent of namespace bindings,
 //! and the configured parser that owns every source-text front.
-use crate::*;
+use crate::CssParseReport;
+use crate::component::CssComponentValueLimits;
+use crate::declaration::{CssDeclaration, CssDeclarationList, CssImportance};
+use crate::property::CssPropertyTextTarget;
+use crate::rule::CssSheet;
+use crate::rule::font_face::CssFontFaceDescriptors;
+use crate::rule::page::CssPageDeclarationBlock;
+use crate::source::{
+    CssDeclarationBlockParseReport, CssDecodedStylesheetInput, CssParseSource, CssUtf16InputError,
+    CssUtf16InputLimits,
+};
 use std::sync::Arc;
 
 /// The document mode that selects contextual authored CSS grammar.
@@ -77,7 +87,8 @@ impl CssParserContext {
 /// mode and the SVG glyph definition for the declarations a front admits.
 ///
 /// ```
-/// use surgeist_css::{CssParser, CssRecoveryAction};
+/// use surgeist_css::CssParser;
+/// use surgeist_css::diagnostic::CssRecoveryAction;
 ///
 /// let report = CssParser::default()
 ///     .parse_sheet(".a { color: red } @unknown x; .b {}");
@@ -89,7 +100,8 @@ impl CssParserContext {
 /// or [`Default`]:
 ///
 /// ```compile_fail,E0451
-/// use surgeist_css::{CssComponentValueLimits, CssParser, CssParserContext};
+/// use surgeist_css::component::CssComponentValueLimits;
+/// use surgeist_css::{CssParser, CssParserContext};
 ///
 /// let _ = CssParser {
 ///     context: CssParserContext::default(),
@@ -132,7 +144,7 @@ impl CssParser {
     /// enclosing recovery unit. Input deeper than 128 levels is parsed on a bounded
     /// larger-stack thread; if the platform cannot start it, the report retains no
     /// rules and carries a
-    /// [`CssErrorCode::ParserUnavailable`](crate::CssErrorCode::ParserUnavailable)
+    /// [`CssErrorCode::ParserUnavailable`](crate::diagnostic::CssErrorCode::ParserUnavailable)
     /// refusal (limit 128, action `StopAtNestingLimit`), followed only by any
     /// tokenizer EOF or escape diagnostics, rather than recursing on the caller's
     /// stack. Recovery does not apply cascade, substitution, selector matching,
@@ -140,7 +152,9 @@ impl CssParser {
     /// mode; a sheet charges no component limits.
     ///
     /// ```
-    /// use surgeist_css::{CssParser, CssRecoveryAction, CssRule};
+    /// use surgeist_css::CssParser;
+    /// use surgeist_css::diagnostic::CssRecoveryAction;
+    /// use surgeist_css::rule::CssRule;
     ///
     /// let report = CssParser::default().parse_sheet(
     ///     ".before { color: red; } @unknown fn({x;y}); .after { color: blue; }",
@@ -183,7 +197,7 @@ impl CssParser {
         limits: CssUtf16InputLimits,
         poll: impl FnMut() -> Result<(), E>,
     ) -> Result<CssParseReport<CssSheet>, CssUtf16InputError<E>> {
-        crate::utf16_input::parse_utf16(original, limits, poll, |source| {
+        crate::source::utf16_input::parse_utf16(original, limits, poll, |source| {
             crate::parser::parse_sheet_snapshot(source, self.context)
         })
     }
@@ -208,13 +222,14 @@ impl CssParser {
     ///
     /// Input nested deeper than 63 levels runs on the bounded larger-stack parser
     /// thread. If the platform cannot start it, the report is empty and carries one
-    /// [`CssErrorCode::ParserUnavailable`](crate::CssErrorCode::ParserUnavailable)
+    /// [`CssErrorCode::ParserUnavailable`](crate::diagnostic::CssErrorCode::ParserUnavailable)
     /// refusal (limit 63, action `StopAtNestingLimit`) over the whole source rather
     /// than recursing on the caller's stack. This is the fragment threshold, below
     /// the 128 levels a stylesheet parses directly.
     ///
     /// ```
-    /// use surgeist_css::{CssImportance, CssParser};
+    /// use surgeist_css::declaration::CssImportance;
+    /// use surgeist_css::CssParser;
     ///
     /// let report = CssParser::default().parse_block_contents("color: red; width: 2px !important");
     /// assert!(report.is_clean());
@@ -225,7 +240,7 @@ impl CssParser {
         &self,
         source: impl AsRef<str>,
     ) -> CssParseReport<CssDeclarationList> {
-        crate::parser::parse_declaration_block_contents_with_context(
+        crate::parser::declaration_block::parse_with_context(
             source.as_ref(),
             self.limits,
             self.context,
@@ -254,12 +269,9 @@ impl CssParser {
         input_limits: CssUtf16InputLimits,
         poll: impl FnMut() -> Result<(), E>,
     ) -> Result<CssDeclarationBlockParseReport, CssUtf16InputError<E>> {
-        crate::utf16_input::parse_utf16(original, input_limits, poll, |source| {
-            let report = crate::parser::parse_declaration_block_contents_snapshot(
-                source,
-                self.limits,
-                self.context,
-            );
+        crate::source::utf16_input::parse_utf16(original, input_limits, poll, |source| {
+            let report =
+                crate::parser::declaration_block::parse_snapshot(source, self.limits, self.context);
             CssDeclarationBlockParseReport::new(
                 CssParseSource::new(source.clone(), self.context),
                 report,
@@ -287,7 +299,7 @@ impl CssParser {
         &self,
         source: impl AsRef<str>,
     ) -> CssParseReport<Option<CssPageDeclarationBlock>> {
-        crate::parser::parse_page_declaration_block_contents_with_context(
+        crate::parser::domain_declaration_contents::parse_page_with_context(
             source.as_ref(),
             self.limits,
             self.context,
@@ -308,7 +320,8 @@ impl CssParser {
     /// resource failure returns `None` with its typed cause.
     ///
     /// ```
-    /// use surgeist_css::{CssFontFaceDescriptorKind, CssParser};
+    /// use surgeist_css::rule::font_face::CssFontFaceDescriptorKind;
+    /// use surgeist_css::CssParser;
     ///
     /// let report = CssParser::default().parse_font_face_block_contents(
     ///     "font-family: Example; bad: value; src: local(Example)",
@@ -323,7 +336,7 @@ impl CssParser {
         &self,
         source: impl AsRef<str>,
     ) -> CssParseReport<Option<CssFontFaceDescriptors>> {
-        crate::parser::parse_font_face_declaration_block_contents_with_limits(
+        crate::parser::domain_declaration_contents::parse_font_face_declaration_block_contents_with_limits(
             source.as_ref(),
             self.limits,
         )
@@ -336,7 +349,7 @@ impl CssParser {
     /// and comments are accepted; empty custom values and nested custom-property
     /// punctuation are accepted. The declaration has no parsed name or name
     /// position; its parsed value and components share the original source
-    /// snapshot. Values remain authored and symbolic. A [`CssPropertyTarget::Grammar`]
+    /// snapshot. Values remain authored and symbolic. A [`CssPropertyTarget::Grammar`](crate::property::CssPropertyTarget::Grammar)
     /// retains the selected canonical or legacy grammar for ordinary, CSS-wide
     /// and symbolic values.
     ///
@@ -349,7 +362,9 @@ impl CssParser {
     /// [`CssPropertyTextTarget`] cannot name one.
     ///
     /// ```
-    /// use surgeist_css::{CssImportance, CssKnownProperty, CssParser, CssPropertyNameRef, CssPropertyTextTarget};
+    /// use surgeist_css::declaration::CssImportance;
+    /// use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTextTarget};
+    /// use surgeist_css::CssParser;
     ///
     /// let target = CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width));
     /// let report = CssParser::default().parse_property_value("calc(100% - 12px)", target, CssImportance::Normal);
@@ -361,7 +376,9 @@ impl CssParser {
     /// asked for one:
     ///
     /// ```compile_fail,E0308
-    /// use surgeist_css::{CssImportance, CssKnownProperty, CssParser, CssPropertyNameRef, CssPropertyTarget};
+    /// use surgeist_css::declaration::CssImportance;
+    /// use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+    /// use surgeist_css::CssParser;
     ///
     /// let target = CssPropertyTarget::PageProperty(CssPropertyNameRef::Known(CssKnownProperty::Margin));
     /// let _ = CssParser::default().parse_property_value("1cm", target, CssImportance::Normal);
@@ -376,7 +393,7 @@ impl CssParser {
         let source = source.as_ref();
         match target {
             CssPropertyTextTarget::Property(property) => {
-                crate::parser::parse_property_value_text_with_context(
+                crate::parser::fragments::parse_property_value_text_with_context(
                     source,
                     property,
                     importance,
@@ -384,7 +401,7 @@ impl CssParser {
                 )
             }
             CssPropertyTextTarget::Grammar(grammar) => {
-                crate::parser::parse_property_value_text_for_grammar_with_context(
+                crate::parser::fragments::parse_property_value_text_for_grammar_with_context(
                     source,
                     grammar,
                     importance,

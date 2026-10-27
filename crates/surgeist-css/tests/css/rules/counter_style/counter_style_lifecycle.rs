@@ -6,7 +6,19 @@ use crate::css::support::descriptor_phases;
 use crate::css::support::rules::sole_counter_style;
 use descriptor_phases::*;
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssInteger, CssNumeric, CssNumericLiteral};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::{
+    CssCounterAdditiveSymbols, CssCounterAdditiveTuple, CssCounterStyleDescriptorKind,
+    CssCounterStyleNegative, CssCounterStylePad, CssCounterStyleRange, CssCounterStyleRangeBound,
+    CssCounterStyleRule, CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
+};
+use surgeist_css::values::common::CssUrl;
+use surgeist_css::values::content::CssContentString;
+use surgeist_css::values::image::{CssImage, CssImageValue};
 
 fn counter(body: &str) -> CssCounterStyleRule {
     sole_counter_style(&format!("@counter-style Custom {{ {body} }}"))

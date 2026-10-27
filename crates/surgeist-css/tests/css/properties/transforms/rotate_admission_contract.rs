@@ -3,7 +3,14 @@
 //! Values3 2024-03-22 §6.1 (angle units; bare zero is not generally an angle),
 //! Values3 §8.1 (typed calc), and Values4 2024-03-12 mathematical typing.
 //! No assumptions about a future rotate payload, normalization or output API.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyNameRef,
+    CssPropertyTarget,
+};
 
 const KEYWORD_AXES: &[&str] = &[
     "x 30deg",

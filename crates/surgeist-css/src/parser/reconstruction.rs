@@ -9,20 +9,25 @@ use super::{
     ScopedBodyKind, fragments, parse_scoped_context_inner, parse_sheet_inner,
     parse_style_context_inner,
 };
-use crate::CssSourceSnapshot;
-use crate::error::from_parse_error;
-use crate::syntax::*;
-use crate::{CssElseRule, CssWhenRule};
+use crate::declaration::CssDeclarationList;
+use crate::diagnostic::error::from_parse_error;
+use crate::rule::syntax::StyleContents;
+use crate::rule::{
+    CssContainerRule, CssLayerBlockRule, CssMediaRule, CssNestedDeclarationsRule, CssRule,
+    CssScopeRule, CssSheet, CssStyleBlock, CssStyleRule, CssSupportsRule,
+};
+use crate::rule::{CssElseRule, CssWhenRule};
+use crate::source::CssSourceSnapshot;
 
 #[derive(Clone)]
-pub(super) enum BoundedParseContext {
+pub(crate) enum BoundedParseContext {
     Rules {
         top_level: bool,
     },
     OneRule,
     Candidate {
         envelope: super::rule_candidate::RuleEnvelope,
-        context: super::CssRuleAdmissionContext,
+        context: crate::rule::CssRuleAdmissionContext,
     },
     StyleBlock,
     GroupBlock,
@@ -39,13 +44,13 @@ pub(super) enum BoundedParseContext {
 
 // The replay owner preserves the public entry's admission boundary. Fragments
 // retain their native grammar and cannot become recovering lists during replay.
-pub(super) enum BoundedParseSyntax {
+pub(crate) enum BoundedParseSyntax {
     Rules(CssSheet),
     OneRule(Option<CssRule>),
     Candidate(Option<CssRule>),
     StyleBlock(Option<CssStyleBlock>),
-    GroupBlock(Option<crate::CssBlockFragment<crate::CssRuleList>>),
-    ScopedBlock(Option<crate::CssBlockFragment<crate::CssRuleList>>),
+    GroupBlock(Option<crate::rule::CssBlockFragment<crate::rule::CssRuleList>>),
+    ScopedBlock(Option<crate::rule::CssBlockFragment<crate::rule::CssRuleList>>),
 }
 
 fn bounded_report<T>(
@@ -100,7 +105,7 @@ impl BoundedParseContext {
             self,
             Self::Style
                 | Self::Candidate {
-                    context: super::CssRuleAdmissionContext::Style,
+                    context: crate::rule::CssRuleAdmissionContext::Style,
                     ..
                 }
         )
@@ -110,10 +115,12 @@ impl BoundedParseContext {
             self,
             Self::Style
                 | Self::Candidate {
-                    context: super::CssRuleAdmissionContext::Style
-                        | super::CssRuleAdmissionContext::Scope(crate::CssStyleAncestor::Present)
-                        | super::CssRuleAdmissionContext::ScopedGroup(
-                            crate::CssStyleAncestor::Present
+                    context: crate::rule::CssRuleAdmissionContext::Style
+                        | crate::rule::CssRuleAdmissionContext::Scope(
+                            crate::rule::CssStyleAncestor::Present
+                        )
+                        | crate::rule::CssRuleAdmissionContext::ScopedGroup(
+                            crate::rule::CssStyleAncestor::Present
                         ),
                     ..
                 }
@@ -129,7 +136,7 @@ impl BoundedParseContext {
     }
 }
 
-pub(super) fn parse_sheet_bounded(
+pub(crate) fn parse_sheet_bounded(
     source: &str,
     source_snapshot: &CssSourceSnapshot,
     base_depth: u32,
@@ -152,7 +159,7 @@ pub(super) fn parse_sheet_bounded(
     crate::CssParseReport::new(sheet, diagnostics)
 }
 
-pub(super) fn parse_bounded(
+pub(crate) fn parse_bounded(
     source: &str,
     source_snapshot: &CssSourceSnapshot,
     base_depth: u32,
@@ -176,12 +183,12 @@ pub(super) fn parse_bounded(
         diagnostic.resolve_original_coordinates(source_snapshot.as_str());
     }
     let eof_limit = diagnostics.iter().any(|diagnostic| {
-        diagnostic.action() == crate::CssRecoveryAction::StopAtNestingLimit
+        diagnostic.action() == crate::diagnostic::CssRecoveryAction::StopAtNestingLimit
             && diagnostic.span().end().byte_offset().value() == source.len()
     });
     if eof_limit {
         diagnostics.retain(|diagnostic| {
-            diagnostic.action() != crate::CssRecoveryAction::RetainWithImplicitClosure
+            diagnostic.action() != crate::diagnostic::CssRecoveryAction::RetainWithImplicitClosure
         });
     }
     crate::CssParseReport::new(syntax, diagnostics)
@@ -256,19 +263,19 @@ fn parse_bounded_with_captures(
             }
         };
         diagnostics.retain(|diagnostic| {
-            diagnostic.action() != crate::CssRecoveryAction::RetainWithImplicitClosure
+            diagnostic.action() != crate::diagnostic::CssRecoveryAction::RetainWithImplicitClosure
         });
         let error = from_parse_error(
             source,
-            crate::error::nesting_limit(
+            crate::diagnostic::error::nesting_limit(
                 source,
                 limit.opening_offset,
                 recovery::STRUCTURAL_NESTING_LIMIT,
                 limit.enclosing_production,
             ),
         );
-        if let Some(span) = crate::CssSourceSpan::new(
-            crate::CssSourcePosition::from_byte_offset_in(
+        if let Some(span) = crate::source::CssSourceSpan::new(
+            crate::source::CssSourcePosition::from_byte_offset_in(
                 source,
                 if matches!(syntax, BoundedParseSyntax::Rules(_)) {
                     limit.unit_start
@@ -276,11 +283,11 @@ fn parse_bounded_with_captures(
                     0
                 },
             ),
-            crate::CssSourcePosition::from_byte_offset_in(source, source.len()),
-        ) && let Some(diagnostic) = crate::CssRecoveryDiagnostic::new(
+            crate::source::CssSourcePosition::from_byte_offset_in(source, source.len()),
+        ) && let Some(diagnostic) = crate::diagnostic::CssRecoveryDiagnostic::new(
             error,
             span,
-            crate::CssRecoveryAction::StopAtNestingLimit,
+            crate::diagnostic::CssRecoveryAction::StopAtNestingLimit,
         ) {
             diagnostics.push(diagnostic);
         }
@@ -371,11 +378,11 @@ fn parse_bounded_with_captures(
     );
     let scoped_body = match &context {
         BoundedParseContext::Candidate {
-            context: super::CssRuleAdmissionContext::Scope(_),
+            context: crate::rule::CssRuleAdmissionContext::Scope(_),
             ..
         } => Some(ScopedBodyKind::Scope),
         BoundedParseContext::Candidate {
-            context: super::CssRuleAdmissionContext::ScopedGroup(_),
+            context: crate::rule::CssRuleAdmissionContext::ScopedGroup(_),
             ..
         } => Some(ScopedBodyKind::OrdinaryGroup),
         BoundedParseContext::Scoped { body, .. }
@@ -427,24 +434,31 @@ fn parse_bounded_with_captures(
                 enclosing_production,
             } => {
                 diagnostics.retain(|diagnostic| {
-                    diagnostic.action() != crate::CssRecoveryAction::RetainWithImplicitClosure
+                    diagnostic.action()
+                        != crate::diagnostic::CssRecoveryAction::RetainWithImplicitClosure
                 });
                 let error = from_parse_error(
                     source,
-                    crate::error::nesting_limit(
+                    crate::diagnostic::error::nesting_limit(
                         source,
                         opening_offset,
                         recovery::STRUCTURAL_NESTING_LIMIT,
                         enclosing_production,
                     ),
                 );
-                if let Some(span) = crate::CssSourceSpan::new(
-                    crate::CssSourcePosition::from_byte_offset_in(source, preflight.unit_start),
-                    crate::CssSourcePosition::from_byte_offset_in(source, preflight.unit_end),
-                ) && let Some(diagnostic) = crate::CssRecoveryDiagnostic::new(
+                if let Some(span) = crate::source::CssSourceSpan::new(
+                    crate::source::CssSourcePosition::from_byte_offset_in(
+                        source,
+                        preflight.unit_start,
+                    ),
+                    crate::source::CssSourcePosition::from_byte_offset_in(
+                        source,
+                        preflight.unit_end,
+                    ),
+                ) && let Some(diagnostic) = crate::diagnostic::CssRecoveryDiagnostic::new(
                     error,
                     span,
-                    crate::CssRecoveryAction::StopAtNestingLimit,
+                    crate::diagnostic::CssRecoveryAction::StopAtNestingLimit,
                 ) {
                     diagnostics.push(diagnostic);
                 }
@@ -647,8 +661,8 @@ fn splice_bounded_syntax(
                 .split_first()
                 .expect("group replay retains its genuine root brace");
             let rules = splice_rule_list(block.body().rules(), parents, child_start, child_rules);
-            BoundedParseSyntax::GroupBlock(Some(crate::CssBlockFragment::from_parsed(
-                crate::CssRuleList::from_parsed(rules),
+            BoundedParseSyntax::GroupBlock(Some(crate::rule::CssBlockFragment::from_parsed(
+                crate::rule::CssRuleList::from_parsed(rules),
                 block.origin().clone(),
             )))
         }
@@ -657,8 +671,8 @@ fn splice_bounded_syntax(
                 .split_first()
                 .expect("scoped replay retains its genuine root brace");
             let rules = splice_rule_list(block.body().rules(), parents, child_start, child_rules);
-            BoundedParseSyntax::ScopedBlock(Some(crate::CssBlockFragment::from_parsed(
-                crate::CssRuleList::from_parsed(rules),
+            BoundedParseSyntax::ScopedBlock(Some(crate::rule::CssBlockFragment::from_parsed(
+                crate::rule::CssRuleList::from_parsed(rules),
                 block.origin().clone(),
             )))
         }
@@ -857,7 +871,7 @@ fn rebuild_group_rule(rule: CssRule, rules: Vec<CssRule>) -> CssRule {
     }
 }
 
-pub(super) fn rule_start(rule: &CssRule) -> usize {
+pub(crate) fn rule_start(rule: &CssRule) -> usize {
     match rule {
         CssRule::CustomMedia(rule) => {
             return rule

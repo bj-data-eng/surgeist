@@ -3,7 +3,18 @@
 
 use crate::css::support::property_admission::assert_reentry_rejected;
 use crate::css::support::sole_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandValueRef, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyValue,
+};
+use surgeist_css::values::effects::{CssOpacityScalar, CssOpacityScalarKind, CssOpacityValue};
 
 fn wrapper(declaration: &CssDeclaration) -> &CssPropertyValue<CssOpacityValue> {
     let CssKnownPropertyValueRef::Opacity(value) =

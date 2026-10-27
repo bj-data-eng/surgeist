@@ -14,7 +14,16 @@
 //! assert admission and retained authored components, without assuming a cursor
 //! carrier layout or a future model accessor or serialization API.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::source::CssSourcePosition;
 
 const HOTSPOTS: &[(&str, &[&str])] = &[
     (

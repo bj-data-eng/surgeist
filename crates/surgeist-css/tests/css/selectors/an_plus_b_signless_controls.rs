@@ -8,8 +8,9 @@ use crate::css::support::admitted_selector as parsed;
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, nth_coefficients as coefficients,
 };
-use surgeist_css::{
-    CssNamespaceContext, CssParser, CssPseudoClass, CssPseudoSelectorListItem, CssSelector,
+use surgeist_css::CssParser;
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem, CssSelector,
 };
 
 fn nth_pair(selector: &CssSelector) -> (i32, i32) {

@@ -10,10 +10,11 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-use surgeist_css::{
-    CssDeclarationList, CssNamespaceContext, CssParser, CssPropertyNameRef, CssRule,
-    CssStyleSelectorContext,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssNamespaceContext, CssStyleSelectorContext};
 
 use crate::css::support::digest;
 

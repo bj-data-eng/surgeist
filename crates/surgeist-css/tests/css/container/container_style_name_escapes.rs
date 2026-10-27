@@ -2,7 +2,12 @@
 //! section 2.1 decodes escapes into the identifier token's value exactly once.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#style-container
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#escaping
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::query::container::{
+    CssContainerLeaf, CssContainerStyleFeature, CssContainerStyleFeatureName, CssStyleQueryLeaf,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::CssRule;
 
 fn style_query(authored: &str) -> CssCondition<CssStyleQueryLeaf> {
     let source = format!("@container style({authored}) {{ .x {{ color:red }} }}");

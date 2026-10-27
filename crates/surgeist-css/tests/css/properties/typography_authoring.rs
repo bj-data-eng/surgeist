@@ -1,7 +1,27 @@
 //! Fonts 4, Text 3/4 and Text Decoration 4 property families keep authored
 //! syntax and reject cross-family values.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssNamedColor};
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::numeric::{CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::font::{
+    CssAbsoluteFontWeight, CssAuthoredFontFeature, CssAuthoredFontFeatureList,
+    CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssExplicitFont,
+    CssFontFamilyList, CssFontFamilyName, CssFontSize, CssFontStyle, CssFontStyleKeyword,
+    CssFontValue, CssFontVariant, CssFontVariantCaps, CssFontVariantValue, CssFontWeight,
+    CssFontWeightRange, CssFontWidth, CssFontWidthKeyword, CssGenericFontFamily, CssOpenTypeTag,
+};
+use surgeist_css::values::text::{
+    CssLineHeight, CssOverflowWrap, CssTextAlign, CssTextAlignAllValue, CssTextAlignLastValue,
+    CssTextAlignValue, CssTextDecoration, CssTextDecorationLine, CssTextDecorationLineComponent,
+    CssTextDecorationStyle, CssTextDecorationThickness, CssTextIndent, CssTextOverflow,
+    CssTextSpacingAdjustment, CssTextTransform, CssTextTransformCase, CssTextTransformSet,
+    CssTextWrap, CssTextWrapStyle, CssVerticalAlign, CssWhiteSpace, CssWhiteSpaceKeyword,
+    CssWordBreak, CssWritingMode,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;

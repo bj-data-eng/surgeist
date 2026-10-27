@@ -4,8 +4,18 @@ use super::boolean_condition::{
 };
 use super::query_components::ComponentCursor;
 use super::recovery::RecoveryState;
-use crate::supports::SupportsLexical;
-use crate::*;
+use crate::CssParserContext;
+use crate::component::{
+    CssBlockKind, CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use crate::diagnostic::{CssError, CssFeatureId};
+use crate::query::supports::construction::SupportsLexical;
+use crate::query::{
+    CssCondition, CssConditionConstructionError, CssConditionKind, CssConditionList,
+    CssGeneralEnclosed, CssWhenLeaf,
+};
+use crate::rule::{CssElseRule, CssRule, CssWhenRule};
+use crate::source::CssSourcePosition;
 use cssparser::{ParseError, Parser};
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] = &[
@@ -37,9 +47,17 @@ pub(super) fn parse_prelude<'i>(
     let implicit = recovery.check_specialized_components(source, input, production)?;
     let values = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
         .map_err(|error| {
-            crate::error::invalid_component_value(input.current_source_location(), error)
+            crate::diagnostic::error::invalid_component_value(
+                input.current_source_location(),
+                error,
+            )
         })?;
-    if optional && values.items().iter().all(crate::supports::trivia) {
+    if optional
+        && values
+            .items()
+            .iter()
+            .all(crate::query::supports::construction::trivia)
+    {
         return Ok((None, implicit));
     }
     let parsed = condition(
@@ -57,31 +75,33 @@ fn prelude_error<'i>(
     fallback: usize,
     error: CssConditionConstructionError,
 ) -> ParseError<'i, CssError> {
-    let position = crate::media::parsed_position(error.origin()).unwrap_or_else(|| {
-        let mut offset = fallback;
-        while let Some((start, end, token)) = super::recovery::next_source_token(source, offset) {
-            if !matches!(
-                token,
-                cssparser::Token::WhiteSpace(_) | cssparser::Token::Comment(_)
-            ) {
-                return CssSourcePosition::from_byte_offset_in(source, start);
+    let position = crate::query::media::construction::parsed_position(error.origin())
+        .unwrap_or_else(|| {
+            let mut offset = fallback;
+            while let Some((start, end, token)) = super::recovery::next_source_token(source, offset)
+            {
+                if !matches!(
+                    token,
+                    cssparser::Token::WhiteSpace(_) | cssparser::Token::Comment(_)
+                ) {
+                    return CssSourcePosition::from_byte_offset_in(source, start);
+                }
+                offset = end;
             }
-            offset = end;
-        }
-        CssSourcePosition::from_byte_offset_in(source, source.len())
-    });
+            CssSourcePosition::from_byte_offset_in(source, source.len())
+        });
     let location = cssparser::SourceLocation {
         line: position.line().value(),
         column: position.column().value() + 1,
     };
     match error.into_kind() {
-        crate::when::ConditionConstructionKind::Component(error) => {
-            crate::error::invalid_component_value(location, error)
+        crate::query::when::ConditionConstructionKind::Component(error) => {
+            crate::diagnostic::error::invalid_component_value(location, error)
         }
         _ => {
             let token = super::recovery::next_source_token(source, position.byte_offset().value())
                 .map(|(_, _, token)| token);
-            crate::error::invalid_when_prelude(position, name, token.as_ref())
+            crate::diagnostic::error::invalid_when_prelude(position, name, token.as_ref())
         }
     }
 }
@@ -94,11 +114,11 @@ fn invalid(lexical: &SupportsLexical, index: usize) -> CssConditionConstructionE
                 .items()
                 .iter()
                 .rev()
-                .find(|value| !crate::supports::trivia(value))
+                .find(|value| !crate::query::supports::construction::trivia(value))
         })
         .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone());
     CssConditionConstructionError::from(
-        crate::when::ConditionConstructionKind::InvalidConditionGrammar { origin },
+        crate::query::when::ConditionConstructionKind::InvalidConditionGrammar { origin },
     )
 }
 fn condition(
@@ -267,7 +287,7 @@ fn term(
                         return Err(ConditionFailure::Fatal(match error.component_error() {
                             Some(component) => component.clone().into(),
                             None => CssConditionConstructionError::from(
-                                crate::when::ConditionConstructionKind::RecoveredInput {
+                                crate::query::when::ConditionConstructionKind::RecoveredInput {
                                     origin: error.origin().clone(),
                                 },
                             ),

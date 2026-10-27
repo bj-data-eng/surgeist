@@ -5,11 +5,12 @@ use crate::css::support::color_and_selector_fixtures::assert_specified_construct
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::validated_selector as parsed;
-use surgeist_css::{
+use surgeist_css::selector::{
     CssCompoundSelectorArgument, CssNthChildPattern, CssNthPattern, CssPseudoClass,
     CssPseudoSelectorList, CssPseudoSelectorListItem, CssRelativeSelector, CssRelativeSelectorList,
-    CssSelector, CssSelectorCombinator, CssSelectorList, CssSerializationLimits,
+    CssSelector, CssSelectorCombinator, CssSelectorList,
 };
+use surgeist_css::serialization::CssSerializationLimits;
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

@@ -25,8 +25,21 @@ use crate::css::support::property_admission::implicit_closing_origin as implicit
 use crate::css::support::property_admission::{
     assert_checked_rejected, assert_implicit_closure, assert_invalid_value,
 };
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandContributions,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyValueError,
+};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
 
 const ROLES: [(P, &str); 4] = [
     (P::GridTemplateRows, "10px"),

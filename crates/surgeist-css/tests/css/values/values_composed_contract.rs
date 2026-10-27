@@ -8,7 +8,23 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_parsed_span as original;
 use crate::css::support::value_assertions::property_rejection;
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssDeclarationList, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssBoxSize, CssSizeValue};
+use surgeist_css::values::font::{
+    CssFontFamilyList, CssFontFamilyName, CssFontFamilyNameKind, CssFontValue, CssGenericFontFamily,
+};
+use surgeist_css::values::position::{CssHorizontalPosition, CssPositionRef, CssVerticalPosition};
+use surgeist_css::values::transform::{CssOffsetPathKind, CssOffsetPathRef};
+use surgeist_css::{CssParseReport, CssParser};
 
 const TWENTY: &str =
     "F01,F02,F03,F04,F05,F06,F07,F08,F09,F10,F11,F12,F13,F14,F15,F16,F17,F18,F19,F20";
@@ -211,7 +227,7 @@ fn a_resource_denied_tail_refuses_the_whole_contents_with_both_siblings() {
         diagnostic
             .error()
             .component_error()
-            .is_some_and(surgeist_css::CssComponentValueError::is_nesting_limit)
+            .is_some_and(surgeist_css::component::CssComponentValueError::is_nesting_limit)
     );
 }
 

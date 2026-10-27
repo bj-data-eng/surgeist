@@ -1,8 +1,12 @@
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
+    CssFontFaceDescriptorKind, CssFontFaceSource, CssFontFormatHint, CssFontTechHint,
+};
+use surgeist_css::values::font::{
     CssAbsoluteFontWeight, CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue,
-    CssErrorCode, CssFontFaceDescriptorKind, CssFontFaceSource, CssFontFaceWeight,
-    CssFontFaceWidth, CssFontFormatHint, CssFontTechHint, CssFontWidth, CssFontWidthKeyword,
-    CssParser, CssRecoveryAction, CssRule,
+    CssFontFaceWeight, CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword,
 };
 
 fn assert_strict_parity(source: &str) {
@@ -57,7 +61,7 @@ fn font_sources_drop_obsolete_multiple_formats_and_preserve_selected_hints() {
     assert_eq!(
         arbitrary
             .format()
-            .and_then(surgeist_css::CssFontFormat::recognized_format),
+            .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
         None
     );
 
@@ -67,14 +71,14 @@ fn font_sources_drop_obsolete_multiple_formats_and_preserve_selected_hints() {
     assert_eq!(keyword.url().as_str(), "demo-c.bin");
     assert_eq!(
         keyword.format(),
-        Some(&surgeist_css::CssFontFormat::Keyword(
+        Some(&surgeist_css::rule::font_face::CssFontFormat::Keyword(
             CssFontFormatHint::Woff2
         ))
     );
     assert_eq!(
         keyword
             .format()
-            .and_then(surgeist_css::CssFontFormat::recognized_format),
+            .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
         Some(CssFontFormatHint::Woff2)
     );
     assert_eq!(
@@ -252,7 +256,7 @@ fn selected_fonts4_format_and_technology_keywords_remain_ordered() {
         assert_eq!(
             source
                 .format()
-                .and_then(surgeist_css::CssFontFormat::recognized_format),
+                .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
             Some(expected)
         );
     }
@@ -303,8 +307,8 @@ fn font_face_preserves_occurrences_and_uses_last_valid_descriptor() {
     );
     assert_eq!(
         ordinary_face!(rule.descriptors(), Src).unwrap().sources()[0],
-        CssFontFaceSource::Url(surgeist_css::CssFontFaceUrlSource::new(
-            surgeist_css::CssUrl::new("two.woff2"),
+        CssFontFaceSource::Url(surgeist_css::rule::font_face::CssFontFaceUrlSource::new(
+            surgeist_css::values::common::CssUrl::new("two.woff2"),
             None,
             Vec::new()
         ),)

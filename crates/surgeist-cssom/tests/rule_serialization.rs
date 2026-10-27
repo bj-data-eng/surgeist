@@ -1,5 +1,8 @@
-use surgeist_css::CssRule;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::query::media::{CssCustomMediaBody, CssMediaQueryList};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::{CssRuleCssomFormat, CssSerializationLimits};
 use surgeist_cssom::*;
 
 #[test]

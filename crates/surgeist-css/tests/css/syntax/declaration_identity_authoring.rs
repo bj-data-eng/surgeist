@@ -1,6 +1,8 @@
 //! Parsed style rules and declarations keep their authored property identity.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::selector::CssSelector;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;

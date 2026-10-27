@@ -1,5 +1,5 @@
 //! Concrete extension operations preserve their native owner contracts.
-use surgeist_css::CssSerializationLimits;
+use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::*;
 
 fn create(source: &str, limits: CssomLimits) -> (CssomStore, CssomSheetId, Vec<CssomRuleId>) {

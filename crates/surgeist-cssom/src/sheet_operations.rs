@@ -1,7 +1,11 @@
 //! Source stylesheet construction, attributes and collection operations.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::*;
-use surgeist_css::*;
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::CssSheet;
+use surgeist_css::source::CssRetainedPayloadError;
+use surgeist_css::{CssParseReport, CssParser, CssParserContext};
 
 /// Supplied current-global Document facts; no document or URL resolution occurs.
 #[derive(Clone, Debug)]

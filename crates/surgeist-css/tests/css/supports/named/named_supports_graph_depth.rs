@@ -1,14 +1,17 @@
 //! #644's new graph-depth contract counts every actual native child edge.
-use surgeist_css::{
-    CssGroupPreludeRef, CssKeyframeRuleView, CssMarginBox, CssMarginRuleView, CssNamespaceContext,
-    CssPageRuleView, CssParser, CssRule, CssRuleGraphInput as Input, CssRuleSerializationLimits,
-    CssSpecifiedDeclarationBlock as Block, CssStyleAncestor,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock as Block;
+use surgeist_css::rule::keyframes::CssKeyframeRuleView;
+use surgeist_css::rule::page::{CssMarginBox, CssMarginRuleView, CssPageRuleView};
+use surgeist_css::rule::{CssRule, CssStyleAncestor};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssRuleGraphInput as Input;
+use surgeist_css::serialization::{CssGroupPreludeRef, CssRuleSerializationLimits};
 
 fn format(
     input: Input<'_>,
     depth: usize,
-) -> Result<String, surgeist_css::CssRuleSerializationError> {
+) -> Result<String, surgeist_css::serialization::CssRuleSerializationError> {
     input.serialize_cssom(
         &CssNamespaceContext::default(),
         CssStyleAncestor::Absent,

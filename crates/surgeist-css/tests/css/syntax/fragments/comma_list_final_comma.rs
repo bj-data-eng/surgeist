@@ -11,11 +11,16 @@
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#forgiving-selector
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-face-src-parsing
 use crate::css::support::authored_syntax::parsed_origin;
-use surgeist_css::{
-    CssComponentValues, CssCustomMediaBody, CssCustomMediaRule, CssFontFaceDescriptorKind as Kind,
-    CssFontFaceDescriptorValue, CssImportRule, CssMediaConstructionError, CssMediaQuery,
-    CssMediaQueryList, CssNamespaceContext, CssParser, CssRecoveryAction, CssRule, CssSelector,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::media::{
+    CssCustomMediaBody, CssMediaConstructionError, CssMediaQuery, CssMediaQueryList,
 };
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue;
+use surgeist_css::rule::{CssCustomMediaRule, CssImportRule, CssRule};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
 
 fn never_count(list: &CssMediaQueryList) -> usize {
     list.queries()
@@ -109,7 +114,7 @@ fn font_source_lists_add_no_failure_for_a_final_comma() {
         panic!("{report:?}")
     };
     let src = face.descriptors().effective(Kind::Src).unwrap();
-    let surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(
+    let surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::Ordinary(
         CssFontFaceDescriptorValue::Src(sources),
     ) = src.value()
     else {

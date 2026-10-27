@@ -8,7 +8,22 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration;
 use crate::css::support::named_property::assert_implicit_closure_rejection;
 use surgeist_color::ColorSpace;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColorInterpolation, CssColorMixPercentage, CssColorMixWeight, CssColorProfileName,
+};
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::numeric::{CssCalculation, CssPercentage};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::font_palette_values::CssFontPaletteName;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::{CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent};
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

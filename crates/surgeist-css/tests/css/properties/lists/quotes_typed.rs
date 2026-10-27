@@ -5,7 +5,12 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_declaration;
-use surgeist_css::*;
+use surgeist_css::property::{
+    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
+    CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::content::{CssContentString, CssQuotePair, CssQuotePairList, CssQuotes};
 
 fn pair(open: &str, close: &str) -> CssQuotePair {
     CssQuotePair::new(

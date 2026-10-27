@@ -6,7 +6,10 @@
 //! CSS Syntax section 2.1 decodes identifier escapes before grammar admission.
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#escaping
 use crate::css::support::authored_syntax::assert_strict_rejection;
-use surgeist_css::{CssContainerName, CssErrorCode, CssParser, CssRecoveryAction, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::container::CssContainerName;
+use surgeist_css::rule::CssRule;
 
 fn assert_accepted(prelude: &str) {
     let source =

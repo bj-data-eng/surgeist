@@ -1,9 +1,20 @@
 use super::property_input::{Parser, ParserState, Site};
-use crate::error::property::ParseError;
+use crate::diagnostic::error::property::ParseError;
 use cssparser::Token;
 
-use crate::error::property::{CssFeatureId, Error, basic, unexpected_at};
-use crate::syntax::*;
+use crate::diagnostic::CssFeatureId;
+use crate::diagnostic::error::property::{Error, basic, unexpected_at};
+use crate::numeric::expression::CssCalculationExpression;
+use crate::numeric::{
+    CssCalculation, CssHintedNumber, CssInteger, CssLength, CssLengthPercentage, CssNonNegative,
+    CssNumber, CssNumeric, CssNumericLiteral, CssPercentage, CssPositive,
+};
+#[cfg(test)]
+use crate::numeric::{
+    CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationSumOperator,
+    CssCalculationType, CssCalculationValueRef,
+};
+use crate::values::common::{CssCustomIdent, CssIdent};
 
 pub(crate) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("official.value.syntax-token-stream"),
@@ -69,7 +80,7 @@ pub(crate) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
 pub(super) fn checked_percentage_value<'i>(
     location: cssparser::SourceLocation,
     token_css: &str,
-) -> std::result::Result<f64, cssparser::ParseError<'i, crate::CssError>> {
+) -> std::result::Result<f64, cssparser::ParseError<'i, crate::diagnostic::CssError>> {
     // cssparser exposes percentages after dividing by 100 and rounding to f32.
     // Re-multiplication can change the authored magnitude (30% -> 30.000002).
     // The caller passes exactly the consumed percentage token, without trivia.
@@ -77,7 +88,7 @@ pub(super) fn checked_percentage_value<'i>(
         .strip_suffix('%')
         .and_then(|numeric| numeric.parse::<f64>().ok())
         .filter(|value| value.is_finite());
-    value.ok_or_else(|| crate::error::unexpected_at(location))
+    value.ok_or_else(|| crate::diagnostic::error::unexpected_at(location))
 }
 
 /// The ordinary tokens a Values 4 numeric type collects as a literal.
@@ -108,7 +119,7 @@ impl LiteralTokens {
     }
 }
 
-type NumericResult<T> = Result<T, crate::CssNumericConstructionError>;
+type NumericResult<T> = Result<T, crate::numeric::CssNumericConstructionError>;
 
 /// A Values 4 numeric type: its calculation root, its literal tokens and the
 /// owner's checked literal and calculation constructors. The literal
@@ -117,7 +128,8 @@ type NumericResult<T> = Result<T, crate::CssNumericConstructionError>;
 pub(super) struct NumericType<T> {
     pub(super) root: CalculationRoot,
     pub(super) tokens: LiteralTokens,
-    pub(super) literal: fn(crate::CssComponentValue, &NumericInputContext<'_>) -> NumericResult<T>,
+    pub(super) literal:
+        fn(crate::component::CssComponentValue, &NumericInputContext<'_>) -> NumericResult<T>,
     pub(super) calculation: fn(CssCalculationExpression) -> NumericResult<T>,
 }
 
@@ -228,18 +240,21 @@ pub(super) fn parse_hinted_number_calculation<'i, 't>(
 pub(super) fn parse_shadow_length<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<crate::CssNumeric<crate::CssLength>, ParseError<'i, Error>> {
+) -> Result<crate::numeric::CssNumeric<crate::numeric::CssLength>, ParseError<'i, Error>> {
     parse_length(input, numeric)
 }
 pub(super) fn parse_shadow_nonnegative_length<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<crate::CssNumeric<crate::CssLength, crate::CssNonNegative>, ParseError<'i, Error>> {
+) -> Result<
+    crate::numeric::CssNumeric<crate::numeric::CssLength, crate::numeric::CssNonNegative>,
+    ParseError<'i, Error>,
+> {
     parse_nonnegative_length(input, numeric)
 }
 
-use crate::numeric::NumericInputContext;
-pub(super) use crate::numeric::{CalculationRoot, is_math_function};
+use crate::numeric::expression::NumericInputContext;
+use crate::numeric::expression::{CalculationRoot, is_math_function};
 
 pub(super) fn parse_numeric_function<'i, 't>(
     input: &mut Parser<'i, 't>,
@@ -258,7 +273,7 @@ pub(super) fn parse_numeric_function<'i, 't>(
                 .unwrap_or(location),
         )
     })?;
-    let values = crate::numeric::CalculationComponents::single(component)
+    let values = crate::numeric::expression::CalculationComponents::single(component)
         .map_err(|_| calculation_error(location))?;
     numeric.admit(values, root).map_err(|error| {
         calculation_error(numeric.property_error_location(&error, location, root_offset))
@@ -281,7 +296,7 @@ pub(super) fn parse_integer_value<'i, 't>(
         literal: |component, _| {
             CssNumericLiteral::from_component_token(component)
                 .map(CssNumeric::from_literal)
-                .map_err(crate::CssNumericConstructionError::component)
+                .map_err(crate::numeric::CssNumericConstructionError::component)
         },
         calculation: |expression| {
             CssNumeric::from_parser_calculation(CssCalculation::from_expression(expression))
@@ -293,14 +308,14 @@ pub(super) fn parse_integer_value<'i, 't>(
 pub(super) fn parse_integer_literal<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<crate::CssNumericLiteral<crate::CssInteger>, ParseError<'i, Error>> {
+) -> Result<crate::numeric::CssNumericLiteral<crate::numeric::CssInteger>, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
     let offset = input.position();
     let component = input.collect_numeric_component(numeric).map_err(|error| {
         unexpected_at(numeric.property_error_location(&error, location, offset))
     })?;
-    crate::CssNumericLiteral::<crate::CssInteger>::try_from_component(component)
+    crate::numeric::CssNumericLiteral::<crate::numeric::CssInteger>::try_from_component(component)
         .map_err(|_| unexpected_at(location))
 }
 
@@ -316,9 +331,9 @@ pub(super) fn parse_custom_ident_from_str_at<'i>(
 pub(super) fn parse_custom_ident_from_str_at_source<'i>(
     ident: &str,
     location: cssparser::SourceLocation,
-) -> Result<CssCustomIdent, cssparser::ParseError<'i, crate::CssError>> {
+) -> Result<CssCustomIdent, cssparser::ParseError<'i, crate::diagnostic::CssError>> {
     CssCustomIdent::try_from_ident(CssIdent::new(ident))
-        .ok_or_else(|| crate::error::unexpected_at(location))
+        .ok_or_else(|| crate::diagnostic::error::unexpected_at(location))
 }
 
 pub(super) fn next_is_delim<'i, 't>(input: &mut Parser<'i, 't>, delim: char) -> bool {
@@ -348,48 +363,57 @@ pub(super) fn next_is_ident<'i, 't>(input: &mut Parser<'i, 't>, expected: &str) 
 pub(super) fn parse_ordinary_resolution<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<crate::CssNumeric<crate::CssResolution, crate::CssNonNegative>, ParseError<'i, Error>> {
+) -> Result<
+    crate::numeric::CssNumeric<crate::numeric::CssResolution, crate::numeric::CssNonNegative>,
+    ParseError<'i, Error>,
+> {
     // The numeric context's admission applies its recovery policy to math.
-    const RESOLUTION: NumericType<crate::CssNumeric<crate::CssResolution, crate::CssNonNegative>> =
-        NumericType {
-            root: CalculationRoot::Resolution,
-            tokens: LiteralTokens::Dimension,
-            literal: |component, _| {
-                CssNumericLiteral::from_component_token(component)
-                    .map_err(crate::CssNumericConstructionError::component)
-                    .and_then(CssNumeric::try_from_literal)
-            },
-            calculation: |expression| {
-                crate::CssNumeric::<crate::CssResolution, crate::CssNonNegative>::from_parser_calculation(
-                crate::CssCalculation::<crate::CssResolution>::from_expression(expression),
-            )
-            },
-        };
+    const RESOLUTION: NumericType<
+        crate::numeric::CssNumeric<crate::numeric::CssResolution, crate::numeric::CssNonNegative>,
+    > = NumericType {
+        root: CalculationRoot::Resolution,
+        tokens: LiteralTokens::Dimension,
+        literal: |component, _| {
+            CssNumericLiteral::from_component_token(component)
+                .map_err(crate::numeric::CssNumericConstructionError::component)
+                .and_then(CssNumeric::try_from_literal)
+        },
+        calculation: |expression| {
+            crate::numeric::CssNumeric::<
+                crate::numeric::CssResolution,
+                crate::numeric::CssNonNegative,
+            >::from_parser_calculation(crate::numeric::CssCalculation::<
+                crate::numeric::CssResolution,
+            >::from_expression(expression))
+        },
+    };
     parse_numeric_type(input, numeric, &RESOLUTION)
 }
 
 pub(super) fn parse_angle_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<crate::CssNumeric<crate::CssAngle>, ParseError<'i, Error>> {
+) -> Result<crate::numeric::CssNumeric<crate::numeric::CssAngle>, ParseError<'i, Error>> {
     let (component, location, offset) = collect_angle_component(input, numeric)?;
-    crate::CssNumeric::<crate::CssAngle>::from_parser_component(component, numeric)
-        .map_err(|error| angle_error(numeric, &error, location, offset))
+    crate::numeric::CssNumeric::<crate::numeric::CssAngle>::from_parser_component(
+        component, numeric,
+    )
+    .map_err(|error| angle_error(numeric, &error, location, offset))
 }
 
 pub(super) fn parse_angle_or_zero<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<crate::CssAngleOrZero, ParseError<'i, Error>> {
+) -> Result<crate::numeric::CssAngleOrZero, ParseError<'i, Error>> {
     let (component, location, offset) = collect_angle_component(input, numeric)?;
-    crate::CssAngleOrZero::from_parser_component(component, numeric)
+    crate::numeric::CssAngleOrZero::from_parser_component(component, numeric)
         .map_err(|error| angle_error(numeric, &error, location, offset))
 }
 
 fn collect_angle_component<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<(crate::CssComponentValue, Site<'i>, Site<'i>), ParseError<'i, Error>> {
+) -> Result<(crate::component::CssComponentValue, Site<'i>, Site<'i>), ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
     let offset = input.position();
@@ -401,22 +425,25 @@ fn collect_angle_component<'i, 't>(
 
 pub(super) fn angle_error<'i>(
     numeric: &NumericInputContext<'_>,
-    error: &crate::CssNumericConstructionError,
+    error: &crate::numeric::CssNumericConstructionError,
     fallback: Site<'i>,
     offset: Site<'i>,
 ) -> ParseError<'i, Error> {
     let location = numeric.property_error_location(error, fallback, offset);
     if let Some(component) = error.component_error()
-        && crate::error::is_component_resource_error(component)
+        && crate::diagnostic::error::is_component_resource_error(component)
     {
-        return crate::error::property::invalid_component_value(location, component.clone());
+        return crate::diagnostic::error::property::invalid_component_value(
+            location,
+            component.clone(),
+        );
     }
     unexpected_at(location)
 }
 
 pub(super) fn parse_positive_integer_value<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssNumeric<CssInteger, CssPositive>, ParseError<'i, Error>> {
     /// `<integer [1,∞]>`; math keeps its authored Integer root.
     const POSITIVE_INTEGER: NumericType<CssNumeric<CssInteger, CssPositive>> = NumericType {
@@ -424,7 +451,7 @@ pub(super) fn parse_positive_integer_value<'i, 't>(
         tokens: LiteralTokens::Number,
         literal: |component, _| {
             CssNumericLiteral::from_component_token(component)
-                .map_err(crate::CssNumericConstructionError::component)
+                .map_err(crate::numeric::CssNumericConstructionError::component)
                 .and_then(CssNumeric::try_from_literal)
         },
         calculation: |expression| {
@@ -437,30 +464,30 @@ pub(super) fn parse_positive_integer_value<'i, 't>(
 #[cfg(test)]
 mod typed_calculation_tests {
     use super::*;
-    use crate::error::CssErrorCode;
+    use crate::diagnostic::CssErrorCode;
 
     fn parse(
         source: &str,
         root: CalculationRoot,
-    ) -> Result<CssCalculationExpression, crate::CssError> {
+    ) -> Result<CssCalculationExpression, crate::diagnostic::CssError> {
         parse_complete(&format!("calc({source})"), root)
     }
 
     fn parse_complete(
         source: &str,
         root: CalculationRoot,
-    ) -> Result<CssCalculationExpression, crate::CssError> {
-        let snapshot = crate::CssSourceSnapshot::new(source);
+    ) -> Result<CssCalculationExpression, crate::diagnostic::CssError> {
+        let snapshot = crate::source::CssSourceSnapshot::new(source);
         let numeric = NumericInputContext::parsed(&snapshot);
         let document =
             crate::syntax_consumption::source_document(source, &snapshot, 0).map_err(|error| {
-                let crate::CssValueOrigin::Parsed(origin) = error.origin() else {
+                let crate::component::CssValueOrigin::Parsed(origin) = error.origin() else {
                     unreachable!("source normalization errors retain their original source");
                 };
                 let position = origin.span().start();
-                crate::error::from_parse_error(
+                crate::diagnostic::error::from_parse_error(
                     source,
-                    crate::error::unexpected_at(cssparser::SourceLocation {
+                    crate::diagnostic::error::unexpected_at(cssparser::SourceLocation {
                         line: position.line().value(),
                         column: position.column().value().saturating_add(1),
                     }),

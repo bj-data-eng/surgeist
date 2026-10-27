@@ -2,7 +2,11 @@
 //! Retained recovery must not change decoded payloads or consume block depth.
 
 use crate::css::support::authored_syntax::assert_strict_rejection;
-use surgeist_css::*;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind,
+};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn closures<T>(source: &str, report: &CssParseReport<T>, expected: usize) {
     assert_eq!(report.diagnostics().len(), expected, "{source}");

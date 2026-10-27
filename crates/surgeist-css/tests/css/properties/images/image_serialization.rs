@@ -2,7 +2,17 @@
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::numeric::{CssAngleOrZero, CssAngleUnit, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop,
+    CssHorizontalGradientSide, CssImage, CssImageValue, CssImageValueList, CssLinearGradient,
+    CssLinearGradientDirection, CssSideOrCorner,
+};
 
 fn images(css: &str) -> CssImageValueList {
     let report = CssParser::default().parse_block_contents(format!("background-image: {css}"));

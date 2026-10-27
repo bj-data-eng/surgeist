@@ -2,9 +2,11 @@
 //! This is Surgeist's authored-model contract, separate from resource recognition.
 //! Selected grammar: https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-format-values
 
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
     CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
-    CssFontFaceSource, CssFontFaceUrlSource, CssParser, CssRule,
+    CssFontFaceSource, CssFontFaceUrlSource,
 };
 
 fn sources(hints: &[&str]) -> Vec<CssFontFaceUrlSource> {

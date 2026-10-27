@@ -6,7 +6,21 @@ use crate::css::support::color_components::token;
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::numeric_failure;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssAlphaColor, CssColor, CssColorComponent, CssColorHue, CssColorInterpolation,
+    CssColorInterpolationMethod, CssColorMix, CssColorMixComponent, CssColorMixPercentage,
+    CssColorMixWeight, CssColorNumberLiteral, CssColorPercentageLiteral, CssColorSyntax,
+    CssHexColor, CssHslColor, CssHwbColor, CssLabColor, CssLchColor, CssNamedColor,
+    CssPredefinedColor, CssRelativeColor, CssRelativeColorChannel, CssRelativeColorEnvironment,
+    CssRelativeColorExpression, CssRelativeColorExpressionValue, CssRelativeColorFunction,
+    CssRelativeColorResultDomain, CssRgbColor, CssSystemColor,
+};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::numeric::{CssCalculation, CssCalculationType, CssPercentage};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn number(text: &str) -> CssColorComponent {
     CssColorComponent::Number(CssColorNumberLiteral::try_from_component(token(text)).unwrap())

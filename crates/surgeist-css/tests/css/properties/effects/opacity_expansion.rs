@@ -3,7 +3,21 @@
 //! expansion/normalization contracts. Values below are specified, not computed.
 //! Raw authored text assertions do not claim canonical serialization (§17).
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssSystemColor;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem,
+    CssNormalizedSheet, CssRuleContextKindRef,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::effects::{CssOpacityScalarKind, CssOpacityValue};
 
 fn ordinary(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

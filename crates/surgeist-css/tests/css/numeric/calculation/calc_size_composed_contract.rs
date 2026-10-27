@@ -5,7 +5,20 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_parsed_span as parsed_origin;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculationExpressionRef, CssCalculationValueRef};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{
+    CssBoxSize, CssCalcSize, CssCalcSizeBasisRef, CssIntrinsicSizeKeyword, CssSizeValue,
+};
 
 // Function origins identify actual opener tokens. Closing origins separately
 // anchor the far end; only parsed_value identifies a whole declaration region.

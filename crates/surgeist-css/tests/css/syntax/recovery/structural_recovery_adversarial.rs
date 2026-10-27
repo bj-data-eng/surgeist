@@ -1,9 +1,12 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use surgeist_css::{
-    CssErrorCode, CssNamespaceConstraint, CssParser, CssRecoveryAction, CssRule, CssSelector,
-    CssSelectorCombinator, CssSourcePosition, CssStyleSelector, CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceConstraint, CssSelector, CssSelectorCombinator, CssStyleSelector,
 };
+use surgeist_css::source::CssSourcePosition;
 
 fn nested_layers(depth: usize, tail: &str) -> String {
     let mut source = "@layer{".repeat(depth);
@@ -114,7 +117,9 @@ fn assert_ascii_position(position: CssSourcePosition, offset: usize) {
     assert_eq!(position.column().value(), offset as u32);
 }
 
-fn style_chain(mut style: &surgeist_css::CssStyleRule) -> Vec<&surgeist_css::CssStyleRule> {
+fn style_chain(
+    mut style: &surgeist_css::rule::CssStyleRule,
+) -> Vec<&surgeist_css::rule::CssStyleRule> {
     let mut chain = Vec::new();
     loop {
         chain.push(style);
@@ -129,7 +134,7 @@ fn style_chain(mut style: &surgeist_css::CssStyleRule) -> Vec<&surgeist_css::Css
     chain
 }
 
-fn ordered_declaration_offsets(rule: &surgeist_css::CssStyleRule) -> Vec<usize> {
+fn ordered_declaration_offsets(rule: &surgeist_css::rule::CssStyleRule) -> Vec<usize> {
     let mut offsets = rule
         .declarations()
         .iter()
@@ -160,8 +165,11 @@ fn ordered_declaration_offsets(rule: &surgeist_css::CssStyleRule) -> Vec<usize> 
 }
 
 fn nesting_detail(
-    report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
-) -> (&surgeist_css::CssError, surgeist_css::CssSourceSpan) {
+    report: &surgeist_css::CssParseReport<surgeist_css::rule::CssSheet>,
+) -> (
+    &surgeist_css::diagnostic::CssError,
+    surgeist_css::source::CssSourceSpan,
+) {
     let [diagnostic] = report.diagnostics() else {
         panic!(
             "expected exactly one nesting-limit diagnostic: {:?}",
@@ -735,12 +743,12 @@ fn structural_preflight_orders_empty_scoped_styles_around_recovered_chunks() {
         else {
             panic!("expected authored empty scoped rule order at depth {depth}: {scope:#?}");
         };
-        let [surgeist_css::CssStyleSelector::Selector(before_selector)] =
+        let [surgeist_css::selector::CssStyleSelector::Selector(before_selector)] =
             before.selectors().selectors()
         else {
             panic!("expected one ordinary scoped selector at depth {depth}");
         };
-        let [surgeist_css::CssStyleSelector::Selector(after_selector)] =
+        let [surgeist_css::selector::CssStyleSelector::Selector(after_selector)] =
             after.selectors().selectors()
         else {
             panic!("expected one ordinary scoped selector at depth {depth}");
@@ -792,11 +800,11 @@ fn structural_preflight_drops_only_style_level_257_with_exact_parent_order() {
     assert_eq!(after_rejected.declarations().len(), 1);
     assert_eq!(
         leaf.declarations()[0].known().unwrap().property(),
-        surgeist_css::CssKnownProperty::Color
+        surgeist_css::property::CssKnownProperty::Color
     );
     assert_eq!(
         after_rejected.declarations()[0].known().unwrap().property(),
-        surgeist_css::CssKnownProperty::Opacity
+        surgeist_css::property::CssKnownProperty::Opacity
     );
     assert_eq!(
         after_rejected.position().byte_offset().value(),

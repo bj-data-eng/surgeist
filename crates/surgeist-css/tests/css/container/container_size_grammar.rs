@@ -6,10 +6,11 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#ratios
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#using-variables
 //! https://www.w3.org/TR/2024/WD-css-values-5-20241111/#tree-counting
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssCondition, CssConditionKind, CssContainerLeaf,
-    CssGeneralEnclosed, CssParser, CssRule, CssValueOrigin,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::query::container::CssContainerLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind, CssGeneralEnclosed};
+use surgeist_css::rule::CssRule;
 
 fn assert_classification(query: &str, recognized: bool) {
     let source = format!("@container {query} {{}}");

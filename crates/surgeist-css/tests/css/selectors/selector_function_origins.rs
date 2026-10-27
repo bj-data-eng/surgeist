@@ -1,9 +1,13 @@
 //! Responsible-token positions follow Error::position and CssRecoveryDiagnostic::error.
 //! Unknown function names are invalid under pinned Selectors 4 section 3.9:
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssParser, CssPseudoClass, CssPseudoSelectorListItem,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector, CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem, CssSelector,
 };
 
 fn assert_origin(

@@ -1,9 +1,10 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssParser, CssRule, CssSerializationLimits,
-    CssSupportsTestBody, CssSupportsTestItem, CssValueTokenRef,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueTokenRef};
+use surgeist_css::query::supports::{CssSupportsTestBody, CssSupportsTestItem};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn definition(source: &str) -> String {
     let report = CssParser::default().parse_sheet(source);
@@ -38,7 +39,9 @@ fn canonical_body_keeps_earlier_bangs_and_distinguishes_at_rule_forms() {
             .any(|value| {
                 matches!(
                     value.view(),
-                    surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Delim('!'))
+                    surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Delim(
+                        '!'
+                    ))
                 )
             })
     );
@@ -57,21 +60,23 @@ fn canonical_body_keeps_earlier_bangs_and_distinguishes_at_rule_forms() {
         .filter(|component| {
             !matches!(
                 component.view(),
-                surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
+                surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Whitespace(
+                    _
+                ))
             )
         })
         .collect();
     assert!(matches!(
         tokens[0].view(),
-        surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Number(_))
+        surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Number(_))
     ));
     assert!(matches!(
         tokens[1].view(),
-        surgeist_css::CssComponentValueRef::Comment(_)
+        surgeist_css::component::CssComponentValueRef::Comment(_)
     ));
     assert!(matches!(
         tokens[2].view(),
-        surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Ident("e3"))
+        surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Ident("e3"))
     ));
 }
 
@@ -102,11 +107,11 @@ fn independently_supplied_adjacent_tokens_gain_a_safe_separator() {
     let value = run.declarations()[0].value_components();
     assert!(matches!(
         value[0].view(),
-        surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Number(_))
+        surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Number(_))
     ));
     assert!(matches!(
         value[1].view(),
-        surgeist_css::CssComponentValueRef::Token(CssValueTokenRef::Ident("e3"))
+        surgeist_css::component::CssComponentValueRef::Token(CssValueTokenRef::Ident("e3"))
     ));
 }
 

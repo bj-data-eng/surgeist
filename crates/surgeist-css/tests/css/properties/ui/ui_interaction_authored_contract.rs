@@ -19,8 +19,25 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::known_property as property;
 use crate::css::support::named_property::named_text_front as text_front;
 use crate::css::support::named_property::sole_completed_contributions as completed;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownPropertyValueRef,
+    CssPropertyGrammar, CssPropertyNameRef, CssPropertyTextTarget, CssPropertyValueError,
+};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::ui::{
+    CssCaretColor, CssCursor, CssCursorImageSource, CssCursorKeyword, CssCursorUrlSetDescriptor,
+    CssCursorUrlSetReference,
+};
 
 const FAMILY: [&str; 5] = [
     "caret-color",

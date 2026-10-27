@@ -9,10 +9,12 @@
 //! Surgeist's exact authored-numeric contract requires range checks before float narrowing.
 
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
-use surgeist_css::{
-    CssComponentValues, CssDeclaration, CssErrorCode, CssImportance, CssKnownProperty as Property,
-    CssParser, CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty as Property;
+use surgeist_css::property::{CssPropertyNameRef, CssPropertyTarget};
 
 const AXES: [Property; 2] = [Property::GridTemplateRows, Property::GridTemplateColumns];
 const IMPLICIT: [Property; 2] = [Property::GridAutoRows, Property::GridAutoColumns];

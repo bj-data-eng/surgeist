@@ -1,4 +1,5 @@
-use surgeist_css::{CssExpansion, CssParser};
+use surgeist_css::CssParser;
+use surgeist_css::property::CssExpansion;
 
 // Intrinsic expansion retains authored custom properties, before cascade and
 // variable substitution. Variables 1 distinguishes their token values from

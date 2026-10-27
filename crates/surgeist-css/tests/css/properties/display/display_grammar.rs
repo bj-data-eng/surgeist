@@ -3,7 +3,14 @@
 //! https://www.w3.org/TR/2026/CRD-css-display-3-20260605/#the-display-properties
 //! https://www.w3.org/TR/2026/WD-css-grid-3-20260121/#grid-lanes-containers
 use std::collections::BTreeSet;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::box_model::CssDisplayValue;
 
 fn ordinary_forms() -> BTreeSet<String> {
     let outside = ["block", "inline", "run-in"];

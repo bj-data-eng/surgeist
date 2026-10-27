@@ -12,10 +12,12 @@
 
 use std::ops::Range;
 
-use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumber, CssNumeric,
-    CssNumericTokenKind, CssNumericTokenRef, CssParser, CssValueOrigin, CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
+    CssNumericTokenRef, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::numeric::{CssNumber, CssNumeric};
 
 use CssNumericTokenKind::{Integer, Number};
 

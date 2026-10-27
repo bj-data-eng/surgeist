@@ -4,7 +4,16 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssInteger, CssNumeric, CssNumericLiteral};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::CssZIndexValue;
 
 fn value(source: &CssDeclaration) -> &CssZIndexValue {
     let CssKnownPropertyValueRef::ZIndex(value) = source.known().unwrap().property_value().unwrap()

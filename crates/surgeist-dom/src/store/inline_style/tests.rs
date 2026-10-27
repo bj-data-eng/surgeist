@@ -3,7 +3,8 @@ use super::*;
 use crate::{
     DomSourceEdit, DomSourceEventOutcome, DomSourceLimits, DomSourceProgress, DomSourceRequest,
 };
-use surgeist_css::{CssParserContext, CssUtf16InputLimits};
+use surgeist_css::CssParserContext;
+use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_cssom::{
     CssomDeclarationRequestLimits, CssomDeclarationSupport, CssomInputRole, CssomInputVersion,
     CssomLimits,

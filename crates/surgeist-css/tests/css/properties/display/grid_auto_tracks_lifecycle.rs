@@ -4,7 +4,20 @@
 //! Tests exercise the public parser and lifecycle APIs.
 
 use crate::css::support::property_admission::assert_same_grammar_facts;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssLonghandValueRef, CssPropertyGrammar,
+    CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::layout::{CssGridTrackBreadthKind, CssGridTrackSizeKind};
 
 const PROPERTIES: [(&str, CssKnownProperty); 2] = [
     ("grid-auto-rows", CssKnownProperty::GridAutoRows),

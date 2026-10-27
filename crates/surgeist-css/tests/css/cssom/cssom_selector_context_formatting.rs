@@ -1,10 +1,14 @@
 //! Independent CSSOM/Nesting/Namespaces expectations for pure formatting.
-use surgeist_css::{
-    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssParsedStyleSelectors, CssParser,
-    CssRecoveryAction, CssRelativeSelectorList, CssRule, CssScopeNestingContext,
-    CssScopeSelectorCssomContext, CssSerializationLimits as Limits, CssStyleAncestor,
-    CssStyleSelectorContext,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::{
+    CssNamespaceName, CssNamespacePrefix, CssRule, CssScopeNestingContext, CssStyleAncestor,
 };
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssRelativeSelectorList,
+    CssScopeSelectorCssomContext, CssStyleSelectorContext,
+};
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 fn namespaces(default: Option<&str>, named: &[(&str, &str)]) -> CssNamespaceContext {
     CssNamespaceContext::from_bindings(
@@ -49,7 +53,8 @@ fn actual_uri_identity_controls_type_prefixes_and_null_attributes() {
                 .unwrap(),
             expected
         );
-        let surgeist_css::CssStyleSelector::Selector(member) = &list.selectors().selectors()[0]
+        let surgeist_css::selector::CssStyleSelector::Selector(member) =
+            &list.selectors().selectors()[0]
         else {
             panic!("ordinary selector")
         };
@@ -589,13 +594,14 @@ fn ordinary_checked_lists_and_scope_bounds_share_atomic_limits() {
         .selectors()
         .iter()
         .map(|member| {
-            let surgeist_css::CssStyleSelector::Selector(selector) = member else {
+            let surgeist_css::selector::CssStyleSelector::Selector(selector) = member else {
                 panic!("ordinary")
             };
             selector.clone()
         })
         .collect();
-    let list = surgeist_css::CssSelectorList::try_new(members, Default::default()).unwrap();
+    let list =
+        surgeist_css::selector::CssSelectorList::try_new(members, Default::default()).unwrap();
     let before = list.clone();
     assert_eq!(
         list.serialize_cssom(&context, Default::default()).unwrap(),

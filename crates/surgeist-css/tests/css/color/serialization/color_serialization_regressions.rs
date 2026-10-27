@@ -1,5 +1,5 @@
 use crate::css::support::checked_color as color;
-use surgeist_css::*;
+use surgeist_css::serialization::CssSerializationLimits;
 
 #[test]
 fn positive_fractional_rgb_channels_remain_above_zero() {

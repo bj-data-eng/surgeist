@@ -4,16 +4,21 @@ use super::combinators::{Combinator, Tail, fill, keyword, parse_group};
 use super::property_input::Parser;
 use super::url::parse_url;
 use super::values::{next_is_ident, parse_length};
-use crate::CssLineWidth;
-use crate::cursor_values::{
+use crate::component::{CssComponentValueRef, CssValueTokenRef};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::numeric::expression::NumericInputContext;
+use crate::numeric::{CssLength, CssNumeric};
+use crate::values::border::CssLineWidth;
+use crate::values::border::{CssOutline, CssOutlineColor, CssOutlineStyle};
+use crate::values::common::CssSidePair;
+use crate::values::content::CssContentString;
+use crate::values::ui::CssCaretColor;
+use crate::values::ui::values::*;
+use crate::values::ui::{
     CssCursor, CssCursorImage, CssCursorImageSource, CssCursorImages, CssCursorUrlSet,
     CssCursorUrlSetDescriptor, CssCursorUrlSetOption, CssCursorUrlSetReference,
 };
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
-use crate::numeric::NumericInputContext;
-use crate::syntax::*;
-use crate::ui::*;
-use crate::{CssCaretColor, CssComponentValueRef, CssSidePair, CssValueTokenRef};
+use crate::values::ui::{CssCursorKeyword, CssPointerEvents, CssUserSelect};
 use cssparser::{Token, match_ignore_ascii_case};
 
 macro_rules! keyword_parser {
@@ -33,7 +38,7 @@ keyword_parser!(parse_appearance, CssAppearance, { "none" => None, "auto" => Aut
     "searchfield" => Searchfield, "textarea" => Textarea, "checkbox" => Checkbox, "radio" => Radio,
     "menulist" => Menulist, "listbox" => Listbox, "meter" => Meter, "progress-bar" => ProgressBar,
     "button" => Button, "textfield" => Textfield, "menulist-button" => MenulistButton });
-pub(super) fn parse_accent_color<'i, 't>(
+pub(crate) fn parse_accent_color<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssAccentColor, ParseError<'i, Error>> {
@@ -45,7 +50,7 @@ pub(super) fn parse_accent_color<'i, 't>(
     }
     super::color::parse_color(input, numeric).map(|color| CssAccentColor::Color(Box::new(color)))
 }
-pub(super) fn parse_caret<'i, 't>(
+pub(crate) fn parse_caret<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssCaret, ParseError<'i, Error>> {
@@ -84,7 +89,7 @@ pub(super) fn parse_caret<'i, 't>(
     CssCaret::try_new(color, animation, shape)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
-pub(super) fn parse_interest_delay_value<'i, 't>(
+pub(crate) fn parse_interest_delay_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssInterestDelayValue, ParseError<'i, Error>> {
@@ -96,7 +101,7 @@ pub(super) fn parse_interest_delay_value<'i, 't>(
     }
     super::timing::parse_delay(input, numeric).map(CssInterestDelayValue::Time)
 }
-pub(super) fn parse_interest_delay<'i, 't>(
+pub(crate) fn parse_interest_delay<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssSidePair<CssInterestDelayValue>, ParseError<'i, Error>> {
@@ -108,7 +113,7 @@ pub(super) fn parse_interest_delay<'i, 't>(
     };
     Ok(CssSidePair::from_parts(start, end))
 }
-pub(super) fn parse_navigation<'i, 't>(
+pub(crate) fn parse_navigation<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssNavigation, ParseError<'i, Error>> {
@@ -167,13 +172,16 @@ pub(super) fn parse_navigation<'i, 't>(
 }
 fn numeric_error<'i>(
     numeric: &NumericInputContext<'_>,
-    error: &crate::CssNumericConstructionError,
+    error: &crate::numeric::CssNumericConstructionError,
     location: super::property_input::Site<'i>,
 ) -> ParseError<'i, Error> {
     if let Some(component) = error.component_error()
-        && crate::error::is_component_resource_error(component)
+        && crate::diagnostic::error::is_component_resource_error(component)
     {
-        return crate::error::property::invalid_component_value(location, component.clone());
+        return crate::diagnostic::error::property::invalid_component_value(
+            location,
+            component.clone(),
+        );
     }
     unexpected_at(numeric.property_error_location(error, location, location))
 }
@@ -208,9 +216,9 @@ fn starts_cursor_image(input: &mut Parser<'_, '_>) -> bool {
     starts
 }
 
-pub(super) fn parse_cursor<'i, 't>(
+pub(crate) fn parse_cursor<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssCursor, ParseError<'i, Error>> {
     let mut images = Vec::new();
     // A URL or image-set() commits its cursor image, so a failure inside it
@@ -240,7 +248,7 @@ pub(super) fn parse_cursor<'i, 't>(
 
 fn parse_cursor_image_source<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssCursorImageSource, ParseError<'i, Error>> {
     if starts_url(input) {
         return parse_url(input, numeric).map(CssCursorImageSource::Url);
@@ -351,7 +359,7 @@ pub(super) fn parse_cursor_keyword<'i, 't>(
     }
 }
 
-pub(super) fn parse_pointer_events<'i, 't>(
+pub(crate) fn parse_pointer_events<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssPointerEvents, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -363,7 +371,7 @@ pub(super) fn parse_pointer_events<'i, 't>(
     }
 }
 
-pub(super) fn parse_user_select<'i, 't>(
+pub(crate) fn parse_user_select<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssUserSelect, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -378,9 +386,9 @@ pub(super) fn parse_user_select<'i, 't>(
     }
 }
 
-pub(super) fn parse_outline<'i, 't>(
+pub(crate) fn parse_outline<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssOutline, ParseError<'i, Error>> {
     // `<'outline-width'> || <'outline-style'> || <'outline-color'>`. Style
     // and color both admit `auto`, so up to two `auto` operands are collected
@@ -433,7 +441,7 @@ pub(super) fn parse_outline<'i, 't>(
     .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_outline_style<'i, 't>(
+pub(crate) fn parse_outline_style<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssOutlineStyle, ParseError<'i, Error>> {
     let location = input.current_source_location();
@@ -449,13 +457,13 @@ pub(super) fn parse_outline_style<'i, 't>(
         "ridge" => Ok(CssOutlineStyle::Ridge),
         "inset" => Ok(CssOutlineStyle::Inset),
         "outset" => Ok(CssOutlineStyle::Outset),
-        _ => Err(crate::error::property::unexpected_at(location)),
+        _ => Err(crate::diagnostic::error::property::unexpected_at(location)),
     }
 }
 
-pub(super) fn parse_outline_color<'i, 't>(
+pub(crate) fn parse_outline_color<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssOutlineColor, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
@@ -474,17 +482,17 @@ pub(super) fn parse_outline_color<'i, 't>(
     parse_color(input, numeric).map(|color| CssOutlineColor::Color(Box::new(color)))
 }
 
-pub(super) fn parse_outline_width<'i, 't>(
+pub(crate) fn parse_outline_width<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssLineWidth, ParseError<'i, Error>> {
     // UI 4 `outline-width: <line-width>` reuses the one `<line-width>` grammar.
     super::border_width::parse_exact_line_width(input, numeric)
 }
 
-pub(super) fn parse_outline_offset<'i, 't>(
+pub(crate) fn parse_outline_offset<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssNumeric<CssLength>, ParseError<'i, Error>> {
     parse_length(input, numeric)
 }

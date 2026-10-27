@@ -12,7 +12,18 @@ use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::property_admission::{
     assert_checked_rejected, assert_style_attribute_rejected,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssLonghandContributions, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::border::{CssBorderImageSlice, CssBorderImageSliceComponent};
 
 const PROPERTIES: [CssKnownProperty; 2] = [
     CssKnownProperty::BorderImageSlice,

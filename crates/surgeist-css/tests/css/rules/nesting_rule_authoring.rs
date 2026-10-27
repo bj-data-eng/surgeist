@@ -1,7 +1,14 @@
 //! CSS Nesting 1 style rules, nested group rules and their source order through
 //! the public stylesheet parser.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssAttributeMatcher, CssPseudoClass, CssPseudoElement, CssSelector, CssSelectorCombinator,
+    CssStyleSelector,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;

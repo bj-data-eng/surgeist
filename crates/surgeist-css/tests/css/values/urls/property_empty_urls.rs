@@ -2,13 +2,18 @@
 //! resource resolution later treats it as an invalid resource.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#url-empty
 
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssContentValue, CssContentValueItem, CssCursor,
-    CssCursorImageSource, CssCursorKeyword, CssDeclaration, CssImageValue, CssImportance,
-    CssKnownProperty, CssKnownPropertyValueRef, CssMaskLayer, CssMaskList, CssParser,
-    CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction, CssUrl, CssUrlModifier,
-    CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
 };
+use surgeist_css::values::common::{CssUrl, CssUrlModifier};
+use surgeist_css::values::content::{CssContentValue, CssContentValueItem};
+use surgeist_css::values::effects::{CssMaskLayer, CssMaskList};
+use surgeist_css::values::image::CssImageValue;
+use surgeist_css::values::ui::{CssCursor, CssCursorImageSource, CssCursorKeyword};
 
 fn assert_url_payload(name: &str, value: CssKnownPropertyValueRef<'_>, expected: &str) {
     match value {

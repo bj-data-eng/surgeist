@@ -31,7 +31,20 @@ pub mod sheet_cases;
 pub mod serialization_limits;
 pub mod value_assertions;
 
-use surgeist_css::*;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyTextTarget, CssPropertyValueError,
+};
+use surgeist_css::rule::CssStyleAncestor;
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
+use surgeist_css::serialization::{
+    CssRuleGraphInput, CssRuleSerializationError, CssRuleSerializationLimits,
+    CssSerializationError, CssSerializationLimits,
+};
+use surgeist_css::{CssParser, CssParserContext};
 
 /// Whether `error` is the serialization failure of a recovered media member:
 /// an unserializable boundary without a lexical component cause.

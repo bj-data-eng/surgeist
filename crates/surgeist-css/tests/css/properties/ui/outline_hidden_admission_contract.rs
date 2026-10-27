@@ -6,7 +6,18 @@
 //! Outline's shorthand includes its style; ordinary border-style still admits hidden.
 //! No future outline payload or output-order API is assumed.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyValueError,
+};
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::values::border::{CssLineStyle, CssOutlineStyle};
 
 const HIDDEN_SPELLINGS: &[&str] = &["hidden", "HIDDEN", r"h\69 dden"];
 

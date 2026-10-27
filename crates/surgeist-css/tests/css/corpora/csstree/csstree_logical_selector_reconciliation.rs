@@ -3,7 +3,8 @@
 //! derivations; neither the current parser nor registry supplies its oracle.
 
 use serde_json::Value;
-use surgeist_css::{CssParser, CssPseudoClass, CssPseudoSelectorListItem, CssSelector};
+use surgeist_css::CssParser;
+use surgeist_css::selector::{CssPseudoClass, CssPseudoSelectorListItem, CssSelector};
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
 use crate::css::support::csstree::reconciliation::{

@@ -1,6 +1,15 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssColorComponent};
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::{
+    CssInitialValueRef, CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyGrammar,
+    CssPropertyKindRef,
+};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::common::{CssBoxSideKind, CssFourSides, CssSidePair};
 
 fn parsed_color(text: &str) -> CssColor {
     let source = format!("border-top-color:{text}");

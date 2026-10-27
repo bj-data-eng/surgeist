@@ -1,5 +1,5 @@
 //! Owner media input retains its complete source even when no queries survive.
-use surgeist_css::CssSheet;
+use surgeist_css::rule::CssSheet;
 use surgeist_cssom::*;
 
 fn version(revision: u64) -> CssomInputVersion {

@@ -8,7 +8,18 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::*;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorNumberLiteral, CssColorSyntax, CssDeviceCmykColor,
+    CssParsedColorAlphaRef, CssPredefinedColor,
+};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationType, CssHintedNumber, CssInteger, CssNumber, CssNumericDimension,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::effects::CssOpacityValue;
 
 const SOURCE: &str = "calc((1px + 1%) / 1px)";
 const SPECIFIED: &str = "calc((1% + 1px) / 1px)";

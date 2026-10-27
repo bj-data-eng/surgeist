@@ -1,6 +1,8 @@
 //! CSS Shapes `circle()` has one nonnegative length-percentage radius.
 //! The selected WebKit Shapes consumer admits the same domain before `at`.
-use surgeist_css::{CssKnownProperty, CssParser, CssRecoveryAction};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::CssKnownProperty;
 
 fn accepted(radius: &str) {
     let source = format!("clip-path: {radius}; color: red");

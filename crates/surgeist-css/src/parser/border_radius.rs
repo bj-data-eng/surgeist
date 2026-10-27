@@ -1,15 +1,15 @@
 //! Checked border-corner radii and physical border-radius shorthand.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, unexpected_at};
 
 use super::side_shapes::parse_side_pair;
 use super::values::parse_nonnegative_length_percentage;
-use crate::numeric::NumericInputContext;
-use crate::{
-    CornerRadiusLength, CssBorderRadiusShorthand, CssLengthPercentage, CssNonNegative, CssNumeric,
-    CssSidePair,
-};
+use crate::numeric::expression::NumericInputContext;
+use crate::numeric::{CssLengthPercentage, CssNonNegative, CssNumeric};
+use crate::values::border::CssBorderRadiusShorthand;
+use crate::values::border::border_radius::CornerRadiusLength;
+use crate::values::common::CssSidePair;
 
 pub(super) fn parse_exact_corner_radius<'i, 't>(
     input: &mut Parser<'i, 't>,

@@ -17,8 +17,26 @@ fn parsed(p: P, value: &str) -> CssDeclaration {
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::longhand_contributions as completed;
 use crate::css::support::serialization_limits::assert_node_limits as provider;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::{
+    CssTextWrap, CssTextWrapMode, CssTextWrapStyle, CssWhiteSpace, CssWhiteSpaceCollapse,
+    CssWhiteSpaceKeyword, CssWhiteSpaceTrim, CssWordBreak,
+};
 
 const MODES: [(CssTextWrapMode, &str); 2] = [
     (CssTextWrapMode::Wrap, "wrap"),

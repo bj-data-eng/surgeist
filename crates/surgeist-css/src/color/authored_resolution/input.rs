@@ -2,10 +2,15 @@
 
 use super::super::grammar::Leaf;
 use super::super::keywords::ColorFunction as F;
-use super::super::protocol::ColorProtocolError;
-use super::CssColorPathStep;
-use crate::syntax::color::operands::{self, ColorNode, Scalar};
-use crate::*;
+use crate::color::CssColorPathStep;
+use crate::color::controlled::protocol::ColorProtocolError;
+use crate::color::syntax::operands;
+use crate::color::syntax::operands::{ColorNode, Scalar};
+use crate::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorInterpolation, CssColorMixComponent,
+    CssColorMixWeight, CssColorProfileName, CssColorSyntax, CssProfileColorExpression,
+    CssRelativeColorExpression, CssRelativeColorFunction,
+};
 use std::mem::size_of;
 
 #[derive(Clone, Copy)]

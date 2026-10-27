@@ -6,7 +6,18 @@
 
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::named_property::longhand_contributions;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssLonghandContribution,
+    CssPropertyGrammar, CssPropertyKindRef, CssPropertyTarget,
+};
 
 const PROPERTIES: &[(CssKnownProperty, &str, &str)] = &[
     (

@@ -1,9 +1,13 @@
-use surgeist_css::{
-    CssErrorCode, CssFeatureKind, CssParser, CssRecoveryAction, CssRule, CssSupportStatus,
-    feature_metadata,
-};
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
 
-fn assert_span(source: &str, diagnostic: &surgeist_css::CssRecoveryDiagnostic, authored: &str) {
+fn assert_span(
+    source: &str,
+    diagnostic: &surgeist_css::diagnostic::CssRecoveryDiagnostic,
+    authored: &str,
+) {
     let start = source
         .find(authored)
         .unwrap_or_else(|| panic!("missing authored recovery unit `{authored}`"));

@@ -1,11 +1,12 @@
 //! Border style grammar shared by longhands, pairs, four-side shorthand and triples.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::match_ignore_ascii_case;
 
 use super::side_shapes::{parse_four_sides, parse_side_pair};
-use crate::{CssFourSides, CssLineStyle, CssSidePair};
+use crate::values::border::CssLineStyle;
+use crate::values::common::{CssFourSides, CssSidePair};
 
 pub(super) fn parse_border_style<'i, 't>(
     input: &mut Parser<'i, 't>,

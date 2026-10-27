@@ -4,12 +4,13 @@
 //! Number syntax is the existing number owner's cursor. No typed value is
 //! formatted, rounded, or routed through the source-color lexer.
 
-use super::super::protocol::{
-    AuthoredName, AuthoredNumber, ColorProtocolError, CssColorBank, CssColorOperationOwner,
-    CssColorSlot, Data, RecordRange,
+use crate::color::controlled::protocol::{
+    AuthoredName, AuthoredNumber, ColorProtocolError, Data, RecordRange,
 };
+use crate::color::controlled::{CssColorBank, CssColorOperationOwner, CssColorSlot};
+use crate::component::CssNumericTokenRef;
+use crate::numeric::CssNumericUnit;
 use crate::tokenization::number::{Layout, NumberCursor, Part, Step};
-use crate::{CssNumericTokenRef, CssNumericUnit};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Action {
@@ -400,7 +401,7 @@ pub(crate) fn authored_hue_degrees<E>(
     mut charge: impl FnMut() -> Result<(), E>,
 ) -> Result<f64, E> {
     use super::super::literal::{LiteralAction, LiteralConversion};
-    use super::super::protocol::RecordTable;
+    use crate::color::controlled::protocol::RecordTable;
     let protocol = |error: ColorProtocolError| -> f64 {
         unreachable!("an admitted checked number completes its own protocol: {error:?}")
     };
@@ -475,9 +476,9 @@ pub(crate) fn authored_hue_degrees<E>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::controlled::protocol::RecordTable;
     use crate::color::literal::{LiteralAction, LiteralConversion};
-    use crate::color::protocol::RecordTable;
-    use crate::{CssComponentValue, CssComponentValueRef, CssValueTokenRef};
+    use crate::component::{CssComponentValue, CssComponentValueRef, CssValueTokenRef};
 
     #[test]
     fn original_authored_numbers_reach_exact_conversion_without_color_tokens() {
@@ -496,7 +497,9 @@ mod tests {
             ("1e9999", None, f64::MAX),
             (
                 "1.9e308",
-                Some(CssNumericUnit::Angle(crate::CssAngleUnit::Gradians)),
+                Some(CssNumericUnit::Angle(
+                    crate::numeric::CssAngleUnit::Gradians,
+                )),
                 1.71e308,
             ),
         ] {
@@ -571,7 +574,7 @@ mod tests {
     }
     #[test]
     fn original_decoded_unicode_name_is_read_once_into_real_name_units() {
-        let name = crate::CssColorProfileName::try_new("--é🍕").unwrap();
+        let name = crate::color::CssColorProfileName::try_new("--é🍕").unwrap();
         let owner = CssColorOperationOwner::new();
         let phase = owner.current_phase();
         let next = owner.prepare_advance(phase).unwrap();

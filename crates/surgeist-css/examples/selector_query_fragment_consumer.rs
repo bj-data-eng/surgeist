@@ -17,15 +17,22 @@
 //! limit. No wrapper is an input or an oracle for these fragment assertions.
 
 use std::fmt::Debug;
-use surgeist_css::{
-    CssCompoundSelector, CssConditionKind, CssDefinedFalseMediaReason, CssErrorCode,
-    CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaQueryList, CssMediaQueryModifier,
-    CssMediaType, CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName,
-    CssNamespacePrefix, CssParseReport, CssParsedStyleSelectors, CssParser, CssPseudoClass,
-    CssPseudoSelectorListItem, CssRecoveryAction, CssRecoveryDiagnostic, CssSelector,
-    CssSelectorCombinator, CssSourcePosition, CssStyleSelector, CssStyleSelectorContext,
-    CssTokenKind,
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
 };
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{
+    CssDefinedFalseMediaReason, CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery,
+    CssMediaQueryList, CssMediaQueryModifier, CssMediaType,
+};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+use surgeist_css::selector::{
+    CssCompoundSelector, CssNamespaceConstraint, CssNamespaceContext, CssParsedStyleSelectors,
+    CssPseudoClass, CssPseudoSelectorListItem, CssSelector, CssSelectorCombinator,
+    CssStyleSelector, CssStyleSelectorContext,
+};
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::{CssParseReport, CssParser};
 
 fn assert_position(actual: CssSourcePosition, expected: (usize, u32, u32)) {
     assert_eq!(
@@ -526,7 +533,7 @@ fn assert_typed_query(query: &CssMediaQuery, expected: CssMediaType, offset: usi
 fn assert_opaque_media(
     query: &CssMediaQuery,
     source: &str,
-    reason: Option<surgeist_css::CssUnknownMediaFeatureReason>,
+    reason: Option<surgeist_css::query::media::CssUnknownMediaFeatureReason>,
 ) {
     assert!(
         !query.is_guaranteed_false(),
@@ -594,11 +601,11 @@ fn media_admission_and_recovery() {
     else {
         panic!("authored width condition");
     };
-    let surgeist_css::CssMediaRangeRef::Plain { value: length } = width.view() else {
+    let surgeist_css::query::media::CssMediaRangeRef::Plain { value: length } = width.view() else {
         panic!("authored plain width form");
     };
-    let surgeist_css::CssCalculationExpressionRef::Value(
-        surgeist_css::CssCalculationValueRef::Length(literal),
+    let surgeist_css::numeric::CssCalculationExpressionRef::Value(
+        surgeist_css::numeric::CssCalculationValueRef::Length(literal),
     ) = length.calculation().expression()
     else {
         panic!("exact authored media length");
@@ -610,11 +617,11 @@ fn media_admission_and_recovery() {
     for (source, reason) in [
         (
             "(fo)",
-            Some(surgeist_css::CssUnknownMediaFeatureReason::UnknownName),
+            Some(surgeist_css::query::media::CssUnknownMediaFeatureReason::UnknownName),
         ),
         (
             "(width:2qu)",
-            Some(surgeist_css::CssUnknownMediaFeatureReason::InvalidValue),
+            Some(surgeist_css::query::media::CssUnknownMediaFeatureReason::InvalidValue),
         ),
     ] {
         let report = CssMediaQuery::parse(&CssParser::default(), source);
@@ -753,7 +760,7 @@ fn media_actual_eof_and_coordinates() {
     assert_opaque_media(
         eof.syntax(),
         "(fo",
-        Some(surgeist_css::CssUnknownMediaFeatureReason::UnknownName),
+        Some(surgeist_css::query::media::CssUnknownMediaFeatureReason::UnknownName),
     );
     assert_eq!(eof.diagnostics().len(), 1);
     assert_eof_closures(&eof, 1, (3, 0, 3));
@@ -764,7 +771,7 @@ fn media_actual_eof_and_coordinates() {
     assert_opaque_media(
         &list_eof.syntax().queries()[1],
         "(fo",
-        Some(surgeist_css::CssUnknownMediaFeatureReason::UnknownName),
+        Some(surgeist_css::query::media::CssUnknownMediaFeatureReason::UnknownName),
     );
     assert_position(
         list_eof.syntax().queries()[1]
@@ -811,7 +818,7 @@ fn media_actual_eof_and_coordinates() {
     assert_opaque_media(
         open.syntax(),
         "(fo",
-        Some(surgeist_css::CssUnknownMediaFeatureReason::UnknownName),
+        Some(surgeist_css::query::media::CssUnknownMediaFeatureReason::UnknownName),
     );
     assert_position(
         open.syntax().position().expect("parsed media position"),
@@ -927,7 +934,7 @@ fn exact_depth_and_eof_on_an_ordinary_thread() {
                         single.syntax(),
                         &source,
                         if depth == 1 {
-                            Some(surgeist_css::CssUnknownMediaFeatureReason::UnknownName)
+                            Some(surgeist_css::query::media::CssUnknownMediaFeatureReason::UnknownName)
                         } else {
                             None
                         },

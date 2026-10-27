@@ -5,7 +5,8 @@
 //! equal explicit px member select the same shortest shorthand form. Each
 //! quirky member still serializes as its own `Npx` text.
 
-use surgeist_css::*;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
 

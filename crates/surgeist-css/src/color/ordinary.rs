@@ -4,7 +4,19 @@
 //! records/actions; they make no physical-allocator or HTML ledger claim.
 //! The controlled HTML adapter services the public actions directly instead.
 
-use super::*;
+use crate::color::controlled::{
+    CssColorBank, CssColorOperationOwner, CssColorParse, CssColorParseAction, CssColorParseOutcome,
+    CssColorParseStep, CssColorSlot,
+};
+use crate::color::{
+    CssColorError, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
+    CssColorInputRange, CssColorSourceDescriptor, CssColorStandardFailure,
+};
+#[cfg(test)]
+use crate::color::{
+    CssColorPropertyFacts, CssColorSchemeFact, CssColorStandardFailureKind, CssDeviceColorFact,
+};
+use surgeist_color::Color;
 
 /// The actual borrowed original source; UTF16 is never converted lossily.
 #[derive(Clone, Copy, Debug)]

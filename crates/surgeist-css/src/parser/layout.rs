@@ -1,22 +1,38 @@
 use super::combinators::{Combinator, Tail, keyword, parse_group};
 use super::property_input::Parser;
 use super::values::parse_nonnegative_length;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
 use super::values::{
-    CalculationRoot, LiteralTokens, NumericType, parse_integer_literal, parse_integer_value,
-    parse_numeric_function, parse_numeric_type,
+    LiteralTokens, NumericType, parse_integer_literal, parse_integer_value, parse_numeric_function,
+    parse_numeric_type,
 };
-use crate::CssOverflowValue;
-use crate::display::*;
-use crate::syntax::*;
-use crate::{BorderSpacingLength, CssSidePair};
+use crate::numeric::expression::CalculationRoot;
+use crate::numeric::{
+    CssCalculation, CssCalculationType, CssHintedNumber, CssInteger, CssNumber, CssNumeric,
+    CssPercentage, CssPositive,
+};
+use crate::values::box_model::CssOverflowValue;
+use crate::values::box_model::display::*;
+use crate::values::box_model::{
+    CssAspectRatioValue, CssBoxSizing, CssBreakBetween, CssBreakInside, CssClear, CssContain,
+    CssContainComponent, CssContainComponentList, CssContentVisibility, CssFloat,
+    CssLayoutPosition, CssOverflow, CssVisibility, CssZIndexValue,
+};
+use crate::values::common::CssSidePair;
+use crate::values::effects::CssOpacityValue;
+use crate::values::table::border_spacing::BorderSpacingLength;
+use crate::values::table::{CssBorderCollapse, CssCaptionSide, CssEmptyCells, CssTableLayout};
+use crate::values::text::CssDirection;
+use crate::values::ui::{CssResize, CssScrollbarWidth};
 
-pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::CssFeatureId] =
-    &[crate::CssFeatureId::new("ext.value.grid-lanes-display")];
+pub(super) static IMPLEMENTED_SHARED_VALUES: &[crate::diagnostic::CssFeatureId] =
+    &[crate::diagnostic::CssFeatureId::new(
+        "ext.value.grid-lanes-display",
+    )];
 
-pub(super) fn parse_resize<'i, 't>(
+pub(crate) fn parse_resize<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssResize, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -32,7 +48,7 @@ pub(super) fn parse_resize<'i, 't>(
     }
 }
 
-pub(super) fn parse_contain<'i, 't>(
+pub(crate) fn parse_contain<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssContain, ParseError<'i, Error>> {
     let state = input.state();
@@ -74,7 +90,7 @@ pub(super) fn parse_contain<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_border_collapse<'i, 't>(
+pub(crate) fn parse_border_collapse<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBorderCollapse, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -86,9 +102,9 @@ pub(super) fn parse_border_collapse<'i, 't>(
     }
 }
 
-pub(super) fn parse_border_spacing<'i, 't>(
+pub(crate) fn parse_border_spacing<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssSidePair<BorderSpacingLength>, ParseError<'i, Error>> {
     let horizontal = parse_nonnegative_length(input, numeric)?;
     let vertical = if input.is_exhausted() {
@@ -99,7 +115,7 @@ pub(super) fn parse_border_spacing<'i, 't>(
     Ok(CssSidePair::new(horizontal, vertical))
 }
 
-pub(super) fn parse_caption_side<'i, 't>(
+pub(crate) fn parse_caption_side<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssCaptionSide, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -111,7 +127,7 @@ pub(super) fn parse_caption_side<'i, 't>(
     }
 }
 
-pub(super) fn parse_empty_cells<'i, 't>(
+pub(crate) fn parse_empty_cells<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssEmptyCells, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -123,9 +139,9 @@ pub(super) fn parse_empty_cells<'i, 't>(
     }
 }
 
-pub(super) fn parse_page_line_minimum<'i, 't>(
+pub(crate) fn parse_page_line_minimum<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssNumeric<CssInteger, CssPositive>, ParseError<'i, Error>> {
     /// Fragmentation 3 `<integer [1,∞]>`.
     const PAGE_LINE_MINIMUM: NumericType<CssNumeric<CssInteger, CssPositive>> = NumericType {
@@ -145,7 +161,7 @@ pub(super) fn parse_page_line_minimum<'i, 't>(
     parse_numeric_type(input, numeric, &PAGE_LINE_MINIMUM)
 }
 
-pub(super) fn parse_break_between<'i, 't>(
+pub(crate) fn parse_break_between<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBreakBetween, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -167,7 +183,7 @@ pub(super) fn parse_break_between<'i, 't>(
     }
 }
 
-pub(super) fn parse_break_inside<'i, 't>(
+pub(crate) fn parse_break_inside<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBreakInside, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -211,7 +227,7 @@ pub(super) fn parse_page_break_inside<'i, 't>(
     }
 }
 
-pub(super) fn parse_table_layout<'i, 't>(
+pub(crate) fn parse_table_layout<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTableLayout, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -223,7 +239,7 @@ pub(super) fn parse_table_layout<'i, 't>(
     }
 }
 
-pub(super) fn parse_display<'i, 't>(
+pub(crate) fn parse_display<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssDisplayValue, ParseError<'i, Error>> {
     enum Component {
@@ -318,7 +334,7 @@ pub(super) fn parse_display<'i, 't>(
     })
 }
 
-pub(super) fn parse_box_sizing<'i, 't>(
+pub(crate) fn parse_box_sizing<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBoxSizing, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -330,7 +346,7 @@ pub(super) fn parse_box_sizing<'i, 't>(
     }
 }
 
-pub(super) fn parse_position<'i, 't>(
+pub(crate) fn parse_position<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssLayoutPosition, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -345,7 +361,7 @@ pub(super) fn parse_position<'i, 't>(
     }
 }
 
-pub(super) fn parse_direction<'i, 't>(
+pub(crate) fn parse_direction<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssDirection, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -357,7 +373,7 @@ pub(super) fn parse_direction<'i, 't>(
     }
 }
 
-pub(super) fn parse_overflow<'i, 't>(
+pub(crate) fn parse_overflow<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssOverflow, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -372,7 +388,7 @@ pub(super) fn parse_overflow<'i, 't>(
     }
 }
 
-pub(super) fn parse_overflow_value<'i, 't>(
+pub(crate) fn parse_overflow_value<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssOverflowValue, ParseError<'i, Error>> {
     let x = parse_overflow(input)?;
@@ -384,7 +400,7 @@ pub(super) fn parse_overflow_value<'i, 't>(
     Ok(CssOverflowValue::new(x, y))
 }
 
-pub(super) fn parse_float<'i, 't>(
+pub(crate) fn parse_float<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFloat, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -399,7 +415,7 @@ pub(super) fn parse_float<'i, 't>(
     }
 }
 
-pub(super) fn parse_clear<'i, 't>(
+pub(crate) fn parse_clear<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssClear, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -415,7 +431,7 @@ pub(super) fn parse_clear<'i, 't>(
     }
 }
 
-pub(super) fn parse_visibility<'i, 't>(
+pub(crate) fn parse_visibility<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssVisibility, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -428,7 +444,7 @@ pub(super) fn parse_visibility<'i, 't>(
     }
 }
 
-pub(super) fn parse_content_visibility<'i, 't>(
+pub(crate) fn parse_content_visibility<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssContentVisibility, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -441,9 +457,9 @@ pub(super) fn parse_content_visibility<'i, 't>(
     }
 }
 
-pub(super) fn parse_opacity<'i, 't>(
+pub(crate) fn parse_opacity<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssOpacityValue, ParseError<'i, Error>> {
     let numeric_start = input.state();
     let location = input.current_source_location();
@@ -455,10 +471,10 @@ pub(super) fn parse_opacity<'i, 't>(
             let component = input.collect_numeric_component(numeric).map_err(|error| {
                 unexpected_at(numeric.property_error_location(&error, location, offset))
             })?;
-            crate::opacity_scalar::admit_opacity_scalar(component)
+            crate::values::effects::opacity_scalar::admit_opacity_scalar(component)
                 .map_err(|_| unexpected_at(location))
         }
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
+        Token::Function(name) if crate::numeric::expression::is_math_function(name) => {
             let calculation = parse_numeric_function(
                 input,
                 &numeric_start,
@@ -488,9 +504,9 @@ pub(super) fn parse_opacity<'i, 't>(
     }
 }
 
-pub(super) fn parse_aspect_ratio<'i, 't>(
+pub(crate) fn parse_aspect_ratio<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssAspectRatioValue, ParseError<'i, Error>> {
     let auto_first = input
         .try_parse(|input| input.expect_ident_matching("auto"))
@@ -504,7 +520,7 @@ pub(super) fn parse_aspect_ratio<'i, 't>(
     } else {
         None
     };
-    let ratio = crate::CssSpecifiedRatio::new(numerator, denominator);
+    let ratio = crate::numeric::CssSpecifiedRatio::new(numerator, denominator);
     if auto_first
         || input
             .try_parse(|input| input.expect_ident_matching("auto"))
@@ -518,31 +534,32 @@ pub(super) fn parse_aspect_ratio<'i, 't>(
 
 fn parse_ratio_operand<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<
-    crate::CssNumeric<crate::CssNumber, crate::CssNonNegative>,
+    crate::numeric::CssNumeric<crate::numeric::CssNumber, crate::numeric::CssNonNegative>,
     ParseError<'i, Error>,
 > {
     /// Values 4 `<ratio>` operand: `<number [0,∞]>`.
-    const RATIO_OPERAND: NumericType<crate::CssNumeric<crate::CssNumber, crate::CssNonNegative>> =
-        NumericType {
-            root: CalculationRoot::Number,
-            tokens: LiteralTokens::Number,
-            literal: |component, _| {
-                crate::CssNumeric::<crate::CssNumber, crate::CssNonNegative>::try_from_component(
+    const RATIO_OPERAND: NumericType<
+        crate::numeric::CssNumeric<crate::numeric::CssNumber, crate::numeric::CssNonNegative>,
+    > = NumericType {
+        root: CalculationRoot::Number,
+        tokens: LiteralTokens::Number,
+        literal: |component, _| {
+            crate::numeric::CssNumeric::<crate::numeric::CssNumber, crate::numeric::CssNonNegative>::try_from_component(
                     component,
                 )
-            },
-            calculation: |expression| {
-                crate::CssNumeric::<crate::CssNumber, crate::CssNonNegative>::from_parser_calculation(CssCalculation::<CssNumber>::from_expression(
+        },
+        calculation: |expression| {
+            crate::numeric::CssNumeric::<crate::numeric::CssNumber, crate::numeric::CssNonNegative>::from_parser_calculation(CssCalculation::<CssNumber>::from_expression(
                 expression,
             ))
-            },
-        };
+        },
+    };
     parse_numeric_type(input, numeric, &RATIO_OPERAND)
 }
 
-pub(super) fn parse_scrollbar_width<'i, 't>(
+pub(crate) fn parse_scrollbar_width<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssScrollbarWidth, ParseError<'i, Error>> {
     let location = input.current_source_location();
@@ -557,16 +574,16 @@ pub(super) fn parse_scrollbar_width<'i, 't>(
     }
 }
 
-pub(super) fn parse_order<'i, 't>(
+pub(crate) fn parse_order<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssNumeric<CssInteger>, ParseError<'i, Error>> {
     parse_integer_value(input, numeric)
 }
 
-pub(super) fn parse_z_index<'i, 't>(
+pub(crate) fn parse_z_index<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssZIndexValue, ParseError<'i, Error>> {
     let numeric_start = input.state();
     let location = input.current_source_location();
@@ -580,7 +597,7 @@ pub(super) fn parse_z_index<'i, 't>(
                 .map(CssZIndexValue::Integer)
         }
         Token::Dimension { .. } => Err(unexpected_at(location)),
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
+        Token::Function(name) if crate::numeric::expression::is_math_function(name) => {
             let expression =
                 parse_numeric_function(input, &numeric_start, numeric, CalculationRoot::Integer)?;
             CssNumeric::from_parser_calculation(CssCalculation::from_expression(expression))

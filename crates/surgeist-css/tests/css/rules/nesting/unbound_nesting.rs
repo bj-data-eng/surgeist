@@ -1,9 +1,12 @@
 //! Nesting 1 section 4: parentless & matches scope with zero anchor specificity.
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#nest-selector
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNormalizedItem, CssParsedStyleSelectors, CssParser,
-    CssPseudoSelectorListItem, CssSelector, CssSelectorBinding, CssStyleSelectorContext,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{CssNormalizedItem, CssSelectorBinding};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssPseudoSelectorListItem, CssSelector,
+    CssStyleSelectorContext,
 };
 
 #[test]
@@ -105,12 +108,12 @@ fn unbound_anchor_admission_does_not_enable_relative_roots_or_trailing_tokens() 
 fn supports_selector_anchor_is_typed_instead_of_general_enclosed() {
     let report = CssParser::default().parse_sheet("@supports selector(&) { a { color:red } }");
     assert!(report.is_clean(), "{report:?}");
-    let [surgeist_css::CssRule::Supports(rule)] = report.syntax().rules() else {
+    let [surgeist_css::rule::CssRule::Supports(rule)] = report.syntax().rules() else {
         panic!("supports")
     };
-    let surgeist_css::CssConditionKind::Leaf(surgeist_css::CssSupportsLeaf::Selector(
-        CssSelector::Compound(compound),
-    )) = rule.condition().kind()
+    let surgeist_css::query::CssConditionKind::Leaf(
+        surgeist_css::query::supports::CssSupportsLeaf::Selector(CssSelector::Compound(compound)),
+    ) = rule.condition().kind()
     else {
         panic!("typed selector, not opaque fallback")
     };
@@ -119,7 +122,7 @@ fn supports_selector_anchor_is_typed_instead_of_general_enclosed() {
 
 #[test]
 fn functional_anchors_keep_their_function_structure_and_parentless_binding() {
-    use surgeist_css::CssPseudoClass;
+    use surgeist_css::selector::CssPseudoClass;
     for source in [
         ":is(&,.a)",
         ":where(&)",
@@ -198,7 +201,7 @@ fn functional_anchors_keep_their_function_structure_and_parentless_binding() {
                 assert_eq!(list.selectors().len(), 1);
                 assert_eq!(
                     list.selectors()[0].combinator(),
-                    surgeist_css::CssSelectorCombinator::Child
+                    surgeist_css::selector::CssSelectorCombinator::Child
                 );
                 list.selectors()[0].selector()
             }
@@ -253,7 +256,7 @@ fn repeated_anchors_and_scope_pseudo_class_remain_distinct_after_normalization()
     assert_eq!(scope.selectors()[0].binding(), CssSelectorBinding::Absolute);
     assert!(matches!(
         scope.selectors()[0].selector(),
-        CssSelector::PseudoClass(surgeist_css::CssPseudoClass::Scope)
+        CssSelector::PseudoClass(surgeist_css::selector::CssPseudoClass::Scope)
     ));
     assert!(!scope.same_context(anchors));
 }
@@ -263,7 +266,7 @@ fn anchors_preserve_original_rule_positions_and_error_spans() {
     let source = "/*😀*/\r\n& {color:red}";
     let report = CssParser::default().parse_sheet(source);
     assert!(report.is_clean(), "{report:?}");
-    let [surgeist_css::CssRule::Style(rule)] = report.syntax().rules() else {
+    let [surgeist_css::rule::CssRule::Style(rule)] = report.syntax().rules() else {
         panic!("style rule")
     };
     assert_eq!(rule.position().byte_offset().value(), 10);
@@ -283,7 +286,7 @@ fn anchors_preserve_original_rule_positions_and_error_spans() {
     let diagnostic = &report.diagnostics()[0];
     assert_eq!(
         diagnostic.action(),
-        surgeist_css::CssRecoveryAction::RejectInput
+        surgeist_css::diagnostic::CssRecoveryAction::RejectInput
     );
     assert_eq!(diagnostic.span().start().byte_offset().value(), 0);
     assert_eq!(diagnostic.span().end().byte_offset().value(), 14);
@@ -291,7 +294,8 @@ fn anchors_preserve_original_rule_positions_and_error_spans() {
 
 #[test]
 fn anchors_do_not_invent_types_or_discard_authored_namespace_constraints() {
-    use surgeist_css::{CssNamespaceConstraint, CssNamespaceName, CssNamespacePrefix};
+    use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+    use surgeist_css::selector::CssNamespaceConstraint;
     let prefix = CssNamespacePrefix::try_new("svg").unwrap();
     let context = CssNamespaceContext::from_bindings([
         (None, CssNamespaceName::new("urn:default")),

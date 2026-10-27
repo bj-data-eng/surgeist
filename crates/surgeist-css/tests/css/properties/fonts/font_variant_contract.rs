@@ -7,7 +7,26 @@ use crate::css::support::important_declaration as parsed;
 use crate::css::support::named_property::assert_implicit_closure_rejection;
 use crate::css::support::named_property::invalid_named_value_at as invalid;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValue, CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueName;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::{
+    CssFontVariantAlternateNames, CssFontVariantAlternateValues, CssFontVariantAlternates,
+    CssFontVariantCaps, CssFontVariantEastAsianValues, CssFontVariantEmoji,
+    CssFontVariantLigatureState, CssFontVariantLigatureValues, CssFontVariantNumericFigure,
+    CssFontVariantNumericSpacing, CssFontVariantNumericValues, CssFontVariantPosition,
+    CssFontVariantValue, CssFontVariantValues,
+};
 
 const LONGHANDS: [&str; 7] = [
     "font-variant-ligatures",

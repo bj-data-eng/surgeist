@@ -19,8 +19,25 @@ use crate::css::support::authored_property::checked;
 use crate::css::support::authored_property::fronts;
 use crate::css::support::authored_property::parsed;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssLengthPercentage, CssNumeric};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandContributions,
+    CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget, CssPropertyValueError,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::{CssTextIndent, CssVerticalAlign};
 
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("initial", CssGlobalKeyword::Initial),

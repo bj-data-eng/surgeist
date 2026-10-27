@@ -1,10 +1,11 @@
 //! Existing-callable Syntax 3 §5.5.2 EOF/semicolon boundaries, with the adopted
 //! UnexpectedEnd + RetainNonconformingRule diagnostic contract.
 use crate::css::support::authored_syntax::assert_unclean_sheet as assert_nonclean_validation;
-use surgeist_css::{
-    CssCustomMediaBody, CssErrorCode, CssImportTarget, CssNamespaceContext, CssParser,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::query::media::CssCustomMediaBody;
+use surgeist_css::rule::{CssImportTarget, CssRule};
+use surgeist_css::selector::CssNamespaceContext;
 
 fn assert_eof(diagnostic: &CssRecoveryDiagnostic, source: &str, start: usize, end: usize) {
     assert_eq!(diagnostic.error().code(), CssErrorCode::UnexpectedEnd);
@@ -232,8 +233,8 @@ fn inner_function_block_and_string_terminators_do_not_become_statement_eof() {
             panic!("symbolic query body")
         };
         assert!(
-            matches!(media.queries(), [surgeist_css::CssMediaQuery::Condition(condition)]
-            if matches!(condition.kind(), surgeist_css::CssConditionKind::Leaf(surgeist_css::CssMediaLeaf::GeneralEnclosed(_))))
+            matches!(media.queries(), [surgeist_css::query::media::CssMediaQuery::Condition(condition)]
+            if matches!(condition.kind(), surgeist_css::query::CssConditionKind::Leaf(surgeist_css::query::media::CssMediaLeaf::GeneralEnclosed(_))))
         );
     }
     let [diagnostic] = eof.diagnostics() else {

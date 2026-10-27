@@ -5,11 +5,12 @@ use crate::css::support::authored_syntax::{
 };
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::{
+use surgeist_css::component::{
     CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValueRef,
-    CssComponentValues, CssErrorCode, CssParser, CssParserContext, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssValueOrigin, CssValueTokenRef,
+    CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::{CssParser, CssParserContext};
 
 fn origin(origin: &CssValueOrigin, source: &str, range: std::ops::Range<usize>) {
     let occurrence = parsed(origin);

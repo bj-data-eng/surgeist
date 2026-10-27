@@ -4,7 +4,18 @@
 //! value API; this RED uses only existing public parsing and expansion APIs.
 
 use crate::css::support::property_admission::assert_same_grammar_facts;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssPropertyGrammar, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::layout::{CssGridAutoFlow, CssGridAutoFlowAxis};
 
 fn grammar() -> CssPropertyGrammar {
     CssPropertyGrammar::from_name("grid-auto-flow").expect("known grid longhand")

@@ -2,7 +2,14 @@
 //! tokens; a CSS-wide keyword is special only when it is the whole value.
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#syntax
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::rule::CssRule;
 
 fn custom_tokens(declaration: &CssDeclaration) -> &str {
     let value = declaration.custom().expect("custom declaration").value();

@@ -1,8 +1,8 @@
 //! Recovered unbraced declaration contents in their existing domain grammar.
-use crate::{
-    CssComponentValueLimits, CssFontFaceDescriptors, CssPageDeclarationBlock, CssParseReport,
-    CssParserContext,
-};
+use crate::component::CssComponentValueLimits;
+use crate::rule::font_face::CssFontFaceDescriptors;
+use crate::rule::page::CssPageDeclarationBlock;
+use crate::{CssParseReport, CssParserContext};
 
 pub(crate) fn parse_page_with_context(
     source: &str,

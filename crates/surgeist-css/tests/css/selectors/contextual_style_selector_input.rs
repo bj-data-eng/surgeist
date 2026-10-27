@@ -6,7 +6,17 @@ use crate::css::support::color_and_selector_fixtures::{
 };
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueLimits, CssValueOrigin};
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssStyleAncestor};
+use surgeist_css::selector::{
+    CssCompoundSelector, CssNamespaceConstraint, CssNamespaceContext, CssParsedStyleSelectors,
+    CssPseudoClass, CssPseudoSelectorListItem, CssSelector, CssSelectorCombinator,
+    CssStyleSelector, CssStyleSelectorContext, CssStyleSelectorList,
+};
+use surgeist_css::serialization::CssRuleGraphInput;
+use surgeist_css::{CssParser, CssParserContext};
 
 fn clean(source: &str, context: CssStyleSelectorContext) -> CssParsedStyleSelectors {
     CssParsedStyleSelectors::parse(

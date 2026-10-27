@@ -14,7 +14,7 @@
 //! shorthand reaches only `<font-variant-css2>` (`normal | small-caps`).
 
 use crate::css::support::authored_property::{ParserFront, invalid};
-use surgeist_css::*;
+use surgeist_css::property::CssKnownProperty;
 
 const PROPERTY: CssKnownProperty = CssKnownProperty::FontVariant;
 const FRONTS: [ParserFront; 5] = [

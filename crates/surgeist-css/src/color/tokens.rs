@@ -1,7 +1,8 @@
 //! Finite qualified token/header and decoded-name observations for color grammar.
 
 use super::keywords::{Word, word};
-use super::protocol::{ColorProtocolError, CssColorSlot, LexicalRecord, LexicalTable};
+use crate::color::controlled::CssColorSlot;
+use crate::color::controlled::protocol::{ColorProtocolError, LexicalRecord, LexicalTable};
 use crate::tokenization::tokenizer::{Span, Token, TokenKind};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -10,7 +11,7 @@ pub(crate) struct ClassifiedToken {
     pub(crate) token: Token,
     pub(crate) word: Word,
     pub(crate) dashed: bool,
-    pub(crate) unit: Option<crate::CssNumericUnit>,
+    pub(crate) unit: Option<crate::numeric::CssNumericUnit>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -43,7 +44,7 @@ pub(crate) struct TokenReader<'owner> {
     word_possible: bool,
     dashed: bool,
     word: Word,
-    unit: Option<crate::CssNumericUnit>,
+    unit: Option<crate::numeric::CssNumericUnit>,
     state: State,
 }
 impl<'owner> TokenReader<'owner> {
@@ -204,7 +205,7 @@ impl<'owner> TokenReader<'owner> {
                 ..
             })
         ) {
-            name.and_then(crate::CssNumericUnit::parse)
+            name.and_then(crate::numeric::CssNumericUnit::parse)
         } else {
             None
         };
@@ -227,13 +228,13 @@ impl<'owner> TokenReader<'owner> {
     /// fixed ASCII cache. Long/non-ASCII identifiers can only be custom names.
     pub(crate) fn relative_channel(
         &self,
-        environment: crate::CssRelativeColorEnvironment,
-    ) -> Result<Option<crate::CssRelativeColorChannel>, ColorProtocolError> {
+        environment: crate::color::CssRelativeColorEnvironment,
+    ) -> Result<Option<crate::color::CssRelativeColorChannel>, ColorProtocolError> {
         if !matches!(self.state, State::Yield) {
             return Err(ColorProtocolError::WrongAction);
         }
         Ok(if self.word_possible {
-            crate::syntax::color::numeric_relative_channel(
+            crate::color::syntax::recognition::numeric_relative_channel(
                 environment,
                 std::str::from_utf8(&self.ascii[..self.ascii_length]).expect("actual ASCII cache"),
             )
@@ -261,8 +262,9 @@ impl<'owner> TokenReader<'owner> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::protocol::{ActionDescription, CssColorOperationOwner, LexicalOperation};
     use super::*;
+    use crate::color::controlled::CssColorOperationOwner;
+    use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
     use crate::tokenization::bounded::InputKind;
     use crate::tokenization::tokenizer::NameKind;
     #[test]
@@ -326,7 +328,7 @@ mod tests {
         assert_eq!(observed[1].word, Word::Unknown);
         assert_eq!(
             observed[3].word,
-            Word::System(crate::CssSystemColor::CanvasText)
+            Word::System(crate::color::CssSystemColor::CanvasText)
         );
         assert_eq!(observed[4].word, Word::Named([250, 250, 210]));
         reader.abandon();

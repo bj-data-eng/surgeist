@@ -5,7 +5,11 @@
 use crate::css::support::authored_property::{checked, parsed};
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

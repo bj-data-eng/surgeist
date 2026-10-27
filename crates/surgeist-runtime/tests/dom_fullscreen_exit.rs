@@ -69,7 +69,7 @@ fn session(exits: usize, events: usize) -> DomSession {
                 reports: 32,
                 storage_bytes: 32_000_000,
                 work: 20_000_000,
-                css_input: surgeist_css::CssUtf16InputLimits::default(),
+                css_input: surgeist_css::source::CssUtf16InputLimits::default(),
             },
             element_tasks: DomElementTaskRuntimeLimits {
                 tasks: 32,

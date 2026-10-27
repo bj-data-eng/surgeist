@@ -1,13 +1,14 @@
 #![forbid(unsafe_code)]
 // Install as a cfg(test) child of parser; never a public fallback test hook.
-use super::{
-    BoundedParseContext, StyleContextCaptures, conditional_chains, parse_sheet_bounded, recovery,
-};
-use crate::{
-    CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName,
-    CssNamespacePrefix, CssParseReport, CssRecoveryAction, CssRule, CssSelector, CssSheet,
-    CssSourcePosition, CssSourceSnapshot, CssStyleRule, CssStyleSelector, CssTokenKind, ErrorKind,
-};
+use super::{conditional_chains, recovery};
+use crate::CssParseReport;
+use crate::diagnostic::error::ErrorKind;
+use crate::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use crate::parser::reconstruction::{BoundedParseContext, parse_sheet_bounded};
+use crate::parser::recovery::StyleContextCaptures;
+use crate::rule::{CssNamespaceName, CssNamespacePrefix, CssRule, CssSheet, CssStyleRule};
+use crate::selector::{CssNamespaceConstraint, CssNamespaceContext, CssSelector, CssStyleSelector};
+use crate::source::{CssSourcePosition, CssSourceSnapshot};
 
 const BATCH_BOUNDARIES: [usize; 3] = [31, 32, 33];
 const PREFIX: &str = "/*😀*/\r\n";
@@ -404,7 +405,7 @@ fn exact_one_rule_preserves_supplied_namespace_and_rejects_trailing_unit_at_batc
             "@media all{".repeat(groups),
             "}".repeat(groups)
         );
-        let report = crate::CssRule::parse(&crate::CssParser::default(), &source, &context);
+        let report = crate::rule::CssRule::parse(&crate::CssParser::default(), &source, &context);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -419,7 +420,7 @@ fn exact_one_rule_preserves_supplied_namespace_and_rejects_trailing_unit_at_batc
         for suffix in [".second{}", " junk"] {
             let trailing = format!("{source}{suffix}");
             atomic_rejection(
-                &crate::CssRule::parse(&crate::CssParser::default(), &trailing, &context),
+                &crate::rule::CssRule::parse(&crate::CssParser::default(), &trailing, &context),
                 &trailing,
             );
         }
@@ -445,7 +446,8 @@ fn real_brace_style_block_preserves_supplied_namespace_and_rejects_trailing_inpu
             "@media all{".repeat(groups),
             "}".repeat(groups)
         );
-        let report = crate::CssStyleBlock::parse(&crate::CssParser::default(), &source, &context);
+        let report =
+            crate::rule::CssStyleBlock::parse(&crate::CssParser::default(), &source, &context);
         assert!(
             report.is_clean(),
             "depth {depth}: {:?}",
@@ -464,7 +466,11 @@ fn real_brace_style_block_preserves_supplied_namespace_and_rejects_trailing_inpu
         for suffix in ["{}", " junk"] {
             let trailing = format!("{source}{suffix}");
             atomic_rejection(
-                &crate::CssStyleBlock::parse(&crate::CssParser::default(), &trailing, &context),
+                &crate::rule::CssStyleBlock::parse(
+                    &crate::CssParser::default(),
+                    &trailing,
+                    &context,
+                ),
                 &trailing,
             );
         }
@@ -490,7 +496,7 @@ fn real_brace_style_block_keeps_statement_eof_at_the_actual_inner_parent_bound()
             let end = source.len();
             source.push_str(&"}".repeat(groups + 1));
             source.push_str(" /*edge*/");
-            let report = crate::CssStyleBlock::parse(
+            let report = crate::rule::CssStyleBlock::parse(
                 &crate::CssParser::default(),
                 &source,
                 &CssNamespaceContext::default(),

@@ -2,7 +2,27 @@
 //! Expected strings come from the selected grammar and documented shared numeric
 //! policy. Work formulas visit retained semantic nodes, including shortened edges.
 use crate::css::support::serialization_limits::assert_limits as bounds;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssCalculation, CssHintedNumber, CssNonNegative, CssNumber, CssNumeric,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::background::CssBackgroundSize;
+use surgeist_css::values::border::{
+    CssBorderImageOutset, CssBorderImageOutsetComponent, CssBorderImageRepeat,
+    CssBorderImageRepeatKeyword, CssBorderImageSlice, CssBorderImageSliceComponent,
+    CssBorderImageWidth, CssBorderImageWidthComponent,
+};
+use surgeist_css::values::common::CssBoxEdgeKeyword;
+use surgeist_css::values::effects::{
+    CssClipRule, CssMaskBorder, CssMaskBoxList, CssMaskClip, CssMaskClipList, CssMaskComposite,
+    CssMaskCompositeList, CssMaskLayer, CssMaskLayerBoxes, CssMaskList, CssMaskMode,
+    CssMaskModeList, CssMaskType,
+};
+use surgeist_css::values::image::CssImageValue;
+use surgeist_css::values::transform::CssCoordBox;
 type Limits = CssSerializationLimits;
 
 fn number(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {

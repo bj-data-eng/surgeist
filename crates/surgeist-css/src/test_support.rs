@@ -1,4 +1,5 @@
-use crate::{CssError, CssParseReport};
+use crate::CssParseReport;
+use crate::diagnostic::CssError;
 
 /// Clean-report assertions for crate-private tests.
 pub(crate) trait CssParseReportTestExt<T> {

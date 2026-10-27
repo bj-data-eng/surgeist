@@ -19,7 +19,20 @@ use crate::css::support::authored_parsed_declaration as parsed;
 use crate::css::support::check_named_components as checked_components;
 use crate::css::support::known_property as property;
 use crate::css::support::named_property::invalid_named_value as invalid;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssLonghandContributions,
+    CssPropertyKindRef, CssPropertyValueError,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 struct Witness {
     name: &'static str,

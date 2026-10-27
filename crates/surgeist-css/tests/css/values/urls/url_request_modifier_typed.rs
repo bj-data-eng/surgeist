@@ -3,11 +3,15 @@
 //! The constructor and inspection API retain authored request syntax, without
 //! applying Fetch operations or cryptographic interpretation.
 use crate::css::support::value_assertions::background_image_url as parsed;
-use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssIdent, CssParser,
-    CssRequestUrlModifierRef as Request, CssUrl, CssUrlCrossOrigin as CrossOrigin, CssUrlFunction,
-    CssUrlModifier, CssUrlModifierFunction, CssUrlReferrerPolicy as Policy, CssValueOrigin,
-    CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::values::common::CssRequestUrlModifierRef as Request;
+use surgeist_css::values::common::CssUrlCrossOrigin as CrossOrigin;
+use surgeist_css::values::common::CssUrlReferrerPolicy as Policy;
+use surgeist_css::values::common::{
+    CssIdent, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
 };
 
 fn function(name: &str, text: &str) -> CssUrlModifierFunction {
@@ -205,12 +209,16 @@ fn unknown_names_and_bare_identifiers_do_not_become_recognized_requests() {
 
 #[test]
 fn request_metadata_qualifies_authored_grammar_and_downstream_execution() {
-    let record = surgeist_css::feature_metadata("required.value.request-url-modifier").unwrap();
-    assert_eq!(record.status(), surgeist_css::CssSupportStatus::Partial);
+    let record =
+        surgeist_css::conformance::feature_metadata("required.value.request-url-modifier").unwrap();
+    assert_eq!(
+        record.status(),
+        surgeist_css::conformance::CssSupportStatus::Partial
+    );
     assert_eq!(record.source().id().as_str(), "I-VALUES5-REQUEST");
     assert_eq!(
         record.source().tier(),
-        surgeist_css::CssSpecificationTier::Snapshot2026PreCrException
+        surgeist_css::conformance::CssSpecificationTier::Snapshot2026PreCrException
     );
     assert_eq!(
         record.source().url(),

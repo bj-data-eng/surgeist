@@ -2,7 +2,17 @@
 //! expected serializations, expansion payloads, and resource costs stay with
 //! their owning suites and are never inferred from production metadata.
 
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssLonghandContribution, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyTextTarget, CssPropertyValueError,
+};
+use surgeist_css::{CssParseReport, CssParser};
 
 #[derive(Clone, Copy, Debug)]
 pub enum ParserFront {

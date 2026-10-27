@@ -379,7 +379,7 @@ impl Draft {
     }
     fn admit_transition_name_read(
         &self,
-        name: &surgeist_css::CssViewTransitionIdent,
+        name: &surgeist_css::values::view_transition::CssViewTransitionIdent,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         if self.source_limits.is_some() {
@@ -571,7 +571,8 @@ mod append_observation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use surgeist_css::{CssCustomIdent, CssViewTransitionIdent};
+    use surgeist_css::values::common::CssCustomIdent;
+    use surgeist_css::values::view_transition::CssViewTransitionIdent;
     use surgeist_cssom::{
         CssomContext, CssomEditGuard, CssomInputRole, CssomInputVersion, CssomLimits,
         CssomSheetInputs, CssomStore,

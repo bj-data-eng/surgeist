@@ -4,42 +4,56 @@ use super::property_input::NativeValueRange;
 use super::recovery::{RecoveryState, StyleContextCaptures};
 use super::supports::{parse_supports_condition, parse_supports_declaration};
 use super::url::parse_url;
-use super::{CssNamespaceContext, parse_layer_name, queries, supports};
-use crate::error::{CssError, basic, from_parse_error, invalid_syntax};
-use crate::named_supports::CssSupportsConditionName;
-use crate::syntax::*;
-use crate::{CssComponentValues, CssParsedOrigin};
-use crate::{CssCondition, CssConditionKind, SupportsAuthoredForm};
+use super::{parse_layer_name, queries, supports};
+use crate::component::CssComponentValues;
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::{basic, from_parse_error, invalid_syntax};
+use crate::query::condition::SupportsAuthoredForm;
+use crate::query::media::{CssMediaQuery, CssMediaQueryList};
+use crate::query::supports::CssSupportsConditionName;
+use crate::query::supports::{CssSupportsDeclaration, CssSupportsLeaf};
+use crate::query::{CssCondition, CssConditionKind};
+use crate::rule::{
+    CssImportLayer, CssImportRule, CssImportString, CssImportSupports, CssImportTarget,
+    CssImportUrl, CssLayerName,
+};
+use crate::selector::CssNamespaceContext;
+use crate::source::CssParsedOrigin;
 use cssparser::{Delimiter, ParseError, Parser, ParserInput, ParserState};
 
-pub(super) struct CssImportPrelude {
+pub(crate) struct CssImportPrelude {
     pub(super) target: CssImportTarget,
     pub(super) layer: Option<CssImportLayer>,
     pub(super) supports: Option<CssImportSupports>,
     pub(super) media: Option<CssMediaQueryList>,
     pub(super) implicit_media_closures: Vec<usize>,
-    pub(super) diagnostics: Vec<crate::CssRecoveryDiagnostic>,
-    pub(super) syntax: crate::imports::ImportPreludeSyntax,
+    pub(super) diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
+    pub(super) syntax: crate::rule::imports::ImportPreludeSyntax,
 }
 
 pub(crate) fn construct_import(
-    values: crate::CssComponentValues,
+    values: crate::component::CssComponentValues,
     context: &CssNamespaceContext,
-    limits: crate::CssComponentValueLimits,
-) -> Result<CssImportRule, crate::CssRuleConstructionError> {
-    use crate::{CssComponentValueRef as Component, CssValueTokenRef as Value};
+    limits: crate::component::CssComponentValueLimits,
+) -> Result<CssImportRule, crate::rule::CssRuleConstructionError> {
+    use crate::component::CssComponentValueRef as Component;
+    use crate::component::CssValueTokenRef as Value;
     values.validate_with_limits(limits)?;
     if let Some(origin) = values.first_implicit_origin() {
-        return Err(crate::imports::ImportConstructionKind::RecoveredInput {
-            origin: origin.clone(),
-        }
-        .into());
+        return Err(
+            crate::rule::imports::ImportConstructionKind::RecoveredInput {
+                origin: origin.clone(),
+            }
+            .into(),
+        );
     }
     let items = values.items();
     let first = items
         .iter()
-        .position(|value| !crate::supports::trivia(value))
-        .ok_or_else(|| import_construction_grammar(&crate::CssValueOrigin::Programmatic))?;
+        .position(|value| !crate::query::supports::construction::trivia(value))
+        .ok_or_else(|| {
+            import_construction_grammar(&crate::component::CssValueOrigin::Programmatic)
+        })?;
     if !matches!(items[first].view(), Component::Token(Value::AtKeyword(name)) if name.eq_ignore_ascii_case("import"))
     {
         return Err(import_construction_grammar(items[first].origin()));
@@ -52,7 +66,7 @@ pub(crate) fn construct_import(
         })?;
     if let Some(value) = items[semicolon + 1..]
         .iter()
-        .find(|value| !crate::supports::trivia(value))
+        .find(|value| !crate::query::supports::construction::trivia(value))
     {
         return Err(import_construction_grammar(value.origin()));
     }
@@ -80,7 +94,7 @@ pub(crate) fn construct_import(
                 let meaningful = body
                     .items()
                     .iter()
-                    .filter(|value| !crate::supports::trivia(value))
+                    .filter(|value| !crate::query::supports::construction::trivia(value))
                     .collect::<Vec<_>>();
                 let [component] = meaningful.as_slice() else {
                     return Err(import_construction_grammar(items[index].origin()));
@@ -89,7 +103,7 @@ pub(crate) fn construct_import(
                     .map_err(|_| import_construction_grammar(items[index].origin()))?;
                 CssCondition::lexical_form(
                     CssConditionKind::Leaf(CssSupportsLeaf::Named(name)),
-                    crate::supports::SupportsLexical::root(body),
+                    crate::query::supports::construction::SupportsLexical::root(body),
                     SupportsAuthoredForm::BareName,
                 )
             }
@@ -111,9 +125,9 @@ pub(crate) fn construct_import(
         selected.layer,
         supports,
         media,
-        crate::imports::ImportSyntax {
+        crate::rule::imports::ImportSyntax {
             at_keyword: items[first].clone(),
-            prelude: crate::imports::ImportPreludeSyntax {
+            prelude: crate::rule::imports::ImportPreludeSyntax {
                 target: target_component.clone(),
                 layer: layer_component,
                 supports: supports_component,
@@ -124,8 +138,10 @@ pub(crate) fn construct_import(
     rule.serialize_tokens(limits)?;
     Ok(rule)
 }
-fn import_construction_grammar(origin: &crate::CssValueOrigin) -> crate::CssRuleConstructionError {
-    crate::imports::ImportConstructionKind::InvalidRuleGrammar {
+fn import_construction_grammar(
+    origin: &crate::component::CssValueOrigin,
+) -> crate::rule::CssRuleConstructionError {
+    crate::rule::imports::ImportConstructionKind::InvalidRuleGrammar {
         origin: origin.clone(),
     }
     .into()
@@ -139,10 +155,10 @@ struct ConstructedImportSelection {
     supports_form: SupportsAuthoredForm,
 }
 fn classify_constructed_import(
-    values: &crate::CssComponentValues,
-    serialized: &crate::CssSerializedValue,
+    values: &crate::component::CssComponentValues,
+    serialized: &crate::component::CssSerializedValue,
     context: &CssNamespaceContext,
-) -> Result<ConstructedImportSelection, crate::CssRuleConstructionError> {
+) -> Result<ConstructedImportSelection, crate::rule::CssRuleConstructionError> {
     let source = serialized.as_css();
     let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
     if let Some(name) = &context.0.default {
@@ -154,7 +170,7 @@ fn classify_constructed_import(
     let working_source = crate::tokenization::prepare(source);
     let mut buffer = ParserInput::new(&working_source);
     let mut input = Parser::new(&mut buffer);
-    let numeric = crate::numeric::NumericInputContext::components(values, serialized);
+    let numeric = crate::numeric::expression::NumericInputContext::components(values, serialized);
     let result = (|| {
         input.next()?; // The original component envelope proved the at-keyword.
         input.parse_until_before(Delimiter::Semicolon, |input| {
@@ -169,7 +185,7 @@ fn classify_constructed_import(
                 debug_assert_eq!(path.len(), 1);
                 path[0]
             };
-            let index = |component: Option<&crate::CssComponentValue>| {
+            let index = |component: Option<&crate::component::CssComponentValue>| {
                 component.map(|component| {
                     index_at(
                         component
@@ -206,8 +222,8 @@ fn classify_constructed_import(
     result.map_err(|error: ParseError<'_, CssError>| {
         let error = from_parse_error(source, error);
         let offset = match error.kind() {
-            crate::ErrorKind::InvalidComponentValue(component) => {
-                crate::media::parsed_position(component.origin())
+            crate::diagnostic::error::ErrorKind::InvalidComponentValue(component) => {
+                crate::query::media::construction::parsed_position(component.origin())
                     .map_or(error.position().byte_offset().value(), |position| {
                         position.byte_offset().value()
                     })
@@ -217,28 +233,33 @@ fn classify_constructed_import(
         let origin = serialized
             .value_origin_at(offset)
             .cloned()
-            .unwrap_or(crate::CssValueOrigin::Programmatic);
+            .unwrap_or(crate::component::CssValueOrigin::Programmatic);
         let kind = match error.kind() {
-            crate::ErrorKind::InvalidComponentValue(component) => Some(component.kind),
-            crate::ErrorKind::NestingLimit(_) => {
-                Some(crate::CssComponentValueErrorKind::NestingLimit)
+            crate::diagnostic::error::ErrorKind::InvalidComponentValue(component) => {
+                Some(component.kind)
             }
-            crate::ErrorKind::ParserUnavailable(_) => {
-                Some(crate::CssComponentValueErrorKind::ParserUnavailable)
+            crate::diagnostic::error::ErrorKind::NestingLimit(_) => {
+                Some(crate::component::values::CssComponentValueErrorKind::NestingLimit)
+            }
+            crate::diagnostic::error::ErrorKind::ParserUnavailable(_) => {
+                Some(crate::component::values::CssComponentValueErrorKind::ParserUnavailable)
             }
             _ => None,
         };
         match kind {
-            Some(kind) => crate::CssComponentValueError::new(kind, origin).into(),
+            Some(kind) => crate::component::CssComponentValueError::new(kind, origin).into(),
             None => import_construction_grammar(&origin),
         }
     })
 }
 fn construct_import_media(
-    items: &[crate::CssComponentValue],
-    limits: crate::CssComponentValueLimits,
-) -> Result<Option<CssMediaQueryList>, crate::CssRuleConstructionError> {
-    if items.iter().all(crate::supports::trivia) {
+    items: &[crate::component::CssComponentValue],
+    limits: crate::component::CssComponentValueLimits,
+) -> Result<Option<CssMediaQueryList>, crate::rule::CssRuleConstructionError> {
+    if items
+        .iter()
+        .all(crate::query::supports::construction::trivia)
+    {
         return Ok(None);
     }
     let mut queries = Vec::new();
@@ -248,7 +269,9 @@ fn construct_import_media(
         if end != items.len()
             && !matches!(
                 items[end].view(),
-                crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Comma)
+                crate::component::CssComponentValueRef::Token(
+                    crate::component::CssValueTokenRef::Comma
+                )
             )
         {
             continue;
@@ -258,16 +281,21 @@ fn construct_import_media(
         // only comments, appends no member.
         if end == items.len()
             && start > 0
-            && member
-                .iter()
-                .all(|value| matches!(value.view(), crate::CssComponentValueRef::Comment(_)))
+            && member.iter().all(|value| {
+                matches!(
+                    value.view(),
+                    crate::component::CssComponentValueRef::Comment(_)
+                )
+            })
         {
             break;
         }
-        if let Some(error) = crate::media::empty_media_member_error(items, start, end) {
+        if let Some(error) =
+            crate::query::media::construction::empty_media_member_error(items, start, end)
+        {
             return Err(error.into());
         }
-        let values = crate::CssComponentValues::try_new(member.to_vec(), limits)?;
+        let values = crate::component::CssComponentValues::try_new(member.to_vec(), limits)?;
         queries.push(CssMediaQuery::try_from_components(values, limits)?);
         if let Some(comma) = items.get(end) {
             commas.push(comma.origin().clone());
@@ -277,22 +305,27 @@ fn construct_import_media(
     Ok(Some(CssMediaQueryList::with_comma_origins(queries, commas)))
 }
 
-pub(super) fn parse_import_prelude<'i, 't>(
+pub(crate) fn parse_import_prelude<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
-    _diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    _diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
 ) -> Result<CssImportPrelude, ParseError<'i, CssError>> {
     input.skip_whitespace();
     let target_start = input.state();
-    let numeric = crate::numeric::NumericInputContext::parsed(recovery.source_snapshot());
+    let numeric =
+        crate::numeric::expression::NumericInputContext::parsed(recovery.source_snapshot());
     let target = parse_import_target(input, &numeric)?;
     let target_end = input.state();
     input.reset(&target_start);
     let target_component =
-        crate::CssComponentValue::collect_from_parser(input, recovery.source_snapshot()).map_err(
-            |error| crate::error::invalid_component_value(input.current_source_location(), error),
-        )?;
+        crate::component::CssComponentValue::collect_from_parser(input, recovery.source_snapshot())
+            .map_err(|error| {
+                crate::diagnostic::error::invalid_component_value(
+                    input.current_source_location(),
+                    error,
+                )
+            })?;
     input.reset(&target_end);
     queries::check_media_import_components(source, input, recovery)?;
     // Include the accepted target in closure ownership: URL tokenization can
@@ -322,12 +355,12 @@ pub(super) fn parse_import_prelude<'i, 't>(
     while input.next_including_whitespace_and_comments().is_ok() {}
     let end = input.position().byte_index();
     let semicolon = if source.as_bytes().get(end) == Some(&b';') {
-        crate::CssValueOrigin::Parsed(
+        crate::component::CssValueOrigin::Parsed(
             CssParsedOrigin::from_range(recovery.source_snapshot(), end..end + 1)
                 .expect("parsed import terminator"),
         )
     } else {
-        crate::CssValueOrigin::Programmatic
+        crate::component::CssValueOrigin::Programmatic
     };
     Ok(CssImportPrelude {
         target,
@@ -336,7 +369,7 @@ pub(super) fn parse_import_prelude<'i, 't>(
         media,
         implicit_media_closures: implicit,
         diagnostics,
-        syntax: crate::imports::ImportPreludeSyntax {
+        syntax: crate::rule::imports::ImportPreludeSyntax {
             target: target_component,
             layer: selected.layer_component,
             supports: selected.supports_component,
@@ -347,22 +380,26 @@ pub(super) fn parse_import_prelude<'i, 't>(
 struct ImportSelection {
     layer: Option<CssImportLayer>,
     supports: Option<CssImportSupports>,
-    layer_component: Option<crate::CssComponentValue>,
-    supports_component: Option<crate::CssComponentValue>,
-    diagnostics: Vec<crate::CssRecoveryDiagnostic>,
+    layer_component: Option<crate::component::CssComponentValue>,
+    supports_component: Option<crate::component::CssComponentValue>,
+    diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     implicit_closures: Vec<usize>,
 }
 fn import_clause_component<'i>(
     input: &mut Parser<'i, '_>,
     start: &ParserState,
     recovery: &RecoveryState,
-) -> Result<crate::CssComponentValue, ParseError<'i, CssError>> {
+) -> Result<crate::component::CssComponentValue, ParseError<'i, CssError>> {
     let end = input.state();
     input.reset(start);
-    let result = crate::CssComponentValue::collect_from_parser(input, recovery.source_snapshot())
-        .map_err(|error| {
-            crate::error::invalid_component_value(input.current_source_location(), error)
-        });
+    let result =
+        crate::component::CssComponentValue::collect_from_parser(input, recovery.source_snapshot())
+            .map_err(|error| {
+                crate::diagnostic::error::invalid_component_value(
+                    input.current_source_location(),
+                    error,
+                )
+            });
     input.reset(&end);
     result
 }
@@ -450,7 +487,9 @@ fn probe_import_media<'i>(
             queries::parse_media_query(
                 source,
                 member,
-                &crate::numeric::NumericInputContext::parsed(recovery.source_snapshot()),
+                &crate::numeric::expression::NumericInputContext::parsed(
+                    recovery.source_snapshot(),
+                ),
             )?;
             member.expect_exhausted()?;
             Ok(())
@@ -470,10 +509,10 @@ fn probe_import_media<'i>(
     }
 }
 pub(crate) fn import_boundaries_match(
-    serialized: &crate::CssSerializedValue,
+    serialized: &crate::component::CssSerializedValue,
     expected: [Option<usize>; 2],
-    original_origin: &crate::CssValueOrigin,
-) -> Result<bool, crate::imports::ImportSerializationFailure> {
+    original_origin: &crate::component::CssValueOrigin,
+) -> Result<bool, crate::rule::imports::ImportSerializationFailure> {
     let source = serialized.as_css();
     let recovery = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
     let working_source = crate::tokenization::prepare(source);
@@ -487,7 +526,7 @@ pub(crate) fn import_boundaries_match(
         ]
         .map(|component| {
             component
-                .and_then(crate::CssComponentValue::parsed_origin)
+                .and_then(crate::component::CssComponentValue::parsed_origin)
                 .map(|origin| origin.span().end().byte_offset().value())
         });
         Ok(actual == expected && probe_import_media(source, &mut input, &recovery)?)
@@ -495,8 +534,8 @@ pub(crate) fn import_boundaries_match(
     result.map_err(|error: ParseError<'_, CssError>| {
         let error = from_parse_error(source, error);
         let offset = match error.kind() {
-            crate::ErrorKind::InvalidComponentValue(component) => {
-                crate::media::parsed_position(component.origin())
+            crate::diagnostic::error::ErrorKind::InvalidComponentValue(component) => {
+                crate::query::media::construction::parsed_position(component.origin())
                     .map_or(error.position().byte_offset().value(), |position| {
                         position.byte_offset().value()
                     })
@@ -508,27 +547,31 @@ pub(crate) fn import_boundaries_match(
             .unwrap_or(original_origin)
             .clone();
         let kind = match error.kind() {
-            crate::ErrorKind::InvalidComponentValue(component) => Some(component.kind),
-            crate::ErrorKind::NestingLimit(_) => {
-                Some(crate::CssComponentValueErrorKind::NestingLimit)
+            crate::diagnostic::error::ErrorKind::InvalidComponentValue(component) => {
+                Some(component.kind)
             }
-            crate::ErrorKind::ParserUnavailable(_) => {
-                Some(crate::CssComponentValueErrorKind::ParserUnavailable)
+            crate::diagnostic::error::ErrorKind::NestingLimit(_) => {
+                Some(crate::component::values::CssComponentValueErrorKind::NestingLimit)
+            }
+            crate::diagnostic::error::ErrorKind::ParserUnavailable(_) => {
+                Some(crate::component::values::CssComponentValueErrorKind::ParserUnavailable)
             }
             _ => None,
         };
         match kind {
-            Some(kind) => crate::imports::ImportSerializationFailure::Component(
-                crate::CssComponentValueError::new(kind, origin),
+            Some(kind) => crate::rule::imports::ImportSerializationFailure::Component(
+                crate::component::CssComponentValueError::new(kind, origin),
             ),
-            None => crate::imports::ImportSerializationFailure::InterpretationChanged { origin },
+            None => {
+                crate::rule::imports::ImportSerializationFailure::InterpretationChanged { origin }
+            }
         }
     })
 }
 fn parse_import_supports<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
 ) -> std::result::Result<Option<CssImportSupports>, ParseError<'i, CssError>> {
     if input
@@ -560,11 +603,13 @@ fn parse_import_supports<'i, 't>(
             let at = nested.current_source_location();
             let values =
                 CssComponentValues::collect_from_parser(nested, recovery.source_snapshot())
-                    .map_err(|error| crate::error::invalid_component_value(at, error))?;
+                    .map_err(|error| {
+                        crate::diagnostic::error::invalid_component_value(at, error)
+                    })?;
             let meaningful = values
                 .items()
                 .iter()
-                .filter(|value| !crate::supports::trivia(value))
+                .filter(|value| !crate::query::supports::construction::trivia(value))
                 .collect::<Vec<_>>();
             let [component] = meaningful.as_slice() else {
                 return Err(invalid_syntax(at));
@@ -573,7 +618,7 @@ fn parse_import_supports<'i, 't>(
                 .map_err(|_| invalid_syntax(at))?;
             Ok::<_, ParseError<'i, CssError>>(CssCondition::lexical_form(
                 CssConditionKind::Leaf(CssSupportsLeaf::Named(name)),
-                crate::supports::SupportsLexical::root(values),
+                crate::query::supports::construction::SupportsLexical::root(values),
                 SupportsAuthoredForm::BareName,
             ))
         }))? {
@@ -588,7 +633,7 @@ fn parse_import_supports<'i, 't>(
 
 fn parse_import_target<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssImportTarget, ParseError<'i, CssError>> {
     let location = input.current_source_location();
 

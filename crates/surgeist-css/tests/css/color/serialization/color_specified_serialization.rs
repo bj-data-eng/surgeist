@@ -4,7 +4,7 @@ use crate::css::support::checked_color as color;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_color::{Color, SerializationRequest};
-use surgeist_css::*;
+use surgeist_css::serialization::CssSerializationLimits;
 
 #[test]
 fn standalone_color4_branches_have_source_derived_canonical_text() {

@@ -1,7 +1,15 @@
 //! Complete original-input Page margin insertion provider (#1087).
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValueLimits;
+use surgeist_css::conformance::{feature_metadata, property_support_metadata};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::rule::page::{CssMarginBox, CssMarginRule, CssMarginRuleView};
+use surgeist_css::rule::{CssRuleAdmissionContext, CssRuleSyntax};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 fn names(rule: &CssMarginRule) -> Vec<&str> {
     rule.declarations()

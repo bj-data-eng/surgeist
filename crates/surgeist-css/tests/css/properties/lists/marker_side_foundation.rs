@@ -4,7 +4,18 @@
 
 use crate::css::support::named_property::assert_programmatic_rejection;
 use crate::css::support::{known_property, validated_important_declaration};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssLonghandContribution,
+    CssPropertyGrammar, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
 
 const NAME: &str = "marker-side";
 

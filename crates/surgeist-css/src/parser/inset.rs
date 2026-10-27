@@ -2,11 +2,12 @@
 
 use super::property_input::Parser;
 use super::side_shapes::{parse_four_sides, parse_side_pair};
-use crate::error::property::{Error, ParseError};
+use crate::diagnostic::error::property::{Error, ParseError};
 
 use super::values::parse_length_percentage;
-use crate::numeric::NumericInputContext;
-use crate::{CssFourSides, CssInsetValue, CssSidePair};
+use crate::numeric::expression::NumericInputContext;
+use crate::values::box_model::CssInsetValue;
+use crate::values::common::{CssFourSides, CssSidePair};
 
 pub(super) fn parse_inset_value<'i, 't>(
     input: &mut Parser<'i, 't>,

@@ -1,13 +1,29 @@
 use super::property_input::{NativeValueRange, adapt_native};
 use super::recovery::RecoveryState;
 use super::{Recovered, parse_descriptor_boundary};
-use crate::descriptor_values::{FontFeatureDisplayData, FontFeatureValueData};
-use crate::error::{
-    CssError, basic, descriptor_name_error, invalid_syntax, with_at_rule_prelude_context,
+use crate::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
+    CssSerializedValue, CssValueOrigin, CssValueTokenRef,
+};
+use crate::declaration::{CssAuthoredDeclarationValue, CssSubstitutionDependentValue};
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::{
+    basic, descriptor_name_error, invalid_syntax, with_at_rule_prelude_context,
     with_descriptor_context,
 };
-use crate::numeric::NumericInputContext;
-use crate::*;
+use crate::diagnostic::{CssFeatureId, CssRecoveryDiagnostic};
+use crate::numeric::expression::NumericInputContext;
+use crate::rule::font_face::CssFontFaceFamily;
+use crate::rule::font_feature_values::descriptor_values::{
+    FontFeatureDisplayData, FontFeatureValueData,
+};
+use crate::rule::font_feature_values::{
+    CssFontFeatureDisplayOccurrence, CssFontFeatureDisplayValue, CssFontFeatureValue,
+    CssFontFeatureValueBlock, CssFontFeatureValueDefinition, CssFontFeatureValueIndex,
+    CssFontFeatureValueKind, CssFontFeatureValueName, CssFontFeatureValuesItem,
+    CssFontFeatureValuesRule,
+};
+use crate::source::{CssParsedOrigin, CssSourcePosition, CssSourceSnapshot};
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserState,
     QualifiedRuleParser, RuleBodyItemParser,
@@ -304,7 +320,7 @@ fn qualifies(
     location: cssparser::SourceLocation,
 ) -> Result<bool, ParseError<'static, CssError>> {
     super::variables::descriptor_environment_qualifies(components.items(), numeric)
-        .map_err(|error| crate::error::invalid_component_value(location, error))
+        .map_err(|error| crate::diagnostic::error::invalid_component_value(location, error))
 }
 fn pending<'i>(
     input: &mut Parser<'i, '_>,
@@ -322,7 +338,7 @@ pub(super) fn parse_display_value<'i>(
     super::descriptor_values::validate_root(input, "font-feature-values", "font-display")?;
     let start = input.state();
     let components = CssComponentValues::collect_from_parser(input, snapshot).map_err(|error| {
-        crate::error::invalid_component_value(input.current_source_location(), error)
+        crate::diagnostic::error::invalid_component_value(input.current_source_location(), error)
     })?;
     input.reset(&start);
     display_data(input, &components, &NumericInputContext::parsed(snapshot))
@@ -353,7 +369,7 @@ pub(crate) fn construct_display_value(
             display_data(input, components, &numeric)
         })
     })();
-    result.map_err(|error| crate::error::from_parse_error(serialized.as_css(), error))
+    result.map_err(|error| crate::diagnostic::error::from_parse_error(serialized.as_css(), error))
 }
 
 pub(super) fn parse_feature_value<'i>(
@@ -363,7 +379,7 @@ pub(super) fn parse_feature_value<'i>(
 ) -> Result<FontFeatureValueData, ParseError<'i, CssError>> {
     let start = input.state();
     let components = CssComponentValues::collect_from_parser(input, snapshot).map_err(|error| {
-        crate::error::invalid_component_value(input.current_source_location(), error)
+        crate::diagnostic::error::invalid_component_value(input.current_source_location(), error)
     })?;
     input.reset(&start);
     feature_data(
@@ -371,7 +387,7 @@ pub(super) fn parse_feature_value<'i>(
         kind,
         &components,
         &NumericInputContext::parsed(snapshot),
-        crate::error::unexpected_component_value,
+        crate::diagnostic::error::unexpected_component_value,
     )
 }
 fn feature_data<'i>(
@@ -412,7 +428,7 @@ fn feature_data<'i>(
             .find(|(index, _)| kind.validate_index_count(index + 1).is_err());
         match surplus {
             Some((_, component)) => error(component, "the selected feature-value index count"),
-            None => crate::error::unexpected_end_at(
+            None => crate::diagnostic::error::unexpected_end_at(
                 input.current_source_location(),
                 "the selected feature-value index count",
             ),
@@ -443,12 +459,12 @@ pub(crate) fn construct_feature_value(
             let offset = serialized
                 .component_offset_for_path(&[index])
                 .expect("serialized root component");
-            crate::error::unexpected_component_value_at(
+            crate::diagnostic::error::unexpected_component_value_at(
                 component,
                 expectation,
                 CssSourcePosition::from_byte_offset_in(serialized.as_css(), offset),
             )
         },
     )
-    .map_err(|error| crate::error::from_parse_error(serialized.as_css(), error))
+    .map_err(|error| crate::diagnostic::error::from_parse_error(serialized.as_css(), error))
 }

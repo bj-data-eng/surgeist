@@ -1,6 +1,21 @@
 use crate::css::support::{checked_color as color, declaration_color};
 use surgeist_color::{Color, ColorSpace, PredefinedColorSpace};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssColor, CssColorComponent,
+    CssColorError, CssColorFactDefect, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest,
+    CssColorInput, CssColorMix, CssColorMixComponent, CssColorMixWeight, CssColorNumberLiteral,
+    CssColorOrdinaryLimits, CssColorOrdinaryOutcome, CssColorOrdinaryResource,
+    CssColorPaletteEntry, CssColorPathStep, CssColorProfileAvailability, CssColorProfileBinding,
+    CssColorProfileComponentName, CssColorProfileConversion, CssColorProfileConversionRecord,
+    CssColorProfileName, CssColorPropertyFacts, CssColorSchemeFact, CssColorStandardFailureKind,
+    CssDeviceColorFact, CssLabColor, CssNamedColor, CssSystemColor, parse_used_color,
+};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::numeric::{CssCalculation, CssPercentage};
+use surgeist_css::rule::color_profile::CssColorProfileRenderingIntent;
 
 /// A finite numerical color from plain test coordinates.
 fn numerical_color(space: ColorSpace, channels: [Option<f64>; 3], alpha: Option<f64>) -> Color {

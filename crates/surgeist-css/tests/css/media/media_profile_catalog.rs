@@ -1,9 +1,11 @@
 //! The selected MQ5 edition supersedes MQ4; public support metadata identifies
 //! the effective definitions while retaining historical feature lookup IDs.
-use surgeist_css::{
-    CssComponentValues, CssConditionKind, CssFeatureKind, CssMediaLeaf, CssMediaQuery,
-    CssNormalizedItem, CssParser, CssRuleContextKindRef, CssSupportStatus, feature_metadata,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery};
 
 const MQ5: &str = "https://www.w3.org/TR/2026/WD-mediaqueries-5-20260219/";
 

@@ -3,7 +3,16 @@
 //! preimplementation RED is claimed. CSSOM exception/state policy stays downstream.
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValueLimits;
+use surgeist_css::declaration::{CssDeclarationList, CssImportance};
+use surgeist_css::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::rule::{
+    CssNamespaceName, CssNamespacePrefix, CssRule, CssRuleAdmissionContext, CssRuleSyntax,
+    CssRuleSyntaxKind, CssStyleAncestor,
+};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::{CssParseReport, CssParser, CssParserContext, CssParserMode};
 
 fn candidate(source: &str) -> CssRuleSyntax {
     CssRuleSyntax::classify(&CssParser::default(), source)

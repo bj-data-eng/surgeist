@@ -7,7 +7,22 @@
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, Stats, StatsAlloc};
 use std::alloc::System;
 use std::hint::black_box;
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssTokenKind};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssSvgGlyphOrientationVerticalValue,
+};
+use surgeist_css::query::media::{
+    CssMediaLeaf, CssMediaRangeRef, CssUnknownMediaFeatureReason, CssUnknownMediaFeatureRef,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::values::transform::CssRotate;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 #[global_allocator]
 static GLOBAL: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;

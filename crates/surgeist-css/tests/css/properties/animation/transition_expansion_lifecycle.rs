@@ -13,8 +13,25 @@ use crate::css::support::property_admission::{
 use crate::css::support::{
     checked_property_grammar_declaration as checked, sole_declaration as parsed,
 };
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::numeric::{CssNumeric, CssRange, CssTime, CssTimeUnit};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{
+    CssDelayList, CssDurationList, CssEasing, CssEasingKeyword, CssEasingList, CssTransitionList,
+    CssTransitionProperty, CssTransitionPropertyList,
+};
 
 const MEMBERS: [P; 4] = [
     P::TransitionProperty,

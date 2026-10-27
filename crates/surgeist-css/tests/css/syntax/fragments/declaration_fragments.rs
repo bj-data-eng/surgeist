@@ -1,9 +1,11 @@
 //! Singular declaration contracts follow CSS Syntax 3 section 5.4.7 and
 //! declaration-value restrictions in section 8.2, with typed property validation.
-use surgeist_css::{
-    CssComponentValues, CssDeclaration, CssImportance, CssKnownProperty, CssParser,
-    CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction, CssRule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::rule::CssRule;
 
 fn rejected(source: &str) {
     let report = CssDeclaration::parse(&CssParser::default(), source);

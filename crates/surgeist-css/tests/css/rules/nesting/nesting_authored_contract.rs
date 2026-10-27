@@ -8,10 +8,14 @@
 
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::rules::declaration_text;
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNormalizedItem, CssNormalizedSheet, CssParser,
-    CssPseudoClass, CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSelector,
-    CssSelectorBinding, CssSelectorCombinator, CssStyleSelector, CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::normalize::{
+    CssNormalizedItem, CssNormalizedSheet, CssRuleContextKindRef, CssSelectorBinding,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssSelector, CssSelectorCombinator, CssStyleSelector,
 };
 
 fn stream(sheet: &CssNormalizedSheet) -> Vec<String> {

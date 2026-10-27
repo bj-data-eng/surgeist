@@ -3,10 +3,11 @@
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssErrorCode, CssNamespacePrefix, CssNormalizedItem, CssParser, CssRule, CssRuleContextKindRef,
-    CssSerializationLimits,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::{CssNamespacePrefix, CssRule};
+use surgeist_css::serialization::CssSerializationLimits;
 
 #[test]
 fn namespace_rule_output_preserves_literal_names_and_escaped_prefixes() {

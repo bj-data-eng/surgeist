@@ -1,12 +1,14 @@
 use crate::css::support::authored_syntax::property_names;
-use surgeist_css::{
-    CssDeclarationContextRef, CssErrorCode, CssParser, CssRecoveryAction, CssRule, CssSelector,
-    CssSelectorCombinator, CssStyleSelector, CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{
+    CssDeclarationContextRef, CssErrorCode, CssRecoveryAction, CssTokenKind,
 };
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssSelector, CssSelectorCombinator, CssStyleSelector};
 
 fn assert_drop(
     source: &str,
-    diagnostic: &surgeist_css::CssRecoveryDiagnostic,
+    diagnostic: &surgeist_css::diagnostic::CssRecoveryDiagnostic,
     unit: &str,
     code: CssErrorCode,
     action: CssRecoveryAction,
@@ -418,7 +420,7 @@ fn block_item_recovery_font_face_drops_bad_and_retains_duplicate_optional_descri
     );
     assert_eq!(
         descriptors
-            .effective(surgeist_css::CssFontFaceDescriptorKind::Src)
+            .effective(surgeist_css::rule::font_face::CssFontFaceDescriptorKind::Src)
             .unwrap()
             .position()
             .unwrap()
@@ -428,7 +430,7 @@ fn block_item_recovery_font_face_drops_bad_and_retains_duplicate_optional_descri
     );
     assert_eq!(
         ordinary_face!(descriptors, FontDisplay).unwrap(),
-        &surgeist_css::CssFontDisplay::Block
+        &surgeist_css::rule::font_face::CssFontDisplay::Block
     );
     assert!(ordinary_face!(descriptors, UnicodeRange).is_some());
     assert_eq!(report.diagnostics().len(), 1);
@@ -444,7 +446,8 @@ fn block_item_recovery_font_face_drops_bad_and_retains_duplicate_optional_descri
         descriptors
             .occurrences()
             .filter(|descriptor| {
-                descriptor.value().kind() == surgeist_css::CssFontFaceDescriptorKind::FontDisplay
+                descriptor.value().kind()
+                    == surgeist_css::rule::font_face::CssFontFaceDescriptorKind::FontDisplay
             })
             .count(),
         2

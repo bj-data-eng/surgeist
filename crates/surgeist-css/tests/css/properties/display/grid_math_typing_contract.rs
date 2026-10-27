@@ -11,8 +11,30 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::numeric_failure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssCalculationValueRef,
+    CssFlex, CssMathFunction, CssNonNegative, CssNumeric, CssNumericDimension,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandContributions, CssLonghandValueRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::layout::{
+    CssGridGeneralTrackComponent, CssGridTrackBreadth, CssGridTrackList, CssGridTrackSize,
+};
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

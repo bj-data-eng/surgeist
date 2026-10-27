@@ -557,7 +557,9 @@ fn actual_creation_receipt(
     wrong: Option<WrongCreationInput>,
 ) {
     use std::sync::Arc;
-    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::query::media::CssMediaQueryList;
+    use surgeist_css::source::CssUtf16InputLimits;
+    use surgeist_css::{CssParser, CssParserContext};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
     use surgeist_dom::{
         DomSourceProgress, DomStyleCssomOwnerBinding, DomStyleInlineCspObservation,
@@ -613,7 +615,11 @@ fn actual_creation_receipt(
             .unwrap();
         let ticket = setup
             .create_declarations(
-                surgeist_css::CssDeclarationList::try_new(Vec::new(), Default::default()).unwrap(),
+                surgeist_css::declaration::CssDeclarationList::try_new(
+                    Vec::new(),
+                    Default::default(),
+                )
+                .unwrap(),
                 false,
                 false,
                 Some(CssomInputVersion {
@@ -861,7 +867,9 @@ fn exercise_wrong_owner_media(
     owner: &surgeist_dom::DomStyleCssomRoot,
     sheet: &surgeist_cssom::CssomSheetId,
 ) {
-    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::query::media::CssMediaQueryList;
+    use surgeist_css::source::CssUtf16InputLimits;
+    use surgeist_css::{CssParser, CssParserContext};
     use surgeist_cssom::{
         CssomEditGuard, CssomInputRole, CssomInputVersion, CssomOwnerMediaInput,
         CssomSheetOwnerAttributes,
@@ -1916,7 +1924,9 @@ fn ascii_whitespace_media_matches_without_environment_and_respects_the_body_gate
 
 fn html_body_gate_and_blocking_cleanup(selected_media: Option<&str>) {
     use std::sync::Arc;
-    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::query::media::CssMediaQueryList;
+    use surgeist_css::source::CssUtf16InputLimits;
+    use surgeist_css::{CssParser, CssParserContext};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
     use surgeist_dom::{
         DomChange, DomSourceProgress, DomStyleCssomOwnerBinding, DomStyleCssomRoot,
@@ -2649,7 +2659,9 @@ fn resume_after_meta_work_refusal(low: u64) {
 #[test]
 fn admitted_inert_parser_style_continues_after_creation_to_genuine_render_context() {
     use std::sync::Arc;
-    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::query::media::CssMediaQueryList;
+    use surgeist_css::source::CssUtf16InputLimits;
+    use surgeist_css::{CssParser, CssParserContext};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
     use surgeist_dom::{
         DomNativeInputPlatform, DomParsedDocumentEnvironment, DomParsedHtmlInstallLimits,

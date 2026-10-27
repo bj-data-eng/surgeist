@@ -1,12 +1,16 @@
 //! Checked named-definition construction preserves extension names and applies
 //! one aggregate resource budget to its rule shell and generic test body.
 
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssImportance, CssParser, CssRule, CssSerializedOrigin, CssSupportsConditionName,
-    CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestItem, CssValueOrigin,
-    CssValueTokenRef,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::query::supports::{
+    CssSupportsConditionName, CssSupportsTestBody, CssSupportsTestItem,
+};
+use surgeist_css::rule::{CssRule, CssSupportsConditionRule};
 
 #[test]
 fn extension_names_use_decoded_case_sensitive_identifiers_and_original_origin() {
@@ -42,7 +46,7 @@ fn extension_names_use_decoded_case_sensitive_identifiers_and_original_origin() 
     };
     assert_eq!(rule.name().as_str(), "--Theme");
     assert_eq!(
-        surgeist_css::CssComponentValues::try_new(
+        surgeist_css::component::CssComponentValues::try_new(
             vec![rule.name().component().clone()],
             Default::default()
         )

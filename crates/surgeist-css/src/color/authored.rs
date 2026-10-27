@@ -11,14 +11,31 @@ use super::grammar::{
     Leaf, ProfileSpace, RawComponent, Recipe, RecipeKind,
 };
 use super::keywords::ColorFunction as F;
-use super::protocol::{
-    ColorProtocolError, CssColorBank, CssColorOperationOwner, CssColorSlot, Data, LexicalTable,
-};
 use super::syntax_pass::{SyntaxAction, SyntaxPass};
-use crate::error::ErrorKind;
-use crate::numeric::{CalculationRoot, NumericInputContext};
+use crate::color::controlled::protocol::{ColorProtocolError, Data, LexicalTable};
+use crate::color::controlled::{CssColorBank, CssColorOperationOwner, CssColorSlot};
+use crate::color::{
+    CssAlphaColor, CssColor, CssColorComponent, CssColorConstructionError, CssColorHue,
+    CssColorInterpolation, CssColorMix, CssColorMixComponent, CssColorMixPercentage,
+    CssColorMixWeight, CssColorProfileName, CssContrastColor, CssCustomColor, CssDeviceCmykColor,
+    CssHexColor, CssHslColor, CssHwbColor, CssLabColor, CssLchColor, CssLightDarkColor,
+    CssNamedColor, CssPredefinedColor, CssProfileColorExpression, CssRelativeColor,
+    CssRelativeColorEnvironment, CssRelativeColorExpression, CssRelativeColorFunction,
+    CssRelativeColorResultDomain, CssRelativeCustomColor, CssRgbColor,
+};
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueRef, CssHashFlag,
+    CssNumericTokenRef, CssValueOrigin, CssValueTokenRef,
+};
+use crate::diagnostic::error::ErrorKind;
+use crate::numeric::expression::CssCalculationExpression;
+use crate::numeric::expression::{CalculationRoot, NumericInputContext};
+use crate::numeric::{
+    CssAngle, CssCalculation, CssCalculationType, CssHintedNumber, CssNumber,
+    CssNumericConstructionError, CssPercentage,
+};
 use crate::tokenization::tokenizer::{NameKind, NumberKind, Span, Token, TokenKind};
-use crate::*;
 
 type Result<T> = std::result::Result<T, ColorInputFailure>;
 
@@ -31,7 +48,7 @@ pub(crate) struct ColorInputFailure {
 }
 fn invalid_color(component: Option<&str>) -> ColorInputFailure {
     ColorInputFailure {
-        kind: crate::error::color_syntax_kind(component),
+        kind: crate::diagnostic::error::color_syntax_kind(component),
         path: Box::new([]),
         closing: false,
     }
@@ -415,7 +432,7 @@ pub(crate) fn construct_component(
                     && let Some(end) = events.eof.take()
                 {
                     return Err(ColorInputFailure {
-                        kind: crate::error::color_syntax_kind(component),
+                        kind: crate::diagnostic::error::color_syntax_kind(component),
                         path: end.path.into_boxed_slice(),
                         closing: true,
                     });
@@ -424,7 +441,7 @@ pub(crate) fn construct_component(
                     &events,
                     source.start,
                     &[],
-                    crate::error::color_syntax_kind(component),
+                    crate::diagnostic::error::color_syntax_kind(component),
                 ));
             }
             GrammarAction::Stopped => return Err(invalid_color(None)),
@@ -484,7 +501,7 @@ pub(crate) fn construct_component(
                     &events,
                     site,
                     &[],
-                    crate::error::color_syntax_kind(component),
+                    crate::diagnostic::error::color_syntax_kind(component),
                 ));
             }
             SyntaxAction::Stopped => return Err(invalid_color(None)),
@@ -582,7 +599,7 @@ impl Builder<'_, '_, '_> {
             .and_then(|path| path.strip_prefix(&[0]))
             .unwrap_or(&[]);
         let kind = error.component_error().map_or_else(
-            || crate::error::color_syntax_kind(None),
+            || crate::diagnostic::error::color_syntax_kind(None),
             |component| ErrorKind::InvalidComponentValue(Box::new(component.clone())),
         );
         match site {
@@ -607,7 +624,7 @@ impl Builder<'_, '_, '_> {
             return Ok(CssColorComponent::None);
         }
         if matches!(raw.view(), CssComponentValueRef::Token(_)) {
-            return crate::color_scalar::component(raw.clone()).map_err(component_failure);
+            return crate::color::color_scalar::component(raw.clone()).map_err(component_failure);
         }
         let expression = self.numeric(index, CalculationRoot::NumberPercentage)?;
         Ok(match expression.result_type() {
@@ -636,7 +653,7 @@ impl Builder<'_, '_, '_> {
             return Ok(CssColorHue::None);
         }
         if matches!(raw.view(), CssComponentValueRef::Token(_)) {
-            return crate::color_scalar::hue(raw.clone()).map_err(component_failure);
+            return crate::color::color_scalar::hue(raw.clone()).map_err(component_failure);
         }
         let domain = self
             .component_record(index)?
@@ -697,7 +714,7 @@ impl Builder<'_, '_, '_> {
                         self.events,
                         site,
                         &[],
-                        crate::error::color_syntax_kind(None),
+                        crate::diagnostic::error::color_syntax_kind(None),
                     )
                 })
         } else {
@@ -1094,7 +1111,17 @@ impl Builder<'_, '_, '_> {
 /// `tests/css/color/color_authored_source_modes.rs`.
 #[cfg(test)]
 mod tests {
-    use crate::*;
+
+    use crate::color::{CssColor, CssColorComponent};
+    use crate::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+
+    use crate::declaration::{CssDeclaration, CssImportance};
+
+    use crate::property::{
+        CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyValueError,
+    };
+
+    use crate::diagnostic::CssRecoveryAction;
 
     fn color_of(declaration: &CssDeclaration) -> CssColor {
         let Some(CssKnownPropertyValueRef::Color(value)) =
@@ -1108,9 +1135,11 @@ mod tests {
     fn checked(
         values: CssComponentValues,
     ) -> std::result::Result<CssDeclaration, CssPropertyValueError> {
-        crate::CssDeclaration::try_from_components(
+        crate::declaration::CssDeclaration::try_from_components(
             &crate::CssParser::default(),
-            crate::CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
+            crate::property::CssPropertyTarget::Property(CssPropertyNameRef::Known(
+                CssKnownProperty::Color,
+            )),
             values,
             CssImportance::Normal,
         )
@@ -1119,7 +1148,7 @@ mod tests {
     fn parsed(text: &str) -> std::result::Result<CssColor, String> {
         let report = crate::CssParser::default().parse_property_value(
             text,
-            crate::CssPropertyTextTarget::Property(CssPropertyNameRef::Known(
+            crate::property::CssPropertyTextTarget::Property(CssPropertyNameRef::Known(
                 CssKnownProperty::Color,
             )),
             CssImportance::Normal,
@@ -1141,7 +1170,7 @@ mod tests {
     }
 
     fn components(text: &str) -> std::result::Result<CssColor, String> {
-        checked(crate::component_values::parse_component_values(text).unwrap())
+        checked(crate::component::values::parse_component_values(text).unwrap())
             .map(|declaration| color_of(&declaration))
             .map_err(|error| format!("{error:?}"))
     }

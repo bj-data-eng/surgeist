@@ -1,7 +1,10 @@
 //! CSS owns source payload traversal and accounting; this adapter supplies the
 //! actual retained canonical tables, including detached objects and edited data.
 use crate::{model::State, *};
-use surgeist_css::*;
+use surgeist_css::rule::CssImportTarget;
+use surgeist_css::source::{
+    CssRetainedSources, CssSourceRetention, CssSourceRetentionError, CssSourceRetentionResource,
+};
 
 impl CssRetainedSources for CssomAuthoredRule {
     fn visit_retained_sources(

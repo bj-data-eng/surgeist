@@ -1,5 +1,14 @@
 //! Shared substitution diagnostics retain genuine missing-argument boundaries.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
+};
+use surgeist_css::declaration::{CssCustomPropertyName, CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::property::{
+    CssKnownProperty, CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget,
+};
 
 #[test]
 fn missing_custom_variable_name_points_to_closing_or_input_end() {

@@ -1,7 +1,10 @@
 //! Source MediaList operations over the shared live collection owner.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::*;
-use surgeist_css::*;
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParseReport, CssParser};
 
 /// A source mutation's disposition and original recovered parser diagnostics.
 /// Publication is reported separately by the enclosing batch commit.

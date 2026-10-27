@@ -2,10 +2,12 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#the-anb-type
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#nth-child-pseudo
 //! Declared Nth corpus rejection follows token-level An+B grammar and raw input.
-use surgeist_css::{
-    CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
-    CssNthPattern, CssParser, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
-    CssSelector,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+use surgeist_css::selector::{
+    CssNamespaceConstraint, CssNamespaceContext, CssNthPattern, CssPseudoClass,
+    CssPseudoSelectorListItem, CssSelector,
 };
 
 /// The 39 upstream `error` cases of `selector/Nth.json`, each outside the

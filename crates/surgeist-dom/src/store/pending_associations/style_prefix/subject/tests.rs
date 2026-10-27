@@ -3,7 +3,9 @@ use super::super::rendering::tests::{ready, ready_source};
 use super::super::tests::{envelope, flag};
 use super::*;
 use crate::*;
-use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
 
 fn render(dom: &mut Dom, id: DomParsedHtmlAssociationId, q: &DomParsedHtmlStyleQualification) {

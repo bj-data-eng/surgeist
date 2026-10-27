@@ -10,7 +10,8 @@
 //! diagnostics. The rejected depths begin immediately after the accepted ones,
 //! so each row states an exact boundary.
 
-use surgeist_css::*;
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::{CssParseReport, CssParser};
 
 /// The nested opening that each unit of depth adds.
 const OPENING: &str = "calc(";

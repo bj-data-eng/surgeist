@@ -1,5 +1,9 @@
 use std::sync::Arc;
-use surgeist_css::*;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::CssSheet;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParseReport, CssParser, CssParserContext, CssParserMode};
 use surgeist_cssom::*;
 
 fn version(owner: &str, revision: u64) -> CssomInputVersion {

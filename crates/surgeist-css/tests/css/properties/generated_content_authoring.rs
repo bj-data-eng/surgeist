@@ -1,7 +1,21 @@
 //! Generated content, lists and counters (CSS Generated Content 3, Lists 3)
 //! keep authored shapes through the public parser and constructors.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::numeric::{CssInteger, CssNumeric, CssNumericLiteral};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::counter_style::CssCounterStyleName;
+use surgeist_css::selector::{CssPseudoElement, CssSelector};
+use surgeist_css::values::common::{CssIdent, CssUrl};
+use surgeist_css::values::content::{
+    CssContentAlternativeItem, CssContentCounter, CssContentCounterName, CssContentCounters,
+    CssContentString, CssContentValue, CssContentValueItem, CssCounterChangeValue,
+    CssCounterChangesValue, CssCounterStyleValue, CssCounterSymbolValue, CssGeneratedContent,
+    CssGeneratedContentBodyRef, CssListStylePosition, CssListStyleTypeValue, CssListStyleValue,
+    CssSymbolsSystem,
+};
+use surgeist_css::values::image::{CssColorStopListItem, CssGradient, CssImage, CssImageValue};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;

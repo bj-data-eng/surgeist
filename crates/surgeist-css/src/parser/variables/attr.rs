@@ -4,11 +4,11 @@
 //! fallback substitution, and taint belong to computed-value consumers. The
 //! original components stay on the enclosing pending declaration.
 
-use crate::utf16_value::Control;
-use crate::{
-    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
-    CssComponentValueRef as Component, CssValueOrigin, CssValueTokenRef as Token,
-};
+use crate::component::CssComponentValueRef as Component;
+use crate::component::CssValueTokenRef as Token;
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{CssBlockKind, CssComponentValue, CssComponentValueError, CssValueOrigin};
+use crate::values::color_adjust::utf16_value::Control;
 
 fn trivia(value: &CssComponentValue) -> bool {
     matches!(
@@ -93,8 +93,8 @@ fn syntax_valid(
     syntax_valid_with_control(items, decode_limit, None)
 }
 struct Decoded<'a> {
-    source: Option<crate::CssSourceSnapshot>,
-    values: Option<crate::CssComponentValues>,
+    source: Option<crate::source::CssSourceSnapshot>,
+    values: Option<crate::component::CssComponentValues>,
     control: Option<&'a Control<'a>>,
     bytes: usize,
 }
@@ -120,7 +120,7 @@ fn syntax_valid_with_control(
         let values = current
             .as_ref()
             .and_then(|current| current.values.as_ref())
-            .map_or(items, crate::CssComponentValues::items);
+            .map_or(items, crate::component::CssComponentValues::items);
         let Some(first) = next_significant(values, 0, control) else {
             return Ok(false);
         };
@@ -139,21 +139,25 @@ fn syntax_valid_with_control(
             }
             decoded += 1;
             let (source, parsed) = if let Some(control) = control {
-                let source = crate::CssSourceSnapshot::try_from_decoded_utf8(value, control)
-                    .map_err(|_| {
-                        CssComponentValueError::new(
-                            CssComponentValueErrorKind::CapacityOverflow,
-                            original.clone(),
-                        )
-                    })?;
-                let parsed = crate::component_values::parse_controlled_snapshot(
+                let source =
+                    crate::source::CssSourceSnapshot::try_from_decoded_utf8(value, control)
+                        .map_err(|_| {
+                            CssComponentValueError::new(
+                                CssComponentValueErrorKind::CapacityOverflow,
+                                original.clone(),
+                            )
+                        })?;
+                let parsed = crate::component::values::parse::bounded::parse_controlled_snapshot(
                     &source,
-                    crate::CssComponentValueLimits::default(),
+                    crate::component::CssComponentValueLimits::default(),
                     control,
                 );
                 (Some(source), parsed)
             } else {
-                (None, crate::component_values::parse_component_values(value))
+                (
+                    None,
+                    crate::component::values::parse_component_values(value),
+                )
             };
             let values = match parsed {
                 Ok(values) => values,
@@ -186,16 +190,16 @@ fn syntax_valid_with_control(
                 }
             };
             let bytes = if let Some(control) = control {
-                let backing =
-                    crate::component_values::retained_backing_bytes_with(&values, &mut || {
-                        control.step()
-                    })
-                    .map_err(|_| {
-                        CssComponentValueError::new(
-                            CssComponentValueErrorKind::CapacityOverflow,
-                            original.clone(),
-                        )
-                    })?;
+                let backing = crate::component::values::retained::retained_backing_bytes_with(
+                    &values,
+                    &mut || control.step(),
+                )
+                .map_err(|_| {
+                    CssComponentValueError::new(
+                        CssComponentValueErrorKind::CapacityOverflow,
+                        original.clone(),
+                    )
+                })?;
                 let source_bytes = source
                     .as_ref()
                     .and_then(|source| source.payload_bytes(true))
@@ -390,7 +394,7 @@ mod tests {
     #[test]
     fn quoted_syntax_decode_budget_is_cumulative_and_reports_outer_string() {
         let first =
-            crate::component_values::parse_component_values("foo \"\\\"<length>\\\"\"").unwrap();
+            crate::component::values::parse_component_values("foo \"\\\"<length>\\\"\"").unwrap();
         let outer = first.items()[2].origin().clone();
         let error = syntax_valid(&first.items()[2..], 1).unwrap_err();
         assert_eq!(error.kind(), CssComponentValueErrorKind::NestingLimit);
@@ -402,17 +406,18 @@ mod tests {
     fn deeply_nested_decoded_syntax_reports_original_token() {
         let decoded = format!("{}x{}", "(".repeat(257), ")".repeat(257));
         let arguments =
-            crate::component_values::parse_component_values(&format!("foo \"{decoded}\"")).unwrap();
+            crate::component::values::parse_component_values(&format!("foo \"{decoded}\""))
+                .unwrap();
         let origin = arguments.items()[2].origin().clone();
         let error = valid(arguments.items()).unwrap_err();
         assert_eq!(error.kind(), CssComponentValueErrorKind::NestingLimit);
         assert_eq!(error.origin(), &origin);
 
-        let outer = crate::component_values::parse_component_values(&format!("\"{decoded}\""))
+        let outer = crate::component::values::parse_component_values(&format!("\"{decoded}\""))
             .unwrap()
             .items()[0]
             .clone();
-        let children = crate::CssComponentValues::try_new(
+        let children = crate::component::CssComponentValues::try_new(
             vec![
                 CssComponentValue::try_ident("foo").unwrap(),
                 CssComponentValue::try_token(" ").unwrap(),

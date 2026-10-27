@@ -1,4 +1,18 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssValueTokenRef};
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::values::box_model::{CssBreakBetween, CssBreakInside};
+use surgeist_css::values::common::{CssAutoOr, CssBoxEdgeKeyword};
+use surgeist_css::values::content::CssQuotes;
+use surgeist_css::values::effects::CssClip;
+use surgeist_css::values::table::{
+    CssBorderCollapse, CssCaptionSide, CssEmptyCells, CssTableLayout,
+};
+use surgeist_css::values::text::CssTextSpacingAdjustment;
 
 #[test]
 fn css2_residual_properties_retain_typed_values() {
@@ -479,17 +493,19 @@ fn css2_residual_eof_and_non_bmp_recovery_preserve_exact_coordinates() {
     );
 
     let source = "--😀: 1; word-spacing: 1fr; color: red";
-    let [offending] =
-        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), "1fr")
-            .unwrap()
-            .items()
-            .to_vec()
-            .try_into()
-            .unwrap();
+    let [offending] = surgeist_css::component::CssComponentValues::parse(
+        &surgeist_css::CssParser::default(),
+        "1fr",
+    )
+    .unwrap()
+    .items()
+    .to_vec()
+    .try_into()
+    .unwrap();
     assert!(matches!(
         offending.view(),
-        surgeist_css::CssComponentValueRef::Token(
-            surgeist_css::CssValueTokenRef::Dimension { unit, .. }
+        surgeist_css::component::CssComponentValueRef::Token(
+            surgeist_css::component::CssValueTokenRef::Dimension { unit, .. }
         ) if unit == "fr"
     ));
     let report = CssParser::default().parse_block_contents(source);
@@ -555,9 +571,9 @@ fn box_edge_keyword_value_exposes_every_o_box3_branch_and_rejects_adjacent_gramm
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }

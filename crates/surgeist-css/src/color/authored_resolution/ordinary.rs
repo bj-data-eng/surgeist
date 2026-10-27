@@ -1,8 +1,16 @@
 //! Ordinary ownership of the exact controlled authored operation.
 
-use super::*;
-use crate::CssColor;
-use crate::color::*;
+use crate::color::CssAuthoredColorOutcome;
+use crate::color::CssColor;
+use crate::color::authored_resolution::controlled::{
+    AuthoredError, CssAuthoredColorActionDescription, CssAuthoredColorOperation,
+};
+use crate::color::authored_resolution::path::{CssColorPathBuffer, CssColorPathReservationStatus};
+use crate::color::controlled::protocol::ColorProtocolError;
+use crate::color::controlled::{CssColorBank, CssColorOperationOwner};
+use crate::color::{
+    CssColorFactIdentity, CssColorFacts, CssColorOrdinaryResource, CssColorResolveError,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CssAuthoredColorOrdinaryLimits {

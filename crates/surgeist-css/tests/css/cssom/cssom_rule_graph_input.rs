@@ -7,7 +7,33 @@ use CssGroupPreludeRef as Prelude;
 use CssRuleGraphInput as Input;
 use CssSerializationLimits as Limits;
 use CssSpecifiedDeclarationBlock as Block;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssSpecifiedFontFaceDeclarationBlock,
+};
+use surgeist_css::rule::keyframes::{
+    CssKeyframeRuleView, CssKeyframesName, CssKeyframesRuleView, CssKeyframesString,
+    CssParsedKeyframeRule, CssParsedKeyframeSelectors,
+};
+use surgeist_css::rule::page::{
+    CssMarginBox, CssMarginRuleView, CssPageRuleView, CssPageSelectorList,
+    CssSpecifiedPageDeclarationBlock, CssSpecifiedPageDeclarationEntry,
+};
+use surgeist_css::rule::{
+    CssImportLayer, CssImportRuleView, CssLayerName, CssNamespaceName, CssNamespacePrefix, CssRule,
+    CssScopeNestingContext, CssStyleAncestor,
+};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssStyleSelectorContext,
+};
+use surgeist_css::serialization::{
+    CssGroupPreludeRef, CssRuleCssomFormat, CssRuleGraphInput, CssRuleSerializationError,
+    CssRuleSerializationLimits, CssSerializationLimits,
+};
 
 fn ordinary(source: &str) -> Block {
     let report = CssParser::default().parse_block_contents(source);

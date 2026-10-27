@@ -7,7 +7,16 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as parsed;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownPropertyValueRef, CssLonghandValueRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssSidePair;
+use surgeist_css::values::speech::{CssSpeechBreak, CssSpeechBreakStrength};
 
 fn time(number: &str, unit: CssTimeUnit) -> CssSpeechBreak {
     CssSpeechBreak::try_time(

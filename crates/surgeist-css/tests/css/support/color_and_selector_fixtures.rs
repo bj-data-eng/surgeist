@@ -9,7 +9,22 @@ use std::fmt::Debug;
 
 use super::serialization_limits::{LimitKind, LimitLadder, Limits};
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::color::{CssColor, CssNamedColor};
+use surgeist_css::component::{CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenSummary};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandContributions, CssPropertyValueError,
+};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+use surgeist_css::selector::{
+    CssCompoundSelector, CssNamespaceContext, CssNthPattern, CssSelector,
+    CssSelectorConstructionError,
+};
+use surgeist_css::serialization::CssSerializationError;
+use surgeist_css::values::image::CssImageValueList;
+use surgeist_css::{CssParseReport, CssParser};
 
 /// The sole declaration of the clean style attribute
 /// `{property}:{text}!important`. Its value keeps the authored text, and its

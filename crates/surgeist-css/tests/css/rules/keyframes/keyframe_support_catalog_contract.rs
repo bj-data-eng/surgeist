@@ -1,6 +1,8 @@
 //! The selected Animations 1 keyframe production owns authored grammar and recovery.
 //! Its support catalog describes that production independently of execution.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::rule::CssRule;
 
 #[test]
 fn keyframe_catalog_covers_the_selected_authored_rule_production() {

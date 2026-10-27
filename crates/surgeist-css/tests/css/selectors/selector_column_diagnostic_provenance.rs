@@ -3,10 +3,13 @@
 //! Column is admitted, but its required right compound cannot begin with `!`;
 //! Nesting 1 §3.1 requires ignoring the invalid child without losing its parent.
 
-use surgeist_css::{
-    CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssParser, CssRecoveryAction,
-    CssRule, CssSelector, CssSelectorCombinator, CssSourcePosition, CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceConstraint, CssNamespaceContext, CssSelector, CssSelectorCombinator,
 };
+use surgeist_css::source::CssSourcePosition;
 
 fn assert_position(position: CssSourcePosition, source: &str, byte: usize) {
     assert_eq!(position.byte_offset().value(), byte, "{source}");

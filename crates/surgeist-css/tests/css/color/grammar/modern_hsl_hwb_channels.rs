@@ -5,7 +5,16 @@ use crate::css::support::color_and_selector_fixtures::{
     assert_color_value_rejected, parsed_important_declaration,
 };
 use crate::css::support::declaration_color as color;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssColorComponent, CssColorHue, CssColorSyntax};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssCalculationExpressionRef, CssCalculationType};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::common::CssBoxSideKind;
 
 fn number(component: &CssColorComponent, expected: f32) {
     assert!(

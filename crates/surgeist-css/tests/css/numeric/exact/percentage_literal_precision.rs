@@ -3,7 +3,25 @@
 
 use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::value_assertions::exact_percentage;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::CssKeyframeSelector;
+use surgeist_css::values::border::CssBorderImageSliceComponent;
+use surgeist_css::values::effects::{CssFilter, CssFilterAmount, CssFilterFunction};
+use surgeist_css::values::image::{CssColorStopListItem, CssGradient, CssImageValue};
+use surgeist_css::values::layout::CssGridGeneralTrackComponent;
+use surgeist_css::values::position::CssHorizontalPosition;
+use surgeist_css::values::transform::{
+    CssTransform, CssTransformFunction, CssTransformScaleComponent,
+};
 
 fn first_object_position_percent(source: &str) -> String {
     let report = CssParser::default().parse_block_contents(source);

@@ -14,8 +14,27 @@
 use crate::css::support::authored_property;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::implicit_closing_origin as implicit_origin;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssCalculation, CssCalculationType, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandContributions,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyValueError,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssFlowTolerance, CssFlowToleranceRef};
 
 const PROP: P = P::FlowTolerance;
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [

@@ -10,7 +10,7 @@
 //! thickness, style, color; line keywords in their grammar order).
 
 use crate::css::support::authored_property::{ParserFront, invalid};
-use surgeist_css::*;
+use surgeist_css::property::CssKnownProperty;
 
 const PROPERTY: CssKnownProperty = CssKnownProperty::TextDecoration;
 const FRONTS: [ParserFront; 5] = [

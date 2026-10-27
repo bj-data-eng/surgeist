@@ -4,15 +4,15 @@
 //! reached resolution must finish before any record can become a used value.
 
 use super::keywords::{ColorFunction as F, Word};
-use super::protocol::{
-    ColorProtocolError, CssColorSlot, Data, LexicalRecord, LexicalTable, RecordRange, RecordTable,
-};
 use super::tokens::{ClassifiedToken, TokenAction, TokenReader};
-use crate::tokenization::tokenizer::{NameKind, NumberKind, Span, TokenKind};
-use crate::{
-    ColorSpace as Space, CssColorInterpolationMethod, CssColorSyntax, CssSystemColor,
-    HueInterpolation, PredefinedColorSpace,
+use crate::color::controlled::CssColorSlot;
+use crate::color::controlled::protocol::{
+    ColorProtocolError, Data, LexicalRecord, LexicalTable, RecordRange, RecordTable,
 };
+use crate::color::{CssColorInterpolationMethod, CssColorSyntax, CssSystemColor};
+use crate::tokenization::tokenizer::{NameKind, NumberKind, Span, TokenKind};
+use surgeist_color::ColorSpace as Space;
+use surgeist_color::{HueInterpolation, PredefinedColorSpace};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum RawComponent {
@@ -216,7 +216,7 @@ impl GrammarTable<'_> {
             self.input.records().owner,
             self.input.records().phase,
             index,
-            super::protocol::CssColorBank::Algorithm,
+            crate::color::controlled::CssColorBank::Algorithm,
         )?;
         if index < self.start || index >= self.end {
             return Err(ColorProtocolError::WrongIndex);
@@ -1346,8 +1346,9 @@ fn is_weight(token: ClassifiedToken) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::super::protocol::{ActionDescription, CssColorOperationOwner, LexicalOperation};
     use super::*;
+    use crate::color::controlled::CssColorOperationOwner;
+    use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
     use crate::tokenization::bounded::InputKind;
 
     fn parse(

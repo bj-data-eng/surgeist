@@ -8,8 +8,16 @@ use std::{
     sync::Arc,
     sync::atomic::{AtomicUsize, Ordering},
 };
-use surgeist_css::CssRule;
-use surgeist_css::*;
+#[cfg(test)]
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclarationList, CssSpecifiedDeclarationBlock};
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::CssSheet;
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::{CssParseReport, CssParserContext};
 
 mod prepared_commit;
 pub use prepared_commit::{CssomCommitRetirement, CssomPreparedCommit, CssomPreparedSheet};

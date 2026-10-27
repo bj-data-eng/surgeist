@@ -11,10 +11,21 @@ use crate::css::support::property_admission::assert_same_grammar_facts;
 use crate::css::support::property_admission::implicit_closure_origin as implicit_origin;
 use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::{
-    CssComponentValues, CssDeclaration, CssKnownProperty as P, CssParser, CssPropertyTextTarget,
-    CssRule, CssSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
 };
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssPropertyNameRef,
+    CssPropertyTextTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind;
+use surgeist_css::serialization::CssSerializationLimits as L;
 
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("inherit", CssGlobalKeyword::Inherit),

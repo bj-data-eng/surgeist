@@ -3,8 +3,8 @@
 //! Each caller-admitted action observes at most two fixed colors or one weight.
 //! No recipe, argument array, context fact or original source is scanned here.
 
-use super::Color;
-use crate::CssColorInterpolationMethod as Method;
+use crate::color::CssColorInterpolationMethod as Method;
+use surgeist_color::Color;
 use surgeist_color::{InterpolationMethod as NumericalMethod, UnitInterval};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -155,7 +155,9 @@ impl MixFold {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ColorSpace as Space, HueInterpolation as Hue, PredefinedColorSpace as Predefined};
+    use surgeist_color::ColorSpace as Space;
+    use surgeist_color::HueInterpolation as Hue;
+    use surgeist_color::PredefinedColorSpace as Predefined;
     const SRGB: Space = Space::Predefined(Predefined::Srgb);
     fn method(space: Space, hue: Option<Hue>) -> Method {
         Method::try_new(space, hue).unwrap()

@@ -8,7 +8,22 @@
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssLength, CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric, CssPercentage,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::border::{
+    CssBorderImage, CssBorderImageOutset, CssBorderImageOutsetComponent, CssBorderImageSlice,
+    CssBorderImageSliceComponent, CssBorderImageWidth, CssBorderImageWidthComponent,
+};
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

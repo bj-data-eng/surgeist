@@ -1,8 +1,9 @@
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::{
-    CssErrorCode, CssImportLayer, CssLayerName, CssNamespaceContext, CssParser, CssRule,
-    CssValueOrigin,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::rule::{CssImportLayer, CssLayerName, CssRule};
+use surgeist_css::selector::CssNamespaceContext;
 
 // Cascade 5 CR 2022-01-13 §6.4.2 takes <ident> components. CSS Syntax consumes an escaped
 // numeric-start spelling as one decoded identifier, not an authored number.

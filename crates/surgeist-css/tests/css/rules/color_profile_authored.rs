@@ -6,10 +6,12 @@
 
 use crate::css::support::failure_classes::SerializationFailure as ValueError;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssNamespaceContext, CssNormalizedItem, CssParser, CssRecoveryAction, CssRule,
-    CssRuleContextKindRef, CssSerializationLimits as Limits,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 fn canonical(source: &str, expected: &str) {
     let report = CssParser::default().parse_sheet(source);

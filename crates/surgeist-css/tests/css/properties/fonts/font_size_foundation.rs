@@ -5,7 +5,14 @@ use crate::css::support::important_declaration as declaration;
 use crate::css::support::known_property;
 use crate::css::support::named_property::assert_checked_value_rejected_at;
 use crate::css::support::{checked_grammar_declaration, selected_grammar};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandContribution, CssPropertyKindRef, CssPropertyNameRef,
+};
 
 fn one_size_contribution(source: &CssDeclaration) -> CssLonghandContribution {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) =

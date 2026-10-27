@@ -1,9 +1,12 @@
 //! Authored custom-media definitions remain ordered payloads, not evaluated aliases.
 use crate::css::support::authored_syntax::{assert_diagnostics, parsed_origin};
-use surgeist_css::{
-    CssCustomMediaBody, CssErrorCode, CssNormalizationLimits, CssNormalizationResource,
-    CssNormalizedItem, CssParser, CssRecoveryAction, CssRule, CssRuleContextKindRef,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem, CssRuleContextKindRef,
 };
+use surgeist_css::query::media::CssCustomMediaBody;
+use surgeist_css::rule::CssRule;
 
 #[test]
 fn normalization_retains_distinct_boolean_and_empty_list_definitions() {

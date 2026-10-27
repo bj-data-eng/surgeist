@@ -10,8 +10,23 @@
 
 use crate::css::support::checked_property_grammar_declaration as checked;
 use crate::css::support::sole_declaration as parsed;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssSystemColor;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandContributions,
+    CssLonghandProperty, CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::animation::CssAnimationList;
 
 const MEMBERS: [P; 8] = [
     P::AnimationDuration,

@@ -1,6 +1,18 @@
 //! Color 5 WD20260908 §8 preserves one input; function nodes compose within 256 levels.
 use crate::css::support::color_and_selector_fixtures::named_color as named;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor, CssColorComponent,
+    CssColorNumberLiteral, CssColorSyntax, CssContrastColor, CssLightDarkColor, CssRgbColor,
+    CssSystemColor,
+};
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::numeric::{CssCalculation, CssPercentage};
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop, CssImageValue,
+    CssLightDarkImage, CssLinearGradient,
+};
 
 fn contrast(color: CssColor) -> CssColor {
     CssColor::from_contrast_color(CssContrastColor::try_new(color).unwrap())

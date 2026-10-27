@@ -6,7 +6,18 @@ use crate::css::support::authored_syntax::{
     assert_origin_bytes as origin, assert_position as point, fragment_body as body,
     fragment_recovery as recovered, known_properties as page_keys,
 };
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
+use surgeist_css::rule::keyframes::{
+    CssKeyframeBlock, CssKeyframeDeclaration, CssKeyframeDeclarationList, CssKeyframeSelector,
+};
+use surgeist_css::rule::page::CssPageBody;
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule};
+use surgeist_css::values::box_model::CssMarginValue;
+use surgeist_css::values::effects::{CssOpacityScalarKind, CssOpacityValue};
+use surgeist_css::{CssParseReport, CssParser, CssParserContext, CssParserMode};
 
 const STANDARDS: CssParserContext = CssParserContext::new(CssParserMode::Standards);
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);

@@ -14,11 +14,15 @@ use descriptor_phases::*;
 
 use crate::css::support::failure_classes::SerializationFailure as SerializationError;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssCounterStyleDescriptorKind as Descriptor, CssCounterStyleRule, CssCounterStyleSpeakAs,
-    CssCounterStyleSystem, CssCounterSymbol, CssErrorCode, CssNormalizedItem, CssParser,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSerializationLimits as Limits,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind as Descriptor;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleRule, CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
 };
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 fn clean_rule(body: &str) -> CssCounterStyleRule {
     sole_counter_style(&format!("@counter-style ImageCase {{ {body} }}"))
@@ -503,7 +507,9 @@ fn later_valid_image_duplicate_selects_the_last_value_without_mutation() {
         .descriptors()
         .occurrences()
         .find_map(|occurrence| match occurrence {
-            surgeist_css::CssCounterStyleDescriptorRef::Prefix(value) => Some(value),
+            surgeist_css::rule::counter_style::CssCounterStyleDescriptorRef::Prefix(value) => {
+                Some(value)
+            }
             _ => None,
         })
         .unwrap();

@@ -1,6 +1,6 @@
 //! Conditional5 §8 permits named supports definitions before imports/namespaces,
 //! including before a later prefix member. CSSOM insert step7 remains separate.
-use surgeist_css::CssRule;
+use surgeist_css::rule::CssRule;
 use surgeist_cssom::*;
 
 const NAMED: &str = "@supports-condition --probe { display: grid; }";

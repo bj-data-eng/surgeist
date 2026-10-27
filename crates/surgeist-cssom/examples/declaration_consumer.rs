@@ -1,5 +1,6 @@
 //! Concrete composed-owner support and source edits, without a host binding.
-use surgeist_css::{CssParser, CssPropertyGrammar};
+use surgeist_css::CssParser;
+use surgeist_css::property::CssPropertyGrammar;
 use surgeist_cssom::*;
 
 fn main() -> Result<(), CssomError> {

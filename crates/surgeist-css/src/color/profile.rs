@@ -1,8 +1,11 @@
 //! Exact reached profile-key matching over real decoded/fact units.
 
-use super::facts::{CssColorFactIdentity, CssColorFacts, CssColorProfileAvailability};
-use super::protocol::{ColorProtocolError, CssColorSlot, LexicalRecord, RecordRange, RecordTable};
-use crate::CssColorProfileRenderingIntent;
+use crate::color::controlled::CssColorSlot;
+use crate::color::controlled::protocol::{
+    ColorProtocolError, LexicalRecord, RecordRange, RecordTable,
+};
+use crate::color::{CssColorFactIdentity, CssColorFacts, CssColorProfileAvailability};
+use crate::rule::color_profile::CssColorProfileRenderingIntent;
 #[cfg(test)]
 use crate::tokenization::tokenizer::{NameKind, TokenKind};
 
@@ -603,14 +606,14 @@ impl<'owner, 'facts> ProfileComponentLookup<'owner, 'facts> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{
-        facts::{
-            CssColorProfileBinding, CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
-        },
-        protocol::{ActionDescription, CssColorOperationOwner, LexicalOperation},
-    };
     use super::*;
-    use crate::{CssColorProfileName, tokenization::bounded::InputKind};
+    use crate::color::CssColorProfileName;
+    use crate::color::controlled::CssColorOperationOwner;
+    use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
+    use crate::color::{
+        CssColorProfileBinding, CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
+    };
+    use crate::tokenization::bounded::InputKind;
     fn lex<'a>(operation: &mut LexicalOperation<'a>, input: &str) -> Vec<CssColorSlot<'a>> {
         let mut slots = Vec::new();
         loop {
@@ -800,9 +803,9 @@ mod tests {
         assert_eq!(tokens.len(), 4);
         let name = CssColorProfileName::try_new("--p").unwrap();
         let names = [
-            crate::CssColorProfileComponentName::try_new("é").unwrap(),
-            crate::CssColorProfileComponentName::try_new("é").unwrap(),
-            crate::CssColorProfileComponentName::try_new("É").unwrap(),
+            crate::color::CssColorProfileComponentName::try_new("é").unwrap(),
+            crate::color::CssColorProfileComponentName::try_new("é").unwrap(),
+            crate::color::CssColorProfileComponentName::try_new("É").unwrap(),
         ];
         let id = CssColorFactIdentity::new(1, 1);
         let resource = CssColorFactIdentity::new(2, 3);

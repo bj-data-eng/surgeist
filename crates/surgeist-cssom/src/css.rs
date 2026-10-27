@@ -1,7 +1,7 @@
 //! Rust CSS namespace. Identifier escaping belongs to the CSS syntax owner;
 //! this front preserves its cumulative resource limits and typed failures.
 
-use surgeist_css::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
 
 /// Escapes `value` as a CSS identifier, as CSSOM's `CSS.escape()` does.
 ///
@@ -17,5 +17,5 @@ pub fn escape(
     value: &str,
     limits: CssSerializationLimits,
 ) -> Result<String, CssSerializationError> {
-    surgeist_css::serialize_css_identifier(value, limits)
+    surgeist_css::serialization::serialize_css_identifier(value, limits)
 }

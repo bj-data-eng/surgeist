@@ -14,9 +14,28 @@
 //! Exact typed values, occurrence identity, and original token origins are
 //! Surgeist contracts. This consumer neither resolves style nor loads resources.
 
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssDeclaration, CssKnownProperty as Property, CssParser,
-    CssPropertyTarget, *,
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssColorComponent};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::numeric::{CssLength, CssNonNegative, CssNumeric};
+use surgeist_css::property::CssKnownProperty as Property;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssExpansionError,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandContributions,
+    CssLonghandValueRef, CssPendingSubstitution, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::border::{
+    CssBorderImageOutsetComponent, CssBorderImageRepeatKeyword, CssBorderImageSliceComponent,
+    CssBorderImageWidthComponent, CssLineStyle, CssLineWidth,
+};
+use surgeist_css::values::image::CssImageValue;
+use surgeist_css::values::text::{
+    CssTextAlign, CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue,
 };
 
 fn assert_selected_four(result: Result<CssExpansion, CssExpansionError>) {
@@ -394,7 +413,7 @@ fn four_sided_styles_and_current_colors() {
         };
         assert_eq!(
             authored.value().kind(),
-            surgeist_css::CssBoxSideKind::Physical
+            surgeist_css::values::common::CssBoxSideKind::Physical
         );
         assert_eq!(authored.value().assigned().map(|value| *value), expected);
         assert_selected_four(source.expand());
@@ -413,7 +432,7 @@ fn four_sided_styles_and_current_colors() {
         };
         assert_eq!(
             authored.value().kind(),
-            surgeist_css::CssBoxSideKind::Physical
+            surgeist_css::values::common::CssBoxSideKind::Physical
         );
         for (side, expected) in authored.value().assigned().into_iter().zip(expected) {
             assert_eq!(side.named().unwrap().name(), expected);
@@ -1079,11 +1098,15 @@ fn main() {
     custom_properties_preserve_symbolic_values_and_occurrences();
 }
 
-fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
-    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
-    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+fn exact_literal(
+    component: Option<&surgeist_css::component::CssComponentValue>,
+    css: &str,
+) -> bool {
+    use surgeist_css::component::CssComponentValueRef as Component;
+    use surgeist_css::component::CssValueTokenRef as Token;
+    let expected = surgeist_css::component::CssComponentValue::try_token(css).unwrap();
     match (
-        component.map(surgeist_css::CssComponentValue::view),
+        component.map(surgeist_css::component::CssComponentValue::view),
         expected.view(),
     ) {
         (

@@ -12,7 +12,13 @@ use crate::css::support::lab_direct_component_cases::{
     assert_specified_text as assert_text, lab_direct_component_cases,
 };
 use crate::css::support::{checked_color as color, component_values as components};
-use surgeist_css::*;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorNumberLiteral, CssColorPercentageLiteral,
+    CssLabColor, CssLchColor,
+};
+use surgeist_css::component::{CssComponentValue, CssValueOrigin};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssSidePair;
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

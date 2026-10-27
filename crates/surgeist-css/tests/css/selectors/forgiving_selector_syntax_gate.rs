@@ -5,9 +5,10 @@
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#parse-as-a-forgiving-selector-list
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#any-value
 use crate::css::support::color_and_selector_fixtures::assert_strict_validation_rejects;
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssParser, CssPseudoClass, CssPseudoSelectorListItem,
-    CssRecoveryAction, CssSelector, CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem, CssSelector,
 };
 
 fn assert_rejected(source: &str) {

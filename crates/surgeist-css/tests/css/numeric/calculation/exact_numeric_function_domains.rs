@@ -3,9 +3,10 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::NumericFailure as N;
 use crate::css::support::value_assertions::assert_calculation_rejected;
-use surgeist_css::{
-    CssAngle, CssCalculation, CssComponentValues, CssLength, CssLengthPercentage, CssNumber,
-    CssParser, CssPercentage,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{
+    CssAngle, CssCalculation, CssLength, CssLengthPercentage, CssNumber, CssPercentage,
 };
 
 #[test]

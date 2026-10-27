@@ -2,7 +2,14 @@
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#background-color
 
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssHexColor, CssNamedColor};
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyKindRef,
+};
 
 fn typed_color(item: &CssLonghandContribution) -> &CssColor {
     let CssLonghandValueRef::BackgroundColor(color) = item.ordinary_value().unwrap().view() else {

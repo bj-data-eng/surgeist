@@ -2,7 +2,77 @@
 
 use std::sync::Arc;
 
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueError, CssComponentValueLimits, CssComponentValues,
+};
+use surgeist_css::conformance::{
+    CssExclusionMetadata, CssExclusionReason, CssFeatureKind, CssFeatureMetadata,
+    CssSpecificationSource, CssSpecificationTier, CssSupportStatus, conformance_exclusion,
+    conformance_exclusions, feature_catalog, feature_metadata, property_support_metadata,
+    specification_source, specification_sources,
+};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssDeclarationList, CssGlobalKeyword, CssImportance,
+    CssSpecifiedDeclarationBlock,
+};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizedItem, CssRuleContext, CssRuleContextKindRef,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty, CssPropertyGrammar,
+    CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget, CssPropertyValueError,
+    CssSvgGlyphOrientationVerticalDeclaration,
+};
+use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
+use surgeist_css::query::supports::{
+    CssSupportsDeclaration, CssSupportsLeaf, CssSupportsTestBody, CssSupportsTestChild,
+};
+use surgeist_css::query::{CssCondition, CssWhenLeaf};
+use surgeist_css::rule::color_profile::{
+    CssColorProfileDescriptor, CssColorProfileDescriptorKind, CssColorProfileDescriptorValue,
+};
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorKind, CssCounterStyleDescriptorValue, CssCounterStyleDescriptors,
+};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptors,
+    CssFontFaceFamily, serialize_font_face_family_list,
+};
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureDisplayValue, CssFontFeatureValue, CssFontFeatureValueBlock,
+    CssFontFeatureValueKind, CssFontFeatureValuesFamilyList, CssFontFeatureValuesItem,
+};
+use surgeist_css::rule::font_palette_values::{
+    CssFontPaletteDescriptor, CssFontPaletteDescriptorKind, CssFontPaletteDescriptorValue,
+};
+use surgeist_css::rule::keyframes::{
+    CssKeyframeBlock, CssKeyframeDeclarationList, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
+};
+use surgeist_css::rule::page::{
+    CssMarginDeclarationBlock, CssMarginRule, CssPageBody, CssPageDeclarationBlock,
+    CssPageDescriptorKind, CssPageDescriptorValue, CssPageSelectorList,
+};
+use surgeist_css::rule::{
+    CssBlockContext, CssBlockFragment, CssNamespaceName, CssNamespacePrefix, CssRule, CssRuleList,
+    CssRuleSyntax, CssSheet, CssStyleAncestor, CssStyleBlock,
+};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssRelativeSelectorList, CssSelector,
+    CssStyleSelectorContext,
+};
+use surgeist_css::serialization::{
+    CssRuleGraphInput, CssRuleSerializationLimits, CssSerializationError, CssSerializationLimits,
+    serialize_css_comma_separated_list, serialize_css_identifier, serialize_css_string,
+    serialize_css_whitespace_separated_list,
+};
+use surgeist_css::source::{
+    CssDecodedStylesheetInput, CssStylesheetDecodeHints, CssStylesheetLocation, CssUtf16InputError,
+    CssUtf16InputLimits, CssUtf16PropertyValueLimits,
+};
+use surgeist_css::values::color_adjust::CssColorScheme;
+use surgeist_css::{
+    CssParseReport, CssParser, CssParserContext, CssParserMode, CssValidationFailure,
+};
 
 use super::report::{Retained, property_id};
 use super::{Limited, Observation, Stop, nonempty, parse_charge, serialization, utf16_charge};

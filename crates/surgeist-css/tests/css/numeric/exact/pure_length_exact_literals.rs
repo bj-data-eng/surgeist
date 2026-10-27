@@ -12,7 +12,9 @@
 //! These publication identities are pinned in `specs/catalog.json`. The public
 //! exact-length contract is also exercised independently by `specified_lengths`.
 
-use surgeist_css::{CssKnownPropertyValueRef, CssParser, CssRecoveryAction};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::CssKnownPropertyValueRef;
 
 fn specified_spacing(authored: &str) -> String {
     let source = format!("border-spacing:{authored}");
@@ -37,7 +39,7 @@ fn assert_spacing_rejected(authored: &str) {
     let report = CssParser::default().parse_block_contents(&source);
     crate::css::support::value_assertions::assert_first_property_rejection(
         report.diagnostics(),
-        surgeist_css::CssKnownProperty::BorderSpacing,
+        surgeist_css::property::CssKnownProperty::BorderSpacing,
     );
     assert!(
         report.syntax().is_empty(),

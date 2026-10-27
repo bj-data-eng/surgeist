@@ -1,5 +1,11 @@
 //! Original resource ownership and atomic fragment recovery under the shared 256-level ceiling.
-use surgeist_css::*;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::{CssRule, CssStyleBlock};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::{CssParseReport, CssParser};
 
 const PREFIX: &str = "/*😀*/\r\n/*🦀*/";
 

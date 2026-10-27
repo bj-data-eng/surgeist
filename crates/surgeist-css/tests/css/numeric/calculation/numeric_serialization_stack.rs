@@ -2,7 +2,9 @@
 //! including operator nodes between nested function components.
 use crate::css::support::isolated_stack;
 
-use surgeist_css::{CssCalculation, CssComponentValues, CssLengthPercentage, CssNumber, CssParser};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumber};
 
 #[test]
 fn mixed_operator_calculations_serialize_at_the_supported_depth() {

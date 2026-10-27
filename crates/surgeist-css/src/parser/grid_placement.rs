@@ -1,13 +1,13 @@
 use super::combinators::{Combinator, Tail, commit, fill, group_operand, parse_group};
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::Token;
 
 use super::values::{next_is_delim, parse_integer_value};
-use crate::numeric::NumericInputContext;
-use crate::syntax::{
-    CssGridArea, CssGridLine, CssGridLineName, CssGridLineRange, CssIdent, CssNumeric, CssPositive,
-};
+use crate::numeric::expression::NumericInputContext;
+use crate::numeric::{CssNumeric, CssPositive};
+use crate::values::common::CssIdent;
+use crate::values::layout::{CssGridArea, CssGridLine, CssGridLineName, CssGridLineRange};
 
 /// `auto | <custom-ident> | [ <integer> && <custom-ident>? ] |
 /// [ span && [ <integer [1,∞]> || <custom-ident> ] ]`, ending at `/`.
@@ -16,7 +16,7 @@ use crate::syntax::{
 /// The bracketed `||` is a single `&&` operand, so `span` may precede or
 /// follow the integer and name but never separate them (Values 4 §2.2).
 /// Integer sign and the span requirements are post-conditions.
-pub(super) fn parse_grid_line<'i, 't>(
+pub(crate) fn parse_grid_line<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssGridLine, ParseError<'i, Error>> {
@@ -87,7 +87,7 @@ fn parse_grid_line_name<'i, 't>(
     CssGridLineName::try_new(CssIdent::new(ident.as_ref())).ok_or_else(|| unexpected_at(location))
 }
 
-pub(super) fn parse_grid_line_range<'i, 't>(
+pub(crate) fn parse_grid_line_range<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssGridLineRange, ParseError<'i, Error>> {
@@ -100,7 +100,7 @@ pub(super) fn parse_grid_line_range<'i, 't>(
     Ok(CssGridLineRange::new(start, end))
 }
 
-pub(super) fn parse_grid_area<'i, 't>(
+pub(crate) fn parse_grid_area<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssGridArea, ParseError<'i, Error>> {

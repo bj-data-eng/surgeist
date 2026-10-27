@@ -1,8 +1,11 @@
 //! Matched blocks remain declaration-value data under whole-value substitution
 //! admission, including the palette owner's independent var permission.
-use surgeist_css::{
-    CssComponentValues, CssFontPaletteDescriptorKind as Kind, CssFontPaletteDescriptorValue,
-    CssFontPaletteDescriptorValueRef, CssParser, CssRule,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_palette_values::CssFontPaletteDescriptorKind as Kind;
+use surgeist_css::rule::font_palette_values::{
+    CssFontPaletteDescriptorValue, CssFontPaletteDescriptorValueRef,
 };
 
 #[test]

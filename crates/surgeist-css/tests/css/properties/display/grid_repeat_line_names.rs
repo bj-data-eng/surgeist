@@ -8,12 +8,16 @@
 //! Authored spelling, semantic inspection, and importance are Surgeist public contracts.
 //! No calculation is evaluated here.
 
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::numeric::{
     CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationType,
-    CssCalculationValueRef, CssGridAutoRepeatKind, CssGridAutoTrackComponent,
-    CssGridGeneralTrackComponent, CssGridLineNames, CssGridTrackList, CssGridTrackRepeatComponent,
-    CssGridTrackSize, CssImportance, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLengthPercentage, CssNonNegative, CssNumeric, CssParser,
+    CssCalculationValueRef, CssLengthPercentage, CssNonNegative, CssNumeric,
+};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::layout::{
+    CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridGeneralTrackComponent,
+    CssGridLineNames, CssGridTrackList, CssGridTrackRepeatComponent, CssGridTrackSize,
 };
 
 #[derive(Clone, Copy)]

@@ -1,7 +1,9 @@
 //! Exact original inputs and genuine results of the first sheet publication.
 use super::*;
 use crate::NodeId;
-use surgeist_css::{CssMediaQueryList, CssParseReport, CssSheet};
+use surgeist_css::CssParseReport;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::CssSheet;
 use surgeist_cssom::CssomInputVersion;
 
 /// Actual historical inputs and installation mappings, not native Source facts.

@@ -2,11 +2,14 @@
 //! and ordered nesting. Public normalization preserves authored occurrences
 //! and their immediate parents without assigning effective cascade identities.
 
-use surgeist_css::{
-    CssErrorCode, CssLayerBlockRule, CssNormalizedItem, CssNormalizedSheet, CssParser,
-    CssRecoveryAction, CssRule, CssRuleContext, CssRuleContextKindRef, CssSelector,
-    CssSourcePosition, CssStyleSelector,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizedItem, CssNormalizedSheet, CssRuleContext, CssRuleContextKindRef,
 };
+use surgeist_css::rule::{CssLayerBlockRule, CssRule};
+use surgeist_css::selector::{CssSelector, CssStyleSelector};
+use surgeist_css::source::CssSourcePosition;
 
 fn position(actual: CssSourcePosition, byte: usize) {
     assert_eq!(actual.byte_offset().value(), byte);

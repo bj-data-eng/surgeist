@@ -14,7 +14,32 @@ fn declaration(name: &str, input: &str) -> CssDeclaration {
 }
 use crate::css::support::serialization_limits::assert_node_limits as budget;
 use CssSerializationLimits as L;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::conformance::{
+    CssFeatureKind, CssSpecificationTier, CssSupportStatus, feature_metadata,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssCalculation, CssLengthPercentage, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::{CssBoxEdgeKeyword, CssUrl, CssUrlFunction};
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssPosition, CssPositionRef, CssVerticalPosition,
+};
+use surgeist_css::values::shape::{CssBasicShape, CssCircleRadius, CssCircleShape};
+use surgeist_css::values::transform::{
+    CssCoordBox, CssOffset, CssOffsetAnchor, CssOffsetPath, CssOffsetPathKind, CssOffsetPathRef,
+    CssOffsetPathValue, CssOffsetPosition, CssOffsetRotate, CssOffsetRotateModifier, CssRay,
+    CssRaySize,
+};
 
 fn angle(number: &str, unit: CssAngleUnit) -> CssNumeric<CssAngle> {
     CssNumeric::<CssAngle>::try_from_literal(

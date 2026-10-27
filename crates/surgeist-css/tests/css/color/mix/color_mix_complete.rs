@@ -6,7 +6,16 @@ use crate::css::support::color_and_selector_fixtures::{
 use crate::css::support::color_property::color_property_value as wrapper;
 use crate::css::support::detached_checked_declaration;
 use surgeist_color::{ColorSpace, PredefinedColorSpace};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColorMix;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::common::CssBoxSideKind;
 
 fn admitted_mix(text: &str) -> [CssColorMix; 2] {
     let mut mixes = Vec::new();

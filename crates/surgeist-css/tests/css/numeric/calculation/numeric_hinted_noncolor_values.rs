@@ -7,7 +7,28 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::important_declaration;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::value_assertions::filter_value as filter;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssCalculation, CssHintedNumber, CssNumericDimension};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::border::{
+    CssBorderImageSlice, CssBorderImageSliceComponent, CssBorderImageWidth,
+    CssBorderImageWidthComponent,
+};
+use surgeist_css::values::effects::{
+    CssFilter, CssFilterAmount, CssFilterFunction, CssFilterFunctionList,
+};
+use surgeist_css::values::text::CssLineHeight;
+use surgeist_css::values::transform::{
+    CssTransform, CssTransformFunction, CssTransformScale3d, CssTransformScaleComponent,
+};
 
 const SOURCE: &str = "calc((1px + 1%) / 1px)";
 const CSS: &str = "calc((1% + 1px) / 1px)";

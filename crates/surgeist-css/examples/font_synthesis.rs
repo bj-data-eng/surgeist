@@ -1,9 +1,8 @@
 #![forbid(unsafe_code)]
 //! Inspect authored synthesis choices without selecting or altering a font.
-use surgeist_css::{
-    CssContributions, CssExpansion, CssFontSynthesis, CssFontSynthesisValues,
-    CssKnownPropertyValueRef, CssParser,
-};
+use surgeist_css::CssParser;
+use surgeist_css::property::{CssContributions, CssExpansion, CssKnownPropertyValueRef};
+use surgeist_css::values::font::{CssFontSynthesis, CssFontSynthesisValues};
 
 fn main() {
     let report =

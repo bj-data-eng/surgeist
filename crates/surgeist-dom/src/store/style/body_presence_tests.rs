@@ -74,7 +74,9 @@ fn owner_preparation_policy(dom: &Dom) -> crate::DomSourceLimits {
 #[ignore = "requires an instrumented DOM build; isolates post-CSSOM body discovery"]
 fn acknowledged_style_creation_discovers_body_without_scanning_unrelated_children() {
     use crate::{DomStyleCssomOwnerBinding, DomStyleCssomRoot, DomStyleInlineCspObservation};
-    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::query::media::CssMediaQueryList;
+    use surgeist_css::source::CssUtf16InputLimits;
+    use surgeist_css::{CssParser, CssParserContext};
     use surgeist_cssom::{CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs};
     // The fixed html/head/body classifiers read at most three namespace
     // headers plus their literal 28-unit HTML URI, and three local-name tests

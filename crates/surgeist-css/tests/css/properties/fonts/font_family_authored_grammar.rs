@@ -10,10 +10,14 @@
 //! names; the broader informative quoting note in section 2.1.1 cannot override them.
 //! Recovery, exact authored text, and importance are Surgeist contracts.
 
-use surgeist_css::{
-    CssDeclaration, CssErrorCode, CssFontFaceSource, CssFontFamilyList, CssFontFamilyNameKind,
-    CssFontValue, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssParser,
-    CssRecoveryAction, CssRule, CssSystemFont,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::CssFontFaceSource;
+use surgeist_css::values::font::{
+    CssFontFamilyList, CssFontFamilyNameKind, CssFontValue, CssSystemFont,
 };
 
 const SIMPLE_GENERICS: &[&str] = &[
@@ -356,7 +360,7 @@ fn system_font_spellings_are_literal_names_in_family_positions() {
     let CssFontValue::Explicit(font) = value.value() else {
         panic!("noninitial menu must be a literal family name");
     };
-    assert_eq!(font.size(), &surgeist_css::CssFontSize::Large);
+    assert_eq!(font.size(), &surgeist_css::values::font::CssFontSize::Large);
     let [name] = font.families().families() else {
         panic!("expected exactly the menu family");
     };

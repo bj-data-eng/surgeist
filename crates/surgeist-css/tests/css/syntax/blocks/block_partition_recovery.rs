@@ -2,7 +2,11 @@
 //! result preserves the list. The first nonempty transfer occupies the leading
 //! slot even when a rejected child leaves no rule in the retained tree.
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
 
 fn assert_color(declaration: &CssDeclaration, expected: &str) {
     assert_eq!(

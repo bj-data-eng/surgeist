@@ -7,7 +7,17 @@ use crate::css::support::property_admission::assert_declaration_rejected as reje
 use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as parsed,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyGrammar,
+    CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssSidePair;
+use surgeist_css::values::layout::CssGapValue;
 
 fn scalar(text: &str) -> CssNumeric<CssLengthPercentage, CssNonNegative> {
     let components =

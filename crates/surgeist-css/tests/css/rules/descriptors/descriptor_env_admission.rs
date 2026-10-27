@@ -3,15 +3,23 @@
 //! Counter Styles3 §3.
 //! Phase views and strict reentry are covered by descriptor_env_phase_contract.
 
-use surgeist_css::{
-    CssBlockContext, CssBlockFragment, CssComponentValueRef, CssComponentValues,
-    CssCounterStyleDescriptorKind as Counter, CssCounterStyleDescriptorRef as CounterOccurrence,
-    CssCounterStyleDescriptorValue, CssCounterStyleDescriptors, CssDescriptorOccurrence,
-    CssErrorCode, CssFontFeatureDisplayValue, CssFontFeatureValue, CssFontFeatureValueBlock,
-    CssFontFeatureValueKind as Feature, CssFontFeatureValuesItem as Item, CssFontFeatureValuesItem,
-    CssParseReport, CssParsedOrigin, CssParser, CssRecoveryAction as Action, CssRule,
-    CssValueOrigin,
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueOrigin};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::diagnostic::CssRecoveryAction as Action;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind as Counter;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorRef as CounterOccurrence;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorValue, CssCounterStyleDescriptors,
 };
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueKind as Feature;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesItem as Item;
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureDisplayValue, CssFontFeatureValue, CssFontFeatureValueBlock,
+    CssFontFeatureValuesItem,
+};
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssDescriptorOccurrence, CssRule};
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::{CssParseReport, CssParser};
 
 const COUNTERS: [Counter; 10] = [
     Counter::System,

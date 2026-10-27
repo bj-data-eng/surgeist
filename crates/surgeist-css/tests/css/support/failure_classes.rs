@@ -6,7 +6,9 @@
 
 use std::fmt::Debug;
 
-use surgeist_css::{CssComponentValueError, CssNumericConstructionError, CssSerializationError};
+use surgeist_css::component::CssComponentValueError;
+use surgeist_css::numeric::CssNumericConstructionError;
+use surgeist_css::serialization::CssSerializationError;
 
 /// The class of a [`CssComponentValueError`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

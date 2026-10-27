@@ -5,13 +5,17 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_strict_validation_rejects,
 };
-use surgeist_css::{
-    CssAttributeCaseSensitivity, CssErrorCode, CssNamespaceConstraint, CssNamespaceContext,
-    CssNamespaceName, CssNamespacePrefix, CssNthPattern, CssParsedStyleSelectors, CssParser,
-    CssPseudoClass, CssPseudoSelectorListItem, CssQualifiedNamePrefix, CssRecoveryAction,
-    CssRelativeSelectorList, CssSelector, CssSelectorCombinator as Combinator,
-    CssSerializationLimits as Limits, CssSourcePosition, CssStyleSelectorContext, CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+use surgeist_css::selector::CssSelectorCombinator as Combinator;
+use surgeist_css::selector::{
+    CssAttributeCaseSensitivity, CssNamespaceConstraint, CssNamespaceContext, CssNthPattern,
+    CssParsedStyleSelectors, CssPseudoClass, CssPseudoSelectorListItem, CssQualifiedNamePrefix,
+    CssRelativeSelectorList, CssSelector, CssStyleSelectorContext,
 };
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::source::CssSourcePosition;
 
 fn clean_in(source: &str, context: &CssNamespaceContext) -> CssRelativeSelectorList {
     let report = CssRelativeSelectorList::parse(&CssParser::default(), source, context);

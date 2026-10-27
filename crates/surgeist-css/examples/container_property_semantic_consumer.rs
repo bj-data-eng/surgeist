@@ -1,6 +1,14 @@
 //! Builds a checked authored container declaration from semantic values.
 #![forbid(unsafe_code)]
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValueLimits;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::container::{
+    CssContainer, CssContainerName, CssContainerNameList, CssContainerNames, CssContainerType,
+};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let names = CssContainerNames::Names(
         CssContainerNameList::try_new(vec![

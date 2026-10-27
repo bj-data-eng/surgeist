@@ -9,16 +9,26 @@ use super::query_components::{
     media_literal_number, negative_literal, query_plain_range, query_range_chain,
 };
 use super::recovery::RecoveryState;
-use crate::CssCondition;
-use crate::error::{CssError, invalid_syntax};
-use crate::media_features::MediaRangeState;
-use crate::numeric::CalculationRoot;
-use crate::supports::SupportsLexical;
-use crate::syntax::*;
-use crate::{
+use crate::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
     CssValueOrigin, CssValueTokenRef,
 };
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::invalid_syntax;
+use crate::numeric::expression::CalculationRoot;
+use crate::numeric::expression::CssCalculationExpression;
+use crate::numeric::{CssCalculation, CssLength, CssNumber};
+use crate::query::CssCondition;
+use crate::query::CssGeneralEnclosed;
+use crate::query::container::{
+    CssContainerConstructionError, CssContainerFeatureQuery, CssContainerGeneralEnclosed,
+    CssContainerLeaf, CssContainerLength, CssContainerName, CssContainerOrientation,
+    CssContainerPendingValue, CssContainerPrelude, CssContainerQueryEntry, CssContainerRatio,
+    CssContainerSizeFeatureKind, CssContainerValueDomain,
+};
+use crate::query::media::media_features::MediaRangeState;
+use crate::query::media::{CssMediaRange, CssMediaRatio, CssOrientation};
+use crate::query::supports::construction::SupportsLexical;
 
 /// The parsed and checked entry points share this immutable component grammar.
 pub(crate) fn container_condition_from_enclosed(
@@ -38,7 +48,7 @@ pub(crate) fn construct_container_condition(
         Ok(node) => node,
         Err(ConditionFailure::Mismatch(index)) => {
             return Err(CssContainerConstructionError::from(
-                crate::syntax::ContainerConstructionKind::InvalidConditionGrammar {
+                crate::query::container::syntax::ContainerConstructionKind::InvalidConditionGrammar {
                     origin: values
                         .items()
                         .get(index)
@@ -92,7 +102,7 @@ impl ContainerNode {
 
 fn container_condition(
     items: &[CssComponentValue],
-) -> Result<ContainerNode, ConditionFailure<crate::CssComponentValueError>> {
+) -> Result<ContainerNode, ConditionFailure<crate::component::CssComponentValueError>> {
     parse_component_condition(&mut ContainerOperands, items)
 }
 
@@ -102,7 +112,7 @@ struct ContainerOperands;
 
 impl<'a> ComponentOperands<'a> for ContainerOperands {
     type Leaf = ContainerLeaf;
-    type Error = crate::CssComponentValueError;
+    type Error = crate::component::CssComponentValueError;
 
     fn operand(
         &mut self,
@@ -115,7 +125,9 @@ impl<'a> ComponentOperands<'a> for ContainerOperands {
         };
         let enclosed = match component.view() {
             CssComponentValueRef::Function(_) => true,
-            CssComponentValueRef::Block(block) => block.kind() == crate::CssBlockKind::Parenthesis,
+            CssComponentValueRef::Block(block) => {
+                block.kind() == crate::component::CssBlockKind::Parenthesis
+            }
             _ => false,
         };
         if !enclosed {
@@ -130,7 +142,7 @@ impl<'a> ComponentOperands<'a> for ContainerOperands {
 
 fn container_atom(
     component: &CssComponentValue,
-) -> Result<BooleanNodeKind<ContainerLeaf>, crate::CssComponentValueError> {
+) -> Result<BooleanNodeKind<ContainerLeaf>, crate::component::CssComponentValueError> {
     match component.view() {
         CssComponentValueRef::Function(function)
             if function.name().eq_ignore_ascii_case("style") =>
@@ -149,7 +161,9 @@ fn container_atom(
                 Err(ConditionFailure::Fatal(error)) => return Err(error),
             }
         }
-        CssComponentValueRef::Block(block) if block.kind() == crate::CssBlockKind::Parenthesis => {
+        CssComponentValueRef::Block(block)
+            if block.kind() == crate::component::CssBlockKind::Parenthesis =>
+        {
             match container_condition(block.values().items()) {
                 Ok(condition) => {
                     return Ok(BooleanNodeKind::Parenthesized(Box::new(condition)));
@@ -176,10 +190,10 @@ fn container_trivia(value: &CssComponentValue) -> bool {
 // Intrinsic grammar failure tries general-enclosed; resource failures do not.
 enum ContainerFeatureError {
     Grammar,
-    Component(crate::CssComponentValueError),
+    Component(crate::component::CssComponentValueError),
 }
-impl From<crate::CssComponentValueError> for ContainerFeatureError {
-    fn from(value: crate::CssComponentValueError) -> Self {
+impl From<crate::component::CssComponentValueError> for ContainerFeatureError {
+    fn from(value: crate::component::CssComponentValueError) -> Self {
         Self::Component(value)
     }
 }
@@ -187,7 +201,7 @@ type ContainerFeatureResult<T> = Result<T, ContainerFeatureError>;
 
 fn container_feature(
     items: &[CssComponentValue],
-) -> Result<Option<CssContainerFeatureQuery>, crate::CssComponentValueError> {
+) -> Result<Option<CssContainerFeatureQuery>, crate::component::CssComponentValueError> {
     match parse_container_size(items) {
         Ok(feature) => Ok(Some(feature)),
         Err(ContainerFeatureError::Grammar) => Ok(None),
@@ -369,14 +383,17 @@ fn container_numeric(
 ) -> ContainerFeatureResult<CssCalculationExpression> {
     // The component boundary already checked construction. Only parser-owned
     // recovered closures can reach this helper, so preserve their provenance.
-    crate::numeric::construct_container(values, root, CssComponentValueLimits::default()).map_err(
-        |error| {
-            error.component_error().cloned().map_or(
-                ContainerFeatureError::Grammar,
-                ContainerFeatureError::Component,
-            )
-        },
+    crate::numeric::expression::construct_container(
+        values,
+        root,
+        CssComponentValueLimits::default(),
     )
+    .map_err(|error| {
+        error.component_error().cloned().map_or(
+            ContainerFeatureError::Grammar,
+            ContainerFeatureError::Component,
+        )
+    })
 }
 fn container_length(items: &[CssComponentValue]) -> ContainerFeatureResult<CssContainerLength> {
     let (values, pending) = container_operand(items)?;
@@ -465,7 +482,7 @@ fn container_orientation(
 
 /// Collect and validate the complete original prelude once, after the enclosing
 /// production's shared depth check, before any semantic classification.
-pub(super) fn collect_container_components<'i>(
+pub(crate) fn collect_container_components<'i>(
     source: &str,
     input: &mut Parser<'i, '_>,
     recovery: &RecoveryState,
@@ -474,7 +491,10 @@ pub(super) fn collect_container_components<'i>(
         recovery.check_specialized_components(source, input, "baseline.rule.container")?;
     let values = CssComponentValues::collect_from_parser(input, recovery.source_snapshot())
         .map_err(|error| {
-            crate::error::invalid_component_value(input.current_source_location(), error)
+            crate::diagnostic::error::invalid_component_value(
+                input.current_source_location(),
+                error,
+            )
         })?;
     Ok((values, implicit))
 }
@@ -489,14 +509,16 @@ pub(crate) fn construct_container_prelude(
         ContainerPreludeAdmissionError::Component(error) => error.into(),
         ContainerPreludeAdmissionError::Grammar { origin, .. } => {
             CssContainerConstructionError::from(
-                crate::syntax::ContainerConstructionKind::InvalidPreludeGrammar { origin },
+                crate::query::container::syntax::ContainerConstructionKind::InvalidPreludeGrammar {
+                    origin,
+                },
             )
         }
     })
 }
 
 enum ContainerPreludeAdmissionError {
-    Component(crate::CssComponentValueError),
+    Component(crate::component::CssComponentValueError),
     Grammar {
         index: usize,
         origin: CssValueOrigin,
@@ -562,7 +584,7 @@ fn admit_container_prelude(
     Ok(CssContainerPrelude::new(entries, lexical))
 }
 
-pub(super) fn container_prelude_from_components<'i>(
+pub(crate) fn container_prelude_from_components<'i>(
     values: CssComponentValues,
     location: cssparser::SourceLocation,
 ) -> Result<CssContainerPrelude, ParseError<'i, CssError>> {
@@ -575,7 +597,7 @@ pub(super) fn container_prelude_from_components<'i>(
             let failure = if index >= end {
                 None
             } else {
-                crate::media::parsed_position(&origin)
+                crate::query::media::construction::parsed_position(&origin)
             };
             let location = failure.map_or(location, |position| cssparser::SourceLocation {
                 line: position.line().value(),
@@ -588,15 +610,16 @@ pub(super) fn container_prelude_from_components<'i>(
 
 fn container_component_error<'i>(
     fallback: cssparser::SourceLocation,
-    error: crate::CssComponentValueError,
+    error: crate::component::CssComponentValueError,
 ) -> ParseError<'i, CssError> {
-    let location = crate::media::parsed_position(error.origin()).map_or(fallback, |position| {
-        cssparser::SourceLocation {
+    let location = crate::query::media::construction::parsed_position(error.origin()).map_or(
+        fallback,
+        |position| cssparser::SourceLocation {
             line: position.line().value(),
             column: position.column().value() + 1,
-        }
-    });
-    crate::error::invalid_component_value(location, error)
+        },
+    );
+    crate::diagnostic::error::invalid_component_value(location, error)
 }
 #[derive(Clone, Copy)]
 enum ContainerFeatureName {

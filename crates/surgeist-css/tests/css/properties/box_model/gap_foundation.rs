@@ -6,7 +6,14 @@ use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::property_support_metadata;
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssPropertyKindRef,
+};
 
 #[test]
 fn gap_accepts_one_or_two_values_with_row_then_column_assignment() {

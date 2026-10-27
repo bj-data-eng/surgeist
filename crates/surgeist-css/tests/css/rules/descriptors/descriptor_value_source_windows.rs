@@ -3,7 +3,17 @@
 //! #504/public source contracts retain original value windows and typed depth256.
 
 use std::fmt::Debug;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueOrigin};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::color_profile::{
+    CssColorProfileDescriptorKind, CssColorProfileDescriptorValue,
+    CssColorProfileDescriptorValueRef,
+};
+use surgeist_css::rule::font_palette_values::{
+    CssFontPaletteDescriptorKind, CssFontPaletteDescriptorValue, CssFontPaletteDescriptorValueRef,
+};
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::{CssParseReport, CssParser};
 
 fn point(actual: CssSourcePosition, expected: (usize, u32, u32)) {
     assert_eq!(actual.byte_offset().value(), expected.0);

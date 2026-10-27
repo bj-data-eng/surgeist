@@ -1,14 +1,24 @@
 //! Public consumer composition: checked CSS payloads without semantic text round trips.
 
 use crate::css::support::{graph_cssom, graph_limits};
-use surgeist_css::{
-    CssComponentValues, CssDeclaration, CssGroupPreludeRef, CssImportance,
-    CssInvalidKeyframeSourceReason, CssKeyframeRuleView, CssKnownProperty, CssNamespaceContext,
-    CssNamespaceName, CssNamespacePrefix, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
-    CssParser, CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction, CssRule,
-    CssRuleAdmissionContext, CssRuleGraphInput, CssRuleSyntax, CssSerializationLimits as Limits,
-    CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry, CssStyleAncestor,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{
+    CssDeclaration, CssImportance, CssInvalidKeyframeSourceReason, CssSpecifiedDeclarationBlock,
+    CssSpecifiedDeclarationEntry,
 };
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::rule::keyframes::{
+    CssKeyframeRuleView, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
+};
+use surgeist_css::rule::{
+    CssNamespaceName, CssNamespacePrefix, CssRule, CssRuleAdmissionContext, CssRuleSyntax,
+    CssStyleAncestor,
+};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::serialization::{CssGroupPreludeRef, CssRuleGraphInput};
 
 fn terminal(
     block: &CssSpecifiedDeclarationBlock,
@@ -261,9 +271,11 @@ fn detached_keyframe_accepts_checked_replacements_and_preserves_authored_and_pro
         CssImportance::Normal,
     )
     .unwrap();
-    let supplied =
-        surgeist_css::CssDeclarationList::try_new(vec![programmatic.clone()], Default::default())
-            .unwrap();
+    let supplied = surgeist_css::declaration::CssDeclarationList::try_new(
+        vec![programmatic.clone()],
+        Default::default(),
+    )
+    .unwrap();
     let supplied =
         CssSpecifiedDeclarationBlock::try_from_declarations(&supplied, Default::default()).unwrap();
     let replacement = terminal(&supplied, CssKnownProperty::Opacity).clone();

@@ -7,7 +7,24 @@
 //! functional tests once those APIs exist, rather than compile-failure RED.
 
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssPropertyKindRef,
+};
+use surgeist_css::values::background::{
+    CssBackgroundAttachment, CssBackgroundBox, CssBackgroundRepeat, CssBackgroundRepeatStyle,
+    CssBackgroundSize,
+};
+use surgeist_css::values::common::CssAutoOr;
 
 struct Case {
     property: CssKnownProperty,

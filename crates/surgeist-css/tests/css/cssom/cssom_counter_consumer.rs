@@ -1,5 +1,7 @@
 //! Authored admission is distinct from definition validity in Counter Styles 2026.
-use surgeist_css::{CssCounterStyleDescriptorValue, CssParser, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorValue;
 
 #[test]
 fn extends_symbol_conflict_remains_inspectable_authored_syntax() {
@@ -17,13 +19,17 @@ fn extends_symbol_conflict_remains_inspectable_authored_syntax() {
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssCounterStyleAlgorithm as Algorithm, CssCounterStyleDefinitionIssue as Issue,
-    CssCounterStyleDefinitionStatus as Status, CssCounterStyleDescriptorCollection as Collection,
-    CssCounterStyleDescriptorEntry as Entry, CssCounterStyleDescriptorKind as K,
-    CssSerializationLimits as Limits,
-};
-fn value(source: &str, kind: K) -> surgeist_css::CssCounterStyleDescriptorValue {
+use surgeist_css::rule::counter_style::CssCounterStyleAlgorithm as Algorithm;
+use surgeist_css::rule::counter_style::CssCounterStyleDefinitionIssue as Issue;
+use surgeist_css::rule::counter_style::CssCounterStyleDefinitionStatus as Status;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorCollection as Collection;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorEntry as Entry;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind as K;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+fn value(
+    source: &str,
+    kind: K,
+) -> surgeist_css::rule::counter_style::CssCounterStyleDescriptorValue {
     let report = CssCounterStyleDescriptorValue::parse(&CssParser::default(), source, kind);
     assert!(report.is_clean(), "{report:?}");
     report.syntax().clone().unwrap()
@@ -197,17 +203,18 @@ fn prospective_collection_limits_are_cumulative_and_retry_is_unchanged() {
 
 #[test]
 fn programmatic_prospective_values_do_not_invent_a_named_or_raw_source_origin() {
-    let components = surgeist_css::CssComponentValues::try_new(
-        vec![surgeist_css::CssComponentValue::try_ident("cyclic").unwrap()],
+    let components = surgeist_css::component::CssComponentValues::try_new(
+        vec![surgeist_css::component::CssComponentValue::try_ident("cyclic").unwrap()],
         Default::default(),
     )
     .unwrap();
-    let system = surgeist_css::CssCounterStyleDescriptorValue::try_from_components(
-        K::System,
-        components,
-        Default::default(),
-    )
-    .unwrap();
+    let system =
+        surgeist_css::rule::counter_style::CssCounterStyleDescriptorValue::try_from_components(
+            K::System,
+            components,
+            Default::default(),
+        )
+        .unwrap();
     let collection =
         Collection::try_new(vec![Entry::from_value(&system)], Default::default()).unwrap();
     assert!(collection.entries()[0].occurrence().is_none());

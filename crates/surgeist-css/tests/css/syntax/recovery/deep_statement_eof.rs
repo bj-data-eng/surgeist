@@ -1,9 +1,9 @@
 //! Syntax 3 §5.5.2 returns an at-rule with an EOF fault. These cases compose
 //! that contract with existing ordinary/scoped structural recovery boundaries.
-use surgeist_css::{
-    CssErrorCode, CssLayerNameList, CssParseReport, CssParser, CssRecoveryAction, CssRule,
-    CssSheet, CssSourcePosition,
-};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::{CssLayerNameList, CssRule, CssSheet};
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::{CssParseReport, CssParser};
 
 const DEPTHS: [usize; 6] = [63, 64, 65, 127, 128, 129];
 

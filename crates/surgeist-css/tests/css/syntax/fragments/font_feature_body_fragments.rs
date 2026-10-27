@@ -7,12 +7,16 @@ use descriptor_phases::*;
 use crate::css::support::authored_syntax::{
     assert_origin_region as origin, assert_position as position,
 };
-use surgeist_css::{
-    CssBlockContext, CssBlockFragment, CssErrorCode, CssEscapeFailure, CssFontDisplay,
-    CssFontFeatureValueBlock, CssFontFeatureValueDefinition, CssFontFeatureValueKind as Kind,
-    CssFontFeatureValuesItem as Item, CssFontFeatureValuesItem, CssParseReport, CssParsedOrigin,
-    CssParser, CssRecoveryAction, CssRule,
+use surgeist_css::diagnostic::{CssErrorCode, CssEscapeFailure, CssRecoveryAction};
+use surgeist_css::rule::font_face::CssFontDisplay;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueKind as Kind;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesItem as Item;
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureValueBlock, CssFontFeatureValueDefinition, CssFontFeatureValuesItem,
 };
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule};
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::{CssParseReport, CssParser};
 
 type OuterReport = CssParseReport<Option<CssBlockFragment<Vec<Item>>>>;
 type SubsidiaryReport = CssParseReport<Option<CssBlockFragment<CssFontFeatureValueBlock>>>;
@@ -559,7 +563,7 @@ fn subsidiary_value_failures_and_nested_rules_recover_at_named_units() {
         assert_eq!(pending.name().as_str(), "bad");
         assert!(matches!(
             pending.value().view(),
-            surgeist_css::CssFontFeatureValueRef::Pending(_)
+            surgeist_css::rule::font_feature_values::CssFontFeatureValueRef::Pending(_)
         ));
         definition(last, "last", &["2"]);
     }

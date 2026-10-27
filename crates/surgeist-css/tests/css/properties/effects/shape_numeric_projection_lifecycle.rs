@@ -7,7 +7,17 @@
 
 use crate::css::support::important_declaration;
 use crate::css::support::serialization_limits::assert_limits as budget;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::effects::CssClipPath;
+use surgeist_css::values::shape::{
+    CssBasicShape, CssCircleRadius, CssCircleShape, CssShapeCommand,
+};
 
 fn clip(declaration: &CssDeclaration) -> &CssClipPath {
     let CssKnownPropertyValueRef::ClipPath(value) =

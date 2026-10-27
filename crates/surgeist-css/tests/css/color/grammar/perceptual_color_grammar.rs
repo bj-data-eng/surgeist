@@ -11,7 +11,15 @@ use crate::css::support::color_components::{
     assert_component, assert_origin, assert_recovered, component, token,
 };
 use crate::css::support::parsed_color as parsed;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorHue, CssColorNumberLiteral, CssColorPercentageLiteral, CssLabColor,
+    CssLchColor,
+};
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssCalculation, CssNumber, CssNumericLiteral, CssPercentage,
+};
 
 const FAMILIES: [&str; 4] = ["lab", "lch", "oklab", "oklch"];
 

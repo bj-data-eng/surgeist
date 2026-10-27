@@ -1,7 +1,22 @@
 //! Typed authored contracts for Conditional 5 size features and scoped Values5 §9.
 //! Existing callable-boundary recognition evidence is in container_size_grammar.
 use crate::css::support::authored_syntax::checked_container_condition as condition;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssLength, CssNumber,
+    CssTreeCountingFunction,
+};
+use surgeist_css::query::container::{
+    CssContainerFeatureQuery, CssContainerLeaf, CssContainerLength, CssContainerLengthRef,
+    CssContainerOrientationRef, CssContainerRatio, CssContainerRatioRef,
+    CssContainerSizeFeatureKind, CssContainerValueDomain,
+};
+use surgeist_css::query::media::{CssMediaRangeRef, CssMediaRatio};
+use surgeist_css::query::{CssCondition, CssConditionKind, CssGeneralEnclosed, CssQueryComparison};
 
 fn feature(condition: &CssCondition<CssContainerLeaf>) -> &CssContainerFeatureQuery {
     let CssConditionKind::Leaf(CssContainerLeaf::Feature(feature)) = condition.kind() else {

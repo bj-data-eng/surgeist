@@ -8,7 +8,27 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::component_failure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{contextual_checked_declaration as checked, known_property as property};
-use surgeist_css::*;
+use surgeist_css::color::{CssColor, CssHexColor, CssNamedColor};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget,
+    CssPropertyValueError,
+};
+use surgeist_css::query::supports::{CssSupportsDeclaration, CssSupportsLeaf};
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssRule, CssStyleBlock};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);
 const NAMES: [&str; 7] = [
     "color",

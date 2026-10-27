@@ -8,7 +8,7 @@
 //! alpha is the origin's alpha.
 
 use surgeist_color::{Color, ColorSpace, PredefinedColorSpace, SerializationFamily};
-use surgeist_css::{
+use surgeist_css::color::{
     CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInput,
     CssColorOrdinaryLimits, CssColorOrdinaryOutcome, CssColorPropertyFacts, CssColorSchemeFact,
     CssDeviceColorFact, parse_used_color,

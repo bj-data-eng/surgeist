@@ -1,5 +1,6 @@
 //! CSSOM §6.2 caller-selected order with exact batch-local creation ownership.
-use surgeist_css::{CssMediaQueryList, CssParser};
+use surgeist_css::CssParser;
+use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_cssom::*;
 
 fn store(limits: CssomLimits) -> CssomStore {

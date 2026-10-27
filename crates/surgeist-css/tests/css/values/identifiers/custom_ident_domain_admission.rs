@@ -9,7 +9,24 @@
 
 use crate::css::support::value_assertions::checked_range;
 use crate::css::support::value_assertions::validated_sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::numeric::{CssNonNegative, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::CssKeyframesName;
+use surgeist_css::values::animation::{
+    CssAnimationList, CssAnimationName, CssAnimationNameList, CssTransition, CssTransitionList,
+    CssTransitionProperty, CssTransitionPropertyList,
+};
+use surgeist_css::values::common::{CssCustomIdent, CssIdent};
+use surgeist_css::values::layout::{
+    CssGridGeneralTrackComponent, CssGridLineName, CssGridLineNames, CssGridTrackList,
+};
 
 fn transition_properties(value: &str) -> CssTransitionPropertyList {
     let declaration = declaration(&format!("transition-property:{value}"));

@@ -67,7 +67,7 @@ fn unknown_and_empty_generic_declarations_reach_exact_eof_before_property_admiss
         eof(&mut cursor, &snapshot, text.len());
         // Ordinary public admission is deliberately stronger than structure.
         assert!(
-            crate::CssDeclaration::parse(&crate::CssParser::default(), text)
+            crate::declaration::CssDeclaration::parse(&crate::CssParser::default(), text)
                 .syntax()
                 .is_none(),
             "{text}"
@@ -196,8 +196,8 @@ fn trimmed_components_keep_internal_trivia_and_original_post_colon_range() {
 
 #[test]
 fn supplied_unspelled_payload_and_distinct_source_origins_survive_priority_extraction() {
-    let first = crate::component_values::parse_component_values("same").unwrap();
-    let second = crate::component_values::parse_component_values("same").unwrap();
+    let first = crate::component::values::parse_component_values("same").unwrap();
+    let second = crate::component::values::parse_component_values("same").unwrap();
     let native = |token| SyntaxToken {
         payload: TokenPayload::Native(token),
         spelling: None,

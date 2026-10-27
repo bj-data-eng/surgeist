@@ -1,9 +1,10 @@
 //! Independently derived MQ5 and Syntax expectations for original CSSTree inputs.
 
 use serde_json::Value;
-use surgeist_css::{
-    CssConditionKind, CssMediaLeaf, CssMediaQuery, CssParser, CssUnknownMediaFeatureReason,
-    CssUnknownMediaFeatureRef,
+use surgeist_css::CssParser;
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{
+    CssMediaLeaf, CssMediaQuery, CssUnknownMediaFeatureReason, CssUnknownMediaFeatureRef,
 };
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};

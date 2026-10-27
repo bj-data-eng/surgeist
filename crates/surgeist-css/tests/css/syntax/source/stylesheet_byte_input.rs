@@ -1,7 +1,11 @@
-use surgeist_css::{
-    CssConditionKind, CssDecodedStylesheetInput, CssEncoding, CssEncodingSelection, CssParser,
-    CssRule, CssStylesheetDecodeHints, CssStylesheetDecodeLimits, CssStylesheetLocation,
-    CssSupportsLeaf, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::CssRule;
+use surgeist_css::source::{
+    CssDecodedStylesheetInput, CssEncoding, CssEncodingSelection, CssStylesheetDecodeHints,
+    CssStylesheetDecodeLimits, CssStylesheetLocation,
 };
 
 fn hints(label: &str) -> CssStylesheetDecodeHints<'_> {
@@ -510,7 +514,7 @@ fn malformed_utf16_sheet_diagnostics_address_decoded_source_not_network_bytes() 
     let diagnostic = &report.diagnostics()[0];
     assert_eq!(
         diagnostic.error().code(),
-        surgeist_css::CssErrorCode::UnknownProperty
+        surgeist_css::diagnostic::CssErrorCode::UnknownProperty
     );
     assert_eq!(diagnostic.error().position().byte_offset().value(), 10);
     assert_eq!(diagnostic.error().position().column().value(), 8);
@@ -543,8 +547,9 @@ fn null_filtering_changes_token_semantics_while_preserving_unfiltered_snapshot()
     else {
         panic!("supports declaration")
     };
-    let surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Ident(name)) =
-        declaration.property_component().view()
+    let surgeist_css::component::CssComponentValueRef::Token(
+        surgeist_css::component::CssValueTokenRef::Ident(name),
+    ) = declaration.property_component().view()
     else {
         panic!("identifier token")
     };

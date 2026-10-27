@@ -18,9 +18,31 @@ use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::serialization_limits::assert_limits as primitive_budget;
 use authored_property::{ParserFront, assert_source, checked, invalid};
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssDeclaration, CssKnownProperty as P, CssParser,
-    CssPropertyTarget, CssRule, CssSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssLengthPercentage, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssPropertyKindRef, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyValueError,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::values::image::{CssImageOrientation, CssImageRendering, CssObjectFit};
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
 };
 
 const FRONTS: [ParserFront; 5] = [

@@ -1,5 +1,8 @@
 //! Existing checked aggregate fronts must not certify browser-recovered children.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::text::{CssTextDecoration, CssTextDecorationThickness};
 
 fn color(text: &str, clean: bool) -> CssColor {
     let source = format!("text-decoration-color:{text}");

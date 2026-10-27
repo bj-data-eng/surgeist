@@ -6,13 +6,21 @@ use crate::css::support::named_property::normal_grammar_components;
 use crate::css::support::named_property::{
     assert_implicit_closure_rejection, assert_invalid_replacement_at, assert_property_grammar_error,
 };
-use surgeist_css::{
-    CssCalculation, CssComponentValue, CssComponentValues, CssContributionValueRef,
-    CssContributions, CssExpansion, CssFontValue, CssGlobalKeyword, CssImportance,
-    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLengthPercentage,
-    CssLineHeight, CssLonghandValueRef, CssNonNegative, CssNumber, CssNumeric, CssParser,
-    CssPropertyKindRef, CssSerializationLimits, CssSerializedOrigin, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
 };
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::CssFontValue;
+use surgeist_css::values::text::CssLineHeight;
 
 fn property(text: &str) -> CssLineHeight {
     let report = CssParser::default().parse_block_contents(format!("line-height:{text}"));

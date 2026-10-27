@@ -4,16 +4,27 @@
 use crate::css::support::failure_classes::SerializationFailure as Resource;
 use crate::css::support::serialization_limits::LimitFailure;
 use crate::css::support::{graph_cssom, graph_specified};
-use surgeist_css::{
-    CssBlockContext, CssBlockFragment, CssGroupPreludeRef as Prelude, CssImportance,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock as Block;
+use surgeist_css::declaration::CssSpecifiedDeclarationEntry as Entry;
+use surgeist_css::property::CssKnownProperty as K;
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::rule::CssRuleAdmissionContext as Context;
+use surgeist_css::rule::keyframes::{
     CssKeyframeRuleView, CssKeyframesName, CssKeyframesRuleView, CssKeyframesString,
-    CssKnownProperty as K, CssMarginBox, CssMarginRuleView, CssNamespaceContext, CssPageBody,
-    CssPageRuleView, CssPageSelectorList, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
-    CssParser, CssPropertyNameRef, CssRule, CssRuleAdmissionContext as Context,
-    CssRuleGraphInput as View, CssRuleSyntax, CssSerializationLimits as Limits,
-    CssSpecifiedDeclarationBlock as Block, CssSpecifiedDeclarationEntry as Entry,
-    CssSpecifiedPageDeclarationBlock as PageBlock, CssSpecifiedPageDeclarationEntry as PageEntry,
+    CssParsedKeyframeRule, CssParsedKeyframeSelectors,
 };
+use surgeist_css::rule::page::CssSpecifiedPageDeclarationBlock as PageBlock;
+use surgeist_css::rule::page::CssSpecifiedPageDeclarationEntry as PageEntry;
+use surgeist_css::rule::page::{
+    CssMarginBox, CssMarginRuleView, CssPageBody, CssPageRuleView, CssPageSelectorList,
+};
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule, CssRuleSyntax};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssGroupPreludeRef as Prelude;
+use surgeist_css::serialization::CssRuleGraphInput as View;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 fn terminal(block: &Block, property: K) -> &Entry {
     block
@@ -36,7 +47,7 @@ fn page_property(block: &PageBlock, property: K) -> &Entry {
         })
         .unwrap()
 }
-fn group_query() -> surgeist_css::CssMediaQueryList {
+fn group_query() -> surgeist_css::query::media::CssMediaQueryList {
     let report = CssParser::default().parse_sheet("@media print {}");
     let CssRule::Media(media) = &report.syntax().rules()[0] else {
         panic!("media")
@@ -61,7 +72,7 @@ fn contextual_admission_establishes_page_and_keyframes_group_permission_not_styl
         let rejected = candidate.admit(&CssNamespaceContext::default(), Context::Style);
         crate::css::support::value_assertions::assert_first_code(
             rejected.diagnostics(),
-            surgeist_css::CssErrorCode::InvalidAtRulePlacement,
+            surgeist_css::diagnostic::CssErrorCode::InvalidAtRulePlacement,
         );
         assert!(rejected.syntax().is_none());
     }
@@ -506,7 +517,7 @@ fn recursive_page_and_margin_keep_independent_fixed_footprint_pending_shorthand_
     };
     assert!(matches!(
         K::BorderTop.metadata().unwrap().kind(),
-        surgeist_css::CssPropertyKindRef::Shorthand(_)
+        surgeist_css::property::CssPropertyKindRef::Shorthand(_)
     ));
     let selected = page
         .declarations()
@@ -514,7 +525,7 @@ fn recursive_page_and_margin_keep_independent_fixed_footprint_pending_shorthand_
         .unwrap();
     let pending = page_property(&selected, K::BorderTopColor);
     assert!(
-        matches!(pending.value(), surgeist_css::CssSpecifiedDeclarationValueRef::PendingShorthand(origin) if origin.same_occurrence(pending.source()))
+        matches!(pending.value(), surgeist_css::declaration::CssSpecifiedDeclarationValueRef::PendingShorthand(origin) if origin.same_occurrence(pending.source()))
     );
     let descriptor = selected
         .entries()
@@ -533,7 +544,7 @@ fn recursive_page_and_margin_keep_independent_fixed_footprint_pending_shorthand_
         .unwrap();
     let pending_margin = terminal(&selected_margin, K::BorderTopColor);
     assert!(
-        matches!(pending_margin.value(), surgeist_css::CssSpecifiedDeclarationValueRef::PendingShorthand(origin) if origin.same_occurrence(pending_margin.source()))
+        matches!(pending_margin.value(), surgeist_css::declaration::CssSpecifiedDeclarationValueRef::PendingShorthand(origin) if origin.same_occurrence(pending_margin.source()))
     );
     let margin_survivors = Block::try_from_margin_entries(
         &[

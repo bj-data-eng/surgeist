@@ -13,11 +13,14 @@
 
 use std::ops::Range;
 
-use surgeist_css::{
-    CssDeclaration, CssError, CssErrorCode, CssImportance, CssKnownPropertyValueRef, CssParser,
-    CssPropertyNameRef, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSourcePosition,
-    CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{
+    CssError, CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
 };
+use surgeist_css::property::{CssKnownPropertyValueRef, CssPropertyNameRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::source::CssSourcePosition;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Entry {
@@ -841,10 +844,8 @@ fn column_combinator_after_an_explicit_nesting_selector_is_retained() {
 }
 
 fn column_selector_structure(observed: &Observed<'_>) {
-    use surgeist_css::{
-        CssComponentValueRef, CssSelector, CssSelectorCombinator, CssStyleSelector, CssValueOrigin,
-        CssValueTokenRef,
-    };
+    use surgeist_css::component::{CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
+    use surgeist_css::selector::{CssSelector, CssSelectorCombinator, CssStyleSelector};
     let [CssRule::Style(parent)] = observed.rules else {
         panic!("one retained outer style rule")
     };
@@ -876,7 +877,10 @@ fn column_selector_structure(observed: &Observed<'_>) {
     };
     assert!(declaration.custom().is_none());
     let known = declaration.known().expect("known color declaration");
-    assert_eq!(known.property(), surgeist_css::CssKnownProperty::Color);
+    assert_eq!(
+        known.property(),
+        surgeist_css::property::CssKnownProperty::Color
+    );
     let Some(CssKnownPropertyValueRef::Color(value)) = known.property_value() else {
         panic!("typed color value")
     };
@@ -922,7 +926,7 @@ fn column_selector_structure(observed: &Observed<'_>) {
 }
 
 fn assert_column_compound(
-    compound: &surgeist_css::CssCompoundSelector,
+    compound: &surgeist_css::selector::CssCompoundSelector,
     nesting_selectors: usize,
     classes: &[&str],
 ) {
@@ -1022,7 +1026,7 @@ fn text_wrap_style_auto(observed: &Observed<'_>) {
     assert_eq!(value.value().mode(), None);
     assert_eq!(
         value.value().style(),
-        Some(surgeist_css::CssTextWrapStyle::Auto)
+        Some(surgeist_css::values::text::CssTextWrapStyle::Auto)
     );
 }
 
@@ -1032,7 +1036,7 @@ fn auto_timing_name(observed: &Observed<'_>) {
         CssKnownPropertyValueRef::AnimationName(value) => {
             assert!(matches!(
                 value.value().names(),
-                [surgeist_css::CssAnimationName::Custom(name)] if name.as_str() == "auto"
+                [surgeist_css::values::animation::CssAnimationName::Custom(name)] if name.as_str() == "auto"
             ));
             assert_eq!(
                 value
@@ -1045,7 +1049,7 @@ fn auto_timing_name(observed: &Observed<'_>) {
         CssKnownPropertyValueRef::TransitionProperty(value) => {
             assert!(matches!(
                 value.value().properties(),
-                [surgeist_css::CssTransitionProperty::Custom(name)] if name.as_str() == "auto"
+                [surgeist_css::values::animation::CssTransitionProperty::Custom(name)] if name.as_str() == "auto"
             ));
             assert_eq!(
                 value
@@ -1057,7 +1061,7 @@ fn auto_timing_name(observed: &Observed<'_>) {
         }
         other => panic!("unexpected timing name value: {other:?}"),
     }
-    let surgeist_css::CssValueOrigin::Parsed(token) = declaration
+    let surgeist_css::component::CssValueOrigin::Parsed(token) = declaration
         .value_components()
         .items()
         .last()
@@ -1094,17 +1098,17 @@ fn content_contents(observed: &Observed<'_>) {
     let CssKnownPropertyValueRef::Content(value) = sole_value(observed) else {
         panic!("checked content wrapper")
     };
-    let surgeist_css::CssContentValue::Generated(generated) = value.value() else {
+    let surgeist_css::values::content::CssContentValue::Generated(generated) = value.value() else {
         panic!("generated contents")
     };
     assert!(matches!(
         generated.items(),
-        [surgeist_css::CssContentValueItem::Contents]
+        [surgeist_css::values::content::CssContentValueItem::Contents]
     ));
     assert!(matches!(
         generated.body(),
-        surgeist_css::CssGeneratedContentBodyRef::List([
-            surgeist_css::CssContentValueItem::Contents
+        surgeist_css::values::content::CssGeneratedContentBodyRef::List([
+            surgeist_css::values::content::CssContentValueItem::Contents
         ])
     ));
     assert_eq!(
@@ -1116,7 +1120,7 @@ fn content_contents(observed: &Observed<'_>) {
     );
     assert!(matches!(
         observed.declarations[0].value_components().items()[0].origin(),
-        surgeist_css::CssValueOrigin::Parsed(_)
+        surgeist_css::component::CssValueOrigin::Parsed(_)
     ));
 }
 
@@ -1124,7 +1128,8 @@ fn signed_thickness(observed: &Observed<'_>) {
     let CssKnownPropertyValueRef::TextDecorationThickness(value) = sole_value(observed) else {
         panic!("typed signed thickness")
     };
-    let surgeist_css::CssTextDecorationThickness::Length(length) = value.value() else {
+    let surgeist_css::values::text::CssTextDecorationThickness::Length(length) = value.value()
+    else {
         panic!("signed length branch")
     };
     let component = length
@@ -1133,14 +1138,14 @@ fn signed_thickness(observed: &Observed<'_>) {
         .expect("exact literal");
     assert!(matches!(
         component.view(),
-        surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension {
+        surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension {
             number,
             unit: "px",
         }) if number.representation() == "-1"
     ));
     assert!(matches!(
         component.origin(),
-        surgeist_css::CssValueOrigin::Parsed(_)
+        surgeist_css::component::CssValueOrigin::Parsed(_)
     ));
 }
 
@@ -1150,12 +1155,14 @@ fn last_line_match_parent(observed: &Observed<'_>) {
     };
     assert_eq!(
         value.value(),
-        &surgeist_css::CssTextAlignLastValue::Keyword(surgeist_css::CssTextAlign::MatchParent)
+        &surgeist_css::values::text::CssTextAlignLastValue::Keyword(
+            surgeist_css::values::text::CssTextAlign::MatchParent
+        )
     );
 }
 
 fn overflow_auto(observed: &Observed<'_>) {
-    use surgeist_css::CssOverflow;
+    use surgeist_css::values::box_model::CssOverflow;
     match sole_value(observed) {
         CssKnownPropertyValueRef::Overflow(value) => {
             assert_eq!(value.value().x(), CssOverflow::Auto);
@@ -1178,9 +1185,9 @@ fn inline_flow_display(observed: &Observed<'_>) {
     };
     assert_eq!(
         *value.value(),
-        surgeist_css::CssDisplayValue::OutsideInside {
-            outside: surgeist_css::CssDisplayOutside::Inline,
-            inside: surgeist_css::CssDisplayInside::Flow,
+        surgeist_css::values::box_model::CssDisplayValue::OutsideInside {
+            outside: surgeist_css::values::box_model::CssDisplayOutside::Inline,
+            inside: surgeist_css::values::box_model::CssDisplayInside::Flow,
         }
     );
 }
@@ -1220,7 +1227,7 @@ fn intrinsic_auto_repeat_in_the_grid_shorthand_is_retained() {
 }
 
 fn auto_fit_grid(observed: &Observed<'_>) {
-    use surgeist_css::{
+    use surgeist_css::values::layout::{
         CssGridAutoFlowAxis, CssGridAutoRepeatKind, CssGridAutoTrackComponent,
         CssGridTrackBreadthKind, CssGridTrackRepeatComponent,
     };
@@ -1390,8 +1397,9 @@ fn general_enclosed_style_and_scroll_state_container_queries_are_retained() {
 }
 
 fn container_query(observed: &Observed<'_>) {
-    use surgeist_css::{
-        CssConditionKind, CssContainerLeaf, CssContainerScrollFeature, CssContainerStuckKeyword,
+    use surgeist_css::query::CssConditionKind;
+    use surgeist_css::query::container::{
+        CssContainerLeaf, CssContainerScrollFeature, CssContainerStuckKeyword,
         CssContainerStuckValueRef, CssScrollStateLeaf,
     };
     named_colors(observed);
@@ -1437,7 +1445,7 @@ fn container_query(observed: &Observed<'_>) {
         value.serialize_tokens(Default::default()).unwrap().as_css(),
         format!("{query} ")
     );
-    let surgeist_css::CssValueOrigin::Parsed(origin) = value.origin() else {
+    let surgeist_css::component::CssValueOrigin::Parsed(origin) = value.origin() else {
         panic!("original query source")
     };
     assert_eq!(origin.source().as_str(), input);
@@ -1550,7 +1558,7 @@ fn removed_track_declarations_preserve_adjacent_current_alignment_and_custom_sem
     };
     assert_eq!(
         color.known().unwrap().property(),
-        surgeist_css::CssKnownProperty::Color
+        surgeist_css::property::CssKnownProperty::Color
     );
     let Some(CssKnownPropertyValueRef::Color(value)) = color.known().unwrap().property_value()
     else {
@@ -1565,7 +1573,9 @@ fn removed_track_declarations_preserve_adjacent_current_alignment_and_custom_sem
     };
     assert_eq!(
         value.value().value(),
-        surgeist_css::CssAlignmentValue::Baseline(surgeist_css::CssBaselinePosition::First)
+        surgeist_css::values::layout::CssAlignmentValue::Baseline(
+            surgeist_css::values::layout::CssBaselinePosition::First
+        )
     );
     assert_eq!(
         value

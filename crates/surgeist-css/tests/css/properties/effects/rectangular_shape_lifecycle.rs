@@ -8,7 +8,18 @@
 
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use crate::css::support::property_admission::validated_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::effects::CssClipPath;
 
 fn clip(source: &CssDeclaration) -> &CssClipPath {
     let CssKnownPropertyValueRef::ClipPath(value) =

@@ -1,7 +1,9 @@
 //! Existing-public-API @font-face width contracts from CSS Fonts 4 WD
 //! (2026-09-07) §§4.4 and 4.4.1. Exact typed ranges follow with the model.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
 
 fn retained_count(source: &str) -> usize {
     let report = CssParser::default().parse_sheet(source);

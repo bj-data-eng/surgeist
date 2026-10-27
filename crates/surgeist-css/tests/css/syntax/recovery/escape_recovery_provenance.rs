@@ -2,9 +2,10 @@
 //! delimiter/replacement recovery. Literal coordinates below independently
 //! specify original UTF-8 bytes, zero-based lines and UTF-16 columns.
 
-use surgeist_css::{
-    CssDeclaration, CssErrorCode, CssEscapeFailure, CssParser, CssRecoveryAction,
-    CssRecoveryDiagnostic,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssEscapeFailure, CssRecoveryAction, CssRecoveryDiagnostic,
 };
 
 fn assert_escape(

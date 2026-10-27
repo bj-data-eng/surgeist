@@ -11,7 +11,16 @@ use crate::css::support::{
     important_speech_components as checked, important_speech_declaration as declaration,
     known_property as property,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandValue, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
 
 const LONGHANDS: [&str; 4] = ["pause-before", "pause-after", "rest-before", "rest-after"];
 const ALL: [&str; 6] = [

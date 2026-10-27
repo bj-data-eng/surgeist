@@ -10,7 +10,10 @@
 //! https://www.w3.org/TR/2021/CRD-css-syntax-3-20211224/#non-ascii-code-point
 
 use crate::css::support::authored_syntax::assert_position;
-use surgeist_css::{CssErrorCode, CssParser, CssRecoveryAction, CssRule, CssSelector};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssSelector;
 
 fn assert_incomplete_unicode_rule(source: &str, start: (usize, u32, u32), end: (usize, u32, u32)) {
     let report = CssParser::default().parse_sheet(source);

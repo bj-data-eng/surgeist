@@ -3,9 +3,11 @@
 //! The caller admits the three-channel kernel. No token, input, fact array or
 //! variadic argument is observed here; those continuations supply typed values.
 
-use super::Color;
 use super::keywords::ColorFunction as F;
-use crate::{ColorSpace as Space, CssColorSyntax as Syntax, PredefinedColorSpace as Predefined};
+use crate::color::CssColorSyntax as Syntax;
+use surgeist_color::Color;
+use surgeist_color::ColorSpace as Space;
+use surgeist_color::PredefinedColorSpace as Predefined;
 use surgeist_color::{Finite, UnitInterval};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

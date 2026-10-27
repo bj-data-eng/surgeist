@@ -1,6 +1,10 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::border::CssLineStyle;
+use surgeist_css::values::common::{CssBoxSideKind, CssFourSides, CssSidePair};
 
 #[test]
 fn scalar_style_keywords_share_exact_bounded_serialization() {

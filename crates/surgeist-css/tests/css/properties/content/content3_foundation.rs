@@ -5,7 +5,18 @@
 use crate::css::support::important_declaration;
 use crate::css::support::property_admission::Responsible;
 use crate::css::support::property_admission::assert_invalid_value;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssLonghandContribution,
+    CssPropertyKindRef,
+};
 
 fn parsed(value: &str) -> CssDeclaration {
     important_declaration("content", value)

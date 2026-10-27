@@ -20,9 +20,23 @@ use crate::css::support::authored_property;
 use crate::css::support::authored_property::parsed;
 use crate::css::support::failure_classes::SerializationFailure as K;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssDeclaration, CssKnownProperty as P, CssParser,
-    CssPropertyTarget, CssRule, CssSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssLengthPercentage, CssNumeric};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop, CssImage,
+    CssImageValue, CssImageValueList, CssLinearGradient,
 };
 
 const LINEAR: [&str; 2] = ["linear-gradient", "repeating-linear-gradient"];

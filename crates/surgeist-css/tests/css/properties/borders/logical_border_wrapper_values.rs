@@ -1,4 +1,7 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::border::{CssBorder, CssLineStyle, CssLineWidth};
 
 fn checked_color(value: &str) -> CssColor {
     let report = CssParser::default().parse_block_contents(format!("border-top-color:{value}"));

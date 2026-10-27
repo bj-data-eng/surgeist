@@ -4,7 +4,33 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorInterpolation, CssColorInterpolationMethod,
+    CssColorNumberLiteral, CssColorSyntax, CssLightDarkColor, CssNamedColor, CssRgbColor,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{
+    CssSpecificationTier, CssSupportStatus, feature_metadata, specification_source,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssAnglePercentage, CssCalculation, CssCalculationType,
+    CssLengthPercentage, CssNumeric, CssNumericDimension, CssZeroLiteral,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::image::{
+    CssAngularColorStop, CssAngularColorStopList, CssAngularColorStopListItem,
+    CssAngularColorStopPosition, CssColorStopList, CssColorStopListItem, CssConicGradient,
+    CssGradient, CssGradientColorStop, CssImage, CssImageValue, CssLinearGradient,
+    CssRadialGradient,
+};
+use surgeist_css::values::position::{
+    CssBlockPosition, CssInlinePosition, CssPosition, CssPositionRef, CssRelativeAxisPosition,
+};
 
 fn named(name: &str) -> CssColor {
     CssColor::from_named(CssNamedColor::try_new(name).unwrap())

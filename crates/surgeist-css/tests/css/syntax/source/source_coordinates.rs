@@ -3,10 +3,15 @@ use std::hash::Hash;
 use crate::css::support::parse_report as common;
 
 use common::CssParseReportTestExt;
-use surgeist_css::{
-    CssByteOffset, CssConditionKind, CssErrorCode, CssKnownProperty, CssLineIndex, CssMediaLeaf,
-    CssMediaQuery, CssMediaType, CssParser, CssRecoveryAction, CssRule, CssSourcePosition,
-    CssSourceSpan, CssSupportsLeaf, CssTokenKind, CssUtf16ColumnIndex,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery, CssMediaType};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::CssRule;
+use surgeist_css::source::{
+    CssByteOffset, CssLineIndex, CssSourcePosition, CssSourceSpan, CssUtf16ColumnIndex,
 };
 
 fn assert_copy_hash_ord<T: Copy + Eq + Ord + Hash>() {}

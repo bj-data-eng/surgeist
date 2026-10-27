@@ -9,7 +9,28 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration;
 use crate::css::support::named_property::{assert_invalid_replacement_at, assert_origin_at};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssTokenKind};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef,
+    CssPropertyTarget, CssUserAgentInitial,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFontFaceFamily,
+};
+use surgeist_css::rule::font_palette_values::{
+    CssFontPaletteDescriptorKind, CssFontPaletteDescriptorValue, CssFontPaletteDescriptorValueRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::{
+    CssExplicitFont, CssFontFamilyList, CssFontFamilyName, CssFontFamilyNameKind, CssFontSize,
+    CssGenericFontFamily,
+};
 
 fn families(value: &CssDeclaration) -> &CssFontFamilyList {
     let CssKnownPropertyValueRef::FontFamily(value) =

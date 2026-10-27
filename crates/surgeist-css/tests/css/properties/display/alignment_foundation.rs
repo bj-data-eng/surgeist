@@ -6,7 +6,16 @@
 use crate::css::support::property_admission::Responsible::At;
 use crate::css::support::property_admission::assert_declaration_rejected as rejected;
 use crate::css::support::{important_declaration as parsed, selected_grammar as grammar};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssLonghandContribution, CssLonghandValue,
+    CssPropertyKindRef, CssPropertyTarget,
+};
 
 const CONTENT: &str = "align-content";
 const JUSTIFY_CONTENT: &str = "justify-content";

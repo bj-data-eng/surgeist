@@ -14,12 +14,16 @@
 //! supplies the bounded proptest runner.
 
 use surgeist_color::Color;
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::color::{
     CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssColorFactIdentity, CssColorFacts,
     CssColorGrammarRequest, CssColorInput, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
     CssColorPaletteEntry, CssColorPropertyFacts, CssColorResolveError, CssColorSchemeFact,
-    CssDeviceColorFact, CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssParser,
-    CssPropertyNameRef, CssPropertyTextTarget, CssSystemColor, parse_used_color,
+    CssDeviceColorFact, CssSystemColor, parse_used_color,
+};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTextTarget,
 };
 use surgeist_fuzz::engine::{PropertyConfig, run_property};
 use surgeist_fuzz::generation::property::bytes;

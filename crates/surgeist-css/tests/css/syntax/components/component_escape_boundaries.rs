@@ -2,8 +2,9 @@
 //! including a six-digit escape. Section 9 requires token-preserving output.
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/
 
-use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssParser, CssSerializedOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
     CssValueOrigin, CssValueTokenRef,
 };
 
@@ -20,7 +21,7 @@ fn joined(left: &str, right: &str) -> CssComponentValues {
     CssComponentValues::try_new(items, Default::default()).unwrap()
 }
 
-fn assert_left(value: &surgeist_css::CssComponentValue, spelling: &str) {
+fn assert_left(value: &surgeist_css::component::CssComponentValue, spelling: &str) {
     match (spelling, value.view()) {
         (r"\31" | r"\000031", CssComponentValueRef::Token(CssValueTokenRef::Ident("1")))
         | (r"@\31", CssComponentValueRef::Token(CssValueTokenRef::AtKeyword("1")))

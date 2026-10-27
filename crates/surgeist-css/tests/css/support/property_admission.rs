@@ -19,7 +19,22 @@
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::{component_failure, numeric_failure};
-use surgeist_css::*;
+use surgeist_css::color::CssColorComponentName;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueError, CssComponentValueRef, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssDeclarationList, CssImportance};
+use surgeist_css::diagnostic::{
+    CssDeclarationContextRef, CssError, CssErrorCode, CssGrammarExpectation, CssProductionId,
+    CssRecoveryAction, CssRecoveryDiagnostic, CssTokenSummary,
+};
+use surgeist_css::numeric::CssNumericConstructionError;
+use surgeist_css::property::{
+    CssContributions, CssExpansionError, CssKnownProperty, CssPropertyGrammar, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyValueError,
+};
+use surgeist_css::{CssParseReport, CssParser};
 
 /// The authored token a property-value rejection is expected to name.
 #[derive(Clone, Copy, Debug)]

@@ -1,10 +1,12 @@
 //! Finite whole-color CSS action servicing shared by parser-owned consumers.
 //! Consumers retain their own source policy, fallback, transformation and output.
 use super::*;
-use surgeist_css::{
-    CssColorActionLayout, CssColorBank, CssColorError, CssColorFacts, CssColorGrammarRequest,
-    CssColorInputKind, CssColorOperationOwner, CssColorParse, CssColorParseAction,
+use surgeist_css::color::controlled::{
+    CssColorActionLayout, CssColorBank, CssColorOperationOwner, CssColorParse, CssColorParseAction,
     CssColorParseOutcome, CssColorParseStep, CssColorSlot,
+};
+use surgeist_css::color::{
+    CssColorError, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
 };
 
 pub(super) enum Failure {

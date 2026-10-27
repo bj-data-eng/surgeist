@@ -3,7 +3,19 @@
 //! 16 keywords. No glyph alias grammar or math-substitution assertion is made.
 use crate::css::support::named_property::property_declaration as declaration;
 use CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::text::{
+    CssDirection, CssTextOrientation, CssUnicodeBidi, CssWritingMode,
+};
 
 #[derive(Clone, Copy)]
 enum Expected {

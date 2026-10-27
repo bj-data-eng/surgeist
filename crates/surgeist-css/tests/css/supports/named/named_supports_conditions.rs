@@ -4,10 +4,14 @@
 use crate::css::support::authored_syntax::{
     checked_import_rule as checked_import, checked_supports_condition as checked_condition,
 };
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssCondition, CssConditionKind, CssImportRule,
-    CssNamespaceContext, CssParser, CssRule, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
 };
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssImportRule, CssRule};
+use surgeist_css::selector::CssNamespaceContext;
 
 fn assert_same_parsed_origin(actual: &CssValueOrigin, expected: &CssValueOrigin) {
     let (CssValueOrigin::Parsed(actual), CssValueOrigin::Parsed(expected)) = (actual, expected)

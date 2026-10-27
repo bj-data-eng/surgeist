@@ -1,7 +1,10 @@
-use surgeist_css::{
-    CssBoxSideKind, CssColor, CssColorComponent, CssFourSides, CssGlobalKeyword,
-    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssParser,
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssColorComponent};
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
 };
+use surgeist_css::values::common::{CssBoxSideKind, CssFourSides};
 
 // CSS Backgrounds and Borders 3, 2024-03-11, section 3.1 defines <color>{1,4}.
 // The selected Color 4 publication supplies the component color grammar.
@@ -114,7 +117,9 @@ fn border_color_globals_and_pending_substitution_keep_their_declared_value_branc
 
 fn border_color_value(
     authored: &str,
-) -> surgeist_css::CssPropertyValue<surgeist_css::CssFourSides<surgeist_css::CssColor>> {
+) -> surgeist_css::property::CssPropertyValue<
+    surgeist_css::values::common::CssFourSides<surgeist_css::color::CssColor>,
+> {
     let source = format!("border-color: {authored}");
     let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());

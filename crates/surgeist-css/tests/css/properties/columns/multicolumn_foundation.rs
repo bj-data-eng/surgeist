@@ -10,7 +10,26 @@ use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssCalculation, CssLength, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandValue, CssLonghandValueRef,
+    CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::border::{CssLineStyle, CssLineWidth};
+use surgeist_css::values::layout::{CssColumnFill, CssColumnRule, CssColumnSpan};
 
 const NAMES: [&str; 6] = [
     "column-fill",

@@ -4,7 +4,8 @@ use super::values::{
     parse_length, parse_length_percentage, parse_nonnegative_length,
     parse_nonnegative_length_percentage,
 };
-use crate::error::property::{CssFeatureId, Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::CssFeatureId;
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
 use super::box_model::parse_drop_shadow;
@@ -15,11 +16,33 @@ use super::values::{
     parse_nonnegative_number, parse_nonnegative_percentage, parse_specified_number,
     parse_specified_percentage,
 };
-use crate::CssAutoOr;
-use crate::CssValueOrigin;
-use crate::syntax::*;
+use crate::component::CssValueOrigin;
+use crate::numeric::{CssLength, CssLengthPercentage, CssNonNegative, CssNumeric};
+use crate::values::background::{CssBlendMode, CssBlendModeList};
+use crate::values::common::CssAutoOr;
+use crate::values::common::CssBoxEdgeKeyword;
+use crate::values::effects::{
+    CssClip, CssClipPath, CssClipPathShape, CssClipRect, CssColorInterpolationFilters, CssFilter,
+    CssFilterAmount, CssFilterBlur, CssFilterFunction, CssFilterFunctionList, CssFilterHueRotate,
+    CssIsolation,
+};
+use crate::values::image::CssRadialExtent;
+use crate::values::position::CssPosition;
+use crate::values::shape::{
+    CssBasicShape, CssCircleRadius, CssCircleShape, CssEllipseRadii, CssEllipseRadius,
+    CssEllipseShape, CssFillRule, CssInsetShape, CssInsetShapeOffsets, CssPathData, CssPathShape,
+    CssPolygonPoint, CssPolygonPointList, CssPolygonShape, CssRectShape, CssXywhShape,
+};
+use crate::values::transform::{
+    CssBackfaceVisibility, CssPerspective, CssRotate, CssRotateAxis, CssRotateValues, CssScale,
+    CssScaleValues, CssTransform, CssTransformBox, CssTransformFunction, CssTransformFunctionKind,
+    CssTransformFunctionList, CssTransformMatrix, CssTransformMatrix3d, CssTransformPerspective,
+    CssTransformRotate3d, CssTransformScale, CssTransformScale3d, CssTransformScaleComponent,
+    CssTransformSkew, CssTransformStyle, CssTransformTranslate, CssTransformTranslate3d,
+    CssTranslate, CssTranslateValues,
+};
 
-pub(super) fn parse_color_interpolation_filters<'i, 't>(
+pub(crate) fn parse_color_interpolation_filters<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssColorInterpolationFilters, ParseError<'i, Error>> {
     let location = input.current_source_location();
@@ -32,9 +55,9 @@ pub(super) fn parse_color_interpolation_filters<'i, 't>(
     }
 }
 
-pub(super) fn parse_clip<'i, 't>(
+pub(crate) fn parse_clip<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssClip, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
@@ -53,7 +76,7 @@ pub(super) fn parse_clip<'i, 't>(
         .map(CssClip::Rect)
 }
 
-pub(super) fn parse_transform_box<'i, 't>(
+pub(crate) fn parse_transform_box<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssTransformBox, ParseError<'i, Error>> {
     let location = input.current_source_location();
@@ -63,9 +86,9 @@ pub(super) fn parse_transform_box<'i, 't>(
         .ok_or_else(|| unexpected_at(location))
 }
 
-pub(super) fn parse_perspective<'i, 't>(
+pub(crate) fn parse_perspective<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssPerspective, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
@@ -76,7 +99,7 @@ pub(super) fn parse_perspective<'i, 't>(
         parse_nonnegative_length(input, numeric).map(CssPerspective::Length)
     }
 }
-pub(super) fn parse_transform_style<'i, 't>(
+pub(crate) fn parse_transform_style<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssTransformStyle, ParseError<'i, Error>> {
     let location = input.current_source_location();
@@ -87,7 +110,7 @@ pub(super) fn parse_transform_style<'i, 't>(
         _ => Err(unexpected_at(location)),
     }
 }
-pub(super) fn parse_backface_visibility<'i, 't>(
+pub(crate) fn parse_backface_visibility<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssBackfaceVisibility, ParseError<'i, Error>> {
     let location = input.current_source_location();
@@ -99,7 +122,7 @@ pub(super) fn parse_backface_visibility<'i, 't>(
     }
 }
 
-pub(super) fn parse_blend_mode<'i, 't>(
+pub(crate) fn parse_blend_mode<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBlendMode, ParseError<'i, Error>> {
     let location = input.current_source_location();
@@ -107,7 +130,7 @@ pub(super) fn parse_blend_mode<'i, 't>(
     CssBlendMode::from_keyword(ident.as_ref()).ok_or_else(|| unexpected_at(location))
 }
 
-pub(super) fn parse_blend_mode_list<'i, 't>(
+pub(crate) fn parse_blend_mode_list<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssBlendModeList, ParseError<'i, Error>> {
     let mut modes = vec![parse_blend_mode(input)?];
@@ -118,7 +141,7 @@ pub(super) fn parse_blend_mode_list<'i, 't>(
     CssBlendModeList::try_new(modes).ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_isolation<'i, 't>(
+pub(crate) fn parse_isolation<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssIsolation, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -132,7 +155,7 @@ pub(super) fn parse_isolation<'i, 't>(
 
 fn parse_clip_rect<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssClipRect, ParseError<'i, Error>> {
     let top = parse_clip_edge(input, numeric)?;
     let comma_separated = input.try_parse(Parser::expect_comma).is_ok();
@@ -151,7 +174,7 @@ fn parse_clip_rect<'i, 't>(
 
 fn parse_clip_edge<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssAutoOr<CssNumeric<CssLength>>, ParseError<'i, Error>> {
     parse_auto_or(input, |input| parse_length(input, numeric))
 }
@@ -201,9 +224,9 @@ pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
     CssFeatureId::new("ext.value.basic-shape.shape"),
 ];
 
-pub(super) fn parse_transform<'i, 't>(
+pub(crate) fn parse_transform<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssTransform, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
@@ -222,7 +245,7 @@ pub(super) fn parse_transform<'i, 't>(
 
 fn parse_transform_function<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssTransformFunction, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let name = match input.next().map_err(basic)? {
@@ -265,7 +288,7 @@ pub(super) fn parse_transform_function_kind<'i, 't>(
 
 fn parse_transform_function_value<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     kind: CssTransformFunctionKind,
 ) -> std::result::Result<CssTransformFunction, ParseError<'i, Error>> {
     let value = match kind {
@@ -455,7 +478,7 @@ fn parse_one_or_two<'i, 't, T>(
 
 fn parse_transform_scale_component<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssTransformScaleComponent, ParseError<'i, Error>> {
     if let Ok(calculation) =
         input.try_parse(|input| parse_hinted_number_calculation(input, numeric))
@@ -474,14 +497,14 @@ fn parse_transform_scale_component<'i, 't>(
 
 fn parse_transform_length_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssNumeric<CssLengthPercentage>, ParseError<'i, Error>> {
     parse_length_percentage(input, numeric)
 }
 
 fn parse_transform_length<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssNumeric<CssLength>, ParseError<'i, Error>> {
     parse_length(input, numeric)
 }
@@ -502,7 +525,7 @@ fn parse_radial_extent<'i, 't>(
 
 fn parse_circle_shape<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssCircleShape, ParseError<'i, Error>> {
     let radius = if input.is_exhausted() || next_is_ident(input, "at") {
         CssCircleRadius::Default
@@ -521,7 +544,7 @@ fn parse_circle_shape<'i, 't>(
 
 fn parse_ellipse_shape<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssEllipseShape, ParseError<'i, Error>> {
     let radii = if input.is_exhausted() || next_is_ident(input, "at") {
         None
@@ -538,7 +561,7 @@ fn parse_ellipse_shape<'i, 't>(
 
 fn parse_ellipse_radius<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssEllipseRadius, ParseError<'i, Error>> {
     if let Ok(extent) = input.try_parse(parse_radial_extent) {
         Ok(CssEllipseRadius::Extent(extent))
@@ -550,7 +573,7 @@ fn parse_ellipse_radius<'i, 't>(
 
 fn parse_optional_shape_position<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<Option<CssPosition>, ParseError<'i, Error>> {
     if input.is_exhausted() {
         return Ok(None);
@@ -561,21 +584,21 @@ fn parse_optional_shape_position<'i, 't>(
 
 fn parse_shape_length_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssNumeric<CssLengthPercentage>, ParseError<'i, Error>> {
     parse_length_percentage(input, numeric)
 }
 
 fn parse_non_negative_shape_length_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssNumeric<CssLengthPercentage, CssNonNegative>, ParseError<'i, Error>> {
     parse_nonnegative_length_percentage(input, numeric)
 }
 
 fn parse_inset_shape<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssInsetShape, ParseError<'i, Error>> {
     let mut offsets = Vec::new();
     while !input.is_exhausted() && !next_is_ident(input, "round") {
@@ -597,7 +620,7 @@ fn parse_inset_shape<'i, 't>(
 
 fn parse_rect_shape<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssRectShape, ParseError<'i, Error>> {
     let top = parse_rect_shape_edge(input, numeric)?;
     let right = parse_rect_shape_edge(input, numeric)?;
@@ -614,14 +637,14 @@ fn parse_rect_shape<'i, 't>(
 
 fn parse_rect_shape_edge<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssAutoOr<CssNumeric<CssLengthPercentage>>, ParseError<'i, Error>> {
     parse_auto_or(input, |input| parse_shape_length_percentage(input, numeric))
 }
 
 fn parse_xywh_shape<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssXywhShape, ParseError<'i, Error>> {
     let x = parse_shape_length_percentage(input, numeric)?;
     let y = parse_shape_length_percentage(input, numeric)?;
@@ -638,8 +661,8 @@ fn parse_xywh_shape<'i, 't>(
 
 fn parse_optional_rectangle_round<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<Option<crate::CssBorderRadiusShorthand>, ParseError<'i, Error>> {
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+) -> Result<Option<crate::values::border::CssBorderRadiusShorthand>, ParseError<'i, Error>> {
     if input.is_exhausted() {
         return Ok(None);
     }
@@ -650,8 +673,8 @@ fn parse_optional_rectangle_round<'i, 't>(
 /// Shapes 1 `[ round <'border-radius'> ]?` reuses the one `<'border-radius'>` grammar.
 fn parse_shape_radii<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> Result<crate::CssBorderRadiusShorthand, ParseError<'i, Error>> {
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+) -> Result<crate::values::border::CssBorderRadiusShorthand, ParseError<'i, Error>> {
     let radii = super::border_radius::parse_exact_border_radius(input, numeric)?;
     input.expect_exhausted().map_err(basic)?;
     Ok(radii)
@@ -659,7 +682,7 @@ fn parse_shape_radii<'i, 't>(
 
 fn parse_polygon_shape<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssPolygonShape, ParseError<'i, Error>> {
     let fill_rule = input.try_parse(parse_fill_rule).ok();
     let round = if next_is_ident(input, "round") {
@@ -692,7 +715,7 @@ fn parse_polygon_shape<'i, 't>(
 
 fn parse_path_shape<'i, 't>(
     input: &mut Parser<'i, 't>,
-    context: &crate::numeric::NumericInputContext<'_>,
+    context: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssPathShape, ParseError<'i, Error>> {
     let fill_rule = input.try_parse(parse_fill_rule).ok();
     if fill_rule.is_some() {
@@ -720,9 +743,9 @@ fn parse_fill_rule<'i, 't>(
     }
 }
 
-pub(super) fn parse_translate<'i, 't>(
+pub(crate) fn parse_translate<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssTranslate, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
@@ -747,9 +770,9 @@ pub(super) fn parse_translate<'i, 't>(
     ))
 }
 
-pub(super) fn parse_rotate<'i, 't>(
+pub(crate) fn parse_rotate<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssRotate, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
@@ -783,7 +806,7 @@ pub(super) fn parse_rotate<'i, 't>(
 
 fn parse_rotate_axis<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<(CssRotateAxis, Option<CssValueOrigin>), ParseError<'i, Error>> {
     if next_is_ident(input, "x") || next_is_ident(input, "y") || next_is_ident(input, "z") {
         input.skip_whitespace();
@@ -791,8 +814,9 @@ fn parse_rotate_axis<'i, 't>(
         let component = input
             .collect_numeric_component(numeric)
             .map_err(|_| unexpected_at(location))?;
-        let crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Ident(keyword)) =
-            component.view()
+        let crate::component::CssComponentValueRef::Token(
+            crate::component::CssValueTokenRef::Ident(keyword),
+        ) = component.view()
         else {
             unreachable!("axis lookahead established an identifier");
         };
@@ -811,9 +835,9 @@ fn parse_rotate_axis<'i, 't>(
     Ok((CssRotateAxis::Vector([x, y, z]), None))
 }
 
-pub(super) fn parse_scale<'i, 't>(
+pub(crate) fn parse_scale<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssScale, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
@@ -833,9 +857,9 @@ pub(super) fn parse_scale<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_filter<'i, 't>(
+pub(crate) fn parse_filter<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssFilter, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
@@ -848,7 +872,7 @@ pub(super) fn parse_filter<'i, 't>(
 
 pub(super) fn parse_filter_function_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssFilterFunctionList, ParseError<'i, Error>> {
     let mut functions = Vec::new();
     while !input.is_exhausted() {
@@ -860,7 +884,7 @@ pub(super) fn parse_filter_function_list<'i, 't>(
 
 pub(super) fn parse_filter_function<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssFilterFunction, ParseError<'i, Error>> {
     // A URL commits the filter function (Values 5 request URL modifiers
     // report inside it).
@@ -877,7 +901,7 @@ pub(super) fn parse_filter_function<'i, 't>(
 
 fn parse_filter_function_value<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     name: &str,
 ) -> std::result::Result<CssFilterFunction, ParseError<'i, Error>> {
     match name.to_ascii_lowercase().as_str() {
@@ -917,7 +941,7 @@ fn parse_filter_function_value<'i, 't>(
 
 fn parse_filter_amount<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssFilterAmount, ParseError<'i, Error>> {
     if input.is_exhausted() {
         return Ok(CssFilterAmount::Default);
@@ -935,9 +959,9 @@ fn parse_filter_amount<'i, 't>(
     Ok(amount)
 }
 
-pub(super) fn parse_clip_path<'i, 't>(
+pub(crate) fn parse_clip_path<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssClipPath, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("none"))
@@ -984,7 +1008,7 @@ pub(super) fn is_basic_shape_function(name: &str) -> bool {
 
 pub(super) fn parse_clip_path_shape<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssBasicShape, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let name = match input.next().map_err(basic)? {
@@ -1021,9 +1045,9 @@ mod transform_tests {
 
     use super::*;
 
-    fn parse(value: &str) -> Result<CssTransform, crate::error::CssError> {
-        let snapshot = crate::CssSourceSnapshot::new(value);
-        let numeric = crate::numeric::NumericInputContext::parsed(&snapshot);
+    fn parse(value: &str) -> Result<CssTransform, crate::diagnostic::CssError> {
+        let snapshot = crate::source::CssSourceSnapshot::new(value);
+        let numeric = crate::numeric::expression::NumericInputContext::parsed(&snapshot);
         let document = crate::syntax_consumption::source_document(value, &snapshot, 0)
             .expect("transform source document");
         let mut parser = Parser::new(&document);
@@ -1056,7 +1080,7 @@ mod transform_tests {
         assert!(matches!(
             &functions.functions()[1],
             CssTransformFunction::Translate3d(translation)
-                if matches!(translation.z().literal_component().unwrap().view(), crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "3" && unit == "px")
+                if matches!(translation.z().literal_component().unwrap().view(), crate::component::CssComponentValueRef::Token(crate::component::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "3" && unit == "px")
         ));
         assert_eq!(
             functions.functions()[0].kind(),

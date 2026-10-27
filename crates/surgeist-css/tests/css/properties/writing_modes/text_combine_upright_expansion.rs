@@ -2,7 +2,14 @@
 //! Values4 WD2024-03-12 §§5.2/10.9/10.12: integer-token literals;
 //! number-valued math remains authored valid without computed rounding/clamping.
 use crate::css::support::{important_declaration, retained_checked_declaration};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::text::CssTextCombineUpright;
 
 const PROPERTY: CssKnownProperty = CssKnownProperty::TextCombineUpright;
 const ORDINARY: &[&str] = &[

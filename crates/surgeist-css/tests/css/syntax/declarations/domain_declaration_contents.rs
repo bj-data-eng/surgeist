@@ -3,7 +3,19 @@
 use crate::css::support::authored_syntax::{assert_diagnostics, offset_of};
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValueRef, CssValueOrigin};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontDisplay, CssFontFaceDescriptorKind,
+    CssFontFaceDescriptorValue, CssFontFaceDescriptors, CssFontFaceRule,
+};
+use surgeist_css::rule::page::{
+    CssPageDeclaration, CssPageDeclarationBlock, CssPageDescriptorKind,
+};
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 fn page_names(block: &CssPageDeclarationBlock) -> Vec<&str> {
     block

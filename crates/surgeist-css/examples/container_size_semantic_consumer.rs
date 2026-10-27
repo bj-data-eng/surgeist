@@ -1,6 +1,14 @@
 #![forbid(unsafe_code)]
 //! Inspect authored size features without choosing containers or evaluating values.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::CssCalculationExpressionRef;
+use surgeist_css::query::container::{
+    CssContainerFeatureQuery, CssContainerLeaf, CssContainerLength, CssContainerLengthRef,
+    CssContainerOrientationRef, CssContainerRatio, CssContainerRatioRef,
+};
+use surgeist_css::query::media::{CssMediaRange, CssMediaRangeRef};
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
 fn describe_range<T>(range: &CssMediaRange<T>, value: impl Fn(&T) -> String) -> String {
     match range.view() {

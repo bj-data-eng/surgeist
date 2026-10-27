@@ -1,4 +1,7 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{
+    CssFeatureKind, CssSpecificationTier, CssSupportStatus, feature_metadata,
+};
 
 // The selected VT1 CRD20240328 and CSS Snapshot 2026 stable-module
 // classification are the independent provenance authority for these records.

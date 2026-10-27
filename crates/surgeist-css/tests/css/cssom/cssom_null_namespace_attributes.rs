@@ -2,7 +2,9 @@
 //! #serialize-a-simple-selector attribute step2 emits a namespace separator
 //! only for a nonnull namespace. Wildcard spelling and compact authored output
 //! keep the previously accepted independent contracts.
-use surgeist_css::{CssNamespaceContext, CssParser, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssNamespaceContext;
 
 #[test]
 fn literal_null_attribute_separator_is_omitted_without_changing_authored_identity() {

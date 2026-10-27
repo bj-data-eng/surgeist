@@ -3,17 +3,18 @@
 use super::combinators::{Combinator, Tail, fill, parse_group};
 use super::property_input::Parser;
 use super::side_shapes::{parse_four_sides, parse_side_pair};
-use crate::error::property::{Error, ParseError, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, unexpected_at};
 
 use super::border_style::parse_border_style;
-use super::parse_color;
-use crate::numeric::NumericInputContext;
-use crate::{CssFourSides, CssLineStyle, CssLineWidth, CssSidePair};
+use crate::numeric::expression::NumericInputContext;
+use crate::parser::color::parse_color;
+use crate::values::border::{CssLineStyle, CssLineWidth};
+use crate::values::common::{CssFourSides, CssSidePair};
 
 type ParsedLineTriple = (
     Option<CssLineWidth>,
     Option<CssLineStyle>,
-    Option<crate::CssColor>,
+    Option<crate::color::CssColor>,
 );
 
 pub(super) fn parse_exact_border_width<'i, 't>(
@@ -65,9 +66,9 @@ pub(super) fn parse_exact_border_width_shorthand<'i, 't>(
 pub(super) fn parse_border<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
-) -> Result<crate::CssBorder, ParseError<'i, Error>> {
+) -> Result<crate::values::border::CssBorder, ParseError<'i, Error>> {
     let (width, style, color) = parse_exact_line_triple(input, numeric)?;
-    crate::CssBorder::try_new(width, style, color)
+    crate::values::border::CssBorder::try_new(width, style, color)
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 

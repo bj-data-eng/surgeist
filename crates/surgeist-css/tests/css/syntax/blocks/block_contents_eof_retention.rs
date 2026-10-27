@@ -3,10 +3,11 @@
 //! §§3.3 and 5, retains one nonempty final run at EOF in admitted style and
 //! style-nested group bodies, as at a closing brace.
 
-use surgeist_css::{
-    CssDeclaration, CssErrorCode, CssNormalizedDeclaration, CssNormalizedItem, CssParseReport,
-    CssParser, CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSheet,
-};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedDeclaration, CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn color(declaration: &CssDeclaration, expected: &str, offset: usize) {
     assert_eq!(

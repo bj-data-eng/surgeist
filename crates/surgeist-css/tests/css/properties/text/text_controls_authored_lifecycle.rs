@@ -5,7 +5,28 @@
 
 use crate::css::support::failure_classes::SerializationFailure as Kind;
 use CssSerializationLimits as Limits;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssInteger, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric,
+    CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::{
+    CssAutospace, CssAutospaceMode, CssAutospaceValues, CssHangingPunctuation,
+    CssHangingPunctuationEnd, CssHangingPunctuationValues, CssHyphenateCharacter,
+    CssHyphenateLimitChars, CssHyphenateLimitCharsComponent, CssHyphenateLimitLast,
+    CssHyphenateLimitLines, CssHyphenateString, CssHyphens, CssSpacingTrim, CssTextAutospace,
+    CssTextGroupAlign, CssTextJustify, CssTextJustifyBase, CssTextSpacing, CssTextSpacingTrim,
+    CssTextSpacingValues,
+};
 
 use crate::css::support::authored_parsed_declaration as declaration;
 use crate::css::support::authored_property;

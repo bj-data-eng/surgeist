@@ -9,10 +9,40 @@ use descriptor_phases::*;
 use crate::css::support::failure_classes::SerializationFailure as K;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssDeclaration, CssParser, CssPropertyTarget, CssRule,
-    CssSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssLightDarkColor, CssNamedColor};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssCalculation, CssHintedNumber, CssLength, CssNonNegative,
+    CssNumber, CssNumeric, CssPercentage,
+};
+use surgeist_css::property::{
+    CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::CssCounterSymbol;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::common::{
+    CssIdent, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
+};
+use surgeist_css::values::content::{
+    CssContentValue, CssContentValueItem, CssCounterStyleValue, CssCounterSymbolValue,
+    CssListStyleTypeValue,
+};
+use surgeist_css::values::effects::{
+    CssDropShadow, CssFilter, CssFilterAmount, CssFilterBlur, CssFilterFunction,
+    CssFilterFunctionList, CssFilterHueRotate, CssFilterImage, CssFilterImageInput,
+    CssFilterImageInputRef, CssFilterImageString,
+};
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop, CssImage,
+    CssImageValue, CssLightDarkImage, CssLinearGradient, CssRadialGradient,
+};
+use surgeist_css::values::shape::CssShapeOutside;
 
 fn list(text: &str) -> CssFilterFunctionList {
     let source = declaration(CssKnownProperty::Filter, text);

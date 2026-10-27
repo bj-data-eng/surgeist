@@ -1,9 +1,12 @@
 //! Authored range orientation, exact operands and provenance are public contracts.
-use surgeist_css::{
-    CssCalculationExpressionRef, CssConditionKind, CssMediaFeatureQuery, CssMediaGridRef,
-    CssMediaLeaf, CssMediaQuery, CssMediaQueryList, CssMediaRangeRef, CssMediaResolutionRef,
-    CssParser, CssQueryComparison, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::numeric::CssCalculationExpressionRef;
+use surgeist_css::query::media::{
+    CssMediaFeatureQuery, CssMediaGridRef, CssMediaLeaf, CssMediaQuery, CssMediaQueryList,
+    CssMediaRangeRef, CssMediaResolutionRef,
 };
+use surgeist_css::query::{CssConditionKind, CssQueryComparison};
 
 fn feature(source: &str) -> CssMediaFeatureQuery {
     let report = CssMediaQuery::parse(&CssParser::default(), source);

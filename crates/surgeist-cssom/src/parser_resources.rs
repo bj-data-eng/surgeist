@@ -1,6 +1,8 @@
 //! Publication admission policy for native recovered parser resource failures.
 use crate::{CssomError, CssomLimits};
-use surgeist_css::{CssParseSource, CssParserContext, CssRecoveryDiagnostic};
+use surgeist_css::CssParserContext;
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::source::CssParseSource;
 
 pub(crate) fn check_parsed_source(
     source: Option<&CssParseSource>,
@@ -39,9 +41,9 @@ pub(crate) fn check_resource_diagnostics(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use surgeist_css::{
-        CssComponentValueError, CssComponentValueLimits, CssErrorCode, CssParser, CssParserContext,
-    };
+    use surgeist_css::component::{CssComponentValueError, CssComponentValueLimits};
+    use surgeist_css::diagnostic::CssErrorCode;
+    use surgeist_css::{CssParser, CssParserContext};
 
     #[test]
     fn native_component_diagnostics_return_the_first_original_resource() {

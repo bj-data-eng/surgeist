@@ -5,7 +5,10 @@
 //! token, whereas as_str returns its decoded identity.
 
 use std::collections::HashSet;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssCustomPropertyName, CssDeclaration, CssImportance};
+use surgeist_css::property::{CssPropertyNameRef, CssPropertyTarget};
 
 fn name_region(declaration: &CssDeclaration, source: &str, start: usize, end: usize) {
     let origin = declaration.parsed_name().unwrap();

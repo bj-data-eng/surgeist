@@ -1,7 +1,9 @@
-use surgeist_css::{
-    CssBlendMode, CssBoxEdgeKeyword, CssErrorCode, CssKnownProperty, CssParser, CssPropertyNameRef,
-    CssRecoveryAction, CssRule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::background::CssBlendMode;
+use surgeist_css::values::common::CssBoxEdgeKeyword;
 
 #[derive(Clone, Copy)]
 struct InvalidDeclaration {
@@ -164,7 +166,7 @@ const RESIDUAL_INVALID_DECLARATIONS: &[InvalidDeclaration] = &[
     },
 ];
 
-fn property_names(declarations: &surgeist_css::CssDeclarationList) -> Vec<&str> {
+fn property_names(declarations: &surgeist_css::declaration::CssDeclarationList) -> Vec<&str> {
     declarations
         .iter()
         .map(|declaration| match declaration.property_name() {

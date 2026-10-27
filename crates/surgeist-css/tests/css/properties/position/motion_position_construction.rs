@@ -2,7 +2,18 @@
 //! immutable published parser RED covers preimplementation regression behavior;
 //! these typed calls first become expressible with the full owning payload.
 use crate::css::support::serialization_limits::assert_node_limits as budget;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValue, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssLengthPercentage, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::values::position::{
+    CssBlockPosition, CssCartesianPosition, CssHorizontalPosition, CssInlinePosition, CssPosition,
+    CssPositionRef, CssRelativeAxisPosition, CssVerticalPosition,
+};
+use surgeist_css::values::transform::{
+    CssCoordBox, CssOffset, CssOffsetAnchor, CssOffsetPath, CssOffsetPathKind, CssOffsetPathValue,
+    CssOffsetPosition, CssRay, CssRaySize,
+};
 
 fn scalar(text: &str) -> CssNumeric<CssLengthPercentage> {
     CssNumeric::<CssLengthPercentage>::try_from_component(

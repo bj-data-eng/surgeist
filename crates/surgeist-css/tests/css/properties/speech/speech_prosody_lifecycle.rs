@@ -11,7 +11,16 @@ use crate::css::support::named_property::longhand_contributions as expanded;
 use crate::css::support::{
     important_speech_declaration as declaration, known_property as property,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
 const PROPERTIES: [&str; 4] = ["voice-duration", "voice-pitch", "voice-range", "voice-rate"];
 
 fn assert_admitted(name: &str, value: &str) {

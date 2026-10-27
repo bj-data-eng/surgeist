@@ -7,7 +7,16 @@
 //! omission, selector/child order and declaration runs are authored contracts.
 
 use crate::css::support::rules::clean_sheet as sheet;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::{CssRule, CssScopeNestingContext, CssScopeRule, CssSheet};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorList, CssScopeSelectorList, CssSelector,
+    CssStyleSelector,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn scope(source: &str) -> CssScopeRule {
     let input = sheet(source);

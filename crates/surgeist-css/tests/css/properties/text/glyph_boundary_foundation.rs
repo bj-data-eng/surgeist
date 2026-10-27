@@ -3,7 +3,18 @@
 //! applicability remain unresolved under CSSWG issue 8032.
 
 use crate::css::support::selected_grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownDeclaredValueRef,
+    CssKnownProperty, CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandValueRef,
+    CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::text::CssTextOrientation;
 
 const ALIAS: &str = "glyph-orientation-vertical";
 const TARGET: CssKnownProperty = CssKnownProperty::TextOrientation;

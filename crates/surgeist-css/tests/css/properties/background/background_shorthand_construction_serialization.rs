@@ -3,7 +3,23 @@
 //! background-shorthand-serialization.html; Backgrounds 4 text/border-area excluded.
 
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::background::{
+    CssBackground, CssBackgroundAttachment, CssBackgroundBox, CssBackgroundLayer,
+    CssBackgroundLayerBoxes, CssBackgroundPosition, CssBackgroundRepeat, CssBackgroundRepeatStyle,
+    CssBackgroundSize, CssBlendMode,
+};
+use surgeist_css::values::image::CssImageValue;
+use surgeist_css::values::position::{CssHorizontalPosition, CssVerticalPosition};
 
 fn background(text: &str) -> CssBackground {
     let report = CssParser::default().parse_block_contents(format!("background: {text}"));

@@ -3,7 +3,8 @@ use std::{
     cell::Cell,
     sync::atomic::{AtomicBool, Ordering},
 };
-use surgeist_css::*;
+use surgeist_css::CssParserContext;
+use surgeist_css::property::CssPropertyGrammar;
 use surgeist_cssom::*;
 use surgeist_dom::*;
 fn cancel() -> AtomicBool {

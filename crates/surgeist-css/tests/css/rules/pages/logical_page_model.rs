@@ -3,7 +3,12 @@
 //! CSS2 §13.2.2 orders unqualified pages below side pages below first pages.
 
 use crate::css::support::rules::page_pseudo;
-use surgeist_css::*;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::page::{CssPagePseudo, CssPageSpecificity};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 #[test]
 fn parsed_page_classifications_retain_their_symbolic_identity_in_each_mode() {
@@ -181,7 +186,7 @@ fn normalization_preserves_typed_page_classification_and_specificity_inside_grou
     );
 }
 
-fn page_specificity(page: &surgeist_css::CssPageRule) -> CssPageSpecificity {
+fn page_specificity(page: &surgeist_css::rule::page::CssPageRule) -> CssPageSpecificity {
     page.selectors()
         .selectors()
         .first()

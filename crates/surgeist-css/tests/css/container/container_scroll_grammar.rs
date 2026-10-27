@@ -6,7 +6,11 @@
 //! interpretation of these sources, not a separate scroll-specific production.
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#size-container
 //! https://www.w3.org/TR/2022/CR-css-variables-1-20220616/#using-variables
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::query::container::CssContainerLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::CssRule;
 
 fn assert_query(source: &str, recognized: bool) {
     let checked = CssCondition::<CssContainerLeaf>::try_from_components(

@@ -7,7 +7,21 @@ use crate::css::support::named_property::{
     assert_checked_value_rejected_at, assert_invalid_replacement_at,
 };
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty, CssLonghandValue,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::values::font::{
+    CssFontKerning, CssFontOpticalSizing, CssFontSizeAdjust, CssFontStyle, CssFontStyleKeyword,
+    CssFontVariantCaps, CssFontWidth, CssFontWidthKeyword,
+};
+use surgeist_css::values::text::CssLineHeight;
 
 const SETTABLE: [&str; 7] = [
     "font-family",

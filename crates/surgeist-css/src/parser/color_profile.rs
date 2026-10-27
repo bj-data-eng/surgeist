@@ -6,19 +6,22 @@ use cssparser::{
 
 use super::parse_descriptor_boundary;
 use super::recovery::RecoveryState;
-use crate::color_profile::CssColorProfileDescriptorData;
-use crate::error::{
-    CssError, CssFeatureId, basic, descriptor_name_error, from_parse_error,
-    invalid_component_value, invalid_syntax, with_at_rule_prelude_context, with_descriptor_context,
+use crate::color::{CssColorProfileComponentName, CssColorProfileName};
+use crate::component::{CssComponentValues, CssSerializedValue};
+use crate::declaration::{CssAuthoredDeclarationValue, CssSubstitutionDependentValue};
+use crate::diagnostic::CssRecoveryDiagnostic;
+use crate::diagnostic::error::{
+    basic, descriptor_name_error, from_parse_error, invalid_component_value, invalid_syntax,
+    with_at_rule_prelude_context, with_descriptor_context,
 };
-use crate::numeric::NumericInputContext;
-use crate::{
-    CssAuthoredDeclarationValue, CssColorProfileComponentName, CssColorProfileDescriptor,
-    CssColorProfileDescriptorKind, CssColorProfileDescriptorValue, CssColorProfileName,
+use crate::diagnostic::{CssError, CssFeatureId};
+use crate::numeric::expression::NumericInputContext;
+use crate::rule::color_profile::rule::CssColorProfileDescriptorData;
+use crate::rule::color_profile::{
+    CssColorProfileDescriptor, CssColorProfileDescriptorKind, CssColorProfileDescriptorValue,
     CssColorProfileRenderingIntent, CssColorProfileRule, CssColorProfileRuleName,
-    CssComponentValues, CssRecoveryDiagnostic, CssSerializedValue, CssSourcePosition,
-    CssSubstitutionDependentValue,
 };
+use crate::source::CssSourcePosition;
 
 pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
     &[CssFeatureId::new("interop.rule.color-profile")];
@@ -193,7 +196,11 @@ pub(crate) fn construct_descriptor_value(
     result.map_err(|error| {
         from_parse_error(
             serialized.as_css(),
-            crate::error::with_descriptor_value_context(error, "color-profile", kind.as_str()),
+            crate::diagnostic::error::with_descriptor_value_context(
+                error,
+                "color-profile",
+                kind.as_str(),
+            ),
         )
     })
 }

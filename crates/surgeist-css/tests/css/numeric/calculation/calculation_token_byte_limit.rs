@@ -3,7 +3,9 @@
 //! less refuses with a byte-limit failure at the calculation's origin.
 
 use crate::css::support::byte_limits;
-use surgeist_css::{CssCalculation, CssComponentValues, CssLength, CssParser};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{CssCalculation, CssLength};
 
 #[test]
 fn calculation_tokens_refuse_one_byte_below_their_serialized_length() {

@@ -4,7 +4,24 @@ use crate::css::support::failure_classes::SerializationFailure as K;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::sole_declaration as declaration;
 use CssSerializationLimits as L;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{CssLength, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::effects::CssShadow;
+use surgeist_css::values::text::{
+    CssTextDecoration, CssTextDecorationErrorLine, CssTextDecorationLine,
+    CssTextDecorationLineComponent, CssTextDecorationStyle, CssTextDecorationThickness,
+    CssTextEmphasis, CssTextEmphasisFill, CssTextEmphasisMark, CssTextEmphasisPosition,
+    CssTextEmphasisShape, CssTextEmphasisString, CssTextEmphasisStyle, CssTextEmphasisVertical,
+    CssTextShadow, CssTextShadowLayer, CssTextShadowList, CssTextSide, CssTextUnderlineOffset,
+    CssTextUnderlineOffsetLength, CssTextUnderlinePosition, CssUnderlinePosition,
+    CssUnderlinePositionVertical,
+};
 
 fn length(text: &str) -> CssNumeric<CssLength> {
     CssNumeric::<CssLength>::try_from_component(CssComponentValue::try_token(text).unwrap())

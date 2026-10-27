@@ -1,10 +1,12 @@
 //! Computed ink coordinates and the selected #822 colorimetric branch.
 
-use super::Color;
 use super::channels::{self, Component, Domain, Error as ChannelError};
-use super::facts::{CssColorFactIdentity, CssColorFacts, CssDeviceColorFact};
 use super::keywords::ColorFunction as F;
-use crate::{ColorSpace as Space, CssColorSyntax, PredefinedColorSpace};
+use crate::color::CssColorSyntax;
+use crate::color::{CssColorFactIdentity, CssColorFacts, CssDeviceColorFact};
+use surgeist_color::Color;
+use surgeist_color::ColorSpace as Space;
+use surgeist_color::PredefinedColorSpace;
 use surgeist_color::{Finite, UnitInterval};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -79,7 +81,7 @@ pub(crate) struct DeviceResult {
     pub(crate) value: Color,
     pub(crate) facts: CssColorFactIdentity,
     pub(crate) resource: Option<CssColorFactIdentity>,
-    pub(crate) intent: Option<crate::CssColorProfileRenderingIntent>,
+    pub(crate) intent: Option<crate::rule::color_profile::CssColorProfileRenderingIntent>,
     pub(crate) computed: ComputedCmyk,
 }
 pub(crate) struct DeviceResolution<'facts> {
@@ -210,10 +212,10 @@ impl<'facts> DeviceResolution<'facts> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::facts::{
+    use super::*;
+    use crate::color::{
         CssColorProfileConversionRecord, CssColorPropertyFacts, CssColorSchemeFact,
     };
-    use super::*;
     fn facts(device: CssDeviceColorFact<'_>) -> CssColorFacts<'_> {
         CssColorFacts::new(
             CssColorFactIdentity::new(1, 2),
@@ -308,7 +310,7 @@ mod tests {
         let record = CssColorProfileConversionRecord::new(
             profile,
             &input,
-            crate::CssColorProfileRenderingIntent::RelativeColorimetric,
+            crate::rule::color_profile::CssColorProfileRenderingIntent::RelativeColorimetric,
             Space::Lab,
             lab,
         );

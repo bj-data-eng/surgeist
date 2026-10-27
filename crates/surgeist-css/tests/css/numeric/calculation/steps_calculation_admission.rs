@@ -3,10 +3,10 @@
 //! Genuine math remains symbolic; these assertions never evaluate a function.
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#step-easing-functions
 
-use surgeist_css::{
-    CssCalculation, CssComponentValues, CssInteger, CssNumeric, CssParser, CssPositive,
-    CssStepPosition, CssSteps,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{CssCalculation, CssInteger, CssNumeric, CssPositive};
+use surgeist_css::values::animation::{CssStepPosition, CssSteps};
 
 fn admitted(root: &str, position: Option<CssStepPosition>) -> bool {
     let calculation = CssCalculation::<CssInteger>::try_from_components(

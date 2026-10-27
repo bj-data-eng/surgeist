@@ -1,7 +1,9 @@
 //! Grid line indices compare integer values, ignoring token spelling and
 //! diagnostic origins, as specified by `CssGridLineIndex`'s contract.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::layout::CssGridLine;
 
 fn line(source: &str) -> CssGridLine {
     let report = CssParser::default().parse_block_contents(source);

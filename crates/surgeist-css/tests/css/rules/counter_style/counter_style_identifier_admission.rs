@@ -9,11 +9,16 @@ use crate::css::support::rules::origin_text;
 use crate::css::support::rules::sole_counter_style as parsed_counter;
 use descriptor_phases::*;
 
-use surgeist_css::{
-    CssComponentValueRef, CssCounterStyleName, CssCounterStyleSpeakAs, CssCounterStyleSystem,
-    CssCounterStyleValue, CssCounterSymbol, CssCounterSymbolIdent, CssKnownPropertyValueRef,
-    CssListStyleTypeValue, CssParser, CssRecoveryAction, CssRule, CssValueOrigin, CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleName, CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
+    CssCounterSymbolIdent,
 };
+use surgeist_css::values::content::{CssCounterStyleValue, CssListStyleTypeValue};
 
 // Independent fixture transcribed from the selected Counter Styles 3 §6 and §7
 // definitions, including aliases and the algorithm-defined Chinese/Ethiopic

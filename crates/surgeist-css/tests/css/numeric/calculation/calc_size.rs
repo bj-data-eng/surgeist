@@ -1,8 +1,8 @@
-use surgeist_css::{
-    CssCalcSize, CssCalcSizeBasisRef, CssCalculation, CssCalculationExpressionRef,
-    CssComponentValueLimits, CssComponentValues, CssIntrinsicSizeKeyword, CssLengthPercentage,
-    CssParser, CssSerializationLimits,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues};
+use surgeist_css::numeric::{CssCalculation, CssCalculationExpressionRef, CssLengthPercentage};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssCalcSize, CssCalcSizeBasisRef, CssIntrinsicSizeKeyword};
 
 fn checked(text: &str) -> CssCalcSize {
     let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();
@@ -235,7 +235,7 @@ fn calc_size_equality_ignores_origins_but_keeps_exact_checked_structure() {
         .find(|component| {
             matches!(
                 component.view(),
-                surgeist_css::CssComponentValueRef::Function(_)
+                surgeist_css::component::CssComponentValueRef::Function(_)
             )
         })
         .unwrap()

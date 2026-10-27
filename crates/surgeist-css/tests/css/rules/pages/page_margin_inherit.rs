@@ -3,7 +3,22 @@
 use crate::css::support::rules::assert_clean_and_valid as clean;
 use crate::css::support::rules::assert_origin_bytes as span;
 use crate::css::support::rules::page_pseudo;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
+use surgeist_css::declaration::{
+    CssDeclaration, CssDeclarationList, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownDeclaredValueRef,
+    CssKnownProperty,
+};
+use surgeist_css::rule::page::{CssPageBody, CssPagePseudo};
+use surgeist_css::rule::{
+    CssBlockContext, CssBlockFragment, CssRule, CssRuleList, CssStyleAncestor,
+};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::{CssParseReport, CssParser, CssParserContext, CssParserMode};
 
 fn recovered<T: Clone>(report: &CssParseReport<T>) {
     assert!(!report.is_clean());

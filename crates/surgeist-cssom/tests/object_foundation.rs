@@ -365,7 +365,7 @@ fn collection_and_sheet_shells_check_existing_identity_and_share_captures() {
 
 #[test]
 fn css_namespace_forwards_native_unicode_replacement_and_typed_limits() {
-    use surgeist_css::{CssSerializationLimits, serialize_css_identifier};
+    use surgeist_css::serialization::{CssSerializationLimits, serialize_css_identifier};
     let defaults = CssSerializationLimits::default();
     assert_eq!(css::escape("0a\0é", defaults).unwrap(), "\\30 a�é");
     assert_eq!(css::escape("", defaults).unwrap(), "");

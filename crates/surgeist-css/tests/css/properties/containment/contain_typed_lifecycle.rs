@@ -7,7 +7,21 @@
 use crate::css::support::property_admission::assert_implicit_closure;
 use crate::css::support::serialization_limits::LimitLadder;
 use CssContainComponent::{Layout, Paint, Size, Style};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{
+    CssContain, CssContainComponent, CssContainComponentList, CssContentVisibility,
+};
 
 const ROLES: [(CssContainComponent, &str); 4] = [
     (Size, "size"),

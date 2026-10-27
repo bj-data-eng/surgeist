@@ -9,7 +9,19 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::sole_declaration as parsed;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValue, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculationExpressionRef, CssCalculationSumOperator, CssCalculationType,
+    CssCalculationValueRef, CssLength, CssNumeric,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssAutoOr;
+use surgeist_css::values::effects::{CssClip, CssClipRect};
 
 fn edge(value: CssNumeric<CssLength>) -> CssAutoOr<CssNumeric<CssLength>> {
     CssAutoOr::Value(value)
@@ -361,18 +373,21 @@ fn symbolic_math_edges_obey_one_shared_rectangle_byte_budget() {
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }
-fn signed_length(css: &str) -> surgeist_css::CssNumeric<surgeist_css::CssLength> {
-    let components =
-        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
+fn signed_length(css: &str) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLength> {
+    let components = surgeist_css::component::CssComponentValues::parse(
+        &surgeist_css::CssParser::default(),
+        css,
+    )
+    .unwrap();
     if css.contains('(') {
-        surgeist_css::CssNumeric::<surgeist_css::CssLength>::try_from_calculation(
-            surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLength>::try_from_calculation(
+            surgeist_css::numeric::CssCalculation::<surgeist_css::numeric::CssLength>::try_from_components(
                 components,
                 Default::default(),
             )
@@ -380,18 +395,22 @@ fn signed_length(css: &str) -> surgeist_css::CssNumeric<surgeist_css::CssLength>
         )
         .unwrap()
     } else {
-        surgeist_css::CssNumeric::<surgeist_css::CssLength>::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLength>::try_from_component(
+            surgeist_css::component::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
     }
 }
 
-fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
-    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
-    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+fn exact_literal(
+    component: Option<&surgeist_css::component::CssComponentValue>,
+    css: &str,
+) -> bool {
+    use surgeist_css::component::CssComponentValueRef as Component;
+    use surgeist_css::component::CssValueTokenRef as Token;
+    let expected = surgeist_css::component::CssComponentValue::try_token(css).unwrap();
     match (
-        component.map(surgeist_css::CssComponentValue::view),
+        component.map(surgeist_css::component::CssComponentValue::view),
         expected.view(),
     ) {
         (

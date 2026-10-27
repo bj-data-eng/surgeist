@@ -6,7 +6,23 @@
 use std::fmt::Debug;
 use std::ops::Range;
 
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssDeclarationList, CssImportance};
+use surgeist_css::diagnostic::{CssError, CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::normalize::{CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet};
+use surgeist_css::property::{
+    CssKnownProperty, CssPropertyGrammar, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyValueError,
+};
+use surgeist_css::query::container::{
+    CssContainerLeaf, CssContainerName, CssContainerNameList, CssContainerNames,
+};
+use surgeist_css::query::supports::{CssSupportsDeclaration, CssSupportsLeaf};
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssBlockFragment, CssImportRule, CssSheet};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::source::{CssParsedOrigin, CssSourcePosition, CssSourceSpan};
+use surgeist_css::{CssParseReport, CssParser, CssValidationFailure};
 
 /// The parsed origin of an authored occurrence.
 #[track_caller]

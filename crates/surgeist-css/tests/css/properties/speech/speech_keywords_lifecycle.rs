@@ -5,7 +5,17 @@
 
 use crate::css::support::important_speech_declaration as declaration;
 use crate::css::support::known_property as property;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
 
 fn assert_ordinary_admission(name: &str, value: &str) {
     let parsed = declaration(name, value);

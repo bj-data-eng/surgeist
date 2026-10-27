@@ -6,13 +6,19 @@ use crate::css::support::authored_syntax::{
 };
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::{
-    CssBlockKind, CssCalculationExpressionRef, CssComponentValue, CssComponentValueLimits,
-    CssComponentValueRef, CssComponentValues, CssCondition, CssConditionKind, CssGlobalKeyword,
-    CssImportance, CssKnownPropertyValueRef, CssNamespaceConstraint, CssNamespaceContext,
-    CssOpacityValue, CssParser, CssRule, CssSelector, CssSerializedOrigin, CssSupportsDeclaration,
-    CssSupportsLeaf, CssValueOrigin, CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValueRef,
+    CssComponentValues, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::numeric::CssCalculationExpressionRef;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::query::supports::{CssSupportsDeclaration, CssSupportsLeaf};
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssNamespaceConstraint, CssNamespaceContext, CssSelector};
+use surgeist_css::values::effects::CssOpacityValue;
 
 #[test]
 fn programmatic_width_keeps_exact_spelling_and_has_no_source_coordinates() {
@@ -41,8 +47,9 @@ fn programmatic_width_keeps_exact_spelling_and_has_no_source_coordinates() {
     else {
         panic!("typed width")
     };
-    let surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize::LengthPercentage(length)) =
-        width.value()
+    let surgeist_css::values::box_model::CssSizeValue::BoxSize(
+        surgeist_css::values::box_model::CssBoxSize::LengthPercentage(length),
+    ) = width.value()
     else {
         panic!("typed literal width")
     };
@@ -624,7 +631,7 @@ fn declaration_limits_count_original_components_and_exact_lexical_output() {
 
 #[test]
 fn parsed_eof_recovery_keeps_the_known_numeric_view_that_checked_construction_rejects() {
-    use surgeist_css::CssRecoveryAction;
+    use surgeist_css::diagnostic::CssRecoveryAction;
     // Ordinary parsing retains EOF closure and uses recovered-syntax numeric
     // admission, as it does for an ordinary declaration's calc(1px at EOF.
     // Import's bare supports declaration is retained without a rule block;
@@ -649,8 +656,9 @@ fn parsed_eof_recovery_keeps_the_known_numeric_view_that_checked_construction_re
     else {
         panic!("known width remains available")
     };
-    let surgeist_css::CssSizeValue::BoxSize(surgeist_css::CssBoxSize::LengthPercentage(length)) =
-        width.value()
+    let surgeist_css::values::box_model::CssSizeValue::BoxSize(
+        surgeist_css::values::box_model::CssBoxSize::LengthPercentage(length),
+    ) = width.value()
     else {
         panic!("exact recovered calculation")
     };
@@ -703,7 +711,7 @@ fn parsed_eof_recovery_keeps_the_known_numeric_view_that_checked_construction_re
 
 #[test]
 fn authored_legacy_property_alias_keeps_its_own_grammar_in_parsed_and_constructed_supports() {
-    use surgeist_css::{CssKnownProperty, CssPropertyGrammar};
+    use surgeist_css::property::{CssKnownProperty, CssPropertyGrammar};
     // The legacy angle grammar maps to TextOrientation while retaining its
     // alias grammar identity; 0deg is not the canonical property's grammar.
     let grammar = CssPropertyGrammar::from_name("glyph-orientation-vertical").unwrap();

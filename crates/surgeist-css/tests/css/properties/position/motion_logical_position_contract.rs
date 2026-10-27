@@ -7,7 +7,30 @@
 use crate::css::support::authored_declaration_through_front as declaration;
 use crate::css::support::known_property as property;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::CssAngleUnit;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::effects::CssClipPath;
+use surgeist_css::values::position::{
+    CssBlockPosition, CssCartesianPosition, CssHorizontalPosition, CssInlinePosition, CssPosition,
+    CssPositionRef, CssRelativeAxisPosition, CssVerticalPosition,
+};
+use surgeist_css::values::shape::CssBasicShape;
+use surgeist_css::values::transform::{
+    CssOffset, CssOffsetAnchor, CssOffsetPath, CssOffsetPathKind, CssOffsetPathRef,
+    CssOffsetPosition, CssRay, CssRaySize,
+};
 
 const LONGHANDS: [&str; 5] = [
     "offset-position",

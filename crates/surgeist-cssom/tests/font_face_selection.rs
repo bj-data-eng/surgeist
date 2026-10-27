@@ -1,5 +1,5 @@
 //! Public resource admission for the new owning current FontFace selection.
-use surgeist_css::*;
+use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::*;
 
 #[test]

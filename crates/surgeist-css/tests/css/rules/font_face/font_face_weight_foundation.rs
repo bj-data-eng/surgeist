@@ -2,7 +2,12 @@
 //! (2026-09-07) §4.4. Typed endpoint contracts follow with the model.
 
 use crate::css::support::rules::invalid_descriptor;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind,
+};
 
 type Kind = CssFontFaceDescriptorKind;
 

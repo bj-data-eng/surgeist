@@ -14,7 +14,7 @@
 //! grammar's canonical order (`span`, integer, name).
 
 use crate::css::support::authored_property::{ParserFront, invalid};
-use surgeist_css::*;
+use surgeist_css::property::CssKnownProperty;
 
 const LONGHANDS: [&str; 4] = [
     "grid-row-start",

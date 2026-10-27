@@ -2,8 +2,16 @@
 //! MQ5 WD 2026-02-19 §11: authored MediaList versus true/false, no evaluation.
 //! Color5 WD 2026-09-08 §12.1: serialize associated names/descriptors;
 //! absent descriptors return empty, independently of unavailable whole formats.
-use surgeist_css::*;
-use surgeist_css::{CssColorProfileRule, CssCustomMediaRule, CssRule};
+use surgeist_css::color::CssColorProfileName;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::query::media::{CssCustomMediaBody, CssCustomMediaName};
+use surgeist_css::rule::CssSheet;
+use surgeist_css::rule::color_profile::CssColorProfileRule;
+use surgeist_css::rule::color_profile::{CssColorProfileDescriptorKind, CssColorProfileRuleName};
+use surgeist_css::rule::{CssCustomMediaRule, CssRule};
+use surgeist_css::serialization::{
+    CssRuleCssomFormat, CssSerializationError, CssSerializationLimits,
+};
 use surgeist_cssom::*;
 
 fn limits() -> CssSerializationLimits {

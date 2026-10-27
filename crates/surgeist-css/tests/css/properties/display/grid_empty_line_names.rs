@@ -2,9 +2,13 @@
 //! https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#typedef-line-names
 //! Empty groups are authored components, not absent components or empty tracks.
 
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::common::CssIdent;
+use surgeist_css::values::layout::{
     CssGridAutoTrackComponent, CssGridGeneralTrackComponent, CssGridLineName, CssGridLineNames,
-    CssGridTrackRepeatComponent, CssIdent, CssImportance, CssKnownPropertyValueRef, CssParser,
+    CssGridTrackRepeatComponent,
 };
 
 #[test]

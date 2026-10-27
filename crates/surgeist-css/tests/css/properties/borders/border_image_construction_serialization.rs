@@ -3,7 +3,26 @@
 //! immutable, branch-preserving checked construction are Surgeist contracts.
 
 use crate::css::support::serialization_limits::assert_limits as exact_limits;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssLength, CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric,
+    CssPercentage,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::border::{
+    CssBorderImage, CssBorderImageOutset, CssBorderImageOutsetComponent, CssBorderImageRepeat,
+    CssBorderImageRepeatKeyword, CssBorderImageSlice, CssBorderImageSliceComponent,
+    CssBorderImageWidth, CssBorderImageWidthComponent,
+};
+use surgeist_css::values::image::CssImageValue;
 
 type Limits = CssSerializationLimits;
 

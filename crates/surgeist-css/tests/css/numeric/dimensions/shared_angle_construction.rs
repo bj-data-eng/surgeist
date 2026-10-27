@@ -8,7 +8,25 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_calculation_rejected;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssAngleUnit, CssCalculation, CssCalculationType, CssNumber,
+    CssNumeric, CssNumericLiteral, CssZeroLiteral,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::effects::{CssFilter, CssFilterFunction, CssFilterHueRotate};
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop, CssImageOrientation,
+    CssImageValue, CssImageValueList, CssLinearGradient, CssLinearGradientDirection,
+};
+use surgeist_css::values::transform::{
+    CssTransform, CssTransformFunction, CssTransformFunctionKind, CssTransformRotate3d,
+    CssTransformSkew,
+};
 
 fn zero_angle() -> CssAngleOrZero {
     CssAngleOrZero::Zero(

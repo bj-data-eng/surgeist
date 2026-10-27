@@ -4,10 +4,12 @@
 //! 2024-08-15 requires preservation of specified logical and future-token structure.
 
 use crate::css::support::{graph_cssom, graph_specified};
-use surgeist_css::{
-    CssGroupPreludeRef as Prelude, CssParser, CssRule, CssRuleCssomFormat,
-    CssRuleGraphInput as View, CssSpecifiedDeclarationBlock as Block,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock as Block;
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::CssGroupPreludeRef as Prelude;
+use surgeist_css::serialization::CssRuleCssomFormat;
+use surgeist_css::serialization::CssRuleGraphInput as View;
 
 #[test]
 fn empty_parsed_supports_has_exactly_one_closing_line_feed() {

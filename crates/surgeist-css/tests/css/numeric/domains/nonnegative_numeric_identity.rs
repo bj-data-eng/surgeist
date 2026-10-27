@@ -3,7 +3,15 @@
 //! authored structure, order and omission stay distinct. Symbolic math is not
 //! evaluated. Parsing, public aggregate getters, and PartialEq express this.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::numeric::{CssCalculation, CssNonNegative, CssNumber, CssNumeric, CssPercentage};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::animation::{CssAnimationIterationCountList, CssAnimationList};
+use surgeist_css::values::border::{
+    CssBorderImage, CssBorderImageOutset, CssBorderImageSlice, CssBorderImageWidth,
+};
+use surgeist_css::values::effects::CssFilter;
 
 macro_rules! aggregate_parser {
     ($name:ident, $ty:ty, $variant:ident, $getter:ident) => {

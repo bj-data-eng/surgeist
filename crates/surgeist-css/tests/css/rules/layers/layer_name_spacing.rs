@@ -1,5 +1,8 @@
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::{CssErrorCode, CssNamespaceContext, CssParser, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssNamespaceContext;
 
 // Cascade 5 (13 January 2022), section 6.4.2 expressly forbids intervening
 // whitespace in dotted layer names. Boundary whitespace and comments differ.

@@ -1,7 +1,15 @@
 //! Positioning, visibility and Box Alignment 3 keyword families keep their
 //! authored values and reject family leakage.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::box_model::{
+    CssClear, CssContentVisibility, CssFloat, CssLayoutPosition, CssVisibility,
+};
+use surgeist_css::values::layout::{
+    CssAlignmentPosition, CssAlignmentValue, CssBaselinePosition, CssOverflowPosition,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;

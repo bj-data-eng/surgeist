@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 use std::sync::atomic::AtomicBool;
-use surgeist_css::CssCustomIdent;
+use surgeist_css::values::common::CssCustomIdent;
+use surgeist_css::values::view_transition::CssViewTransitionIdent;
 use surgeist_cssom::*;
 use surgeist_dom::*;
 

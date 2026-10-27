@@ -4,7 +4,39 @@
 //! retained graph that external callers cannot reach; behavior reachable
 //! through the public API is tested in `tests/css`.
 
-use super::*;
+use crate::declaration::{
+    CssAuthoredDeclarationValue, CssCustomPropertyName, CssCustomPropertyValue, CssDeclaration,
+    CssDeclarationList, CssSubstitutionDependentValue, CssVariableFallback, CssVariableReference,
+};
+use crate::query::container::{CssContainerName, CssContainerPrelude};
+use crate::query::media::CssMediaQueryList;
+use crate::rule::font_face::{
+    CssFontDisplay, CssFontFaceDescriptor, CssFontFaceDescriptorValue, CssFontFaceDescriptors,
+    CssFontFaceFamily, CssFontFaceRule, CssFontFaceSource, CssFontFaceSourceList,
+    CssFontFaceUrlSource,
+};
+use crate::rule::keyframes::{
+    CssKeyframeBlock, CssKeyframeDeclarationList, CssKeyframePercent, CssKeyframeSelector,
+    CssKeyframeSelectorList, CssKeyframesIdent, CssKeyframesName, CssKeyframesRule,
+    CssKeyframesString,
+};
+use crate::rule::{
+    CssContainerRule, CssLayerBlockRule, CssLayerName, CssLayerNameList, CssLayerStatementRule,
+    CssMediaRule, CssRule, CssScopeNestingContext, CssScopeRule, CssStyleRule,
+};
+use crate::selector::{
+    CssComplexSelector, CssComplexSelectorPart, CssCompoundSelector, CssCompoundSelectorArgument,
+    CssNamespaceContext, CssNthChildPattern, CssNthPattern, CssPartName, CssPartNameList,
+    CssPseudoClass, CssPseudoElement, CssPseudoElementSegment, CssPseudoElementSequence,
+    CssPseudoSelectorList, CssPseudoSelectorListItem, CssRelativeSelector, CssScopeSelectorList,
+    CssSelector, CssSelectorCombinator, CssStyleSelector, CssStyleSelectorList,
+};
+use crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind;
+use crate::source::CssSourcePosition;
+#[cfg(test)]
+use crate::test_support::CssParseReportTestExt;
+use crate::values::common::CssCustomIdent;
+use crate::values::font::{CssFontFaceStyle, CssFontStyleKeyword};
 
 fn source_position(line: u32, column: u32) -> CssSourcePosition {
     let source = format!(
@@ -49,7 +81,7 @@ fn parse_single_declaration(property_name: &str, authored_value: &str) -> CssDec
 fn container_rule_accessors_expose_authored_structure() {
     let name = CssContainerName::try_new("sidebar").unwrap();
     let prelude = CssContainerPrelude::try_from_components(
-        crate::component_values::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
+        crate::component::values::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -328,7 +360,7 @@ fn group_rules_inside_a_scope_body_are_ordinary_rules() {
     ));
     let children = vec![child.clone()];
     let query = CssMediaQueryList::new(vec![
-        crate::CssMediaQuery::parse(&crate::CssParser::default(), "screen")
+        crate::query::media::CssMediaQuery::parse(&crate::CssParser::default(), "screen")
             .into_validation_result()
             .unwrap(),
     ]);
@@ -338,7 +370,7 @@ fn group_rules_inside_a_scope_body_are_ordinary_rules() {
     assert_eq!(media.position(), Some(location));
 
     let prelude = CssContainerPrelude::try_from_components(
-        crate::component_values::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
+        crate::component::values::parse_component_values("sidebar (inline-size > 30rem)").unwrap(),
         Default::default(),
     )
     .unwrap();
@@ -404,7 +436,7 @@ fn font_face_rule_accessors_expose_authored_structure() {
             CssFontFaceDescriptorValue::Src(
                 CssFontFaceSourceList::try_new(vec![CssFontFaceSource::Url(
                     CssFontFaceUrlSource::new(
-                        crate::CssUrl::new("fonts/avenir.woff2"),
+                        crate::values::common::CssUrl::new("fonts/avenir.woff2"),
                         None,
                         Vec::new(),
                     ),
@@ -577,7 +609,7 @@ mod selector_list_admission_defenses {
     use super::*;
 
     fn parsed(source: &str) -> CssSelector {
-        let report = crate::CssSelector::parse(
+        let report = crate::selector::CssSelector::parse(
             &crate::CssParser::default(),
             source,
             &CssNamespaceContext::default(),

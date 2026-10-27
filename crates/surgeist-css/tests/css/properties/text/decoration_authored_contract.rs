@@ -11,7 +11,21 @@ use crate::css::support::{
     check_named_components as checked_components, detached_checked_declaration as checked,
     known_property as property,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssLonghandContributions, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTextTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 const COLOR_GOLDENS: &[(&str, &str)] = &[
     ("red", "red"),

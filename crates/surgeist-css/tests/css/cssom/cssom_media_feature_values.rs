@@ -7,12 +7,16 @@ use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::value_assertions::assert_parsed_span as parsed_span;
 use crate::css::support::value_assertions::clean_media_query as query;
 use crate::css::support::value_assertions::media_resource_kind as resource_kind;
-use surgeist_css::{
-    CssCalculationExpressionRef, CssConditionKind, CssMediaFeatureQuery, CssMediaGridRef,
-    CssMediaLeaf, CssMediaQuery, CssMediaQueryList, CssMediaRangeRef, CssMediaResolutionRef,
-    CssParser, CssQueryComparison, CssRecoveryAction, CssSerializationLimits as Limits,
-    CssSerializedOrigin, CssUnknownMediaFeatureReason, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::CssCalculationExpressionRef;
+use surgeist_css::query::media::{
+    CssMediaFeatureQuery, CssMediaGridRef, CssMediaLeaf, CssMediaQuery, CssMediaQueryList,
+    CssMediaRangeRef, CssMediaResolutionRef, CssUnknownMediaFeatureReason,
 };
+use surgeist_css::query::{CssConditionKind, CssQueryComparison};
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 fn feature(query: &CssMediaQuery) -> &CssMediaFeatureQuery {
     let CssMediaQuery::Condition(condition) = query else {

@@ -1,6 +1,10 @@
-use surgeist_css::{
-    CssErrorCode, CssKeyframeSelector, CssParser, CssPropertyNameRef, CssPseudoClass,
-    CssPseudoElement, CssPseudoElementSegment, CssRecoveryAction, CssRule, CssSelector,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::CssKeyframeSelector;
+use surgeist_css::selector::{
+    CssPseudoClass, CssPseudoElement, CssPseudoElementSegment, CssSelector,
 };
 
 fn style_name(rule: &CssRule) -> &str {
@@ -16,7 +20,9 @@ fn style_name(rule: &CssRule) -> &str {
     name
 }
 
-fn property_names(declarations: &surgeist_css::CssKeyframeDeclarationList) -> Vec<&str> {
+fn property_names(
+    declarations: &surgeist_css::rule::keyframes::CssKeyframeDeclarationList,
+) -> Vec<&str> {
     declarations
         .iter()
         .map(|declaration| match declaration.property_name() {
@@ -29,7 +35,7 @@ fn property_names(declarations: &surgeist_css::CssKeyframeDeclarationList) -> Ve
 
 fn assert_drop(
     source: &str,
-    diagnostic: &surgeist_css::CssRecoveryDiagnostic,
+    diagnostic: &surgeist_css::diagnostic::CssRecoveryDiagnostic,
     unit: &str,
     occurrence: usize,
     code: CssErrorCode,

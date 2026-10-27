@@ -7,15 +7,26 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::LimitFailure;
 use crate::css::support::{graph_cssom, graph_specified};
 use std::error::Error;
-use surgeist_css::{
-    CssGroupPreludeRef as Prelude, CssKeyframeRuleView, CssKeyframesName, CssKeyframesString,
-    CssKnownProperty as K, CssMarginBox, CssMarginRuleView, CssNamespaceContext, CssPageRuleView,
-    CssPageSelectorList, CssParsedKeyframeSelectors, CssParser, CssPropertyNameRef, CssRule,
-    CssRuleCssomFormat, CssRuleGraphInput as View, CssSerializationError,
-    CssSerializationLimits as Limits, CssSpecifiedDeclarationBlock as Block,
-    CssSpecifiedDeclarationEntry as Entry, CssSpecifiedPageDeclarationBlock as PageBlock,
-    CssSpecifiedPageDeclarationEntry as PageEntry, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock as Block;
+use surgeist_css::declaration::CssSpecifiedDeclarationEntry as Entry;
+use surgeist_css::property::CssKnownProperty as K;
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::{
+    CssKeyframeRuleView, CssKeyframesName, CssKeyframesString, CssParsedKeyframeSelectors,
 };
+use surgeist_css::rule::page::CssSpecifiedPageDeclarationBlock as PageBlock;
+use surgeist_css::rule::page::CssSpecifiedPageDeclarationEntry as PageEntry;
+use surgeist_css::rule::page::{
+    CssMarginBox, CssMarginRuleView, CssPageRuleView, CssPageSelectorList,
+};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssGroupPreludeRef as Prelude;
+use surgeist_css::serialization::CssRuleGraphInput as View;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::serialization::{CssRuleCssomFormat, CssSerializationError};
 
 fn property(block: &Block, name: K) -> &Entry {
     block

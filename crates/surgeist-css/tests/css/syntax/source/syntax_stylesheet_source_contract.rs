@@ -1,10 +1,13 @@
 //! CSS Syntax 3 (2026-10-01), sections 3, 3.2, 5.5.1 and 8.3.
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/
 //! These UTF-8 string fronts do not run the byte-stream fallback algorithm.
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssParseReport, CssParser, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, CssSelector, CssSheet, CssSourcePosition, CssTokenKind,
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
 };
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::{CssParseReport, CssParser};
 
 type ExpectedStyle<'a> = (&'a str, (usize, u32, u32), (usize, usize));
 type ExpectedDrop<'a> = ((usize, u32, u32), usize, &'a str);

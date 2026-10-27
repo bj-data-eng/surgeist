@@ -2,10 +2,14 @@ use crate::css::support::parse_report as common;
 
 use common::CssParseReportTestExt;
 
-use surgeist_css::{
-    CssDeclarationContextRef, CssErrorCode, CssKnownProperty, CssParser, CssPseudoClass,
-    CssPseudoElement, CssPseudoElementSegment, CssRecoveryAction, CssRule, CssSelector,
-    CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{
+    CssDeclarationContextRef, CssErrorCode, CssRecoveryAction, CssTokenKind,
+};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssPseudoClass, CssPseudoElement, CssPseudoElementSegment, CssSelector,
 };
 
 #[test]
@@ -92,8 +96,8 @@ fn counter_style_descriptor_value_and_combination_errors_preserve_typed_context(
             .prospective()
             .unwrap()
             .definition_status(),
-        surgeist_css::CssCounterStyleDefinitionStatus::Undefined(
-            surgeist_css::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
+        surgeist_css::rule::counter_style::CssCounterStyleDefinitionStatus::Undefined(
+            surgeist_css::rule::counter_style::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
         )
     );
 }
@@ -1354,10 +1358,9 @@ fn typed_calculation_root_domain_errors_retain_later_siblings() {
 
 #[test]
 fn typed_integer_zero_divisor_remains_symbolic_and_retains_its_sibling() {
-    use surgeist_css::{
-        CssCalculationExpressionRef as Expr, CssCalculationProductOperator, CssCalculationType,
-        CssKnownPropertyValueRef,
-    };
+    use surgeist_css::numeric::CssCalculationExpressionRef as Expr;
+    use surgeist_css::numeric::{CssCalculationProductOperator, CssCalculationType};
+    use surgeist_css::property::CssKnownPropertyValueRef;
     let report = CssParser::default().parse_block_contents("order: calc(1 / 0); color: red");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     assert_eq!(report.syntax().len(), 2);

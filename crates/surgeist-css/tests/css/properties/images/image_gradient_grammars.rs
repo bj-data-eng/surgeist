@@ -1,4 +1,14 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::values::image::{
+    CssColorStopListItem, CssGradient, CssHorizontalGradientSide, CssImageValue,
+    CssLinearGradientDirection, CssRadialExtent, CssRadialShape, CssRadialSize,
+    CssVerticalGradientSide,
+};
 
 #[test]
 fn images_and_gradients_retain_typed_structure() {
@@ -199,8 +209,8 @@ fn images_keep_globals_substitutions_and_exact_invalid_recovery_distinct() {
 }
 
 fn exact_percentage(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }

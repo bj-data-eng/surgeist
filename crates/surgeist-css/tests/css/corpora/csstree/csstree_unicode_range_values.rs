@@ -1,8 +1,9 @@
 //! Unicode-range expectations from selected Syntax 3 (2026-10-01) §§4.3.14 and 5.5.11.
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-unicode-range-value
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue, CssErrorCode, CssFontFaceDescriptorKind,
-    CssFontFaceDescriptorValue, CssParser, CssRecoveryAction,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
 };
 
 type RangeExpectation<'a> = (&'a str, &'a [(u32, u32)], bool);
@@ -112,7 +113,7 @@ fn raw_unicode_range_corpus_preserves_values_and_original_diagnostics() {
             }
         });
         if clean {
-            let Some(surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(
+            let Some(surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::Ordinary(
                 CssFontFaceDescriptorValue::UnicodeRange(value),
             )) = report.syntax()
             else {

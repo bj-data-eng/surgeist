@@ -10,7 +10,33 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_component_rejected;
 use crate::css::support::value_assertions::first_token as token;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationType, CssLength, CssLengthPercentage, CssNonNegative, CssNumber,
+    CssNumeric, CssPercentage, CssTimeUnit,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{
+    CssAnimation, CssAnimationComponents, CssAnimationIterationCount,
+    CssAnimationIterationCountList, CssAnimationName,
+};
+use surgeist_css::values::border::{
+    CssBorderImage, CssBorderImageOutset, CssBorderImageOutsetComponent, CssBorderImageSlice,
+    CssBorderImageSliceComponent, CssBorderImageWidth, CssBorderImageWidthComponent,
+};
+use surgeist_css::values::effects::{
+    CssFilter, CssFilterAmount, CssFilterFunction, CssFilterFunctionList,
+};
+use surgeist_css::values::font::{CssFontFaceWidth, CssFontWidth};
 
 fn number(text: &str) -> CssNumeric<CssNumber, CssNonNegative> {
     CssNumeric::<CssNumber, CssNonNegative>::try_from_component(

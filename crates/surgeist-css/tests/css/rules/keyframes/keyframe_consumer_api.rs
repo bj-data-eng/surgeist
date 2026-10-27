@@ -3,14 +3,18 @@
 use crate::css::support::failure_classes::SerializationFailure as Resource;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::{
-    CssComponentValues, CssDeclaration, CssErrorCode, CssImportance,
-    CssInvalidKeyframeSourceReason, CssKeyframePercent, CssKeyframeRuleView,
-    CssKeyframeRuleViewError, CssKeyframeSelector, CssKeyframeSelectorList, CssKnownProperty,
-    CssParsedKeyframeRule, CssParsedKeyframeSelectors, CssParser, CssParserContext, CssParserMode,
-    CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction, CssSerializationLimits as Limits,
-    CssSpecifiedDeclarationBlock,
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{
+    CssDeclaration, CssImportance, CssInvalidKeyframeSourceReason, CssSpecifiedDeclarationBlock,
 };
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::rule::keyframes::{
+    CssKeyframePercent, CssKeyframeRuleView, CssKeyframeRuleViewError, CssKeyframeSelector,
+    CssKeyframeSelectorList, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
+};
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 /// The serialization resource whose budget a detached keyframe exhausted,
 /// whether in its selectors or in its declaration block.
@@ -564,10 +568,12 @@ fn parser_context_preserves_owning_keyframe_declaration_admission() {
 
 #[test]
 fn normalized_matching_inputs_retain_every_duplicate_rule_candidate() {
-    let report = surgeist_css::CssBlockFragment::<Vec<surgeist_css::CssKeyframeBlock>>::parse(
+    let report = surgeist_css::rule::CssBlockFragment::<
+        Vec<surgeist_css::rule::keyframes::CssKeyframeBlock>,
+    >::parse(
         &surgeist_css::CssParser::default(),
         "{from{} 0%{} from{} to{}}",
-        &surgeist_css::CssBlockContext::default(),
+        &surgeist_css::rule::CssBlockContext::default(),
     );
     assert!(report.is_clean());
     let candidates = report.syntax().as_ref().unwrap().body();

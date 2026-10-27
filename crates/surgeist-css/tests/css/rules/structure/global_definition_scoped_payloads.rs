@@ -5,7 +5,16 @@
 use crate::css::support::descriptor_phases;
 use descriptor_phases::*;
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizedItem, CssNormalizedSheet, CssRuleContext, CssRuleContextKindRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::{CssCounterStyleSystem, CssCounterSymbol};
+use surgeist_css::rule::font_face::CssFontFaceSource;
+use surgeist_css::rule::keyframes::CssKeyframesName;
+use surgeist_css::selector::{CssNamespaceConstraint, CssSelector, CssStyleSelector};
 
 const DEFINITIONS: &str = concat!(
     "@counter-style Tick{system:cyclic;symbols:\"x\"}",

@@ -1,7 +1,8 @@
 //! Lossless owner-attribute ingress. CSS owns preprocessing and declaration grammar.
 use crate::{declaration_budget::DeclarationBudget, *};
 use std::{fmt, sync::Arc};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::source::{CssUtf16InputError, CssUtf16InputLimits, CssUtf16Resource};
 
 /// Actual original owner text. UTF8 convenience is encoded without CSS interpretation
 /// and follows the same CSS producer boundary as native UTF16.

@@ -1,12 +1,15 @@
-use surgeist_css::{
-    CssConditionKind, CssErrorCode, CssMediaLeaf, CssMediaQuery, CssMediaType,
-    CssNamespaceConstraint, CssParser, CssPseudoClass, CssPseudoSelectorListItem,
-    CssRecoveryAction, CssRule, CssSelector,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery, CssMediaType};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceConstraint, CssPseudoClass, CssPseudoSelectorListItem, CssSelector,
 };
 
 fn style_rule(
-    report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
-) -> &surgeist_css::CssStyleRule {
+    report: &surgeist_css::CssParseReport<surgeist_css::rule::CssSheet>,
+) -> &surgeist_css::rule::CssStyleRule {
     report
         .syntax()
         .rules()
@@ -19,8 +22,8 @@ fn style_rule(
 }
 
 fn media_rule(
-    report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
-) -> &surgeist_css::CssMediaRule {
+    report: &surgeist_css::CssParseReport<surgeist_css::rule::CssSheet>,
+) -> &surgeist_css::rule::CssMediaRule {
     report
         .syntax()
         .rules()
@@ -33,7 +36,7 @@ fn media_rule(
 }
 
 fn forgiving_selectors(
-    report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
+    report: &surgeist_css::CssParseReport<surgeist_css::rule::CssSheet>,
 ) -> &[CssPseudoSelectorListItem] {
     let pseudo = match style_rule(report).selectors().selectors()[0].selector() {
         CssSelector::PseudoClass(pseudo) => pseudo,
@@ -61,7 +64,7 @@ fn selector_name(item: &CssPseudoSelectorListItem) -> &str {
 
 fn assert_specialized_diagnostic(
     source: &str,
-    diagnostic: &surgeist_css::CssRecoveryDiagnostic,
+    diagnostic: &surgeist_css::diagnostic::CssRecoveryDiagnostic,
     code: CssErrorCode,
     action: CssRecoveryAction,
     span_start: usize,
@@ -343,7 +346,10 @@ fn specialized_list_media_members_become_never_in_authored_order() {
             "a supported media query"
         );
         let encountered = detail.encountered().expect("responsible media token");
-        assert_eq!(encountered.kind(), surgeist_css::CssTokenKind::Delim);
+        assert_eq!(
+            encountered.kind(),
+            surgeist_css::diagnostic::CssTokenKind::Delim
+        );
         assert_eq!(encountered.authored(), "?");
     }
 }
@@ -424,27 +430,27 @@ fn specialized_list_unknown_features_and_repeated_malformed_members_recover_loca
             CssMediaQuery::Never(_),
             CssMediaQuery::Typed(_),
         ] if matches!(unknown.kind(), CssConditionKind::Leaf(CssMediaLeaf::UnknownFeature(_)))
-            && matches!(value.kind(), CssConditionKind::Leaf(CssMediaLeaf::Feature(surgeist_css::CssMediaFeatureQuery::Width(_))))
+            && matches!(value.kind(), CssConditionKind::Leaf(CssMediaLeaf::Feature(surgeist_css::query::media::CssMediaFeatureQuery::Width(_))))
     ));
     let CssMediaQuery::Condition(condition) = &queries[2] else {
         panic!("expected retained known width condition");
     };
-    let CssConditionKind::Leaf(CssMediaLeaf::Feature(surgeist_css::CssMediaFeatureQuery::Width(
-        range,
-    ))) = condition.kind()
+    let CssConditionKind::Leaf(CssMediaLeaf::Feature(
+        surgeist_css::query::media::CssMediaFeatureQuery::Width(range),
+    )) = condition.kind()
     else {
         panic!("calc(1px) is a known pure length, without evaluating it");
     };
-    let surgeist_css::CssMediaRangeRef::Plain { value } = range.view() else {
+    let surgeist_css::query::media::CssMediaRangeRef::Plain { value } = range.view() else {
         panic!("expected authored plain width form");
     };
-    let surgeist_css::CssCalculationExpressionRef::NestedCalc(root) =
+    let surgeist_css::numeric::CssCalculationExpressionRef::NestedCalc(root) =
         value.calculation().expression()
     else {
         panic!("expected retained calc function");
     };
-    let surgeist_css::CssCalculationExpressionRef::Value(
-        surgeist_css::CssCalculationValueRef::Length(literal),
+    let surgeist_css::numeric::CssCalculationExpressionRef::Value(
+        surgeist_css::numeric::CssCalculationValueRef::Length(literal),
     ) = root.operand()
     else {
         panic!("expected exact length operand");
@@ -565,7 +571,7 @@ fn specialized_list_recovery_propagates_from_import_nested_and_scoped_contexts()
         scoped
             .diagnostics()
             .iter()
-            .map(surgeist_css::CssRecoveryDiagnostic::action)
+            .map(surgeist_css::diagnostic::CssRecoveryDiagnostic::action)
             .collect::<Vec<_>>(),
         [
             CssRecoveryAction::DropSelectorListItem,

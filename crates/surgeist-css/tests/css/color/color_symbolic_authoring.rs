@@ -3,7 +3,16 @@
 //! rejected by the color grammar at their responsible token.
 
 use surgeist_color::{ColorSpace, HueInterpolation};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorMix, CssColorMixPercentage,
+    CssColorProfileName, CssCustomColor, CssHexColor, CssNamedColor, CssRelativeColorChannel,
+    CssRelativeColorExpressionValue, CssRelativeColorFunction, CssRelativeColorResultDomain,
+    CssSystemColor,
+};
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::diagnostic::{CssErrorCode, CssTokenKind};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;

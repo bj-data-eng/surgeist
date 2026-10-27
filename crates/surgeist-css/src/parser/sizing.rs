@@ -1,16 +1,17 @@
 //! Sizing 3 and Sizing 4 authored property grammars.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::Token;
 
 use super::values::parse_nonnegative_length_percentage;
-use crate::numeric::NumericInputContext;
-use crate::{
-    CssBoxCalcSize, CssBoxSize, CssCalcSize, CssComponentValueLimits, CssMaxSizeValue, CssSizeValue,
+use crate::component::CssComponentValueLimits;
+use crate::numeric::expression::NumericInputContext;
+use crate::values::box_model::{
+    CssBoxCalcSize, CssBoxSize, CssCalcSize, CssMaxSizeValue, CssSizeValue,
 };
 
-pub(super) fn parse_size_value<'i, 't>(
+pub(crate) fn parse_size_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssSizeValue, ParseError<'i, Error>> {
@@ -23,7 +24,7 @@ pub(super) fn parse_size_value<'i, 't>(
     parse_box_size(input, numeric).map(CssSizeValue::BoxSize)
 }
 
-pub(super) fn parse_max_size_value<'i, 't>(
+pub(crate) fn parse_max_size_value<'i, 't>(
     input: &mut Parser<'i, 't>,
     numeric: &NumericInputContext<'_>,
 ) -> Result<CssMaxSizeValue, ParseError<'i, Error>> {

@@ -1,7 +1,9 @@
-use surgeist_css::{
-    CssErrorCode, CssImportance, CssKnownProperty, CssParser, CssRecoveryAction, CssRule,
-    CssSupportStatus, feature_metadata, property_support_metadata,
-};
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata, property_support_metadata};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
 
 fn actions(source: &str) -> Vec<CssRecoveryAction> {
     CssParser::default()
@@ -216,7 +218,7 @@ fn custom_substitution_and_known_declarations_preserve_coupled_values() {
     assert_eq!(width.importance(), CssImportance::Important);
     assert!(matches!(
         width.property_name(),
-        surgeist_css::CssPropertyNameRef::Known(CssKnownProperty::Width)
+        surgeist_css::property::CssPropertyNameRef::Known(CssKnownProperty::Width)
     ));
     let value = width
         .known()
@@ -228,7 +230,7 @@ fn custom_substitution_and_known_declarations_preserve_coupled_values() {
     let color = &report.syntax()[2];
     assert!(matches!(
         color.property_name(),
-        surgeist_css::CssPropertyNameRef::Known(CssKnownProperty::Color)
+        surgeist_css::property::CssPropertyNameRef::Known(CssKnownProperty::Color)
     ));
     assert_eq!(
         color.known().map(|known| known.property()),

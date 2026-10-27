@@ -8,12 +8,15 @@
 use std::ops::Range;
 
 use crate::css::support::authored_syntax::parsed_origin as parsed;
-use surgeist_css::{
-    CssAttributeCaseSensitivity, CssAttributeMatcher, CssBlockKind, CssComponentValue,
-    CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssErrorCode,
-    CssNamespaceContext, CssParser, CssParserContext, CssRecoveryAction, CssSelector,
-    CssSerializedOrigin, CssTokenKind, CssValueOrigin, CssValueTokenRef,
+use surgeist_css::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValueRef,
+    CssComponentValues, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::selector::{
+    CssAttributeCaseSensitivity, CssAttributeMatcher, CssNamespaceContext, CssSelector,
+};
+use surgeist_css::{CssParser, CssParserContext};
 
 const OPERATORS: [(char, &str); 5] = [
     ('~', "~="),

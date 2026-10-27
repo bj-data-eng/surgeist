@@ -4,7 +4,7 @@ use super::super::*;
 use super::consumption::{envelope, report};
 use super::style_decision::{installed, observe, request_ready};
 use super::style_sheet::{bind, create, pending, ready};
-use surgeist_css::CssUtf16Resource;
+use surgeist_css::source::CssUtf16Resource;
 use surgeist_dom::*;
 use surgeist_html::{HtmlCspAssociation, HtmlCspProcessorProfile, HtmlStyleTrigger};
 use surgeist_html_parser::{

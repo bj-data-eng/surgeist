@@ -1,10 +1,9 @@
 //! Actual CSS-owned UTF16 color-scheme ingress under the original Source ledger.
 use super::*;
 use std::cell::Cell;
-use surgeist_css::{
-    CssColorScheme, CssParser, CssParserContext, CssParserMode, CssRetainedPayloadError,
-    CssUtf16InputError, CssUtf16ValueAdmission,
-};
+use surgeist_css::source::{CssRetainedPayloadError, CssUtf16InputError, CssUtf16ValueAdmission};
+use surgeist_css::values::color_adjust::CssColorScheme;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 pub(super) struct Candidate {
     pub selected: crate::meta::SelectedColorScheme,
@@ -105,12 +104,15 @@ pub(super) fn parse(
     // The destination Arc body is allocated while the returned inline report
     // is still live. End that extra header debit only after the actual move.
     if let Some(formation) = &formation {
-        formation.retain_bytes(size_of::<surgeist_css::CssColorSchemeParseReport>(), cancel)?;
+        formation.retain_bytes(
+            size_of::<surgeist_css::values::color_adjust::CssColorSchemeParseReport>(),
+            cancel,
+        )?;
     }
     let report = Arc::new(report);
     if let Some(formation) = &formation {
         formation.release_payload(source::storage::Payload {
-            bytes: size_of::<surgeist_css::CssColorSchemeParseReport>(),
+            bytes: size_of::<surgeist_css::values::color_adjust::CssColorSchemeParseReport>(),
             units: 0,
         });
     }

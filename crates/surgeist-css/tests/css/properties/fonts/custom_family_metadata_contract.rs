@@ -1,7 +1,19 @@
 //! Variables1 CR20220616 §§2/2.2 supplies every literal intrinsic fact and
 //! the empty-authored-value versus guaranteed-invalid-initial distinction.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{
+    CssSpecificationTier, property_support_metadata, specification_source,
+};
+use surgeist_css::declaration::{
+    CssCustomPropertyDeclaredValue, CssCustomPropertyName, CssDeclaration, CssGlobalKeyword,
+    CssImportance,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssGuaranteedInvalidInitial, CssKnownProperty,
+    CssPropertyNameRef, CssPropertyTarget,
+};
 
 #[test]
 fn all_valid_names_share_the_complete_intrinsic_definition_and_selected_source() {

@@ -6,7 +6,21 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::declaration_text;
 use crate::css::support::rules::normalized_declarations as declarations;
 use crate::css::support::rules::rule_at;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
+};
+use surgeist_css::normalize::{
+    CssNormalizedItem, CssNormalizedSheet, CssRuleContextKindRef, CssSelectorBinding,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind, CssWhenLeaf};
+use surgeist_css::rule::{
+    CssElseRule, CssRule, CssScopeNestingContext, CssScopeRule, CssSheet, CssStyleBlock,
+    CssWhenRule,
+};
+use surgeist_css::selector::{CssNamespaceContext, CssSelectorCombinator};
+use surgeist_css::serialization::{CssRuleCssomFormat, CssRuleCssomKind, CssSerializationLimits};
 
 fn assert_original_declarations(
     source: &str,

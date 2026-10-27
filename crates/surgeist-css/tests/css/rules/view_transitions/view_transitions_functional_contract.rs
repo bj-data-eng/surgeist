@@ -7,7 +7,30 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::sole_declaration as declaration;
 use CssPseudoElementSegment::{PseudoClass as P, PseudoElement as E};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::selector::{
+    CssCompoundSelectorArgument, CssNamespaceContext, CssPartName, CssPartNameList, CssPseudoClass,
+    CssPseudoElement, CssPseudoElementSegment, CssPseudoElementSequence, CssPseudoSelectorList,
+    CssPseudoSelectorListItem, CssSelector, CssSelectorList,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssCustomIdent;
+use surgeist_css::values::view_transition::{
+    CssViewTransitionIdent, CssViewTransitionName, CssViewTransitionNameSelector,
+};
 type Limits = CssSerializationLimits;
 type LimitKind = SerializationFailure;
 

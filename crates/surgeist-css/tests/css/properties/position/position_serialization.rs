@@ -3,10 +3,14 @@
 
 use crate::css::support::failure_classes::SerializationFailure as ErrorKind;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssComponentValues, CssHorizontalPosition as H, CssParser, CssSerializationLimits as L,
-    CssVerticalPosition as V, *,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::position::CssHorizontalPosition as H;
+use surgeist_css::values::position::CssVerticalPosition as V;
+use surgeist_css::values::position::{CssPhysicalPosition, CssPosition};
 
 fn parsed(input: &str) -> CssPosition {
     let report = CssParser::default().parse_block_contents(format!("mask-position: {input}"));
@@ -172,12 +176,15 @@ fn typed_math_projection_is_cumulative_across_both_axes() {
 
 fn signed_length_percentage(
     css: &str,
-) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage> {
-    let components =
-        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
+) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLengthPercentage> {
+    let components = surgeist_css::component::CssComponentValues::parse(
+        &surgeist_css::CssParser::default(),
+        css,
+    )
+    .unwrap();
     if css.contains('(') {
-        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_calculation(
-            surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage>::try_from_calculation(
+            surgeist_css::numeric::CssCalculation::<surgeist_css::numeric::CssLengthPercentage>::try_from_components(
                 components,
                 Default::default(),
             )
@@ -185,8 +192,8 @@ fn signed_length_percentage(
         )
         .unwrap()
     } else {
-        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage>::try_from_component(
+            surgeist_css::component::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
     }

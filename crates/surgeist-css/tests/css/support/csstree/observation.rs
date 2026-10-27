@@ -12,12 +12,15 @@ use super::{
     raw_extractor, resolve_case_registry,
 };
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue, CssDeclaration, CssErrorCode, CssImportance, CssMediaQuery,
-    CssMediaQueryList, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
-    CssParsedStyleSelectors, CssParser, CssPropertyNameRef, CssPropertyTextTarget,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector, CssStyleBlock,
-    CssStyleSelectorContext,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::property::{CssPropertyNameRef, CssPropertyTextTarget};
+use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue;
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule, CssStyleBlock};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssSelector, CssStyleSelectorContext,
 };
 
 pub(super) fn observe_csstree_oracle(

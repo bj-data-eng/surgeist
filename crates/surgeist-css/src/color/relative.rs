@@ -1,12 +1,12 @@
 //! Fixed relative component binding and extended used-value resolution.
 
-use super::Color;
 use super::channels::{self, Component, Error};
 use super::keywords::ColorFunction as F;
-use crate::{
-    ColorSpace as Space, CssRelativeColorChannel as Channel,
-    CssRelativeColorEnvironment as Environment, PredefinedColorSpace as Predefined,
-};
+use crate::color::CssRelativeColorChannel as Channel;
+use crate::color::CssRelativeColorEnvironment as Environment;
+use surgeist_color::Color;
+use surgeist_color::ColorSpace as Space;
+use surgeist_color::PredefinedColorSpace as Predefined;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Binding {
@@ -180,7 +180,7 @@ mod tests {
         let natural = channels::absolute_coordinates(
             F::Hsl,
             None,
-            crate::CssColorSyntax::Modern,
+            crate::color::CssColorSyntax::Modern,
             [Component::number(130.0), percent(0.0), percent(50.0)],
             None,
         )

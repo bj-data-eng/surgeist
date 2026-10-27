@@ -5,7 +5,9 @@
 //! CSS retains exact authored bounds before downstream implementation-range policy;
 //! the counter-style standard separately permits supported-range clamping.
 
-use surgeist_css::{CssKnownPropertyValueRef, CssParser, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::CssRule;
 
 fn serialized_columns(value: &str) -> String {
     let source = format!("grid-template-columns: {value}");
@@ -88,11 +90,11 @@ fn equal_additive_weights_with_different_spelling_remain_invalid() {
     };
     assert_eq!(
         diagnostic.error().code(),
-        surgeist_css::CssErrorCode::InvalidDescriptorValue
+        surgeist_css::diagnostic::CssErrorCode::InvalidDescriptorValue
     );
     assert_eq!(
         diagnostic.action(),
-        surgeist_css::CssRecoveryAction::DropDescriptor
+        surgeist_css::diagnostic::CssRecoveryAction::DropDescriptor
     );
 }
 

@@ -8,7 +8,21 @@ use crate::css::support::value_assertions::property_rejection;
 use crate::css::support::{
     important_declaration as parsed, retained_checked_declaration as checked,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssCustomPropertyName, CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizationLimits, CssNormalizedItem};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::container::CssContainerLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind,
+};
 
 fn assert_pending(declaration: &CssDeclaration, property: CssKnownProperty, text: &str) {
     let known = declaration.known().unwrap();

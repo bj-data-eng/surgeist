@@ -4,7 +4,11 @@
 //! repaired serialization can expose an implicit origin, but cannot close input.
 //! No new borrowed variants or family expansion capability are required.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
 
 fn rejection_failures(property: CssKnownProperty, source: &str) -> Vec<String> {
     let mut failures = Vec::new();

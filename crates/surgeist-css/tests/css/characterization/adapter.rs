@@ -17,9 +17,10 @@ use std::cell::Cell;
 use std::error::Error as StdError;
 use std::fmt;
 
-use surgeist_css::{
-    CssComponentValueLimits, CssParseReport, CssSerializationLimits, CssUtf16InputLimits,
-};
+use surgeist_css::CssParseReport;
+use surgeist_css::component::CssComponentValueLimits;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::source::CssUtf16InputLimits;
 
 use super::cases::Case;
 

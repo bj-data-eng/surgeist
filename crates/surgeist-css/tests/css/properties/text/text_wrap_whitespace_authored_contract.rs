@@ -18,8 +18,21 @@ use authored_property::{ParserFront, assert_source, checked, invalid, parsed};
 use crate::css::support::discoverable_property as property;
 use crate::css::support::named_property::longhand_contributions as completed;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssSystemColor;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssLonghandProperty, CssLonghandValueRef,
+    CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
 
 const WRAP: [&str; 2] = ["text-wrap-mode", "text-wrap-style"];
 const SPACE: [&str; 3] = ["white-space-collapse", "text-wrap-mode", "white-space-trim"];

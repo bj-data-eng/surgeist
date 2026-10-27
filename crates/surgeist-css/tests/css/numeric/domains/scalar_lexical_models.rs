@@ -2,7 +2,19 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::positive_literal;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssInteger, CssNonNegative, CssNumeric, CssNumericLiteral};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::effects::{CssOpacityScalar, CssOpacityScalarKind, CssOpacityValue};
+use surgeist_css::values::layout::{CssColumnCount, CssGridLine};
 
 fn integer(declaration: &CssDeclaration) -> &CssNumericLiteral<CssInteger> {
     let CssKnownPropertyValueRef::Order(value) =

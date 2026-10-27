@@ -4,7 +4,8 @@
 
 use crate::css::support::isolated_stack;
 
-use surgeist_css::{CssComponentValueRef, CssComponentValues, CssParser, CssValueOrigin};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueOrigin};
 
 fn isolated(test: &str, operation: fn()) {
     isolated_stack::run(

@@ -2,7 +2,9 @@
 use super::super::tests::{begin_await, binding, envelope, flag, install, parse, setup};
 use super::*;
 use crate::*;
-use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
 use surgeist_html::HtmlCspOwner;
 pub(in crate::store::pending_associations::style_prefix) fn ready(

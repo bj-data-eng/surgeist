@@ -1,7 +1,9 @@
 //! Source: selected Alignment3/Grid3 omit these names; CSSWG resolution
 //! https://github.com/w3c/csswg-drafts/issues/8207#issuecomment-1747805578
 //! explicitly removed both former Masonry properties in October 2023.
-use surgeist_css::{CssErrorCode, CssKnownProperty, CssParser, CssRecoveryAction};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty;
 
 fn require_unknown_declarations(source: &str, names: &[&str]) {
     let report = CssParser::default().parse_block_contents(source);

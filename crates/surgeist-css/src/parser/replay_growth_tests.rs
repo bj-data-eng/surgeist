@@ -8,7 +8,7 @@
 
 use super::reconstruction::{REPLAY_DEPTH, REPLAY_MAX_DEPTH, REPLAY_PARSES};
 use super::recovery::PREFLIGHT_TOKENS;
-use crate::CssRule;
+use crate::rule::CssRule;
 use crate::tokenization::PREPARED_BYTES;
 
 fn sheet(depth: usize, count: usize) -> String {

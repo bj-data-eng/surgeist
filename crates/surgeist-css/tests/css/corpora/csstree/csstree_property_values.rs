@@ -1,12 +1,16 @@
 //! Property grammar admissions derive from original CSS inputs and their mapped
 //! Width, Color and BackgroundImage grammars, independently of captured output.
 //! Literal expectations use numeric/color/URL semantics rather than serialization.
-use surgeist_css::{
-    CssBoxSize, CssCalculationType, CssComponentValueRef, CssErrorCode, CssImageValue,
-    CssImportance, CssKnownProperty, CssKnownPropertyValueRef, CssParser, CssPropertyNameRef,
-    CssPropertyTextTarget, CssRecoveryAction, CssSizeValue, CssTokenKind, CssValueOrigin,
-    CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::numeric::CssCalculationType;
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTextTarget,
 };
+use surgeist_css::values::box_model::{CssBoxSize, CssSizeValue};
+use surgeist_css::values::image::CssImageValue;
 
 #[derive(Clone, Copy)]
 enum Expected {

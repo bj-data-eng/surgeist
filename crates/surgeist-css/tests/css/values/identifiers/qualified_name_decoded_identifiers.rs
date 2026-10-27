@@ -3,11 +3,13 @@
 //! https://www.w3.org/TR/2014/REC-css-namespaces-3-20140320/#css-qnames
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#grammar
 
-use surgeist_css::{
-    CssAttributeName, CssComponentValueRef, CssComponentValues, CssErrorCode,
-    CssNamespaceConstraint, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix,
-    CssNormalizedItem, CssParser, CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSelector,
-    CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule};
+use surgeist_css::selector::{
+    CssAttributeName, CssNamespaceConstraint, CssNamespaceContext, CssSelector,
 };
 
 fn assert_identifier_spelling_decodes_to(spelling: &str, decoded: &str) {

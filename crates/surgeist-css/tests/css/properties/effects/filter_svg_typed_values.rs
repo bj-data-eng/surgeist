@@ -5,7 +5,20 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_reentry_rejected;
 use crate::css::support::retained_checked_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssSystemColor;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{CssCalculationType, CssNumericDimension};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::effects::{
+    CssColorInterpolationFilters, CssOpacityScalarKind, CssOpacityValue,
+};
 
 fn contributions(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()

@@ -5,7 +5,19 @@
 use crate::css::support::authored_syntax::checked_supports_condition as checked;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::font_face::{CssFontFormat, CssFontFormatHint, CssFontTechHint};
+use surgeist_css::rule::{CssImportRule, CssRule, CssSheet};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
 
 fn both(source: &str, inspect: impl Fn(&CssCondition<CssSupportsLeaf>)) {
     let condition = checked(source);

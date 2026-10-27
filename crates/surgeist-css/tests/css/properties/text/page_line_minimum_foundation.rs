@@ -9,7 +9,20 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::named_property::sole_longhand_contribution;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::property_support_metadata;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssCalculation, CssInteger, CssNumeric, CssPositive};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownPropertyValueRef, CssLonghandValue,
+    CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 const NAMES: [&str; 2] = ["orphans", "widows"];
 

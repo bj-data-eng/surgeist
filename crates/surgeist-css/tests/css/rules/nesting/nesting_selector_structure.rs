@@ -3,9 +3,12 @@
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/
 
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::{
-    CssCompoundSelector, CssErrorCode, CssParser, CssPseudoClass, CssPseudoSelectorListItem,
-    CssRule, CssSelector, CssSelectorCombinator, CssStyleSelector,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssCompoundSelector, CssPseudoClass, CssPseudoSelectorListItem, CssSelector,
+    CssSelectorCombinator, CssStyleSelector,
 };
 
 fn compound_anchors(compound: &CssCompoundSelector) -> usize {

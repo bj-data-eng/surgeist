@@ -8,7 +8,18 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::descriptor_rejected_at;
 use crate::css::support::rules::ordinary_font_face_descriptor as ordinary;
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueOrigin};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::CssCalculationType;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFontFaceSource, CssFontMetricOverride, CssFontNamedInstance,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::{CssUrlFunction, CssUrlModifier};
+use surgeist_css::values::font::{CssFontLanguageOverride, CssFontLanguageString};
 
 type Kind = CssFontFaceDescriptorKind;
 type Value = CssFontFaceDescriptorValue;

@@ -1,7 +1,21 @@
 //! Containment2 authored checked/reentry fronts must retain original EOF failures.
 //! Browser recovery remains available and does not turn a recovered report clean.
 use crate::css::support::property_admission::assert_implicit_closure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssLonghandValueRef, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyValueError,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::box_model::CssContentVisibility;
 const PROPERTY: CssKnownProperty = CssKnownProperty::ContentVisibility;
 const GLOBALS: [&str; 5] = ["initial", "inherit", "unset", "revert", "revert-layer"];
 const PENDING: [&str; 3] = ["var(--visible)", "env(visible)", "attr(data-visible)"];

@@ -12,7 +12,15 @@ use crate::css::support::descriptor_phases;
 use crate::css::support::rules::normalized_rule_contexts as rule_contexts;
 use descriptor_phases::*;
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{CssRuleContext, CssRuleContextKindRef};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::{CssCounterStyleSystem, CssCounterSymbol};
+use surgeist_css::rule::font_face::CssFontFaceSource;
+use surgeist_css::rule::keyframes::CssKeyframesName;
+use surgeist_css::source::CssSourcePosition;
 
 const COUNTER: &str = "@counter-style Tick { system: cyclic; symbols: \"x\"; }";
 const FONT: &str = "@font-face { font-family: Audit; src: local(Audit); }";
@@ -76,7 +84,7 @@ fn assert_payload(context: &CssRuleContext, source: &str, expected: &str) {
                 source,
                 "font-family:",
                 rule.descriptors()
-                    .effective(surgeist_css::CssFontFaceDescriptorKind::FontFamily)
+                    .effective(surgeist_css::rule::font_face::CssFontFaceDescriptorKind::FontFamily)
                     .unwrap()
                     .position()
                     .unwrap(),

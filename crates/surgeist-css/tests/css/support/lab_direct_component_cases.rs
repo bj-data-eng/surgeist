@@ -5,7 +5,10 @@
 //! [`assert_specified_text`] runner.
 
 use super::{checked_color, checked_color_declaration, component_values, declaration_color};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::CssKnownProperty;
 
 /// `source` serializes as `expected` through both the checked and the
 /// parsed `color` entry, without mutating either declaration, and the

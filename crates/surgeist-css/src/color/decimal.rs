@@ -1,7 +1,8 @@
 //! The actual shared decimal child, qualified to retained lexer/scratch records.
 
-use super::protocol::{
-    ColorProtocolError, CssColorSlot, Data, LexicalRecord, RecordRange, RecordTable,
+use crate::color::controlled::CssColorSlot;
+use crate::color::controlled::protocol::{
+    ColorProtocolError, Data, LexicalRecord, RecordRange, RecordTable,
 };
 use crate::numeric::bounded_decimal::{
     DecimalCursor, DecimalInput, DecimalLayout, DecimalOutcome, DecimalReply, DecimalRequest,
@@ -39,7 +40,8 @@ impl<'owner> NumberConversion<'owner> {
         slot: &CssColorSlot<'_>,
         scratch_base: usize,
     ) -> Result<Self, ColorProtocolError> {
-        let super::protocol::NumberHeader { layout, digits } = table.number_header(index, slot)?;
+        let crate::color::controlled::protocol::NumberHeader { layout, digits } =
+            table.number_header(index, slot)?;
         let length = layout
             .mantissa_digits
             .checked_add(layout.exponent_digits)
@@ -193,7 +195,7 @@ impl<'owner> NumberConversion<'owner> {
             self.table.owner,
             self.table.phase,
             index,
-            super::protocol::CssColorBank::Algorithm,
+            crate::color::controlled::CssColorBank::Algorithm,
         )?;
         if record.index != index {
             return Err(ColorProtocolError::WrongIndex);
@@ -224,7 +226,7 @@ impl<'owner> NumberConversion<'owner> {
             self.table.owner,
             self.table.phase,
             index,
-            super::protocol::CssColorBank::Algorithm,
+            crate::color::controlled::CssColorBank::Algorithm,
         )?;
         if record.index != index {
             return Err(ColorProtocolError::WrongIndex);
@@ -320,8 +322,8 @@ impl<'owner> NumberConversion<'owner> {
             .complete(reply)
             .map_err(|_| ColorProtocolError::Input)
     }
-    pub(crate) fn kernel(&self) -> super::CssColorKernel {
-        use super::CssColorKernel as C;
+    pub(crate) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
+        use crate::color::controlled::CssColorKernel as C;
         use crate::numeric::bounded_decimal::DecimalKernel as K;
         match self.cursor.next_request() {
             DecimalRequest::Compute(K::Normalize | K::SelectBoundary | K::UpdateSearch) => {
@@ -369,7 +371,7 @@ impl<'owner> NumberConversion<'owner> {
 /// place. The original exponent/sign are unchanged: (9*M)*10^(-f-1+e).
 #[derive(Clone, Copy)]
 pub(crate) struct ScaledNumber<'owner> {
-    owner: &'owner super::protocol::CssColorOperationOwner,
+    owner: &'owner crate::color::controlled::CssColorOperationOwner,
     phase: usize,
     token: usize,
     digits: RecordRange,
@@ -408,7 +410,7 @@ impl<'owner> GradScale<'owner> {
         slot: &CssColorSlot<'_>,
         base: usize,
     ) -> Result<Self, ColorProtocolError> {
-        let super::protocol::NumberHeader { mut layout, digits } =
+        let crate::color::controlled::protocol::NumberHeader { mut layout, digits } =
             table.number_header(index, slot)?;
         if layout.mantissa_digits == 0
             || layout.fraction_digits > layout.mantissa_digits
@@ -531,7 +533,7 @@ impl<'owner> GradScale<'owner> {
             expected.owner,
             expected.phase,
             index,
-            super::protocol::CssColorBank::Algorithm,
+            crate::color::controlled::CssColorBank::Algorithm,
         )?;
         if slot.index != index {
             return Err(ColorProtocolError::WrongIndex);
@@ -566,8 +568,9 @@ impl<'owner> GradScale<'owner> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::protocol::{ActionDescription, CssColorOperationOwner, LexicalOperation};
     use super::*;
+    use crate::color::controlled::CssColorOperationOwner;
+    use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
     use crate::tokenization::bounded::InputKind;
 
     fn lexical<'a>(operation: &mut LexicalOperation<'a>, input: &[u8]) -> Vec<CssColorSlot<'a>> {

@@ -9,7 +9,21 @@ use crate::css::support::property_admission::Responsible::At;
 use crate::css::support::property_admission::{assert_invalid_value, assert_numeric_rejected};
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::value_assertions::positive_literal;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{
+    CssCalculation, CssInteger, CssNumber, CssNumeric, CssNumericLiteral, CssPositive,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{
+    CssCubicBezier, CssEasing, CssEasingKeyword, CssEasingList, CssStepPosition, CssSteps,
+};
 
 fn parsed_for(property: CssKnownProperty, source: &str) -> CssEasingList {
     let declaration = CssDeclaration::try_from_components(

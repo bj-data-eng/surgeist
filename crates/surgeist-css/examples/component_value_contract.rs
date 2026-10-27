@@ -6,11 +6,11 @@
 //! The accompanying integration test checks that this public consumer compiles
 //! and that its independently expected token and provenance contracts hold.
 
-use surgeist_css::{
+use surgeist_css::component::{
     CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValueRef,
-    CssComponentValues, CssNumericTokenKind, CssParser, CssParserContext, CssSerializedOrigin,
-    CssValueOrigin, CssValueTokenRef,
+    CssComponentValues, CssNumericTokenKind, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::{CssParser, CssParserContext};
 
 fn identifier(value: &CssComponentValue) -> &str {
     match value.view() {

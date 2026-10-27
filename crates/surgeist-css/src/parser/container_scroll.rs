@@ -4,8 +4,17 @@ use super::boolean_condition::{
     parse_component_condition,
 };
 use super::query_components::{ComponentCursor as Cursor, authored_operand};
-use crate::supports::{SupportsLexical, trivia};
-use crate::*;
+use crate::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueRef, CssValueTokenRef,
+};
+use crate::query::CssCondition;
+use crate::query::container::{
+    CssContainerGeneralEnclosed, CssContainerScrollDirectionKeyword,
+    CssContainerScrollDirectionValue, CssContainerScrollFeature, CssContainerScrollFeatureKind,
+    CssContainerSnappedKeyword, CssContainerSnappedValue, CssContainerStuckKeyword,
+    CssContainerStuckValue, CssScrollStateLeaf,
+};
+use crate::query::supports::construction::{SupportsLexical, trivia};
 
 /// A scroll-state query, as regions of its lexical root.
 pub(super) type ScrollNode = BooleanNode<ScrollLeaf>;

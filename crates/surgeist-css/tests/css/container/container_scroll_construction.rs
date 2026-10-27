@@ -2,7 +2,19 @@
 use crate::css::support::authored_syntax::checked_container_condition as construct;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::query::container::{
+    CssContainerLeaf, CssContainerPendingValue, CssContainerScrollDirectionKeyword,
+    CssContainerScrollDirectionValueRef, CssContainerScrollFeature, CssContainerScrollFeatureKind,
+    CssContainerSnappedKeyword, CssContainerSnappedValueRef, CssContainerStuckKeyword,
+    CssContainerStuckValueRef, CssContainerValueDomain, CssScrollStateLeaf,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind, CssGeneralEnclosed};
+use surgeist_css::rule::CssRule;
 
 fn scroll(condition: &CssCondition<CssContainerLeaf>) -> &CssCondition<CssScrollStateLeaf> {
     let CssConditionKind::Leaf(CssContainerLeaf::ScrollState(query)) = condition.kind() else {

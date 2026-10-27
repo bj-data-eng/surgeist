@@ -1,7 +1,28 @@
 //! Supported and unsupported advanced rule forms, and the public structure of
 //! the retained rule graph.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::query::container::{
+    CssContainerFeatureQuery, CssContainerLeaf, CssContainerLengthRef, CssContainerName,
+};
+use surgeist_css::query::media::{
+    CssColorSchemePreference, CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaRangeRef,
+    CssMediaType,
+};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssConditionKind, CssQueryComparison};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFontFaceSource, CssFontFormat, CssFontFormatHint,
+};
+use surgeist_css::rule::keyframes::{CssKeyframeSelector, CssKeyframesIdent, CssKeyframesName};
+use surgeist_css::rule::{CssImportTarget, CssRule};
+use surgeist_css::selector::{
+    CssAttributeCaseSensitivity, CssAttributeMatcher, CssPseudoClass, CssQualifiedSelectorName,
+    CssSelector, CssSelectorCombinator, CssStyleSelector,
+};
+use surgeist_css::values::common::CssCustomIdent;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;

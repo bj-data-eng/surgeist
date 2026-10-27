@@ -7,7 +7,15 @@ use crate::css::support::{
     checked_grammar_declaration as checked, important_declaration as declaration,
     selected_grammar as grammar,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssLonghandValue,
+    CssPropertyKindRef,
+};
 
 const PREFERRED: &[&str] = &["width", "height", "inline-size", "block-size"];
 const MINIMUM: &[&str] = &[

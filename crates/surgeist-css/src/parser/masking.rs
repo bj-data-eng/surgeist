@@ -8,8 +8,14 @@ use super::background::{
 use super::combinators::{Combinator, Tail, attempt, commit, fill, parse_group};
 use super::position::parse_position_prefix;
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
-use crate::syntax::*;
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::values::border::CssBorderImageSlice;
+use crate::values::effects::{
+    CssClipRule, CssMaskBorder, CssMaskBoxList, CssMaskClip, CssMaskClipList, CssMaskComposite,
+    CssMaskCompositeList, CssMaskLayer, CssMaskLayerBoxes, CssMaskList, CssMaskMode,
+    CssMaskModeList, CssMaskType,
+};
+use crate::values::transform::CssCoordBox;
 
 macro_rules! keyword_parser {
     ($function:ident, $ty:ident, $($keyword:literal => $variant:ident),+ $(,)?) => {
@@ -67,9 +73,9 @@ list_parser!(
 );
 
 /// Masking's fill is trailing, unlike Backgrounds' independent && fill grammar.
-pub(super) fn parse_mask_border_slice<'i, 't>(
+pub(crate) fn parse_mask_border_slice<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssBorderImageSlice, ParseError<'i, Error>> {
     let mut values = vec![parse_border_image_slice_component(input, numeric)?];
     while values.len() < 4 {
@@ -84,9 +90,9 @@ pub(super) fn parse_mask_border_slice<'i, 't>(
     Ok(CssBorderImageSlice::try_new(values, fill).expect("one to four checked components"))
 }
 
-pub(super) fn parse_mask_border<'i, 't>(
+pub(crate) fn parse_mask_border<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssMaskBorder, ParseError<'i, Error>> {
     // `<'mask-border-source'> || <'mask-border-slice'> [ /
     // <'mask-border-width'>? [ / <'mask-border-outset'> ]? ]? ||
@@ -133,9 +139,9 @@ pub(super) fn parse_mask_border<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_mask_list<'i, 't>(
+pub(crate) fn parse_mask_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssMaskList, ParseError<'i, Error>> {
     let layers = input.parse_comma_separated(|input| parse_mask_layer(input, numeric))?;
     if layers.is_empty() {
@@ -147,7 +153,7 @@ pub(super) fn parse_mask_list<'i, 't>(
 
 pub(super) fn parse_mask_layer<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssMaskLayer, ParseError<'i, Error>> {
     // `<mask-reference> || <position> [ / <bg-size> ]? || <repeat-style> ||
     // <geometry-box> || [ <geometry-box> | no-clip ] || <compositing-operator>

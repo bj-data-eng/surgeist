@@ -1,7 +1,18 @@
 //! Fonts CSSOM views and source map operations over the shared live owner.
 use crate::*;
-use surgeist_css::*;
-use surgeist_css::{CssFontPaletteValuesRule, CssRule};
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
+    CssFontFaceDescriptorKind, CssFontFaceFamily, serialize_font_face_family_list,
+};
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureDisplayOccurrence, CssFontFeatureValueKind, CssFontFeatureValuesFamilyList,
+};
+use surgeist_css::rule::font_palette_values::CssFontPaletteDescriptorKind;
+use surgeist_css::rule::font_palette_values::CssFontPaletteValuesRule;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParser, CssParserContext};
 
 /// Genuine checked family admission, independent of the original rule occurrence.
 /// Parsed carriers keep their actual whole/member origins; typed carriers retain

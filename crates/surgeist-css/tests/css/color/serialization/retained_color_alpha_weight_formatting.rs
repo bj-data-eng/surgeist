@@ -15,7 +15,20 @@ use crate::css::support::{
     checked_color as color, checked_color_declaration as declaration,
     component_values as components, declaration_color,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorMix, CssColorMixComponent, CssColorMixWeight,
+    CssColorProfileName, CssCustomColor,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssNumber, CssPercentage,
+};
+use surgeist_css::property::{
+    CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

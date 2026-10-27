@@ -1,7 +1,10 @@
 //! CSS-wide keywords (Cascade 5 §7.3) are whole-value globals for every
 //! property, including `all`.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::CssKnownProperty;
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;

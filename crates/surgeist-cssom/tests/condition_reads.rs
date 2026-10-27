@@ -1,4 +1,4 @@
-use surgeist_css::CssSerializationLimits;
+use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_cssom::*;
 
 fn version(role: CssomInputRole, identity: &str) -> CssomInputVersion {
@@ -252,7 +252,7 @@ fn omitted_scope_bounds_and_defined_named_support_name_do_not_require_whole_wrap
     );
     let snapshot = owner.snapshot();
     assert_eq!(rules.len(), 2);
-    let zero = surgeist_css::CssSerializationLimits::new(0, 0, 0);
+    let zero = surgeist_css::serialization::CssSerializationLimits::new(0, 0, 0);
     assert_eq!(
         owner
             .css_scope_rule(&rules[0])
@@ -600,7 +600,7 @@ fn result_requires_one_actual_fact_and_rejects_payload_drift_even_at_same_versio
     let mut changed = context();
     changed.inputs[2].data = CssomInputData::Support(
         CssomDeclarationSupport::try_new(vec![(
-            surgeist_css::CssPropertyGrammar::from_name("color").unwrap(),
+            surgeist_css::property::CssPropertyGrammar::from_name("color").unwrap(),
             CssomUsabilityRequirement::AllCheckedValues,
         )])
         .unwrap(),

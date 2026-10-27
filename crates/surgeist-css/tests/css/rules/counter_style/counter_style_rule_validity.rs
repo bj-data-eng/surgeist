@@ -3,10 +3,11 @@
 //! invalidate the authored at-rule. §3.1.7 separately invalidates extends rules
 //! with authored symbols or additive-symbols.
 
-use surgeist_css::{
-    CssCounterStyleDescriptorKind, CssCounterStyleRule, CssErrorCode, CssNormalizedItem, CssParser,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::{CssCounterStyleDescriptorKind, CssCounterStyleRule};
 
 fn assert_retained(body: &str, canonical: &str) -> CssCounterStyleRule {
     let source = format!(".before{{}} @counter-style Incomplete {{ {body} }} .after{{}}");
@@ -259,8 +260,8 @@ fn extends_with_valid_symbols_retains_rule_without_defining_style() {
                 .prospective()
                 .unwrap()
                 .definition_status(),
-            surgeist_css::CssCounterStyleDefinitionStatus::Undefined(
-                surgeist_css::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
+            surgeist_css::rule::counter_style::CssCounterStyleDefinitionStatus::Undefined(
+                surgeist_css::rule::counter_style::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
             )
         );
     }

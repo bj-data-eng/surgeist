@@ -7,10 +7,11 @@
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/>
 
 use crate::css::support::authored_syntax::assert_strict_rejection;
-use surgeist_css::{
-    CssComponentValueRef, CssComponentValues, CssDeclarationList, CssHashFlag, CssParser,
-    CssValueOrigin, CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssHashFlag, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::declaration::CssDeclarationList;
 
 #[derive(Debug)]
 enum ExpectedToken<'a> {

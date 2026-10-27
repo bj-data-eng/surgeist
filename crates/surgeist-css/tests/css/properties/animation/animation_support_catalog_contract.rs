@@ -3,7 +3,11 @@
 //! Catalog completeness concerns authored grammar, without contextual animation
 //! execution.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::animation::{CssAnimationFillMode, CssAnimationName};
 
 fn complete(property: CssKnownProperty, value: &str, expected_entries: usize) {
     let css = format!("{}:{value}!important", property.canonical_name());

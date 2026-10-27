@@ -5,11 +5,12 @@
 //! The reserved default identifier is excluded in every ASCII case permutation.
 //! Quoted strings and decoded names retain their distinct construction semantics.
 
-use surgeist_css::{
-    CssErrorCode, CssFontFaceFamily, CssFontFaceSource, CssFontFamilyName, CssFontFamilyNameKind,
-    CssFontLocalName, CssFontValue, CssKnownProperty, CssKnownPropertyValueRef, CssParser,
-    CssRecoveryAction, CssRule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{CssFontFaceFamily, CssFontFaceSource, CssFontLocalName};
+use surgeist_css::values::font::{CssFontFamilyName, CssFontFamilyNameKind, CssFontValue};
 
 // These are authored identifier sequences. Escapes are decoded by the real
 // parser before the reserved-token check; whitespace terminating a hex escape

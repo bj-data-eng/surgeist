@@ -132,14 +132,14 @@ pub(in crate::store) struct DraftDocument {
 #[derive(Clone)]
 pub(in crate::store) struct DraftRecord {
     pub key: RecordKey,
-    pub name: Arc<surgeist_css::CssViewTransitionIdent>,
+    pub name: Arc<surgeist_css::values::view_transition::CssViewTransitionIdent>,
     pub branches: DomViewTransitionBranches,
     pub rules: Option<DomViewTransitionRules>,
     pub captured: [bool; 4],
 }
 pub(in crate::store) struct RecordRead<'a> {
     pub key: RecordKey,
-    pub name: &'a Arc<surgeist_css::CssViewTransitionIdent>,
+    pub name: &'a Arc<surgeist_css::values::view_transition::CssViewTransitionIdent>,
     pub branches: DomViewTransitionBranches,
     pub rules: &'a Option<DomViewTransitionRules>,
     pub captured: [bool; 4],
@@ -244,7 +244,7 @@ impl DraftTransition {
     }
     pub fn name_owner(
         &self,
-        name: &surgeist_css::CssViewTransitionIdent,
+        name: &surgeist_css::values::view_transition::CssViewTransitionIdent,
         step: &mut dyn FnMut() -> Result<(), DomError>,
     ) -> Result<Option<RecordKey>, DomError> {
         self.membership
@@ -331,7 +331,7 @@ impl DraftTransition {
     pub fn append_record(
         &mut self,
         ticket: usize,
-        name: &Arc<surgeist_css::CssViewTransitionIdent>,
+        name: &Arc<surgeist_css::values::view_transition::CssViewTransitionIdent>,
         registry: &CustodyRegistry,
         admit: &mut impl FnMut(Usage) -> Result<(), DomError>,
         step: &mut dyn FnMut() -> Result<(), DomError>,
@@ -694,9 +694,13 @@ pub(in crate::store) fn generation(value: u64) -> Result<usize, DomError> {
 fn inline<T>() -> Usage {
     Usage::new(size_of::<T>(), 0)
 }
-fn record_usage<T>(name: &surgeist_css::CssViewTransitionIdent) -> Result<Usage, DomError> {
+fn record_usage<T>(
+    name: &surgeist_css::values::view_transition::CssViewTransitionIdent,
+) -> Result<Usage, DomError> {
     let bytes = size_of::<T>()
-        .checked_add(size_of::<surgeist_css::CssViewTransitionIdent>())
+        .checked_add(size_of::<
+            surgeist_css::values::view_transition::CssViewTransitionIdent,
+        >())
         .and_then(|n| n.checked_add(name.retained_buffer_bytes()))
         .ok_or(DomError::RepresentationExhausted)?;
     Ok(Usage::new(bytes, 0))

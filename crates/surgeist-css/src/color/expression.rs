@@ -6,15 +6,17 @@
 
 use super::keywords::Word;
 use super::literal::{LiteralAction, LiteralConversion};
-use super::protocol::{ColorProtocolError, CssColorSlot, Data, LexicalTable};
 use super::tokens::{ClassifiedToken, TokenAction, TokenReader};
+use crate::color::controlled::CssColorSlot;
+use crate::color::controlled::protocol::{ColorProtocolError, Data, LexicalTable};
+use crate::numeric::CssNumericDimension as Dimension;
+use crate::numeric::CssNumericType as Type;
 use crate::numeric::bounded_expression as engine;
 use crate::tokenization::tokenizer::{NameKind, TokenKind};
-use crate::{CssNumericDimension as Dimension, CssNumericType as Type};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct InputContext {
-    function: Option<crate::CssMathFunction>,
+    function: Option<crate::numeric::CssMathFunction>,
     leading: bool,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -42,8 +44,10 @@ impl Number {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Variable {
-    Channel(crate::CssRelativeColorChannel),
-    Profile { name: super::protocol::RecordRange },
+    Channel(crate::color::CssRelativeColorChannel),
+    Profile {
+        name: crate::color::controlled::protocol::RecordRange,
+    },
 }
 /// A reference retains full source-token identity or its genuine authored site.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -64,7 +68,7 @@ pub(crate) enum NumericLeaf {
     Literal(Number),
     Contextual {
         token: OperandReference,
-        unit: crate::CssNumericUnit,
+        unit: crate::numeric::CssNumericUnit,
         number: Number,
     },
     Variable {
@@ -211,7 +215,7 @@ pub(crate) struct NumericGrammar<'owner> {
 }
 #[derive(Clone, Copy)]
 pub(crate) struct ExpressionTable<'owner> {
-    owner: &'owner super::protocol::CssColorOperationOwner,
+    owner: &'owner crate::color::controlled::CssColorOperationOwner,
     phase: usize,
     pub(crate) start: usize,
     pub(crate) length: usize,
@@ -587,8 +591,8 @@ impl<'owner> NumericGrammar<'owner> {
     }
     pub(crate) fn relative_channel(
         &self,
-        environment: crate::CssRelativeColorEnvironment,
-    ) -> Result<Option<crate::CssRelativeColorChannel>, ColorProtocolError> {
+        environment: crate::color::CssRelativeColorEnvironment,
+    ) -> Result<Option<crate::color::CssRelativeColorChannel>, ColorProtocolError> {
         if !matches!(self.state, State::Identifier(_)) {
             return Err(ColorProtocolError::WrongAction);
         }
@@ -596,7 +600,7 @@ impl<'owner> NumericGrammar<'owner> {
     }
     pub(crate) fn relative_identifier(
         &mut self,
-        environment: crate::CssRelativeColorEnvironment,
+        environment: crate::color::CssRelativeColorEnvironment,
     ) -> Result<(), ColorProtocolError> {
         let channel = self
             .relative_channel(environment)?
@@ -629,7 +633,7 @@ impl<'owner> NumericGrammar<'owner> {
             NumericLeaf::Variable {
                 token: OperandReference::Source(token),
                 binding: Variable::Profile {
-                    name: super::protocol::RecordRange {
+                    name: crate::color::controlled::protocol::RecordRange {
                         start: name.start,
                         end: name.end,
                     },
@@ -638,19 +642,19 @@ impl<'owner> NumericGrammar<'owner> {
         );
         Ok(())
     }
-    pub(crate) fn kernel(&self) -> super::CssColorKernel {
+    pub(crate) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
         match &self.state {
             State::Number(_, cursor) => {
                 if matches!(cursor.action(), LiteralAction::Done(_)) {
-                    super::CssColorKernel::Literal
+                    crate::color::controlled::CssColorKernel::Literal
                 } else {
                     cursor.kernel()
                 }
             }
             State::Input if self.reader.action() == TokenAction::Classify => {
-                super::CssColorKernel::Classify
+                crate::color::controlled::CssColorKernel::Classify
             }
-            _ => super::CssColorKernel::Grammar,
+            _ => crate::color::controlled::CssColorKernel::Grammar,
         }
     }
     pub(crate) fn compute(&mut self) -> Result<(), ColorProtocolError> {
@@ -720,7 +724,8 @@ impl<'owner> NumericGrammar<'owner> {
                         } => match token.word {
                             Word::None => engine::InputKind::None,
                             Word::Strategy(strategy)
-                                if self.context.function == Some(crate::CssMathFunction::Round)
+                                if self.context.function
+                                    == Some(crate::numeric::CssMathFunction::Round)
                                     && self.context.leading =>
                             {
                                 engine::InputKind::Strategy(strategy)
@@ -872,7 +877,7 @@ pub(crate) enum EvaluationAction {
     },
     ResolveUnit {
         token: usize,
-        unit: crate::CssNumericUnit,
+        unit: crate::numeric::CssNumericUnit,
     },
     Compute,
     Append {
@@ -908,7 +913,7 @@ enum EvaluationState {
     },
     Unit {
         token: OperandReference,
-        unit: crate::CssNumericUnit,
+        unit: crate::numeric::CssNumericUnit,
         number: Number,
     },
     Append(Evaluated),
@@ -1151,7 +1156,7 @@ impl<'owner> NumericEvaluation<'owner> {
     pub(crate) fn unavailable_unit(
         &self,
         token_index: usize,
-        unit: crate::CssNumericUnit,
+        unit: crate::numeric::CssNumericUnit,
     ) -> Result<(), ColorProtocolError> {
         let EvaluationState::Unit {
             token,
@@ -1164,7 +1169,9 @@ impl<'owner> NumericEvaluation<'owner> {
         if token_index != token.index() {
             return Err(ColorProtocolError::WrongIndex);
         }
-        if unit != expected || number.ty != crate::numeric::literal_type(Some(unit), false) {
+        if unit != expected
+            || number.ty != crate::numeric::expression::literal_type(Some(unit), false)
+        {
             return Err(ColorProtocolError::WrongSlot);
         }
         Ok(())
@@ -1239,8 +1246,8 @@ impl<'owner> NumericEvaluation<'owner> {
         };
         Ok(())
     }
-    pub(crate) fn kernel(&self) -> super::CssColorKernel {
-        use super::CssColorKernel as K;
+    pub(crate) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
+        use crate::color::controlled::CssColorKernel as K;
         match self.state {
             EvaluationState::Compute {
                 record: engine::Record::Argument(argument),
@@ -1311,9 +1318,9 @@ impl<'owner> NumericEvaluation<'owner> {
                         }
                         if VariadicMath::new(function).is_some() {
                             folds[match function {
-                                crate::CssMathFunction::Min => 0,
-                                crate::CssMathFunction::Max => 1,
-                                crate::CssMathFunction::Hypot => 2,
+                                crate::numeric::CssMathFunction::Min => 0,
+                                crate::numeric::CssMathFunction::Max => 1,
+                                crate::numeric::CssMathFunction::Hypot => 2,
                                 _ => unreachable!("actual variadic function"),
                             }]
                             .finish()
@@ -1335,8 +1342,8 @@ impl<'owner> NumericEvaluation<'owner> {
                 let value = if let Some(operator) = operator {
                     let left = number(previous)?.value;
                     match operator {
-                        crate::CssCalculationSumOperator::Add => left + right.value,
-                        crate::CssCalculationSumOperator::Subtract => left - right.value,
+                        crate::numeric::CssCalculationSumOperator::Add => left + right.value,
+                        crate::numeric::CssCalculationSumOperator::Subtract => left - right.value,
                     }
                 } else {
                     if previous.is_some() {
@@ -1357,8 +1364,10 @@ impl<'owner> NumericEvaluation<'owner> {
                 let value = if let Some(operator) = operator {
                     let left = number(previous)?.value;
                     match operator {
-                        crate::CssCalculationProductOperator::Multiply => left * right.value,
-                        crate::CssCalculationProductOperator::Divide => left / right.value,
+                        crate::numeric::CssCalculationProductOperator::Multiply => {
+                            left * right.value
+                        }
+                        crate::numeric::CssCalculationProductOperator::Divide => left / right.value,
                     }
                 } else {
                     if previous.is_some() {
@@ -1383,9 +1392,9 @@ impl<'owner> NumericEvaluation<'owner> {
                         [None; 3],
                         0,
                         [
-                            VariadicMath::new(crate::CssMathFunction::Min).unwrap(),
-                            VariadicMath::new(crate::CssMathFunction::Max).unwrap(),
-                            VariadicMath::new(crate::CssMathFunction::Hypot).unwrap(),
+                            VariadicMath::new(crate::numeric::CssMathFunction::Min).unwrap(),
+                            VariadicMath::new(crate::numeric::CssMathFunction::Max).unwrap(),
+                            VariadicMath::new(crate::numeric::CssMathFunction::Hypot).unwrap(),
                         ],
                     ),
                     _ => return Err(ColorProtocolError::WrongSlot),
@@ -1494,8 +1503,9 @@ impl<'owner> NumericEvaluation<'owner> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::protocol::{ActionDescription, CssColorOperationOwner, LexicalOperation};
     use super::*;
+    use crate::color::controlled::CssColorOperationOwner;
+    use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
     use crate::tokenization::bounded::InputKind;
 
     fn lexical<'owner>(
@@ -1677,7 +1687,7 @@ mod tests {
                         let record = evaluation.record(index).unwrap();
                         assert_eq!(
                             record.bank(),
-                            super::super::protocol::CssColorBank::Evaluation
+                            crate::color::controlled::CssColorBank::Evaluation
                         );
                         assert_eq!(
                             evaluation.written(index, &expressions[index]),
@@ -1889,7 +1899,7 @@ mod tests {
         };
         assert_eq!(
             unit,
-            crate::CssNumericUnit::Length(crate::CssLengthUnit::Em)
+            crate::numeric::CssNumericUnit::Length(crate::numeric::CssLengthUnit::Em)
         );
         assert_eq!(
             evaluation.unit(token + 1, 16.0),
@@ -1918,12 +1928,12 @@ mod tests {
                     variables.push((
                         token.index,
                         syntax
-                            .relative_channel(crate::CssRelativeColorEnvironment::Rgb)
+                            .relative_channel(crate::color::CssRelativeColorEnvironment::Rgb)
                             .unwrap()
                             .unwrap(),
                     ));
                     syntax
-                        .relative_identifier(crate::CssRelativeColorEnvironment::Rgb)
+                        .relative_identifier(crate::color::CssRelativeColorEnvironment::Rgb)
                         .unwrap();
                 }
                 NumericAction::Done { ty, .. } => {
@@ -1939,15 +1949,15 @@ mod tests {
                 .map(|(_, channel)| *channel)
                 .collect::<Vec<_>>(),
             [
-                crate::CssRelativeColorChannel::R,
-                crate::CssRelativeColorChannel::Alpha
+                crate::color::CssRelativeColorChannel::R,
+                crate::color::CssRelativeColorChannel::Alpha
             ]
         );
         assert_eq!(syntax.scratch_end(), slots.len());
         let expressions_table = syntax.finish().unwrap();
         let binding = super::super::relative::Binding::new(
-            crate::CssRelativeColorEnvironment::Rgb,
-            super::super::Color::from_srgba8([128, 32, 16, 64]),
+            crate::color::CssRelativeColorEnvironment::Rgb,
+            surgeist_color::Color::from_srgba8([128, 32, 16, 64]),
         )
         .unwrap();
         let mut evaluator = NumericEvaluation::start(&expressions_table, 0).unwrap();
@@ -2065,7 +2075,7 @@ mod tests {
         else {
             panic!("must reject syntax before ResolveIdentifier: {action:?}");
         };
-        let super::super::protocol::LexicalRecord::Token(token) =
+        let crate::color::controlled::protocol::LexicalRecord::Token(token) =
             table.observe(site, &slots[site]).unwrap()
         else {
             panic!("responsible identifier")

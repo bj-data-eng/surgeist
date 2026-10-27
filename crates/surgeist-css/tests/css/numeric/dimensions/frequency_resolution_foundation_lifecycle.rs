@@ -3,7 +3,22 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::{assert_numeric_kind, literal_specified};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueError, CssComponentValueLimits, CssComponentValueRef,
+    CssComponentValues, CssNumericTokenKind, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssFrequency,
+    CssFrequencyUnit, CssNonNegative, CssNumeric, CssNumericLiteral, CssResolution,
+    CssResolutionUnit,
+};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{
+    CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaRangeRef, CssMediaResolution,
+    CssMediaResolutionRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 #[test]
 fn ordinary_resolution_zero_is_valid() {

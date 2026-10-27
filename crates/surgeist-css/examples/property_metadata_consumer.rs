@@ -26,8 +26,23 @@
 mod property_expectations;
 use property_expectations::{CASES, InitialExpectation, MetadataExpectation};
 
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssSystemColor;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::property_support_metadata;
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssLonghandContributions, CssLonghandMetadata, CssLonghandProperty, CssLonghandValueRef,
+    CssPendingSubstitution, CssPropertyGrammar, CssPropertyKindRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::font::CssGenericFontFamily;
+use surgeist_css::values::text::CssTextOrientation;
 
 fn grammar(name: &str) -> CssPropertyGrammar {
     CssPropertyGrammar::from_name(name).expect("recognized decoded property grammar")

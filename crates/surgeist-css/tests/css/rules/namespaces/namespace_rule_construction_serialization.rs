@@ -3,10 +3,10 @@
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssNamespaceName, CssNamespacePrefix, CssNamespaceRule, CssNormalizedItem, CssParser, CssRule,
-    CssRuleContextKindRef, CssSerializationLimits,
-};
+use surgeist_css::CssParser;
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssNamespaceRule, CssRule};
+use surgeist_css::serialization::CssSerializationLimits;
 
 #[test]
 fn constructed_namespace_rules_emit_canonical_prefixes_and_literal_url_strings() {

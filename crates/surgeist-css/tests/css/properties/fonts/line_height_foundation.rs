@@ -6,7 +6,15 @@ use crate::css::support::important_declaration as declaration;
 use crate::css::support::known_property;
 use crate::css::support::named_property::assert_checked_value_rejected_at;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::values::text::CssLineHeight;
 
 fn rejected_locally<'a>(name: &str, value: &str, rest: impl Into<Option<&'a str>>) {
     let rest = rest.into();

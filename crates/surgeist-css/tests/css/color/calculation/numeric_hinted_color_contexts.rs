@@ -12,7 +12,17 @@ use crate::css::support::color_and_selector_fixtures::assert_color_grammar_failu
 use crate::css::support::declaration_color as color;
 use crate::css::support::{component_values as components, detached_checked_declaration};
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssProfileColorExpression, CssProfileColorExpressionRef, CssRelativeColorEnvironment,
+    CssRelativeColorExpression, CssRelativeColorExpressionValue, CssRelativeColorResultDomain,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssCalculationType, CssNumericDimension, CssNumericType};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
 
 const HINTED: &str = "calc((1px + 1%) / 1px)";
 

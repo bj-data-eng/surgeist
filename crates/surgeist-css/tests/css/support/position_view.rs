@@ -4,7 +4,9 @@
 //! Tests that check a physical or x/y keyword position read its two axes through this view and
 //! fail if the position is not a Cartesian one.
 
-use surgeist_css::{CssHorizontalPosition, CssPosition, CssPositionRef, CssVerticalPosition};
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPosition, CssPositionRef, CssVerticalPosition,
+};
 
 /// The horizontal and vertical axes of a Cartesian position.
 pub trait CartesianPosition {

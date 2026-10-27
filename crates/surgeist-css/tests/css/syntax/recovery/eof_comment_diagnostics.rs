@@ -4,13 +4,20 @@
 //! a surrounding rule survives. Token payloads are not comments.
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-comments
 
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue, CssCustomMediaBody, CssDeclaration, CssErrorCode,
-    CssFontFaceDescriptorKind, CssImportance, CssKnownProperty, CssMediaQuery, CssMediaQueryList,
-    CssNamespaceContext, CssParseReport, CssParsedStyleSelectors, CssParser, CssPropertyGrammar,
-    CssPropertyNameRef, CssPropertyTextTarget, CssRecoveryAction, CssRule, CssSelector,
-    CssStyleBlock, CssStyleSelectorContext,
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownProperty, CssPropertyGrammar, CssPropertyNameRef, CssPropertyTextTarget,
 };
+use surgeist_css::query::media::{CssCustomMediaBody, CssMediaQuery, CssMediaQueryList};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind,
+};
+use surgeist_css::rule::{CssRule, CssStyleBlock};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssSelector, CssStyleSelectorContext,
+};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn assert_comment<T>(source: &str, report: &CssParseReport<T>, opening: usize) {
     let comments = report

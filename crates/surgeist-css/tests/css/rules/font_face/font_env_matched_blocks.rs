@@ -4,13 +4,18 @@
 //! closers and root semicolons/bangs. These tests use the public string and component fronts.
 
 use crate::css::support::rules::{ExpectedRejection, descriptor_rejected_at, invalid_descriptor};
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as FaceValue, CssAuthoredFontFaceDescriptorValue,
-    CssBlockContext, CssBlockFragment, CssComponentValues, CssFontFaceDescriptorKind as FaceKind,
-    CssFontFaceDescriptors, CssFontPaletteDescriptor, CssFontPaletteDescriptorKind as PaletteKind,
-    CssFontPaletteDescriptorValue as PaletteValue, CssFontPaletteDescriptorValue,
-    CssFontPaletteDescriptorValueRef, CssParser, CssRecoveryAction, CssRule, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue as FaceValue;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as FaceKind;
+use surgeist_css::rule::font_face::{CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptors};
+use surgeist_css::rule::font_palette_values::CssFontPaletteDescriptorKind as PaletteKind;
+use surgeist_css::rule::font_palette_values::CssFontPaletteDescriptorValue as PaletteValue;
+use surgeist_css::rule::font_palette_values::{
+    CssFontPaletteDescriptor, CssFontPaletteDescriptorValue, CssFontPaletteDescriptorValueRef,
 };
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule};
 
 const FACE_VALUES: [&str; 4] = [
     "env(width){}",

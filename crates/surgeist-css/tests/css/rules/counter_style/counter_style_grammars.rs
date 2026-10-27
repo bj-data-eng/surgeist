@@ -2,11 +2,14 @@ use crate::css::support::descriptor_phases;
 use crate::css::support::rules::page_pseudo;
 use descriptor_phases::*;
 
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::{
     CssCounterStyleDescriptorRef, CssCounterStyleName, CssCounterStyleRange,
     CssCounterStyleRangeBound, CssCounterStyleSpeakAs, CssCounterStyleSystem, CssCounterSymbol,
-    CssCounterSymbolIdent, CssErrorCode, CssParser, CssRecoveryAction, CssRule, CssSupportStatus,
-    feature_metadata,
+    CssCounterSymbolIdent,
 };
 
 #[test]
@@ -592,8 +595,8 @@ fn counter_style_rule_recovery_preserves_siblings_and_boundaries() {
         panic!("scope")
     };
     let [
-        surgeist_css::CssRule::CounterStyle(scoped_counter),
-        surgeist_css::CssRule::Style(_),
+        surgeist_css::rule::CssRule::CounterStyle(scoped_counter),
+        surgeist_css::rule::CssRule::Style(_),
     ] = scope.rules().rules()
     else {
         panic!("counter and scoped sibling")
@@ -605,7 +608,7 @@ fn counter_style_rule_recovery_preserves_siblings_and_boundaries() {
     );
     assert_eq!(
         page_pseudo(nested_page),
-        Some(surgeist_css::CssPagePseudo::Right)
+        Some(surgeist_css::rule::page::CssPagePseudo::Right)
     );
     assert_eq!(nested_page.declarations().properties().len(), 1);
     assert_eq!(
@@ -614,7 +617,7 @@ fn counter_style_rule_recovery_preserves_siblings_and_boundaries() {
     );
     assert!(matches!(
         sibling.selectors().selectors()[0].selector(),
-        surgeist_css::CssSelector::Class(name) if name == "media-kept"
+        surgeist_css::selector::CssSelector::Class(name) if name == "media-kept"
     ));
     // Fonts 4 §6.9.1 accepts a named family with an empty body at sheet level.
     let CssRule::FontFeatureValues(tail) = &report.syntax().rules()[5] else {

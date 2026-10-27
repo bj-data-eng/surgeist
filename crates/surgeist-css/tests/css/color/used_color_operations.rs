@@ -3,7 +3,7 @@
 use surgeist_color::{
     Color, ColorSpace, PredefinedColorSpace, SerializationRequest, Transformation,
 };
-use surgeist_css::{
+use surgeist_css::color::{
     CssColorError, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInput,
     CssColorOrdinaryLimits, CssColorOrdinaryOutcome, CssColorOrdinaryResource,
     CssColorPaletteEntry, CssColorPropertyFacts, CssColorSchemeFact, CssColorStandardFailureKind,

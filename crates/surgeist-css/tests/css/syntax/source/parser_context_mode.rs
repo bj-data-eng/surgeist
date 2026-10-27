@@ -1,8 +1,8 @@
 use crate::css::support::authored_syntax::{assert_diagnostics, assert_invalid_property_value};
-use surgeist_css::{
-    CssDeclaration, CssErrorCode, CssKnownProperty, CssParser, CssParserContext, CssParserMode,
-    CssRecoveryAction,
-};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 const QUIRKS_SVG: CssParserContext = CssParserContext::new(CssParserMode::Standards)
     .with_svg_glyph_orientation_vertical()

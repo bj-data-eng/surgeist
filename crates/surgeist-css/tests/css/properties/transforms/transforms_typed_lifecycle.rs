@@ -5,7 +5,21 @@
 use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::serialization_limits::assert_limits as budget;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssCalculation, CssHintedNumber, CssLength, CssLengthPercentage, CssNonNegative, CssNumber,
+    CssNumeric, CssNumericDimension, CssPercentage,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssPosition, CssVerticalPosition,
+};
+use surgeist_css::values::transform::{
+    CssBackfaceVisibility, CssPerspective, CssScale, CssScaleValues, CssTransform,
+    CssTransformFunction, CssTransformFunctionList, CssTransformScale, CssTransformScaleComponent,
+    CssTransformStyle,
+};
 
 fn number(text: &str) -> CssTransformScaleComponent {
     CssTransformScaleComponent::Number(

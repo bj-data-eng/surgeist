@@ -5,7 +5,16 @@
 //! Quarter-turn rounding is a computed-value operation; authored angles remain exact.
 //! These tests require no future keyword variant or serialization API.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssAngle, CssAngleUnit, CssNumeric};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::values::image::CssImageOrientation;
 
 const FLIP_FIRST: &[(&str, &str, &str, CssAngleUnit)] = &[
     (

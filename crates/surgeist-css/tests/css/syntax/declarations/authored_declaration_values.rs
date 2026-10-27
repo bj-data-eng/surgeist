@@ -1,13 +1,15 @@
 use crate::css::support::parse_report as common;
 
 use common::CssParseReportTestExt;
-use surgeist_css::{
-    CssCustomPropertyDeclaredValue, CssCustomPropertyName, CssErrorCode, CssGlobalKeyword,
-    CssKnownProperty, CssKnownPropertyValueRef, CssParser, CssPropertyNameRef, CssRule,
-    CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{
+    CssCustomPropertyDeclaredValue, CssCustomPropertyName, CssGlobalKeyword,
 };
+use surgeist_css::diagnostic::{CssErrorCode, CssTokenKind};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
+use surgeist_css::rule::CssRule;
 
-fn declarations(source: &str) -> Vec<surgeist_css::CssDeclaration> {
+fn declarations(source: &str) -> Vec<surgeist_css::declaration::CssDeclaration> {
     let sheet = CssParser::default()
         .parse_sheet(source)
         .expect("valid authored declaration stylesheet");
@@ -18,8 +20,8 @@ fn declarations(source: &str) -> Vec<surgeist_css::CssDeclaration> {
 }
 
 fn custom_value(
-    declaration: &surgeist_css::CssDeclaration,
-) -> &surgeist_css::CssCustomPropertyValue {
+    declaration: &surgeist_css::declaration::CssDeclaration,
+) -> &surgeist_css::declaration::CssCustomPropertyValue {
     declaration
         .custom()
         .expect("custom declaration")
@@ -178,7 +180,10 @@ fn authored_declaration_known_ordinary_wrappers_preserve_interior_css_text() {
         panic!("expected a font-family wrapper");
     };
     assert_eq!(value.as_css(), "\"A\\76 enir\"/**/,/**/ SeRiF");
-    assert_eq!(family.importance(), surgeist_css::CssImportance::Important);
+    assert_eq!(
+        family.importance(),
+        surgeist_css::declaration::CssImportance::Important
+    );
 
     let Some(CssKnownPropertyValueRef::Transform(value)) =
         transform.known().and_then(|known| known.property_value())

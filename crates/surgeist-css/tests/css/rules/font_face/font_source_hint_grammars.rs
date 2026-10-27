@@ -3,11 +3,13 @@
 //! Its optional format() takes one string or keyword; tech() takes a nonempty
 //! comma-separated list that includes palettes. Font loading is a later phase.
 
-use surgeist_css::{
-    CssErrorCode, CssFontFaceRule, CssFontFaceSource, CssFontFaceUrlSource, CssFontFormat,
-    CssFontFormatHint, CssFontFormatString, CssParseReport, CssParser, CssRecoveryAction, CssRule,
-    CssSheet,
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::font_face::{
+    CssFontFaceRule, CssFontFaceSource, CssFontFaceUrlSource, CssFontFormat, CssFontFormatHint,
+    CssFontFormatString,
 };
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn font_face(report: &CssParseReport<CssSheet>) -> &CssFontFaceRule {
     let [CssRule::FontFace(rule), CssRule::Style(_)] = report.syntax().rules() else {
@@ -112,7 +114,7 @@ fn empty_format_string_is_valid_authored_syntax_without_a_recognized_format() {
     assert_eq!(string_format!(url), "");
     assert_eq!(
         url.format()
-            .and_then(surgeist_css::CssFontFormat::recognized_format),
+            .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
         None
     );
     assert!(url.tech().is_empty());
@@ -128,7 +130,7 @@ fn empty_format_string_is_valid_authored_syntax_without_a_recognized_format() {
 #[test]
 fn empty_authored_format_string_is_present_in_direct_construction() {
     let source = CssFontFaceUrlSource::new(
-        surgeist_css::CssUrl::new(""),
+        surgeist_css::values::common::CssUrl::new(""),
         Some(CssFontFormat::String(CssFontFormatString::new(""))),
         Vec::new(),
     );
@@ -139,7 +141,11 @@ fn empty_authored_format_string_is_present_in_direct_construction() {
     );
     assert_ne!(
         source,
-        CssFontFaceUrlSource::new(surgeist_css::CssUrl::new(""), None, Vec::new())
+        CssFontFaceUrlSource::new(
+            surgeist_css::values::common::CssUrl::new(""),
+            None,
+            Vec::new()
+        )
     );
 }
 
@@ -158,7 +164,7 @@ fn single_format_hints_preserve_authored_strings_and_known_keyword_meaning() {
     assert_eq!(
         urls[0]
             .format()
-            .and_then(surgeist_css::CssFontFormat::recognized_format),
+            .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
         None
     );
     assert_eq!(urls[0].format(), None);
@@ -177,7 +183,7 @@ fn single_format_hints_preserve_authored_strings_and_known_keyword_meaning() {
     assert_eq!(
         urls[3]
             .format()
-            .and_then(surgeist_css::CssFontFormat::recognized_format),
+            .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
         None
     );
     assert_eq!(
@@ -205,7 +211,7 @@ fn palettes_technology_is_typed_and_preserves_authored_order() {
     };
     assert_eq!(
         url.format()
-            .and_then(surgeist_css::CssFontFormat::recognized_format),
+            .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
         Some(CssFontFormatHint::OpenType)
     );
     // Debug is an existing observable boundary, so RED compiles before the
@@ -218,7 +224,7 @@ fn palettes_technology_is_typed_and_preserves_authored_order() {
         ["Variations", "Palettes", "ColorCOLRv1", "Palettes"]
     );
     let constructed = CssFontFaceUrlSource::new(
-        surgeist_css::CssUrl::new("another-font"),
+        surgeist_css::values::common::CssUrl::new("another-font"),
         None,
         url.tech().to_vec(),
     );

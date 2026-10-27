@@ -1,12 +1,12 @@
 //! Scope's authored selector context must survive the parser's structural chunk boundary.
 //! The same supported scoped selector remains valid regardless of ancestor depth.
 
-use surgeist_css::{
-    CssParser, CssRule, CssSelector, CssSelectorCombinator, CssStyleRule, CssStyleSelector,
-};
+use surgeist_css::CssParser;
+use surgeist_css::rule::{CssRule, CssStyleRule};
+use surgeist_css::selector::{CssSelector, CssSelectorCombinator, CssStyleSelector};
 
 fn style_at_scope_depth(
-    report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
+    report: &surgeist_css::CssParseReport<surgeist_css::rule::CssSheet>,
     scope_depth: usize,
 ) -> &CssStyleRule {
     let [CssRule::Scope(first)] = report.syntax().rules() else {

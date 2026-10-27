@@ -199,7 +199,9 @@ fn apply(dom: &mut Dom, batch: DomBatch) -> DomCommit {
 /// service's complete applicable CSP policy list is explicitly empty. Parsing
 /// and CSSOM creation execute; no snapshot is presented as a commit receipt.
 fn create_style_root(dom: &mut Dom, ordinal: usize) -> DocumentId {
-    use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+    use surgeist_css::query::media::CssMediaQueryList;
+    use surgeist_css::source::CssUtf16InputLimits;
+    use surgeist_css::{CssParser, CssParserContext};
     use surgeist_cssom::{
         CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs, CssomStore,
     };

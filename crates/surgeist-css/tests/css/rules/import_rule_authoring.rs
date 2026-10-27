@@ -1,7 +1,15 @@
 //! `@import` (Cascade 5) targets, layers, conditions and placement through the
 //! public stylesheet parser and constructors.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery, CssMediaType};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::{
+    CssImportLayer, CssImportRule, CssImportString, CssImportTarget, CssImportUrl, CssLayerName,
+    CssRule,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
@@ -56,13 +64,13 @@ fn import_layer_name_rejects_reserved_components() {
 fn import_target_constructors_preserve_decoded_values() {
     for value in ["", " \t\n "] {
         assert_eq!(
-            CssImportUrl::new(surgeist_css::CssUrl::new(value)).as_str(),
+            CssImportUrl::new(surgeist_css::values::common::CssUrl::new(value)).as_str(),
             value
         );
         assert_eq!(CssImportString::new(value).as_str(), value);
     }
     assert_eq!(
-        CssImportUrl::new(surgeist_css::CssUrl::new("theme.css")).as_str(),
+        CssImportUrl::new(surgeist_css::values::common::CssUrl::new("theme.css")).as_str(),
         "theme.css"
     );
     assert_eq!(CssImportString::new("theme.css").as_str(), "theme.css");
@@ -70,7 +78,9 @@ fn import_target_constructors_preserve_decoded_values() {
 
 #[test]
 fn import_rule_accessors_expose_authored_structure() {
-    let target = CssImportTarget::Url(CssImportUrl::new(surgeist_css::CssUrl::new("theme.css")));
+    let target = CssImportTarget::Url(CssImportUrl::new(
+        surgeist_css::values::common::CssUrl::new("theme.css"),
+    ));
     let layer = CssImportLayer::Named(CssLayerName::try_new(["theme", "components"]).unwrap());
     let location = source_position(3, 7);
     let sheet = CssParser::default()
@@ -121,7 +131,9 @@ fn import_rule_parser_accepts_targets_layers_and_media() {
     };
     assert_eq!(
         import_rule(rule).target(),
-        &CssImportTarget::Url(CssImportUrl::new(surgeist_css::CssUrl::new("layout.css")))
+        &CssImportTarget::Url(CssImportUrl::new(
+            surgeist_css::values::common::CssUrl::new("layout.css")
+        ))
     );
 
     let sheet = CssParser::default()
@@ -133,7 +145,9 @@ fn import_rule_parser_accepts_targets_layers_and_media() {
     let rule = import_rule(rule);
     assert_eq!(
         rule.target(),
-        &CssImportTarget::Url(CssImportUrl::new(surgeist_css::CssUrl::new("tokens.css")))
+        &CssImportTarget::Url(CssImportUrl::new(
+            surgeist_css::values::common::CssUrl::new("tokens.css")
+        ))
     );
     assert_eq!(rule.layer(), Some(&CssImportLayer::Anonymous));
 

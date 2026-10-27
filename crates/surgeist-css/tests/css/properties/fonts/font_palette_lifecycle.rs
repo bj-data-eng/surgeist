@@ -10,7 +10,21 @@
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use crate::css::support::named_property::important_property_declaration;
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownDeclaredValueRef, CssKnownProperty, CssLonghandContributions, CssPropertyGrammar,
+    CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_palette_values::CssFontPaletteName;
+use surgeist_css::{CssParser, CssParserContext};
 
 fn grammar() -> CssPropertyGrammar {
     // Obtain the grammar only after exercising real property admission.

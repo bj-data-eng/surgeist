@@ -2,9 +2,9 @@
 //! Images 3 (CRD 2023-12-18) §3.1 defines linear-gradient(), whose omitted
 //! direction defaults to `to bottom`.
 
-use surgeist_css::{
-    CssGradient, CssImageValue, CssKnownProperty, CssKnownPropertyValueRef, CssParser,
-};
+use surgeist_css::CssParser;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::image::{CssGradient, CssImageValue};
 
 #[test]
 fn valid_authored_linear_gradient_is_retained_as_background_image() {

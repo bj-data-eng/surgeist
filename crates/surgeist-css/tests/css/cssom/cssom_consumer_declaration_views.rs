@@ -1,8 +1,8 @@
 use crate::css::support::{graph_cssom, graph_specified};
-use surgeist_css::{
-    CssDeclaration, CssKnownProperty, CssParsedStyleSelectors, CssParser, CssPropertyNameRef,
-    CssPropertyTarget, CssSpecifiedDeclarationBlock, CssStyleSelectorContext,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclaration, CssSpecifiedDeclarationBlock};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::selector::{CssParsedStyleSelectors, CssStyleSelectorContext};
 
 #[test]
 fn complete_margin_getter_crosses_logical_interference_without_reordering_css_text() {
@@ -35,7 +35,7 @@ fn block(source: &str) -> CssSpecifiedDeclarationBlock {
 
 #[test]
 fn selected_survivors_keep_order_priority_and_original_margin_occurrence() {
-    use surgeist_css::{CssImportance, CssSpecifiedDeclarationEntry};
+    use surgeist_css::declaration::{CssImportance, CssSpecifiedDeclarationEntry};
     let original = block("margin:1px 2px 3px 4px");
     let entries = original.entries();
     let selected: Vec<CssSpecifiedDeclarationEntry> = vec![
@@ -86,7 +86,7 @@ fn selected_survivors_keep_order_priority_and_original_margin_occurrence() {
 
 #[test]
 fn selected_pending_members_retain_origin_and_reject_duplicates_atomically() {
-    use surgeist_css::CssImportance;
+    use surgeist_css::declaration::CssImportance;
     let original = block("margin-inline:var(--m)");
     let mut selected = original.entries().to_vec();
     selected.reverse();
@@ -150,7 +150,7 @@ fn selected_pending_members_retain_origin_and_reject_duplicates_atomically() {
 
 #[test]
 fn mapping_order_relation_uses_canonical_terminals_and_excludes_unrelated_groups() {
-    use surgeist_css::{CssLonghandProperty, CssPropertyKindRef};
+    use surgeist_css::property::{CssLonghandProperty, CssPropertyKindRef};
     fn terminal(property: CssKnownProperty) -> CssLonghandProperty {
         let CssPropertyKindRef::Longhand(meta) = property.metadata().unwrap().kind() else {
             panic!("longhand");
@@ -173,7 +173,8 @@ fn mapping_order_relation_uses_canonical_terminals_and_excludes_unrelated_groups
 
 #[test]
 fn empty_live_nested_declarations_are_retained_and_filtered_from_style_and_media_text() {
-    use surgeist_css::{CssGroupPreludeRef, CssRule, CssRuleGraphInput};
+    use surgeist_css::rule::CssRule;
+    use surgeist_css::serialization::{CssGroupPreludeRef, CssRuleGraphInput};
     let report = CssParser::default().parse_sheet(".host { color:red; & > .child { opacity:0.5 } margin:1px } @media screen { .other { color:blue } }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Style(style), CssRule::Media(media)] = report.syntax().rules() else {
@@ -243,9 +244,9 @@ fn empty_live_nested_declarations_are_retained_and_filtered_from_style_and_media
 
 #[test]
 fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources() {
-    use surgeist_css::{
-        CssGroupPreludeRef, CssRule, CssRuleGraphInput, CssSerializationLimits as Limits,
-    };
+    use surgeist_css::rule::CssRule;
+    use surgeist_css::serialization::CssSerializationLimits as Limits;
+    use surgeist_css::serialization::{CssGroupPreludeRef, CssRuleGraphInput};
 
     let input = block("margin-left:1px; padding-left:2px");
     // Input aggregate + each occurrence/name/component aggregate/dimension = 9.
@@ -324,7 +325,7 @@ fn selection_and_edited_graph_limits_are_cumulative_and_retry_preserves_sources(
 
 #[test]
 fn getters_reject_incomplete_mixed_reset_and_incompatible_pending_members() {
-    use surgeist_css::CssSerializationLimits as Limits;
+    use surgeist_css::serialization::CssSerializationLimits as Limits;
 
     let name = CssPropertyNameRef::Known(CssKnownProperty::Margin);
     for source in [
@@ -386,7 +387,8 @@ fn getters_reject_incomplete_mixed_reset_and_incompatible_pending_members() {
 
 #[test]
 fn selected_keyframe_domain_rejects_priority_and_animation_terminals() {
-    use surgeist_css::{CssImportance, CssInvalidKeyframeSourceReason, CssRuleGraphInput};
+    use surgeist_css::declaration::{CssImportance, CssInvalidKeyframeSourceReason};
+    use surgeist_css::serialization::CssRuleGraphInput;
     let ordinary = block("opacity:0.5");
     let keyframe = CssSpecifiedDeclarationBlock::try_from_keyframe_entries(
         ordinary.entries(),
@@ -427,9 +429,9 @@ fn selected_keyframe_domain_rejects_priority_and_animation_terminals() {
 
 #[test]
 fn selected_completed_replacements_and_programmatic_sources_keep_their_own_payloads() {
-    use surgeist_css::{
-        CssComponentValue, CssComponentValues, CssDeclarationList, CssExpansion, CssImportance,
-    };
+    use surgeist_css::component::{CssComponentValue, CssComponentValues};
+    use surgeist_css::declaration::{CssDeclarationList, CssImportance};
+    use surgeist_css::property::CssExpansion;
     let original = CssParser::default().parse_block_contents("padding-inline:var(--p)");
     let CssExpansion::Pending(pending) = original.syntax()[0].expand().unwrap() else {
         panic!("pending");
@@ -498,9 +500,10 @@ fn selected_completed_replacements_and_programmatic_sources_keep_their_own_paylo
 
 #[test]
 fn edited_group_views_reuse_preludes_and_retain_typed_literal_unavailability() {
-    use surgeist_css::{
-        CssGroupPreludeRef as Prelude, CssRule, CssRuleCssomFormat, CssRuleGraphInput as View,
-    };
+    use surgeist_css::rule::CssRule;
+    use surgeist_css::serialization::CssGroupPreludeRef as Prelude;
+    use surgeist_css::serialization::CssRuleCssomFormat;
+    use surgeist_css::serialization::CssRuleGraphInput as View;
     let report = CssParser::default()
         .parse_sheet("@supports (display:grid) {} @container (width>1px) {} @layer theme {}");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -547,7 +550,8 @@ fn edited_group_views_reuse_preludes_and_retain_typed_literal_unavailability() {
 
 #[test]
 fn edited_style_accepts_detached_checked_selector_list_without_rebuilding_a_rule() {
-    use surgeist_css::{CssNamespaceContext, CssRuleGraphInput};
+    use surgeist_css::selector::CssNamespaceContext;
+    use surgeist_css::serialization::CssRuleGraphInput;
     let report = CssParsedStyleSelectors::parse(
         &CssParser::default(),
         "*.edited, #next::before",
@@ -572,7 +576,7 @@ fn edited_style_accepts_detached_checked_selector_list_without_rebuilding_a_rule
 
 #[test]
 fn selected_page_supported_property_terminals_keep_page_sources_and_survivors() {
-    use surgeist_css::CssRule;
+    use surgeist_css::rule::CssRule;
     let report = CssParser::default().parse_sheet("@page { margin:1px 2px 3px 4px; --note:paper }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());
     let [CssRule::Page(page)] = report.syntax().rules() else {
@@ -610,7 +614,8 @@ fn selected_page_supported_property_terminals_keep_page_sources_and_survivors() 
 
 #[test]
 fn edited_scoped_styles_borrow_scope_context_and_preserve_scoped_descendant_origins() {
-    use surgeist_css::{CssRule, CssRuleGraphInput as View};
+    use surgeist_css::rule::CssRule;
+    use surgeist_css::serialization::CssRuleGraphInput as View;
     let report = CssParser::default()
         .parse_sheet("@scope (.host) { & .child { color:red; & > .nested { opacity:0.5 } } }");
     assert!(report.is_clean(), "{:?}", report.diagnostics());

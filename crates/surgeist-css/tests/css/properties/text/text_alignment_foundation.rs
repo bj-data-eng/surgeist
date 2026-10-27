@@ -5,7 +5,19 @@
 use crate::css::support::checked_grammar_declaration as checked;
 use crate::css::support::important_declaration as parsed;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssLonghandContribution, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::selector::CssSelector;
 
 const SHORTHAND: &str = "text-align";
 const ALL: &str = "text-align-all";

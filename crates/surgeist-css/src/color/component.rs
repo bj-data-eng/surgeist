@@ -11,14 +11,15 @@ use super::expression::{
 use super::grammar::{ComponentRole, FunctionRecipe, ProfileSpace, RawComponent};
 use super::keywords::{ColorFunction as F, Word};
 use super::literal::{LiteralAction, LiteralConversion};
-use super::protocol::{ColorProtocolError, CssColorBank, CssColorSlot, LexicalTable};
 use super::tokens::{ClassifiedToken, TokenAction, TokenReader};
+use crate::color::CssColorSyntax;
+use crate::color::CssRelativeColorEnvironment as Environment;
+use crate::color::controlled::protocol::{ColorProtocolError, LexicalTable};
+use crate::color::controlled::{CssColorBank, CssColorSlot};
+use crate::numeric::CssNumericDimension as Dimension;
+use crate::numeric::CssNumericType;
 use crate::numeric::bounded_expression::FailureKind;
 use crate::tokenization::tokenizer::{NameKind, TokenKind};
-use crate::{
-    CssColorSyntax, CssNumericDimension as Dimension, CssNumericType,
-    CssRelativeColorEnvironment as Environment,
-};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Expectation {
@@ -67,7 +68,8 @@ impl ComponentContext {
                 Some(ProfileSpace::Predefined(space)) => Some(
                     if matches!(
                         space,
-                        crate::PredefinedColorSpace::XyzD50 | crate::PredefinedColorSpace::XyzD65
+                        surgeist_color::PredefinedColorSpace::XyzD50
+                            | surgeist_color::PredefinedColorSpace::XyzD65
                     ) {
                         Environment::Xyz(space)
                     } else {
@@ -509,14 +511,14 @@ impl<'owner> ComponentSyntax<'owner> {
         };
         self.state = State::Failed(SyntaxFailure::Component { site, reason });
     }
-    pub(crate) fn kernel(&self) -> super::CssColorKernel {
+    pub(crate) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
         match &self.state {
             State::Literal(cursor) => cursor.kernel(),
             State::Math(cursor) => cursor.kernel(),
             State::Token(reader) if reader.action() == TokenAction::Classify => {
-                super::CssColorKernel::Classify
+                crate::color::controlled::CssColorKernel::Classify
             }
-            _ => super::CssColorKernel::Transition,
+            _ => crate::color::controlled::CssColorKernel::Transition,
         }
     }
     pub(crate) fn compute(&mut self) -> Result<(), ColorProtocolError> {
@@ -561,7 +563,7 @@ impl<'owner> ComponentSyntax<'owner> {
                                     unreachable!()
                                 };
                                 Some(Variable::Profile {
-                                    name: super::protocol::RecordRange {
+                                    name: crate::color::controlled::protocol::RecordRange {
                                         start: name.start,
                                         end: name.end,
                                     },
@@ -665,10 +667,9 @@ impl<'owner> ComponentSyntax<'owner> {
 #[cfg(test)]
 mod tests {
     use super::super::grammar::{ColorGrammar, GrammarAction, GrammarRecord, RecipeKind};
-    use super::super::protocol::{
-        ActionDescription, CssColorOperationOwner, Data, LexicalOperation,
-    };
     use super::*;
+    use crate::color::controlled::CssColorOperationOwner;
+    use crate::color::controlled::protocol::{ActionDescription, Data, LexicalOperation};
     use crate::tokenization::bounded::InputKind;
 
     #[derive(Debug, PartialEq)]
@@ -891,10 +892,12 @@ mod tests {
         assert_eq!(
             values,
             [
-                Shape::Variable(Variable::Channel(crate::CssRelativeColorChannel::R)),
+                Shape::Variable(Variable::Channel(crate::color::CssRelativeColorChannel::R)),
                 Shape::Math(Domain::Number, true),
-                Shape::Variable(Variable::Channel(crate::CssRelativeColorChannel::B)),
-                Shape::Variable(Variable::Channel(crate::CssRelativeColorChannel::Alpha))
+                Shape::Variable(Variable::Channel(crate::color::CssRelativeColorChannel::B)),
+                Shape::Variable(Variable::Channel(
+                    crate::color::CssRelativeColorChannel::Alpha
+                ))
             ]
         );
         assert!(check("rgb(from red h g b)").is_err());

@@ -1,5 +1,38 @@
 //! Context-specific parsing over the caller's unmodified source.
-use super::*;
+use crate::component::CssComponentValues;
+use crate::declaration::{CssDeclaration, CssImportance};
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::{
+    basic, from_parse_error, from_rule_parse_error, with_media_query_context,
+};
+use crate::parser::nesting::parse_style_contents;
+use crate::parser::reconstruction::{BoundedParseContext, BoundedParseSyntax, parse_bounded};
+use crate::parser::recovery::{RecoveryState, StyleContextCaptures, recovery_action_for_error};
+use crate::parser::rule_list::{AtRulePrelude, RuleListItem, RuleParser};
+use crate::parser::selectors::SelectorRecovery;
+use crate::parser::{
+    DeclarationMode, PropertyValueGrammar, ScopedBodyKind, collect_declaration_value,
+    color_profile, conditional_chains, counter_style, font_face, font_feature_values,
+    font_palette_values, keyframes, named_supports, page, parse_declaration_core,
+    parse_descriptor_boundary, parse_nested_group_rules, parse_property_value_from_parser,
+    parse_scoped_rule_list, property_input, queries, recovery, selectors,
+};
+use crate::property::{CssPropertyGrammar, CssPropertyNameRef};
+use crate::query::media::{CssMediaQuery, CssMediaQueryList, CssNeverMediaQuery};
+use crate::rule::color_profile::{CssColorProfileDescriptorKind, CssColorProfileDescriptorValue};
+use crate::rule::font_face::CssFontFaceDescriptorKind;
+use crate::rule::font_palette_values::{
+    CssFontPaletteDescriptorKind, CssFontPaletteDescriptorValue,
+};
+use crate::rule::{CssRule, CssStyleBlock};
+use crate::selector::{
+    CssNamespaceContext, CssRelativeSelectorList, CssSelector, CssStyleSelectorList,
+};
+use crate::source::{CssParsedOrigin, CssSourceSnapshot};
+use cssparser::{
+    AtRuleParser, CowRcStr, ParseError, Parser, ParserInput, ParserState, QualifiedRuleParser,
+    Token,
+};
 
 /// Complete fragment parsing whose refusal retains no syntax.
 pub(super) fn bounded<T: Send>(
@@ -19,7 +52,7 @@ pub(super) fn bounded_or<T: Send>(
 }
 
 /// Fragment-profile execution whose caller publishes tokenizer recovery itself.
-pub(super) fn bounded_report<T: Send>(
+pub(crate) fn bounded_report<T: Send>(
     source: &str,
     refused: impl FnOnce() -> T,
     parse: impl FnOnce() -> crate::CssParseReport<T> + Send,
@@ -35,8 +68,8 @@ pub(super) fn bounded_report<T: Send>(
 pub(super) fn reject(
     source: &str,
     error: ParseError<'_, CssError>,
-    action: crate::CssRecoveryAction,
-) -> crate::CssRecoveryDiagnostic {
+    action: crate::diagnostic::CssRecoveryAction,
+) -> crate::diagnostic::CssRecoveryDiagnostic {
     let action = recovery_action_for_error(&error, action);
     reject_resolved(source, from_parse_error(source, error), action)
 }
@@ -44,14 +77,14 @@ pub(super) fn reject(
 fn reject_resolved(
     source: &str,
     error: CssError,
-    action: crate::CssRecoveryAction,
-) -> crate::CssRecoveryDiagnostic {
-    let span = crate::CssSourceSpan::new(
-        crate::CssSourcePosition::from_byte_offset_in(source, 0),
-        crate::CssSourcePosition::from_byte_offset_in(source, source.len()),
+    action: crate::diagnostic::CssRecoveryAction,
+) -> crate::diagnostic::CssRecoveryDiagnostic {
+    let span = crate::source::CssSourceSpan::new(
+        crate::source::CssSourcePosition::from_byte_offset_in(source, 0),
+        crate::source::CssSourcePosition::from_byte_offset_in(source, source.len()),
     )
     .expect("complete source span");
-    crate::CssRecoveryDiagnostic::new(error, span, action)
+    crate::diagnostic::CssRecoveryDiagnostic::new(error, span, action)
         .expect("fragment errors originate within the complete source")
 }
 
@@ -83,11 +116,11 @@ fn real_brace_block<T: Send>(
     parse_body: impl for<'i, 't> FnOnce(
         &'i str,
         &mut Parser<'i, 't>,
-        &mut Vec<crate::CssRecoveryDiagnostic>,
+        &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
         RecoveryState,
     ) -> Result<T, ParseError<'i, CssError>>
     + Send,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<T>>> {
+) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<T>>> {
     bounded(source, || {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default())
             .with_parser_context(parser_context);
@@ -102,10 +135,10 @@ fn real_brace_block_inner<T>(
     parse_body: impl for<'i, 't> FnOnce(
         &'i str,
         &mut Parser<'i, 't>,
-        &mut Vec<crate::CssRecoveryDiagnostic>,
+        &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
         RecoveryState,
     ) -> Result<T, ParseError<'i, CssError>>,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<T>>> {
+) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<T>>> {
     let working_source = crate::tokenization::prepare(source);
     let mut parser_input = ParserInput::new(&working_source);
     let mut input = Parser::new(&mut parser_input);
@@ -127,7 +160,7 @@ fn real_brace_block_inner<T>(
         input.expect_exhausted()?;
         let origin = CssParsedOrigin::from_range(state.source_snapshot(), start..end)
             .expect("consumed block boundaries belong to the original source");
-        Ok(crate::CssBlockFragment::from_parsed(body, origin))
+        Ok(crate::rule::CssBlockFragment::from_parsed(body, origin))
     })();
     match result {
         Ok(fragment) => {
@@ -136,7 +169,11 @@ fn real_brace_block_inner<T>(
         }
         Err(error) => crate::CssParseReport::new(
             None,
-            vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+            vec![reject(
+                source,
+                error,
+                crate::diagnostic::CssRecoveryAction::RejectInput,
+            )],
         ),
     }
 }
@@ -145,7 +182,7 @@ pub(crate) fn parse_group_block_with_context(
     source: &str,
     namespaces: &CssNamespaceContext,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
+) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<crate::rule::CssRuleList>>> {
     bounded(source, || {
         let snapshot = CssSourceSnapshot::new(source);
         let (syntax, mut diagnostics) = parse_bounded(
@@ -163,7 +200,7 @@ pub(crate) fn parse_group_block_with_context(
         let block = block.map(|block| {
             let (mut body, origin) = block.into_parts();
             conditional_chains::completed_list(source, body.rules_mut(), &mut diagnostics);
-            crate::CssBlockFragment::from_parsed(body, origin)
+            crate::rule::CssBlockFragment::from_parsed(body, origin)
         });
         crate::CssParseReport::new(block, diagnostics)
     })
@@ -172,7 +209,7 @@ pub(crate) fn parse_group_block_with_context(
 pub(super) fn parse_group_block_inner(
     source: &str,
     recovery: RecoveryState,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
+) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<crate::rule::CssRuleList>>> {
     real_brace_block_inner(
         source,
         "css.rule-list",
@@ -180,7 +217,7 @@ pub(super) fn parse_group_block_inner(
         |source, input, diagnostics, recovery| {
             let mut parsed = parse_nested_group_rules(source, input, recovery)?;
             diagnostics.append(&mut parsed.diagnostics);
-            Ok(crate::CssRuleList::from_parsed(parsed.syntax))
+            Ok(crate::rule::CssRuleList::from_parsed(parsed.syntax))
         },
     )
 }
@@ -188,9 +225,9 @@ pub(super) fn parse_group_block_inner(
 pub(crate) fn parse_scope_block_with_context(
     source: &str,
     namespaces: &CssNamespaceContext,
-    ancestry: crate::CssStyleAncestor,
+    ancestry: crate::rule::CssStyleAncestor,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
+) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<crate::rule::CssRuleList>>> {
     scoped_block_with_context(
         source,
         namespaces,
@@ -203,9 +240,9 @@ pub(crate) fn parse_scope_block_with_context(
 pub(crate) fn parse_scoped_group_block_with_context(
     source: &str,
     namespaces: &CssNamespaceContext,
-    ancestry: crate::CssStyleAncestor,
+    ancestry: crate::rule::CssStyleAncestor,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
+) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<crate::rule::CssRuleList>>> {
     scoped_block_with_context(
         source,
         namespaces,
@@ -218,13 +255,13 @@ pub(crate) fn parse_scoped_group_block_with_context(
 fn scoped_block_with_context(
     source: &str,
     namespaces: &CssNamespaceContext,
-    ancestry: crate::CssStyleAncestor,
+    ancestry: crate::rule::CssStyleAncestor,
     body: ScopedBodyKind,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
+) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<crate::rule::CssRuleList>>> {
     bounded(source, || {
         let snapshot = CssSourceSnapshot::new(source);
-        let has_style_ancestor = matches!(ancestry, crate::CssStyleAncestor::Present);
+        let has_style_ancestor = matches!(ancestry, crate::rule::CssStyleAncestor::Present);
         let (syntax, mut diagnostics) = parse_bounded(
             source,
             &snapshot,
@@ -243,7 +280,7 @@ fn scoped_block_with_context(
         let block = block.map(|block| {
             let (mut body, origin) = block.into_parts();
             conditional_chains::completed_list(source, body.rules_mut(), &mut diagnostics);
-            crate::CssBlockFragment::from_parsed(body, origin)
+            crate::rule::CssBlockFragment::from_parsed(body, origin)
         });
         crate::CssParseReport::new(block, diagnostics)
     })
@@ -254,7 +291,7 @@ pub(super) fn parse_scoped_block_inner(
     recovery: RecoveryState,
     has_style_ancestor: bool,
     body: ScopedBodyKind,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssRuleList>>> {
+) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<crate::rule::CssRuleList>>> {
     let production = match body {
         ScopedBodyKind::Scope => "css.scope-block",
         ScopedBodyKind::OrdinaryGroup => "css.scoped-group-block",
@@ -267,7 +304,7 @@ pub(super) fn parse_scoped_block_inner(
             let mut parsed =
                 parse_scoped_rule_list(source, input, recovery, has_style_ancestor, body)?;
             diagnostics.append(&mut parsed.diagnostics);
-            Ok(crate::CssRuleList::from_parsed(parsed.syntax))
+            Ok(crate::rule::CssRuleList::from_parsed(parsed.syntax))
         },
     )
 }
@@ -276,7 +313,9 @@ pub(super) fn parse_scoped_block_inner(
 pub(crate) fn parse_supports_test_block(
     source: &str,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssSupportsTestBody>>> {
+) -> crate::CssParseReport<
+    Option<crate::rule::CssBlockFragment<crate::query::supports::CssSupportsTestBody>>,
+> {
     real_brace_block(
         source,
         "ext.rule.supports-condition",
@@ -292,7 +331,9 @@ pub(crate) fn parse_supports_test_block(
 pub(crate) fn parse_font_face_block(
     source: &str,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssFontFaceDescriptors>>> {
+) -> crate::CssParseReport<
+    Option<crate::rule::CssBlockFragment<crate::rule::font_face::CssFontFaceDescriptors>>,
+> {
     real_brace_block(
         source,
         "baseline.rule.font-face",
@@ -305,7 +346,9 @@ pub(crate) fn parse_font_face_block(
 pub(crate) fn parse_counter_style_block(
     source: &str,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssCounterStyleDescriptors>>> {
+) -> crate::CssParseReport<
+    Option<crate::rule::CssBlockFragment<crate::rule::counter_style::CssCounterStyleDescriptors>>,
+> {
     real_brace_block(
         source,
         "later.rule.counter-style",
@@ -318,15 +361,22 @@ pub(crate) fn parse_counter_style_block(
 pub(crate) fn parse_font_palette_values_block(
     source: &str,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<Vec<crate::CssFontPaletteDescriptor>>>> {
+) -> crate::CssParseReport<
+    Option<
+        crate::rule::CssBlockFragment<
+            Vec<crate::rule::font_palette_values::CssFontPaletteDescriptor>,
+        >,
+    >,
+> {
     real_brace_block(
         source,
         "later.rule.font-palette-values",
         parser_context,
         |source, input, diagnostics, state| {
             let descriptors = font_palette_values::parse_body(source, input, diagnostics, state);
-            crate::font_palette_values::validate_descriptors(&descriptors)
-                .map_err(|_| crate::error::invalid_syntax(input.current_source_location()))?;
+            crate::rule::font_palette_values::rule::validate_descriptors(&descriptors).map_err(
+                |_| crate::diagnostic::error::invalid_syntax(input.current_source_location()),
+            )?;
             Ok(descriptors)
         },
     )
@@ -336,7 +386,11 @@ pub(crate) fn parse_font_palette_values_block(
 pub(crate) fn parse_color_profile_block(
     source: &str,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<Vec<crate::CssColorProfileDescriptor>>>> {
+) -> crate::CssParseReport<
+    Option<
+        crate::rule::CssBlockFragment<Vec<crate::rule::color_profile::CssColorProfileDescriptor>>,
+    >,
+> {
     real_brace_block(
         source,
         "interop.rule.color-profile",
@@ -351,7 +405,13 @@ pub(crate) fn parse_color_profile_block(
 pub(crate) fn parse_font_feature_values_block(
     source: &str,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<Vec<crate::CssFontFeatureValuesItem>>>> {
+) -> crate::CssParseReport<
+    Option<
+        crate::rule::CssBlockFragment<
+            Vec<crate::rule::font_feature_values::CssFontFeatureValuesItem>,
+        >,
+    >,
+> {
     real_brace_block(
         source,
         "later.rule.font-feature-values",
@@ -367,17 +427,26 @@ pub(crate) fn parse_font_feature_values_block(
 #[must_use]
 pub(crate) fn parse_font_feature_value_block(
     source: &str,
-    kind: crate::CssFontFeatureValueKind,
+    kind: crate::rule::font_feature_values::CssFontFeatureValueKind,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssFontFeatureValueBlock>>> {
+) -> crate::CssParseReport<
+    Option<
+        crate::rule::CssBlockFragment<crate::rule::font_feature_values::CssFontFeatureValueBlock>,
+    >,
+> {
     real_brace_block(
         source,
         "later.rule.font-feature-values",
         parser_context,
         move |source, input, diagnostics, state| {
             let recovered = font_feature_values::parse_definition_body(source, input, kind, state);
-            let block = crate::CssFontFeatureValueBlock::try_new(kind, recovered.syntax)
-                .map_err(|_| crate::error::invalid_syntax(input.current_source_location()))?;
+            let block = crate::rule::font_feature_values::CssFontFeatureValueBlock::try_new(
+                kind,
+                recovered.syntax,
+            )
+            .map_err(|_| {
+                crate::diagnostic::error::invalid_syntax(input.current_source_location())
+            })?;
             diagnostics.extend(recovered.diagnostics);
             Ok(block)
         },
@@ -387,7 +456,9 @@ pub(crate) fn parse_font_feature_value_block(
 pub(crate) fn parse_keyframes_block_with_context(
     source: &str,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<Vec<crate::CssKeyframeBlock>>>> {
+) -> crate::CssParseReport<
+    Option<crate::rule::CssBlockFragment<Vec<crate::rule::keyframes::CssKeyframeBlock>>>,
+> {
     real_brace_block(
         source,
         "baseline.rule.keyframes",
@@ -401,7 +472,9 @@ pub(crate) fn parse_keyframes_block_with_context(
 pub(crate) fn parse_keyframe_declaration_block_with_context(
     source: &str,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssKeyframeDeclarationList>>> {
+) -> crate::CssParseReport<
+    Option<crate::rule::CssBlockFragment<crate::rule::keyframes::CssKeyframeDeclarationList>>,
+> {
     real_brace_block(
         source,
         "baseline.keyframes.block",
@@ -413,7 +486,7 @@ pub(crate) fn parse_keyframe_declaration_block_with_context(
 pub(crate) fn parse_page_block_with_context(
     source: &str,
     parser_context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssPageBody>>> {
+) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<crate::rule::page::CssPageBody>>> {
     real_brace_block(
         source,
         "later.rule.page",
@@ -479,7 +552,11 @@ pub(crate) fn parse_declaration_with_context(
             ),
             Err(error) => crate::CssParseReport::new(
                 None,
-                vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+                vec![reject(
+                    source,
+                    error,
+                    crate::diagnostic::CssRecoveryAction::RejectInput,
+                )],
             ),
         }
     })
@@ -529,12 +606,12 @@ pub(super) fn selector_fragment_with_state<T>(
         )?;
         input
             .expect_exhausted()
-            .map_err(crate::error::selector_basic)?;
+            .map_err(crate::diagnostic::error::selector_basic)?;
         // Preflight sees every lexical opening. Forgiving recovery can discard
         // a whole member, so its functions must not claim semantic retention.
         openings.retain(|opening| {
             !diagnostics.iter().any(|diagnostic| {
-                diagnostic.action() == crate::CssRecoveryAction::DropSelectorListItem
+                diagnostic.action() == crate::diagnostic::CssRecoveryAction::DropSelectorListItem
                     && diagnostic.span().start().byte_offset().value() <= *opening
                     && *opening < diagnostic.span().end().byte_offset().value()
             })
@@ -548,7 +625,11 @@ pub(super) fn selector_fragment_with_state<T>(
             Some(value)
         }
         Err(error) => {
-            diagnostics.push(reject(source, error, crate::CssRecoveryAction::RejectInput));
+            diagnostics.push(reject(
+                source,
+                error,
+                crate::diagnostic::CssRecoveryAction::RejectInput,
+            ));
             None
         }
     };
@@ -579,10 +660,10 @@ pub(crate) fn parse_relative_selector_list(
 }
 
 /// The never-matching replacement covering a refused media source's significant extent.
-fn never_media_query(snapshot: &crate::CssSourceSnapshot) -> CssMediaQuery {
+fn never_media_query(snapshot: &crate::source::CssSourceSnapshot) -> CssMediaQuery {
     let source = snapshot.as_str();
     CssMediaQuery::Never(CssNeverMediaQuery::new(
-        crate::CssParsedOrigin::from_range(
+        crate::source::CssParsedOrigin::from_range(
             snapshot,
             recovery::first_non_trivia_position(source, 0, source.len())
                 .byte_offset()
@@ -593,7 +674,7 @@ fn never_media_query(snapshot: &crate::CssSourceSnapshot) -> CssMediaQuery {
 }
 
 pub(crate) fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQuery> {
-    let refused = || never_media_query(&crate::CssSourceSnapshot::new(source));
+    let refused = || never_media_query(&crate::source::CssSourceSnapshot::new(source));
     bounded_or(source, refused, || {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
         let working_source = crate::tokenization::prepare(source);
@@ -604,7 +685,9 @@ pub(crate) fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQ
                 let query = queries::parse_media_query(
                     source,
                     &mut input,
-                    &crate::numeric::NumericInputContext::parsed(state.source_snapshot()),
+                    &crate::numeric::expression::NumericInputContext::parsed(
+                        state.source_snapshot(),
+                    ),
                 )?;
                 input.expect_exhausted()?;
                 state.retain_component_closures(openings);
@@ -617,7 +700,7 @@ pub(crate) fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQ
             }
             Err(error) => crate::CssParseReport::new(
                 CssMediaQuery::Never(CssNeverMediaQuery::new(
-                    crate::CssParsedOrigin::from_range(
+                    crate::source::CssParsedOrigin::from_range(
                         state.source_snapshot(),
                         recovery::first_non_trivia_position(source, 0, source.len())
                             .byte_offset()
@@ -632,7 +715,7 @@ pub(crate) fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQ
                     } else {
                         with_media_query_context(error, None)
                     },
-                    crate::CssRecoveryAction::ReplaceMediaQueryWithNever,
+                    crate::diagnostic::CssRecoveryAction::ReplaceMediaQueryWithNever,
                 )],
             ),
         }
@@ -640,7 +723,7 @@ pub(crate) fn parse_media_query(source: &str) -> crate::CssParseReport<CssMediaQ
 }
 
 pub(crate) fn parse_media_query_list_snapshot(
-    snapshot: &crate::CssSourceSnapshot,
+    snapshot: &crate::source::CssSourceSnapshot,
     context: crate::CssParserContext,
 ) -> crate::CssParseReport<CssMediaQueryList> {
     let source = snapshot.as_str();
@@ -671,10 +754,10 @@ pub(crate) fn parse_media_query_list_snapshot(
                 diagnostics.push(reject(
                     source,
                     error,
-                    crate::CssRecoveryAction::ReplaceMediaQueryWithNever,
+                    crate::diagnostic::CssRecoveryAction::ReplaceMediaQueryWithNever,
                 ));
                 CssMediaQueryList::new(vec![CssMediaQuery::Never(CssNeverMediaQuery::new(
-                    crate::CssParsedOrigin::from_range(
+                    crate::source::CssParsedOrigin::from_range(
                         state.source_snapshot(),
                         recovery::first_non_trivia_position(source, 0, source.len())
                             .byte_offset()
@@ -688,7 +771,10 @@ pub(crate) fn parse_media_query_list_snapshot(
         crate::CssParseReport::new(query, diagnostics)
     })
     .into_parts();
-    list.bind_parse_source(crate::CssParseSource::new(snapshot.clone(), context));
+    list.bind_parse_source(crate::source::CssParseSource::new(
+        snapshot.clone(),
+        context,
+    ));
     for diagnostic in &mut diagnostics {
         diagnostic.bind_source(snapshot);
     }
@@ -700,14 +786,14 @@ pub(crate) fn parse_cssom_media_query(
     context: crate::CssParserContext,
 ) -> crate::CssParseReport<Option<CssMediaQuery>> {
     let (list, mut diagnostics) =
-        parse_media_query_list_snapshot(&crate::CssSourceSnapshot::new(source), context)
+        parse_media_query_list_snapshot(&crate::source::CssSourceSnapshot::new(source), context)
             .into_parts();
     // Condition depth counts `not` and grouping levels, so shallow source can
     // still need the bounded thread here. Without it the query is refused.
     let deep = list
         .queries()
         .iter()
-        .find(|query| crate::media::query_is_deep(query))
+        .find(|query| crate::query::media::construction::query_is_deep(query))
         .map(|query| query.origin().clone());
     let mut list = Some(list);
     let single = super::bounded_execution::run_deep(deep.is_some(), || {
@@ -719,7 +805,7 @@ pub(crate) fn parse_cssom_media_query(
         Ok(query) => crate::CssParseReport::new(query, diagnostics),
         Err(unavailable) => {
             let (at, snapshot) = match &deep {
-                Some(crate::CssValueOrigin::Parsed(origin)) => (
+                Some(crate::component::CssValueOrigin::Parsed(origin)) => (
                     origin.span().start().byte_offset().value(),
                     Some(origin.source().clone()),
                 ),
@@ -738,7 +824,7 @@ pub(crate) fn parse_cssom_media_query(
 pub(crate) fn parse_font_face_descriptor_value(
     source: &str,
     descriptor: CssFontFaceDescriptorKind,
-) -> crate::CssParseReport<Option<crate::CssAuthoredFontFaceDescriptorValue>> {
+) -> crate::CssParseReport<Option<crate::rule::font_face::CssAuthoredFontFaceDescriptorValue>> {
     bounded(source, || {
         let state = RecoveryState::at_depth(source, 0, StyleContextCaptures::default());
         let working_source = crate::tokenization::prepare(source);
@@ -755,12 +841,12 @@ pub(crate) fn parse_font_face_descriptor_value(
                 &mut input,
                 descriptor,
                 state.source_snapshot(),
-                &crate::numeric::NumericInputContext::parsed(state.source_snapshot()),
+                &crate::numeric::expression::NumericInputContext::parsed(state.source_snapshot()),
                 &mut diagnostics,
                 &mut openings,
             )?;
             input.expect_exhausted().map_err(|error| {
-                crate::error::with_descriptor_context(
+                crate::diagnostic::error::with_descriptor_context(
                     error.into(),
                     "font-face",
                     descriptor.as_str(),
@@ -777,7 +863,11 @@ pub(crate) fn parse_font_face_descriptor_value(
             Err(error) => {
                 // Failed enclosing values cannot claim partial member retention.
                 diagnostics.clear();
-                diagnostics.push(reject(source, error, crate::CssRecoveryAction::RejectInput));
+                diagnostics.push(reject(
+                    source,
+                    error,
+                    crate::diagnostic::CssRecoveryAction::RejectInput,
+                ));
                 None
             }
         };
@@ -788,7 +878,7 @@ pub(crate) fn parse_font_face_descriptor_value(
 #[must_use]
 pub(crate) fn parse_page_selector_list(
     source: &str,
-) -> crate::CssParseReport<Option<crate::CssPageSelectorList>> {
+) -> crate::CssParseReport<Option<crate::rule::page::CssPageSelectorList>> {
     descriptor_value_fragment(source, None, |input, state| {
         page::parse_page_selector(input, state.source_snapshot())
     })
@@ -796,14 +886,14 @@ pub(crate) fn parse_page_selector_list(
 #[must_use]
 pub(crate) fn parse_page_descriptor_value(
     source: &str,
-    kind: crate::CssPageDescriptorKind,
-) -> crate::CssParseReport<Option<crate::CssPageDescriptorValue>> {
+    kind: crate::rule::page::CssPageDescriptorKind,
+) -> crate::CssParseReport<Option<crate::rule::page::CssPageDescriptorValue>> {
     descriptor_value_fragment(source, Some(("page", kind.as_str())), |input, state| {
         let (value, components, origin) =
             collect_declaration_value(input, state.source_snapshot(), |input| {
                 page::parse_descriptor_value(input, kind, state.source_snapshot())
             })?;
-        Ok(crate::CssPageDescriptorValue::from_parsed(
+        Ok(crate::rule::page::CssPageDescriptorValue::from_parsed(
             kind, value, components, origin,
         ))
     })
@@ -811,7 +901,9 @@ pub(crate) fn parse_page_descriptor_value(
 pub(crate) fn parse_margin_block_with_context(
     source: &str,
     context: crate::CssParserContext,
-) -> crate::CssParseReport<Option<crate::CssBlockFragment<crate::CssMarginDeclarationBlock>>> {
+) -> crate::CssParseReport<
+    Option<crate::rule::CssBlockFragment<crate::rule::page::CssMarginDeclarationBlock>>,
+> {
     real_brace_block(
         source,
         "later.rule.page",
@@ -855,7 +947,7 @@ fn descriptor_value_fragment<T: Send>(
         })()
         .map_err(|error| match descriptor {
             Some((owner, descriptor)) => {
-                crate::error::with_descriptor_value_context(error, owner, descriptor)
+                crate::diagnostic::error::with_descriptor_value_context(error, owner, descriptor)
             }
             None => error,
         });
@@ -863,7 +955,11 @@ fn descriptor_value_fragment<T: Send>(
             Ok(value) => (Some(value), state.take_implicit_closure_diagnostics(source)),
             Err(error) => (
                 None,
-                vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+                vec![reject(
+                    source,
+                    error,
+                    crate::diagnostic::CssRecoveryAction::RejectInput,
+                )],
             ),
         };
         crate::CssParseReport::new(syntax, diagnostics)
@@ -873,8 +969,8 @@ fn descriptor_value_fragment<T: Send>(
 #[must_use]
 pub(crate) fn parse_counter_style_descriptor_value(
     source: &str,
-    descriptor: crate::CssCounterStyleDescriptorKind,
-) -> crate::CssParseReport<Option<crate::CssCounterStyleDescriptorValue>> {
+    descriptor: crate::rule::counter_style::CssCounterStyleDescriptorKind,
+) -> crate::CssParseReport<Option<crate::rule::counter_style::CssCounterStyleDescriptorValue>> {
     descriptor_value_fragment(
         source,
         Some(("counter-style", descriptor.as_str())),
@@ -886,9 +982,11 @@ pub(crate) fn parse_counter_style_descriptor_value(
                     input.skip_whitespace();
                     counter_style::parse_authored_value(input, descriptor, state.source_snapshot())
                 })?;
-            Ok(crate::CssCounterStyleDescriptorValue::from_parsed(
-                descriptor, value, components, origin,
-            ))
+            Ok(
+                crate::rule::counter_style::CssCounterStyleDescriptorValue::from_parsed(
+                    descriptor, value, components, origin,
+                ),
+            )
         },
     )
 }
@@ -896,7 +994,7 @@ pub(crate) fn parse_counter_style_descriptor_value(
 #[must_use]
 pub(crate) fn parse_font_feature_display_value(
     source: &str,
-) -> crate::CssParseReport<Option<crate::CssFontFeatureDisplayValue>> {
+) -> crate::CssParseReport<Option<crate::rule::font_feature_values::CssFontFeatureDisplayValue>> {
     descriptor_value_fragment(
         source,
         Some(("font-feature-values", "font-display")),
@@ -908,9 +1006,11 @@ pub(crate) fn parse_font_feature_display_value(
                     input.expect_exhausted().map_err(basic)?;
                     Ok(value)
                 })?;
-            Ok(crate::CssFontFeatureDisplayValue::from_parsed(
-                value, components, origin,
-            ))
+            Ok(
+                crate::rule::font_feature_values::CssFontFeatureDisplayValue::from_parsed(
+                    value, components, origin,
+                ),
+            )
         },
     )
 }
@@ -918,16 +1018,18 @@ pub(crate) fn parse_font_feature_display_value(
 #[must_use]
 pub(crate) fn parse_font_feature_value(
     source: &str,
-    kind: crate::CssFontFeatureValueKind,
-) -> crate::CssParseReport<Option<crate::CssFontFeatureValue>> {
+    kind: crate::rule::font_feature_values::CssFontFeatureValueKind,
+) -> crate::CssParseReport<Option<crate::rule::font_feature_values::CssFontFeatureValue>> {
     descriptor_value_fragment(source, None, |input, state| {
         let (value, components, origin) =
             collect_declaration_value(input, state.source_snapshot(), |input| {
                 font_feature_values::parse_feature_value(input, kind, state.source_snapshot())
             })?;
-        Ok(crate::CssFontFeatureValue::from_parsed(
-            kind, value, components, origin,
-        ))
+        Ok(
+            crate::rule::font_feature_values::CssFontFeatureValue::from_parsed(
+                kind, value, components, origin,
+            ),
+        )
     })
 }
 
@@ -950,7 +1052,7 @@ pub(crate) fn parse_font_palette_descriptor_value(
             Ok(value)
         })()
         .map_err(|error| {
-            crate::error::with_descriptor_value_context(
+            crate::diagnostic::error::with_descriptor_value_context(
                 error,
                 "font-palette-values",
                 descriptor.as_str(),
@@ -960,7 +1062,11 @@ pub(crate) fn parse_font_palette_descriptor_value(
             Ok(value) => (Some(value), state.take_implicit_closure_diagnostics(source)),
             Err(error) => (
                 None,
-                vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+                vec![reject(
+                    source,
+                    error,
+                    crate::diagnostic::CssRecoveryAction::RejectInput,
+                )],
             ),
         };
         crate::CssParseReport::new(syntax, diagnostics)
@@ -985,13 +1091,21 @@ pub(crate) fn parse_color_profile_descriptor_value(
             Ok(value)
         })()
         .map_err(|error| {
-            crate::error::with_descriptor_value_context(error, "color-profile", descriptor.as_str())
+            crate::diagnostic::error::with_descriptor_value_context(
+                error,
+                "color-profile",
+                descriptor.as_str(),
+            )
         });
         let (syntax, diagnostics) = match result {
             Ok(value) => (Some(value), state.take_implicit_closure_diagnostics(source)),
             Err(error) => (
                 None,
-                vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+                vec![reject(
+                    source,
+                    error,
+                    crate::diagnostic::CssRecoveryAction::RejectInput,
+                )],
             ),
         };
         crate::CssParseReport::new(syntax, diagnostics)
@@ -1007,9 +1121,9 @@ pub(crate) fn parse_property_value_text_with_context(
     let grammar = match property {
         CssPropertyNameRef::Known(property) => PropertyValueGrammar::Known(property.grammar()),
         CssPropertyNameRef::Custom(name) => PropertyValueGrammar::Custom(name),
-        CssPropertyNameRef::SvgGlyphOrientationVertical => {
-            PropertyValueGrammar::SvgGlyph(crate::svg_glyph::SvgGlyphAdmission::css(parser_context))
-        }
+        CssPropertyNameRef::SvgGlyphOrientationVertical => PropertyValueGrammar::SvgGlyph(
+            crate::property::svg_glyph::SvgGlyphAdmission::css(parser_context),
+        ),
     };
     property_value_text(source, grammar, importance, parser_context)
 }
@@ -1034,7 +1148,9 @@ pub(crate) fn parse_svg_glyph_attribute_value(
 ) -> crate::CssParseReport<Option<CssDeclaration>> {
     property_value_text(
         source,
-        PropertyValueGrammar::SvgGlyph(crate::svg_glyph::SvgGlyphAdmission::attribute(context)),
+        PropertyValueGrammar::SvgGlyph(crate::property::svg_glyph::SvgGlyphAdmission::attribute(
+            context,
+        )),
         CssImportance::Normal,
         context,
     )
@@ -1066,13 +1182,16 @@ fn property_value_text(
                 0,
             )
             .map_err(|error| {
-                crate::error::invalid_component_value(input.current_source_location(), error)
+                crate::diagnostic::error::invalid_component_value(
+                    input.current_source_location(),
+                    error,
+                )
             })?;
             let mut property_input = property_input::Parser::new(&document);
             let body = parse_property_value_from_parser(
                 grammar,
                 &mut property_input,
-                &crate::numeric::NumericInputContext::parsed(state.source_snapshot()),
+                &crate::numeric::expression::NumericInputContext::parsed(state.source_snapshot()),
                 parser_context,
             )
             .map_err(|error| {
@@ -1088,7 +1207,7 @@ fn property_value_text(
             let components =
                 CssComponentValues::collect_from_parser(&mut input, state.source_snapshot())
                     .map_err(|error| {
-                        crate::error::invalid_component_value(
+                        crate::diagnostic::error::invalid_component_value(
                             input.current_source_location(),
                             error,
                         )
@@ -1113,7 +1232,11 @@ fn property_value_text(
             ),
             Err(error) => crate::CssParseReport::new(
                 None,
-                vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+                vec![reject(
+                    source,
+                    error,
+                    crate::diagnostic::CssRecoveryAction::RejectInput,
+                )],
             ),
         }
     })
@@ -1235,7 +1358,10 @@ pub(super) fn parse_rule_inner(
             crate::CssParseReport::new(Some(rule), diagnostics)
         }
         Err(error) => {
-            let action = recovery_action_for_error(&error, crate::CssRecoveryAction::RejectInput);
+            let action = recovery_action_for_error(
+                &error,
+                crate::diagnostic::CssRecoveryAction::RejectInput,
+            );
             let error = if parser.completed {
                 from_parse_error(source, error)
             } else {
@@ -1306,7 +1432,11 @@ pub(super) fn parse_style_block_inner(
         }
         Err(error) => crate::CssParseReport::new(
             None,
-            vec![reject(source, error, crate::CssRecoveryAction::RejectInput)],
+            vec![reject(
+                source,
+                error,
+                crate::diagnostic::CssRecoveryAction::RejectInput,
+            )],
         ),
     }
 }

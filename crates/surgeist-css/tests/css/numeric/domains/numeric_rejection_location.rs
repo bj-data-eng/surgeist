@@ -11,7 +11,8 @@
 //! a comment before the token, and, for a value cut short, after it: trivia must
 //! move neither the position nor the token.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssTokenSummary};
 
 const PAD: &str = "  /*c*/  ";
 

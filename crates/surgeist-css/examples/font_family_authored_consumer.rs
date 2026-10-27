@@ -14,10 +14,13 @@
 //! govern the broader informative quoting note in section 2.1.1:
 //! https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-prop
 
-use surgeist_css::{
-    CssExplicitFont, CssFontFaceFamily, CssFontFamilyList, CssFontFamilyName,
-    CssFontFamilyNameKind, CssFontLocalName, CssFontSize, CssFontValue, CssGenericFontFamily,
-    CssImportance, CssKnownPropertyValueRef, CssParser, CssSystemFont,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::font_face::{CssFontFaceFamily, CssFontLocalName};
+use surgeist_css::values::font::{
+    CssExplicitFont, CssFontFamilyList, CssFontFamilyName, CssFontFamilyNameKind, CssFontSize,
+    CssFontValue, CssGenericFontFamily, CssSystemFont,
 };
 
 fn parsed_name(authored: &str) -> CssFontFamilyName {

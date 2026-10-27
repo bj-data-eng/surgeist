@@ -1,4 +1,6 @@
-use surgeist_css::{CssErrorCode, CssParser, CssRecoveryAction, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
 
 // Admission and numeric expectations: selected CSS Syntax 3 (2026-10-01),
 // §§4.3.14 and 5.5.11. Comments may surround a range and its commas.
@@ -186,8 +188,8 @@ fn rejected_unicode_range_occurrences_preserve_ordered_valid_occurrences() {
         .descriptors()
         .occurrences()
         .filter_map(|descriptor| {
-            if let surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(
-                surgeist_css::CssFontFaceDescriptorValue::UnicodeRange(range),
+            if let surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::Ordinary(
+                surgeist_css::rule::font_face::CssFontFaceDescriptorValue::UnicodeRange(range),
             ) = descriptor.value()
             {
                 Some(range.ranges()[0].start())

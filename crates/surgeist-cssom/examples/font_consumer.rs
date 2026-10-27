@@ -1,5 +1,5 @@
 //! Host-independent font descriptor and map edits over owning captures.
-use surgeist_css::*;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind;
 use surgeist_cssom::*;
 
 fn main() -> Result<(), CssomError> {

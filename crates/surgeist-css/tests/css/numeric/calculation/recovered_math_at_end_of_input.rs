@@ -7,7 +7,12 @@
 
 use crate::css::support::sheet_cases::style_rule;
 use crate::css::support::value_assertions::assert_first_property_diagnostic;
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{
+    CssDeclaration, CssDeclarationList, CssImportance, CssSpecifiedDeclarationBlock,
+};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 /// The source with each function left open at the end explicitly closed.
 fn closed(value: &str) -> String {

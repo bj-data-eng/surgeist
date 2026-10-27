@@ -3,7 +3,15 @@
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use std::sync::Arc;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValueRef, CssValueOrigin};
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::source::{
+    CssDeclarationBlockParseReport, CssSourceRetention, CssSourceRetentionError,
+    CssSourceRetentionResource, CssUtf16InputLimits,
+};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 fn parse_units(context: CssParserContext, units: Arc<Vec<u16>>) -> CssDeclarationBlockParseReport {
     CssParser::new(context, CssComponentValueLimits::default())

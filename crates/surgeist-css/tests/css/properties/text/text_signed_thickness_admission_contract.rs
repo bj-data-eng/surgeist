@@ -15,7 +15,19 @@
 
 use crate::css::support::check_named_components;
 use crate::css::support::important_checked_components as checked_property;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::text::{
+    CssTextDecorationLineComponent, CssTextDecorationStyle, CssTextDecorationThickness,
+};
 
 fn ordinary(component: &CssComponentValue, coefficient: &str, suffix: Option<&str>) {
     match (component.view(), suffix) {

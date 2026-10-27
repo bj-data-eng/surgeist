@@ -2,7 +2,16 @@
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{CssNonNegative, CssNumeric, CssPercentage};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::values::font::{CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword};
 
 fn percent(text: &str) -> CssFontWidth {
     let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();

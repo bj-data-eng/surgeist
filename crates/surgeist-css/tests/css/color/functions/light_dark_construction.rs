@@ -1,7 +1,29 @@
 //! Checked construction expectations from Color 5 WD20260908 §7 and the
 //! existing complete structural ceiling: function nodes add one; none adds zero.
 use crate::css::support::color_and_selector_fixtures::named_color as named;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor, CssLightDarkColor,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::conformance::{
+    CssFeatureKind, CssSupportStatus, feature_metadata, specification_source,
+};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssCalculation, CssLength, CssLengthPercentage, CssNonNegative,
+    CssNumeric,
+};
+use surgeist_css::values::common::{
+    CssIdent, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
+};
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop, CssImage,
+    CssImageConstructionError, CssImageValue, CssLightDarkImage, CssLinearGradient,
+    CssLinearGradientDirection, CssRadialEllipseSize, CssRadialGradient, CssRadialSize,
+};
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
+};
 
 fn stops(color: CssColor, position: Option<CssNumeric<CssLengthPercentage>>) -> CssColorStopList {
     CssColorStopList::try_new(vec![

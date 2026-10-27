@@ -5,10 +5,11 @@
 use crate::css::support::color_and_selector_fixtures::assert_specified_construction_cause;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::validated_selector as parsed;
-use surgeist_css::{
+use surgeist_css::selector::{
     CssComplexSelector, CssComplexSelectorPart, CssCompoundSelector, CssCompoundSelectorArgument,
-    CssSelector, CssSerializationLimits,
+    CssSelector,
 };
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn complex(source: &str) -> CssComplexSelector {
     let CssSelector::Complex(value) = parsed(source) else {

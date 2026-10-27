@@ -7,8 +7,25 @@
 use crate::css::support::normal_declaration;
 use crate::css::support::property_admission::assert_reentry_rejected;
 use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssParser, CssSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssAngleUnit, CssCalculation, CssLength, CssNonNegative, CssNumber,
+    CssNumeric, CssNumericLiteral, CssPercentage, CssZeroLiteral,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::common::{
+    CssIdent, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
+};
+use surgeist_css::values::effects::{
+    CssDropShadow, CssFilter, CssFilterAmount, CssFilterBlur, CssFilterFunction,
+    CssFilterFunctionList, CssFilterHueRotate,
 };
 
 fn filter(property: CssKnownProperty, css: &str) -> CssFilter {

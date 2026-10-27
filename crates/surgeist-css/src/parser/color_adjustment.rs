@@ -1,18 +1,19 @@
 //! Selected Color Adjustment 1 property grammars.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::match_ignore_ascii_case;
 
-use crate::{
-    CssColorScheme, CssColorSchemeKeyword, CssColorSchemeName, CssForcedColorAdjust, CssIdent,
+use crate::values::color_adjust::{
+    CssColorScheme, CssColorSchemeKeyword, CssColorSchemeName, CssForcedColorAdjust,
     CssPrintColorAdjust,
 };
+use crate::values::common::CssIdent;
 
 struct SchemeBank<'a> {
     values: Vec<CssColorSchemeKeyword>,
     custom_bytes: usize,
-    control: Option<&'a crate::utf16_value::Control<'a>>,
+    control: Option<&'a crate::values::color_adjust::utf16_value::Control<'a>>,
 }
 impl SchemeBank<'_> {
     fn finish(mut self) -> Vec<CssColorSchemeKeyword> {
@@ -83,7 +84,7 @@ pub(super) fn parse_color_scheme<'i, 't>(
                         match CssColorSchemeName::from_admitted_ident(CssIdent::from_admitted(owned)) {
                             Some(name) => {
                                 let Some(total) = schemes.custom_bytes.checked_add(capacity) else {
-                                    let _ = control.fail::<()>(crate::utf16_value::Failure::CapacityOverflow);
+                                    let _ = control.fail::<()>(crate::values::color_adjust::utf16_value::Failure::CapacityOverflow);
                                     return Err(rejected(location));
                                 };
                                 schemes.custom_bytes = total;

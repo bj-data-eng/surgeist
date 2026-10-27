@@ -5,7 +5,18 @@
 //! Initial-value resolution, system font selection and loading stay downstream.
 
 use crate::css::support::rules::{invalid_descriptor, rejected_bang};
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+    CssPropertyTextTarget,
+};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind,
+};
+use surgeist_css::values::font::{CssFontValue, CssFontWeight, CssSystemFont};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn query(source: &str) -> CssParseReport<Option<CssDeclaration>> {
     CssParser::default().parse_property_value(

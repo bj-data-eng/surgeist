@@ -1,6 +1,12 @@
 //! Animations ordered matching and adopted WebKit specified-tree math phase.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::rule::keyframes::{
+    CssKeyframeSelectorComparisonStage, CssKeyframeSelectorList, CssKeyframeSelectorMatcher,
+    CssParsedKeyframeSelectors,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn selectors(input: &str) -> CssKeyframeSelectorList {
     let report = CssParsedKeyframeSelectors::parse(&CssParser::default(), input);

@@ -7,7 +7,18 @@ use crate::css::support::color_and_selector_fixtures::{
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::LimitFailure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssSelectorBinding};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+use surgeist_css::selector::{
+    CssCompoundSelectorArgument, CssInvalidNestingSelectorItem, CssNamespaceContext,
+    CssNthChildPattern, CssNthPattern, CssPartName, CssPartNameList, CssPseudoClass,
+    CssPseudoElement, CssPseudoElementSegment, CssPseudoElementSequence, CssPseudoSelectorList,
+    CssPseudoSelectorListItem, CssRelativeSelector, CssRelativeSelectorList, CssSelector,
+    CssSelectorCombinator, CssSelectorList,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn parsed(source: &str) -> CssSelector {
     CssSelector::parse(

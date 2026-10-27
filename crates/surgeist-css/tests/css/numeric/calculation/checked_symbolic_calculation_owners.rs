@@ -1,7 +1,28 @@
 //! Checked typed calculations retain symbolic values across authored consumers.
 //! Checked assembly rejection is covered by typed_sum_construction.
-use surgeist_css::CssCalculationSumOperator as Op;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::numeric::CssCalculationSumOperator as Op;
+use surgeist_css::numeric::{
+    CssCalculation, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric,
+    CssNumericConstructionError,
+};
+use surgeist_css::values::background::{CssBackgroundSize, CssBackgroundSizeList};
+use surgeist_css::values::border::{CssBorder, CssLineWidth, CssOutline};
+use surgeist_css::values::common::{CssAutoOr, CssSidePair};
+use surgeist_css::values::effects::{CssDropShadow, CssFilterBlur, CssShadow};
+use surgeist_css::values::image::CssRadialEllipseSize;
+use surgeist_css::values::layout::{CssGridTrackBreadth, CssGridTrackSize};
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
+};
+use surgeist_css::values::shape::{
+    CssEllipseRadii, CssEllipseRadius, CssInsetShapeOffsets, CssPolygonPoint,
+};
+use surgeist_css::values::text::CssTextIndent;
+use surgeist_css::values::transform::CssTranslateValues;
 type Calculation = CssCalculation<CssLengthPercentage>;
 fn operand(source: &str) -> Calculation {
     Calculation::try_from_components(
@@ -330,7 +351,13 @@ fn checked_length_owners_admit_valid_typed_symbolic_subtraction() {
     // Both spacing properties now consume the checked length-percentage owner
     // directly; preserve the same symbolic subtraction admission at that boundary.
     for name in ["word-spacing", "letter-spacing"] {
-        use surgeist_css::*;
+        use surgeist_css::declaration::{CssDeclaration, CssImportance};
+
+        use surgeist_css::CssParser;
+        use surgeist_css::property::{
+            CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyTarget,
+        };
+
         let declaration = CssDeclaration::try_from_components(
             &CssParser::default(),
             CssPropertyTarget::Grammar(CssPropertyGrammar::from_name(name).unwrap()),

@@ -4,7 +4,13 @@
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::declaration::{
+    CssDeclarationBlockError, CssImportance, CssInvalidKeyframeSourceReason,
+    CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry, CssSpecifiedDeclarationValueRef,
+};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 fn entries(source: &str) -> Vec<CssSpecifiedDeclarationEntry> {
     let report = CssParser::new(

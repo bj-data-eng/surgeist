@@ -6,8 +6,17 @@
 
 use crate::css::support::serialization_limits::assert_limits_with_zero as budget;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssParser, CssSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::text::{
+    CssTextDecoration, CssTextDecorationLine, CssTextDecorationLineComponent,
+    CssTextDecorationStyle, CssTextDecorationThickness, CssTextIndent, CssVerticalAlign,
 };
 
 fn length(text: &str) -> CssNumeric<CssLengthPercentage> {

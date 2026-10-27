@@ -5,10 +5,10 @@
 
 use crate::css::support::rules::invalid_descriptor;
 use crate::css::support::rules::retained_demo_font_face as font_face;
-use surgeist_css::{
-    CssErrorCode, CssFontFaceRule, CssFontFaceSource, CssParseReport, CssParser, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, CssSheet,
-};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::rule::font_face::{CssFontFaceRule, CssFontFaceSource};
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn assert_sources(rule: &CssFontFaceRule, expected: &[(&str, &str)]) {
     let actual = ordinary_face!(rule.descriptors(), Src)
@@ -166,12 +166,12 @@ fn bad_url_cannot_use_later_env_to_bypass_source_recovery() {
     };
     assert!(
         rule.descriptors()
-            .effective(surgeist_css::CssFontFaceDescriptorKind::Src)
+            .effective(surgeist_css::rule::font_face::CssFontFaceDescriptorKind::Src)
             .is_none()
     );
     assert!(
         rule.descriptors()
-            .effective(surgeist_css::CssFontFaceDescriptorKind::FontDisplay)
+            .effective(surgeist_css::rule::font_face::CssFontFaceDescriptorKind::FontDisplay)
             .is_some()
     );
     // Syntax 3 <declaration-value> excludes <bad-url-token>, so env() cannot

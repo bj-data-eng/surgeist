@@ -1,4 +1,6 @@
-use surgeist_css::{CssErrorCode, CssParser, CssRecoveryAction, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
 
 fn actions(source: &str) -> Vec<CssRecoveryAction> {
     CssParser::default()
@@ -301,7 +303,7 @@ fn specialized_boundary_legacy_tokens_are_clean_and_keep_rule_order() {
             let CssRule::Style(style) = rule else {
                 panic!("expected style rule")
             };
-            let surgeist_css::CssSelector::Class(name) =
+            let surgeist_css::selector::CssSelector::Class(name) =
                 style.selectors().selectors()[0].selector()
             else {
                 panic!("expected class selector")

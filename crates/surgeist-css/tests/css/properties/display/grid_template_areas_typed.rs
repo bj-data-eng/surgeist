@@ -1,11 +1,15 @@
 use crate::css::support::failure_classes::SerializationFailure as SerializationError;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssGridTemplateAreaCell as Cell, CssGridTemplateAreaName as Name,
-    CssGridTemplateAreaRow as Row, CssGridTemplateAreas as Areas, CssInitialValueRef,
-    CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef, CssParser, CssPropertyKindRef,
-    CssSerializationLimits as Limits,
+use surgeist_css::CssParser;
+use surgeist_css::property::{
+    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
+    CssPropertyKindRef,
 };
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::values::layout::CssGridTemplateAreaCell as Cell;
+use surgeist_css::values::layout::CssGridTemplateAreaName as Name;
+use surgeist_css::values::layout::CssGridTemplateAreaRow as Row;
+use surgeist_css::values::layout::CssGridTemplateAreas as Areas;
 
 fn named(value: &str) -> Cell {
     Cell::Named(Name::try_new(value).expect("valid decoded area name"))

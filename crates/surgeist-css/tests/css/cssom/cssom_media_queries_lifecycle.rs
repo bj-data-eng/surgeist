@@ -5,7 +5,8 @@
 //! nullable result and ignored-query projection need their own functional APIs;
 //! a missing symbol or a changed authored recovery contract is not RED evidence.
 
-use surgeist_css::{CssMediaQuery, CssMediaQueryList, CssParser};
+use surgeist_css::CssParser;
+use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
 
 fn query_text(source: &str) -> String {
     let report = CssMediaQuery::parse(&CssParser::default(), source);

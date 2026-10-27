@@ -1,12 +1,13 @@
 //! Existing-public-API admission evidence from CSS Env 1 WD (2025-09-23) §3.
 //! A syntactically valid `env()` defers the entire known descriptor grammar.
 
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind as Kind, CssParser,
-    CssRecoveryAction, CssRule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
 
-fn one_font_face(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet> {
+fn one_font_face(source: &str) -> surgeist_css::CssParseReport<surgeist_css::rule::CssSheet> {
     let report = CssParser::default().parse_sheet(source);
     assert!(
         matches!(report.syntax().rules(), [CssRule::FontFace(_)]),
@@ -184,7 +185,8 @@ fn importance_and_raw_root_boundaries_are_not_rescued_by_env() {
         Kind::FontWidth,
     );
     assert!(raw.is_clean(), "{raw:?}");
-    let Some(surgeist_css::CssAuthoredFontFaceDescriptorValue::Pending(pending)) = raw.syntax()
+    let Some(surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::Pending(pending)) =
+        raw.syntax()
     else {
         panic!("valid env defers font-width including its matched block");
     };

@@ -4,7 +4,8 @@
 //! CSS Nesting 1 §3 and §5 retain nested rules and declaration runs in their parent:
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/
 
-use surgeist_css::{CssParser, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
 
 #[test]
 fn selector_list_retains_one_authored_rule() {
@@ -61,17 +62,17 @@ fn nested_selector_context_preserves_the_entire_parent_list_without_multiplicati
     };
     assert_eq!(parent.selectors().selectors().len(), 2);
     assert!(
-        matches!(parent.selectors().selectors()[0].selector(), surgeist_css::CssSelector::Class(name) if name == "card")
+        matches!(parent.selectors().selectors()[0].selector(), surgeist_css::selector::CssSelector::Class(name) if name == "card")
     );
     assert!(
-        matches!(parent.selectors().selectors()[1].selector(), surgeist_css::CssSelector::Key(name) if name == "featured")
+        matches!(parent.selectors().selectors()[1].selector(), surgeist_css::selector::CssSelector::Key(name) if name == "featured")
     );
     let [CssRule::Style(child)] = parent.rules() else {
         panic!("the nested selector list remains one child");
     };
     assert_eq!(child.selectors().selectors().len(), 2);
     for selector in child.selectors().selectors() {
-        let surgeist_css::CssSelector::Compound(compound) = selector.selector() else {
+        let surgeist_css::selector::CssSelector::Compound(compound) = selector.selector() else {
             panic!("expected symbolic parent anchor");
         };
         assert_eq!(compound.nesting_selectors(), 1);
@@ -123,7 +124,7 @@ fn declaration_runs_preserve_parent_pseudo_elements_order_importance_and_provena
     assert_eq!(child.declarations().len(), 1);
     assert_eq!(
         green.declarations()[0].importance(),
-        surgeist_css::CssImportance::Important
+        surgeist_css::declaration::CssImportance::Important
     );
     assert_eq!(
         green.position().byte_offset().value(),

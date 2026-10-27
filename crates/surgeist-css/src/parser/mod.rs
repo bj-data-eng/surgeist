@@ -7,255 +7,296 @@
 //! Parse failures expose typed [`ErrorKind`] values plus source line and column
 //! information so callers do not need to parse display strings.
 
-mod alignment;
-mod background;
-mod border_color;
-mod border_radius;
-mod border_style;
-mod border_width;
+pub(crate) mod alignment;
+pub(crate) mod background;
+pub(crate) mod boolean_condition;
+pub(crate) mod border_color;
+pub(crate) mod border_radius;
+pub(crate) mod border_style;
+pub(crate) mod border_width;
 pub(crate) mod bounded_execution;
-mod box_model;
-mod box_spacing;
+pub(crate) mod box_model;
+pub(crate) mod box_spacing;
+pub(crate) mod color;
+pub(crate) mod color_adjustment;
 pub(crate) mod color_profile;
-mod combinators;
-mod contain_intrinsic_size;
+pub(crate) mod combinators;
+pub(crate) mod conditional_chains;
+pub(crate) mod contain_intrinsic_size;
+pub(crate) mod container_properties;
+pub(crate) mod container_query;
+pub(crate) mod container_scroll;
+pub(crate) mod container_style;
+pub(crate) mod content_values;
 pub(crate) mod counter_style;
-mod declaration_block;
-pub(crate) use declaration_block::parse_snapshot as parse_declaration_block_contents_snapshot;
-mod domain_declaration_contents;
-pub(crate) mod property_input;
-pub(crate) use declaration_block::parse_with_context as parse_declaration_block_contents_with_context;
-pub(crate) use domain_declaration_contents::parse_font_face_declaration_block_contents_with_limits;
-pub(crate) use domain_declaration_contents::parse_page_with_context as parse_page_declaration_block_contents_with_context;
-mod descriptor_body;
-mod descriptor_values;
-mod effects;
-mod flex;
-mod font_controls;
+pub(crate) mod declaration_block;
+pub(crate) mod descriptor_body;
+pub(crate) mod descriptor_values;
+pub(crate) mod domain_declaration_contents;
+pub(crate) mod effects;
+pub(crate) mod flex;
+pub(crate) mod font_controls;
 pub(crate) mod font_face;
 pub(crate) mod font_feature_values;
 pub(crate) mod font_feature_values_family_list;
-pub(crate) use font_feature_values_family_list::parse_with_context as parse_font_feature_values_family_list_with_context;
-mod font_palette;
+pub(crate) mod font_palette;
 pub(crate) mod font_palette_values;
-mod font_settings;
-mod font_variant;
-mod fragments;
-mod style_selector_fragments;
-pub use style_selector_fragments::{CssParsedStyleSelectors, CssStyleSelectorContext};
-mod import;
-use import::{CssImportPrelude, parse_import_prelude};
-pub(crate) use import::{construct_import, import_boundaries_match};
-mod reconstruction;
-use reconstruction::{
-    BoundedParseContext, BoundedParseSyntax, parse_bounded, parse_sheet_bounded, rule_start,
-};
-#[cfg(test)]
-mod native_batch_boundary_tests;
-mod page_margin_rule;
-#[cfg(test)]
-mod preparation_growth_tests;
-#[cfg(test)]
-mod replay_growth_tests;
-mod rule_candidate;
-mod rule_list;
-pub(crate) use page_margin_rule::parse_with_context as parse_page_margin_rule_with_context;
-use rule_list::{
-    AtRulePrelude, GroupSink, RuleListItem, RuleListUnits, RuleParser, ScopedSink, SheetSink,
-    recover_rule_list,
-};
-#[cfg(test)]
-mod style_scope_media_separator_tests;
-mod syntax_bridge;
-pub(crate) use page::{first_page_component, is_page_margin_property, page_declaration_violation};
-pub(crate) use rule_candidate::classify_rule_syntax_with_limits;
-pub use rule_candidate::{CssRuleAdmissionContext, CssRuleSyntax, CssRuleSyntaxKind};
-mod gap;
+pub(crate) mod font_settings;
+pub(crate) mod font_variant;
+pub(crate) mod fragments;
+pub(crate) mod gap;
+pub(crate) mod generated_content;
+pub(crate) mod grid;
+pub(crate) mod grid_placement;
 pub(crate) mod image_1d;
-mod masking;
-mod ui;
-pub(crate) use fragments::{
-    parse_color_profile_block, parse_color_profile_descriptor_value, parse_counter_style_block,
-    parse_counter_style_descriptor_value, parse_cssom_media_query, parse_font_face_block,
-    parse_font_face_descriptor_value, parse_font_feature_display_value, parse_font_feature_value,
-    parse_font_feature_value_block, parse_font_feature_values_block,
-    parse_font_palette_descriptor_value, parse_font_palette_values_block, parse_media_query,
-    parse_page_descriptor_value, parse_page_selector_list, parse_relative_selector_list,
-    parse_selector, parse_supports_test_block,
+pub(crate) mod import;
+pub(crate) mod inset;
+pub(crate) mod item_flow;
+pub(crate) mod keyframe_fragments;
+pub(crate) mod keyframes;
+pub(crate) mod layout;
+pub(crate) mod list_styles;
+pub(crate) mod masking;
+pub(crate) mod motion;
+pub(crate) mod multicolumn;
+pub(crate) mod named_supports;
+#[cfg(test)]
+pub(crate) mod native_batch_boundary_tests;
+pub(crate) mod nesting;
+pub(crate) mod overflow_controls;
+pub(crate) mod page;
+pub(crate) mod page_margin_rule;
+pub(crate) mod position;
+#[cfg(test)]
+pub(crate) mod preparation_growth_tests;
+pub(crate) mod property_input;
+pub(crate) mod queries;
+pub(crate) mod query_components;
+pub(crate) mod quirky_color;
+pub(crate) mod quirky_length;
+pub(crate) mod reconstruction;
+pub(crate) mod recovery;
+#[cfg(test)]
+pub(crate) mod replay_growth_tests;
+pub(crate) mod rule_candidate;
+pub(crate) mod rule_list;
+pub(crate) mod scroll_snap;
+pub(crate) mod scrollbar;
+pub(crate) mod selectors;
+pub(crate) mod shape_outside;
+pub(crate) mod shapes;
+pub(crate) mod side_shapes;
+pub(crate) mod sizing;
+pub(crate) mod sizing_controls;
+pub(crate) mod speech;
+#[cfg(test)]
+pub(crate) mod style_scope_media_separator_tests;
+pub(crate) mod style_selector_fragments;
+pub(crate) mod supports;
+pub(crate) mod syntax_bridge;
+pub(crate) mod text_alignment;
+pub(crate) mod text_decoration;
+pub(crate) mod text_flow;
+pub(crate) mod timing;
+pub(crate) mod typography;
+pub(crate) mod ui;
+pub(crate) mod url;
+pub(crate) mod values;
+pub(crate) mod variables;
+pub(crate) mod view_transitions;
+pub(crate) mod when;
+pub(crate) mod will_change;
+use crate::color::CssColor;
+use crate::numeric::{
+    CssInteger, CssLength, CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric, CssPositive,
 };
-pub(crate) use fragments::{
-    parse_declaration_with_context, parse_group_block_with_context,
-    parse_keyframe_declaration_block_with_context, parse_keyframes_block_with_context,
-    parse_margin_block_with_context, parse_media_query_list_snapshot,
-    parse_page_block_with_context, parse_property_value_text_for_grammar_with_context,
-    parse_property_value_text_with_context, parse_rule_with_context,
-    parse_scope_block_with_context, parse_scoped_group_block_with_context,
-    parse_style_block_with_context,
+use crate::parser::motion::*;
+use crate::property::CssAllDeclaredValue;
+use crate::query::container::{CssContainer, CssContainerNames, CssContainerType};
+use crate::values::animation::{
+    CssAnimationDirectionList, CssAnimationFillModeList, CssAnimationIterationCountList,
+    CssAnimationList, CssAnimationNameList, CssAnimationPlayStateList, CssDelayList,
+    CssDurationList, CssEasingList, CssTransitionList, CssTransitionPropertyList,
 };
-mod boolean_condition;
-mod color;
-mod color_adjustment;
-mod container_properties;
-mod container_query;
-mod container_scroll;
-mod container_style;
-mod content_values;
-mod generated_content;
-mod grid;
-mod grid_placement;
-mod inset;
-mod item_flow;
-mod keyframe_fragments;
-mod keyframes;
-pub use keyframe_fragments::{CssParsedKeyframeRule, CssParsedKeyframeSelectors};
-mod layout;
-mod list_styles;
-mod motion;
-mod multicolumn;
-mod nesting;
-mod overflow_controls;
-mod page;
-mod position;
-mod queries;
-mod query_components;
-mod quirky_color;
-mod quirky_length;
-mod shape_outside;
-use motion::*;
-mod shapes;
+use crate::values::background::{
+    CssBackground, CssBackgroundAttachmentList, CssBackgroundBoxList, CssBackgroundPositionList,
+    CssBackgroundRepeatList, CssBackgroundSizeList, CssBlendMode, CssBlendModeList,
+};
+use crate::values::border::border_radius::CornerRadiusLength;
+use crate::values::border::{
+    CssBorder, CssBorderImage, CssBorderImageOutset, CssBorderImageRepeat, CssBorderImageSlice,
+    CssBorderImageWidth, CssBorderRadiusShorthand, CssLineStyle, CssLineWidth, CssOutline,
+    CssOutlineColor, CssOutlineStyle,
+};
+use crate::values::box_model::{
+    CssAspectRatioValue, CssBoxDecorationBreak, CssBoxSizing, CssBreakBetween, CssBreakInside,
+    CssClear, CssContain, CssContainIntrinsicSizeValue, CssContentVisibility, CssDisplayValue,
+    CssFloat, CssFlowTolerance, CssFrameSizing, CssInsetValue, CssLayoutPosition, CssMarginValue,
+    CssMaxSizeValue, CssMinIntrinsicSizing, CssOverflow, CssOverflowAnchor, CssOverflowClipMargin,
+    CssOverflowValue, CssPaddingValue, CssScrollBehavior, CssScrollbarGutter, CssSizeValue,
+    CssVisibility, CssZIndexValue,
+};
+use crate::values::color_adjust::{CssColorScheme, CssForcedColorAdjust, CssPrintColorAdjust};
+use crate::values::common::{CssFourSides, CssSidePair};
+use crate::values::content::{
+    CssBookmarkLevel, CssBookmarkState, CssContentList, CssContentValue, CssCounterChangesValue,
+    CssListStylePosition, CssListStyleTypeValue, CssListStyleValue, CssMarkerSide, CssQuotes,
+    CssStringSet,
+};
+use crate::values::effects::{
+    CssBoxShadow, CssClip, CssClipPath, CssClipRule, CssColorInterpolationFilters, CssFilter,
+    CssIsolation, CssMaskBorder, CssMaskBoxList, CssMaskClipList, CssMaskCompositeList,
+    CssMaskList, CssMaskModeList, CssMaskType, CssOpacityValue,
+};
+use crate::values::font::{
+    CssAuthoredFontFeatureSettings, CssFontFamilyList, CssFontKerning, CssFontLanguageOverride,
+    CssFontOpticalSizing, CssFontPalette, CssFontSize, CssFontSizeAdjust, CssFontStyle,
+    CssFontSynthesis, CssFontSynthesisPosition, CssFontSynthesisSmallCaps, CssFontSynthesisStyle,
+    CssFontSynthesisWeight, CssFontValue, CssFontVariantAlternates, CssFontVariantCaps,
+    CssFontVariantEastAsian, CssFontVariantEmoji, CssFontVariantLigatures, CssFontVariantNumeric,
+    CssFontVariantPosition, CssFontVariantValue, CssFontVariationSettings, CssFontWeight,
+    CssFontWidth,
+};
+use crate::values::image::{
+    CssImageOrientation, CssImageRendering, CssImageValue, CssImageValueList, CssObjectFit,
+};
+use crate::values::layout::scroll_snap::{ScrollMarginSide, ScrollPaddingSide};
+use crate::values::layout::{
+    CssAlignContentValue, CssAlignItemsValue, CssAlignSelfValue, CssColumnCount, CssColumnFill,
+    CssColumnRule, CssColumnSpan, CssColumns, CssFlexBasisValue, CssFlexDirection, CssFlexFlow,
+    CssFlexValue, CssFlexWrap, CssGapValue, CssGrid, CssGridArea, CssGridAutoFlow, CssGridLine,
+    CssGridLineRange, CssGridTemplate, CssGridTemplateAreas, CssGridTrackList,
+    CssGridTrackSizeList, CssItemDirection, CssItemFlow, CssItemPack, CssItemWrap,
+    CssJustifyContentValue, CssJustifyItemsValue, CssJustifySelfValue, CssPlaceContentValue,
+    CssPlaceItemsValue, CssPlaceSelfValue, CssScrollSnapAlignment, CssScrollSnapStop,
+    CssScrollSnapType,
+};
+use crate::values::position::{CssPosition, CssPositionList};
+use crate::values::shape::CssShapeOutside;
+use crate::values::speech::{
+    CssCue, CssSpeak, CssSpeakAs, CssSpeechBreak, CssVoiceBalance, CssVoiceDuration,
+    CssVoiceFamily, CssVoicePitchRange, CssVoiceRate, CssVoiceStress, CssVoiceVolume,
+};
+use crate::values::table::border_spacing::BorderSpacingLength;
+use crate::values::table::{CssBorderCollapse, CssCaptionSide, CssEmptyCells, CssTableLayout};
+use crate::values::text::{
+    CssDirection, CssHangingPunctuation, CssHyphenateCharacter, CssHyphenateLimitChars,
+    CssHyphenateLimitLast, CssHyphenateLimitLines, CssHyphens, CssLineBreak, CssLineHeight,
+    CssOverflowWrap, CssTabSize, CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignValue,
+    CssTextAutospace, CssTextBox, CssTextBoxEdge, CssTextBoxTrim, CssTextCombineUpright,
+    CssTextDecoration, CssTextDecorationLine, CssTextDecorationSkip, CssTextDecorationSkipBox,
+    CssTextDecorationSkipInk, CssTextDecorationSkipInset, CssTextDecorationSkipSelf,
+    CssTextDecorationSkipSpaces, CssTextDecorationStyle, CssTextDecorationThickness,
+    CssTextEmphasis, CssTextEmphasisPosition, CssTextEmphasisSkip, CssTextEmphasisStyle,
+    CssTextGroupAlign, CssTextIndent, CssTextJustify, CssTextOrientation, CssTextOverflow,
+    CssTextShadow, CssTextSpacing, CssTextSpacingAdjustment, CssTextSpacingTrim, CssTextTransform,
+    CssTextUnderlineOffset, CssTextUnderlinePosition, CssTextWrap, CssTextWrapMode,
+    CssTextWrapStyle, CssUnicodeBidi, CssVerticalAlign, CssWhiteSpace, CssWhiteSpaceCollapse,
+    CssWhiteSpaceTrim, CssWordBreak, CssWordSpaceTransform, CssWrapBoundary, CssWrapInside,
+    CssWritingMode,
+};
+use crate::values::transform::{
+    CssBackfaceVisibility, CssOffset, CssOffsetAnchor, CssOffsetPath, CssOffsetPosition,
+    CssOffsetRotate, CssPerspective, CssRotate, CssScale, CssTransform, CssTransformBox,
+    CssTransformOrigin, CssTransformStyle, CssTranslate,
+};
+use crate::values::ui::{
+    CssAccentColor, CssAppearance, CssCaret, CssCaretAnimation, CssCaretColor, CssCaretShape,
+    CssCursor, CssInteractivity, CssInterestDelayValue, CssNavigation, CssPointerEvents, CssResize,
+    CssScrollbarColor, CssScrollbarWidth, CssUserSelect, CssWillChange,
+};
+use crate::values::view_transition::CssViewTransitionName;
+use reconstruction::{BoundedParseContext, parse_sheet_bounded};
+use rule_list::{GroupSink, RuleListUnits, RuleParser, ScopedSink, SheetSink, recover_rule_list};
 use shape_outside::parse_shape_outside;
-mod view_transitions;
 use view_transitions::parse_view_transition_name;
-mod will_change;
 // Shared checked media construction uses the same private admission engine.
-pub(crate) use queries::{construct_media_condition, construct_media_query};
-pub(crate) use supports::{
-    construct_supports_condition, construct_supports_condition_with_context,
-    construct_supports_declaration, construct_supports_declaration_with_context,
-};
-mod conditional_chains;
-mod recovery;
-pub(crate) use recovery::finish_report;
-mod scroll_snap;
-mod scrollbar;
-mod selectors;
-mod side_shapes;
-mod sizing;
-mod sizing_controls;
-mod speech;
-mod supports;
-mod when;
-use crate::{CssCondition, CssWhenLeaf};
-pub(crate) use queries::construct_when_media_feature;
-pub(crate) use when::construct_when_condition;
-mod text_alignment;
-mod text_flow;
-mod timing;
-mod typography;
-mod url;
-mod values;
-mod variables;
-pub(crate) use fragments::parse_svg_glyph_attribute_value;
-pub(crate) use variables::first_substitution_origin;
 
 use cssparser::{
     AtRuleParser, CowRcStr, DeclarationParser, Delimiter, ParseError, Parser, ParserInput,
-    ParserState, QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token,
-    match_ignore_ascii_case,
+    ParserState, QualifiedRuleParser, RuleBodyItemParser, Token,
 };
 
-use crate::{
-    BorderSpacingLength, CornerRadiusLength, CssContainIntrinsicSizeValue, CssCue, CssGapValue,
-    CssInsetValue, CssInterestDelayValue, CssLineWidth, CssMarginValue, CssMaxSizeValue,
-    CssPaddingValue, CssScrollSnapAlignment, CssSizeValue, CssSpeechBreak, ScrollMarginSide,
-    ScrollPaddingSide,
-};
-use crate::{
-    CssColorProfileDescriptorKind, CssColorProfileDescriptorValue, CssColorProfileRuleName,
-    CssFontPaletteDescriptorKind, CssFontPaletteDescriptorValue, CssFontPaletteName,
-};
-use alignment::*;
-use background::*;
-use border_color::*;
-use border_radius::*;
-use border_style::*;
-use border_width::*;
-use box_model::*;
-use box_spacing::*;
+use crate::parser::alignment::*;
+use crate::parser::background::*;
+use crate::parser::border_color::*;
+use crate::parser::border_radius::*;
+use crate::parser::border_style::*;
+use crate::parser::border_width::*;
+use crate::parser::box_model::*;
+use crate::parser::box_spacing::*;
+use crate::parser::color_adjustment::*;
+use crate::parser::contain_intrinsic_size::*;
+use crate::parser::container_properties::*;
+use crate::parser::effects::*;
+use crate::parser::flex::*;
+use crate::parser::font_controls::*;
+use crate::parser::font_settings::*;
+use crate::parser::font_variant::*;
+use crate::parser::gap::*;
+use crate::parser::generated_content::*;
+use crate::parser::grid::*;
+use crate::parser::inset::*;
+use crate::parser::item_flow::*;
+use crate::parser::layout::*;
+use crate::parser::list_styles::*;
+use crate::parser::masking::*;
+use crate::parser::multicolumn::*;
+use crate::parser::overflow_controls::*;
+use crate::parser::position::*;
+use crate::parser::scroll_snap::*;
+use crate::parser::scrollbar::*;
+use crate::parser::sizing_controls::*;
+use crate::parser::speech::*;
+use crate::parser::text_alignment::*;
+use crate::parser::text_decoration::*;
+use crate::parser::text_flow::*;
+use crate::parser::timing::*;
+use crate::parser::typography::*;
+use crate::parser::ui::*;
+use crate::parser::will_change::*;
 use color::parse_color;
-use color_adjustment::*;
-use contain_intrinsic_size::*;
-use container_properties::*;
 use container_query::{collect_container_components, container_prelude_from_components};
-pub(crate) use container_query::{
-    construct_container_condition, construct_container_prelude, container_condition_from_enclosed,
-};
-use counter_style::{CounterStylePrelude, parse_counter_style_name, parse_counter_style_rule};
-use effects::*;
-use flex::*;
-use font_controls::*;
-use font_face::parse_font_face_rule;
+use counter_style::{CounterStylePrelude, parse_counter_style_name};
 use font_palette::parse_font_palette;
-use font_settings::*;
-use font_variant::*;
-use gap::*;
-use generated_content::*;
-use grid::*;
 use grid_placement::{parse_grid_area, parse_grid_line, parse_grid_line_range};
-use inset::*;
-use item_flow::*;
-use keyframes::{parse_keyframes_name, parse_keyframes_rule};
-use layout::*;
-use list_styles::*;
-use masking::*;
-use multicolumn::*;
-use nesting::{parse_style_contents, parse_style_rule_block};
-use overflow_controls::*;
-use page::{parse_page_rule, parse_page_selector};
-use position::*;
-use queries::parse_media_query_list as parse_media_query_list_inner;
-use recovery::{
-    RecoveryLoopOutcome, RecoveryProgress, RecoveryState, StyleContextCaptures,
-    recovery_action_for_error,
-};
-use scroll_snap::*;
-use scrollbar::*;
-use selectors::{
-    SelectorRecovery, parse_rule_selector_list, parse_scope_boundary_selector_list,
-    parse_scoped_style_selector_list,
-};
+use keyframes::parse_keyframes_name;
+use nesting::parse_style_contents;
+use page::parse_page_selector;
+use recovery::{RecoveryState, StyleContextCaptures, recovery_action_for_error};
+use selectors::{SelectorRecovery, parse_scope_boundary_selector_list};
 use sizing::{parse_max_size_value, parse_size_value};
-use sizing_controls::*;
-use supports::{parse_supports_condition, with_supports_prelude_context};
-use ui::*;
-use will_change::*;
-pub(crate) mod named_supports;
-pub(crate) use named_supports::{
-    parse_supports_test_child_with_limits, parse_supports_test_contents_with_limits,
-};
-use speech::*;
-use text_alignment::*;
-use text_flow::*;
-use timing::*;
-use typography::*;
-mod text_decoration;
-use text_decoration::*;
-pub(crate) use variables::contains_substitution;
 use variables::{
     collect_authored_declaration_value, parse_custom_property_name, parse_custom_property_value,
 };
 
-use crate::component_values::CssComponentValues;
-use crate::error::{
-    CssError, CssFeatureId, basic, from_parse_error, from_rule_parse_error, invalid_at_rule_block,
-    invalid_at_rule_body, invalid_at_rule_placement, invalid_custom_declaration_annotation,
-    invalid_descriptor_annotation, invalid_known_declaration_annotation, invalid_syntax,
-    property_name_error, with_at_rule_prelude_context, with_media_query_context,
-    with_property_context,
+use crate::component::CssComponentValues;
+use crate::declaration::syntax::CssDeclaredValue;
+use crate::declaration::{
+    CssAuthoredDeclarationValue, CssCustomDeclaration, CssCustomPropertyName, CssDeclaration,
+    CssDeclarationBody, CssGlobalKeyword, CssImportance, CssSubstitutionDependentValue,
 };
-use crate::properties::*;
+use crate::diagnostic::error::{
+    basic, from_parse_error, from_rule_parse_error, invalid_at_rule_body,
+    invalid_at_rule_placement, invalid_custom_declaration_annotation,
+    invalid_descriptor_annotation, invalid_known_declaration_annotation, invalid_syntax,
+    property_name_error, with_at_rule_prelude_context, with_property_context,
+};
+use crate::diagnostic::{CssError, CssFeatureId};
+use crate::property::CssPropertyNameRef;
+use crate::property::properties::{
+    CssKnownDeclarationValue, CssLegacyPropertyAlias, CssResolvedPropertyName, property_schema,
+    resolve_property_name,
+};
+use crate::property::{
+    CssKnownDeclaration, CssKnownProperty, CssPropertyGrammar, CssPropertyValue,
+};
+use crate::query::container::CssContainerPrelude;
+use crate::rule::keyframes::{CssKeyframeDeclaration, CssKeyframesName};
+use crate::rule::page::CssPageSelectorList;
+use crate::rule::{CssLayerName, CssNamespaceName, CssNamespacePrefix, CssRule, CssSheet};
+use crate::selector::CssScopeSelectorList;
 use crate::source::{CssParsedOrigin, CssSourceSnapshot};
-use crate::syntax::*;
 use crate::syntax_consumption::RuleListSyntax;
 use crate::validation::parse_global_keyword;
 
@@ -544,28 +585,28 @@ macro_rules! define_property_dispatch {
         $(, expansion = $expansion:ident { $($metadata:tt)* })?;
     )*) => {
         fn parse_known_property_value<'i, 't>(
-            property: crate::CssKnownProperty,
+            property: crate::property::CssKnownProperty,
             authored: CssAuthoredDeclarationValue,
             $input: &mut property_input::Parser<'i, 't>,
-            $numeric: &crate::numeric::NumericInputContext<'_>,
-        ) -> std::result::Result<CssKnownDeclaration, crate::error::property::ParseError<'i, crate::error::property::Error>> {
+            $numeric: &crate::numeric::expression::NumericInputContext<'_>,
+        ) -> std::result::Result<CssKnownDeclaration, crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>> {
             match property {
-                crate::CssKnownProperty::All => {
+                crate::property::CssKnownProperty::All => {
                     let _authored_value_type = std::marker::PhantomData::<$all_value>;
 
 
                     let keyword = $all_dispatch;
                     Ok(CssKnownDeclaration::from_global(CssKnownProperty::All, keyword))
                 }
-                $(crate::CssKnownProperty::$variant => {
+                $(crate::property::CssKnownProperty::$variant => {
                     // Keep each property's parsed value and wrapper construction in its own
                     // frame: one generated dispatch frame exhausts deep rule-parsing stacks.
                     #[inline(never)]
                     fn parse_variant<'i, 't>(
                         authored: CssAuthoredDeclarationValue,
                         $input: &mut property_input::Parser<'i, 't>,
-                        $numeric: &crate::numeric::NumericInputContext<'_>,
-                    ) -> std::result::Result<CssKnownDeclaration, crate::error::property::ParseError<'i, crate::error::property::Error>> {
+                        $numeric: &crate::numeric::expression::NumericInputContext<'_>,
+                    ) -> std::result::Result<CssKnownDeclaration, crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>> {
                         let _ = $numeric;
                         let _authored_value_type = std::marker::PhantomData::<$value>;
 
@@ -589,9 +630,9 @@ fn parse_all_property<'i, 't>(
     input: &mut property_input::Parser<'i, 't>,
 ) -> std::result::Result<
     CssGlobalKeyword,
-    crate::error::property::ParseError<'i, crate::error::property::Error>,
+    crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>,
 > {
-    Err(crate::error::property::unexpected_at(
+    Err(crate::diagnostic::error::property::unexpected_at(
         input.current_source_location(),
     ))
 }
@@ -610,7 +651,7 @@ pub(crate) fn parse_sheet_snapshot(
 ) -> crate::CssParseReport<CssSheet> {
     let (mut sheet, mut diagnostics) =
         parse_sheet_snapshot_inner(source_snapshot, parser_context).into_parts();
-    sheet.bind_parse_source(crate::CssParseSource::new(
+    sheet.bind_parse_source(crate::source::CssParseSource::new(
         source_snapshot.clone(),
         parser_context,
     ));
@@ -642,7 +683,7 @@ fn parse_sheet_snapshot_inner(
 }
 
 #[derive(Clone, Copy)]
-enum ScopedBodyKind {
+pub(crate) enum ScopedBodyKind {
     Scope,
     OrdinaryGroup,
 }
@@ -679,7 +720,7 @@ fn parse_context_inner(
             vec![fragments::reject(
                 source,
                 error,
-                crate::CssRecoveryAction::DropQualifiedRule,
+                crate::diagnostic::CssRecoveryAction::DropQualifiedRule,
             )],
         ),
     }
@@ -746,53 +787,53 @@ fn parse_sheet_inner(
     crate::CssParseReport::new(sink.0, diagnostics)
 }
 
-pub(super) struct Recovered<T> {
-    pub(super) syntax: T,
-    pub(super) diagnostics: Vec<crate::CssRecoveryDiagnostic>,
+pub(crate) struct Recovered<T> {
+    pub(crate) syntax: T,
+    pub(crate) diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
 }
 
-pub(super) fn block_item_diagnostic(
+pub(crate) fn block_item_diagnostic(
     source: &str,
     error: ParseError<'_, CssError>,
     failed_unit: &str,
     unit_end: usize,
-    action: crate::CssRecoveryAction,
-) -> Option<crate::CssRecoveryDiagnostic> {
+    action: crate::diagnostic::CssRecoveryAction,
+) -> Option<crate::diagnostic::CssRecoveryDiagnostic> {
     let unit_start = unit_end.saturating_sub(failed_unit.len());
     block_item_diagnostic_from_start(source, error, unit_start, unit_end, action)
 }
 
-pub(super) fn block_item_diagnostic_from_start(
+pub(crate) fn block_item_diagnostic_from_start(
     source: &str,
     error: ParseError<'_, CssError>,
     unit_start: usize,
     unit_end: usize,
-    action: crate::CssRecoveryAction,
-) -> Option<crate::CssRecoveryDiagnostic> {
+    action: crate::diagnostic::CssRecoveryAction,
+) -> Option<crate::diagnostic::CssRecoveryDiagnostic> {
     let action = recovery_action_for_error(&error, action);
     let error = from_parse_error(source, error);
-    let span = crate::CssSourceSpan::new(
-        crate::CssSourcePosition::from_byte_offset_in(source, unit_start),
-        crate::CssSourcePosition::from_byte_offset_in(source, unit_end),
+    let span = crate::source::CssSourceSpan::new(
+        crate::source::CssSourcePosition::from_byte_offset_in(source, unit_start),
+        crate::source::CssSourcePosition::from_byte_offset_in(source, unit_end),
     )?;
     if span.start() == span.end() {
         return None;
     }
-    crate::CssRecoveryDiagnostic::new(error, span, action)
+    crate::diagnostic::CssRecoveryDiagnostic::new(error, span, action)
 }
 
 /// Syntax 3 (2026 CRD) §5.4.10 appends a group only while its input is not
 /// empty: a discarded comma followed by no token ends the list. Whitespace is
 /// a token; a comment is not.
 /// <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#parse-comma-separated-list-of-component-values>
-pub(super) fn at_final_comma(input: &mut Parser<'_, '_>) -> bool {
+pub(crate) fn at_final_comma(input: &mut Parser<'_, '_>) -> bool {
     let state = input.state();
     let ends = input.next_including_whitespace().is_err();
     input.reset(&state);
     ends
 }
 
-pub(super) fn consume_failed_rule_block<'i, 't>(
+pub(crate) fn consume_failed_rule_block<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
     failed: bool,
@@ -816,35 +857,37 @@ pub(super) fn consume_failed_rule_block<'i, 't>(
 }
 
 /// A dropped unit's diagnostic, spanning exactly that unit.
-pub(super) fn structural_rule_diagnostic(
+pub(crate) fn structural_rule_diagnostic(
     source: &str,
     error: ParseError<'_, CssError>,
     failed_unit: &str,
     unit_start: usize,
     unit_end: usize,
-    action: crate::CssRecoveryAction,
-) -> Option<crate::CssRecoveryDiagnostic> {
+    action: crate::diagnostic::CssRecoveryAction,
+) -> Option<crate::diagnostic::CssRecoveryDiagnostic> {
     let action = recovery_action_for_error(&error, action);
     let error = from_rule_parse_error(source, failed_unit, error);
-    let span = crate::CssSourceSpan::new(
-        crate::CssSourcePosition::from_byte_offset_in(source, unit_start),
-        crate::CssSourcePosition::from_byte_offset_in(source, unit_end),
+    let span = crate::source::CssSourceSpan::new(
+        crate::source::CssSourcePosition::from_byte_offset_in(source, unit_start),
+        crate::source::CssSourcePosition::from_byte_offset_in(source, unit_end),
     )?;
     if span.start() == span.end() {
         return None;
     }
-    crate::CssRecoveryDiagnostic::new(error, span, action)
+    crate::diagnostic::CssRecoveryDiagnostic::new(error, span, action)
 }
 
-pub(super) fn structural_recovery_action(failed_unit: &str) -> crate::CssRecoveryAction {
+pub(crate) fn structural_recovery_action(
+    failed_unit: &str,
+) -> crate::diagnostic::CssRecoveryAction {
     if failed_unit.trim_start().starts_with('@') {
-        crate::CssRecoveryAction::DropAtRule
+        crate::diagnostic::CssRecoveryAction::DropAtRule
     } else {
-        crate::CssRecoveryAction::DropQualifiedRule
+        crate::diagnostic::CssRecoveryAction::DropQualifiedRule
     }
 }
 
-pub(super) fn structural_recovery_production(failed_unit: &str) -> &'static str {
+pub(crate) fn structural_recovery_production(failed_unit: &str) -> &'static str {
     if failed_unit.trim_start().starts_with('@') {
         "css.at-rule"
     } else {
@@ -852,14 +895,14 @@ pub(super) fn structural_recovery_production(failed_unit: &str) -> &'static str 
     }
 }
 
-pub(super) fn top_level_only_at_rule_placement<'i>(
+pub(crate) fn top_level_only_at_rule_placement<'i>(
     location: cssparser::SourceLocation,
     name: &str,
 ) -> ParseError<'i, CssError> {
     invalid_at_rule_placement(location, name, "the stylesheet top level")
 }
 
-pub(super) fn is_declaration_recovery_unit(failed_unit: &str) -> bool {
+pub(crate) fn is_declaration_recovery_unit(failed_unit: &str) -> bool {
     let mut input = ParserInput::new(failed_unit);
     let mut parser = Parser::new(&mut input);
     matches!(
@@ -869,7 +912,7 @@ pub(super) fn is_declaration_recovery_unit(failed_unit: &str) -> bool {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum TopLevelPreludePhase {
+pub(crate) enum TopLevelPreludePhase {
     Initial,
     Imports,
     Namespaces,
@@ -908,49 +951,14 @@ impl TopLevelPreludePhase {
     }
 }
 
-/// Immutable namespace bindings used to parse authored selector and rule fragments.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct CssNamespaceContext(CssNamespaceBindings);
-impl CssNamespaceContext {
-    /// Takes bindings in authored order; the last binding for each prefix wins.
-    pub fn from_bindings(
-        bindings: impl IntoIterator<Item = (Option<CssNamespacePrefix>, CssNamespaceName)>,
-    ) -> Self {
-        let mut result = Self::default();
-        for (prefix, name) in bindings {
-            result.0.activate(prefix, name);
-        }
-        result
-    }
-    /// Copies the retained top-level namespace declarations from a stylesheet.
-    pub fn from_sheet(sheet: &CssSheet) -> Self {
-        Self::from_bindings(sheet.rules().iter().filter_map(|rule| match rule {
-            CssRule::Namespace(rule) => Some((rule.prefix().cloned(), rule.name().clone())),
-            _ => None,
-        }))
-    }
-    /// Returns the default binding, distinguishing absence from the empty namespace.
-    pub fn default_namespace(&self) -> Option<&CssNamespaceName> {
-        self.0.default.as_ref()
-    }
-    /// Returns the case-sensitive named binding.
-    pub fn named_namespace(&self, prefix: &CssNamespacePrefix) -> Option<&CssNamespaceName> {
-        self.0
-            .named
-            .iter()
-            .find(|(p, _)| p == prefix)
-            .map(|(_, name)| name)
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct CssNamespaceBindings {
-    default: Option<CssNamespaceName>,
-    named: Vec<(CssNamespacePrefix, CssNamespaceName)>,
+pub(crate) struct CssNamespaceBindings {
+    pub(crate) default: Option<CssNamespaceName>,
+    pub(crate) named: Vec<(CssNamespacePrefix, CssNamespaceName)>,
 }
 
 impl CssNamespaceBindings {
-    fn activate(&mut self, prefix: Option<CssNamespacePrefix>, name: CssNamespaceName) {
+    pub(crate) fn activate(&mut self, prefix: Option<CssNamespacePrefix>, name: CssNamespaceName) {
         if let Some(prefix) = prefix {
             if let Some((_, active_name)) = self
                 .named
@@ -993,12 +1001,12 @@ impl CssNamespaceBindings {
     }
 }
 
-struct CssNamespacePrelude {
+pub(crate) struct CssNamespacePrelude {
     prefix: Option<CssNamespacePrefix>,
     name: CssNamespaceName,
 }
 
-struct CssScopePrelude {
+pub(crate) struct CssScopePrelude {
     root: Option<CssScopeSelectorList>,
     limit: Option<CssScopeSelectorList>,
 }
@@ -1178,7 +1186,7 @@ fn parse_layer_name<'i, 't>(
 fn parse_scope_prelude<'i, 't>(
     source: &str,
     input: &mut Parser<'i, 't>,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     state: &RecoveryState,
     root_anchors: selectors::SelectorAnchorMode,
     relative_root: bool,
@@ -1220,7 +1228,7 @@ fn parse_scope_prelude<'i, 't>(
 }
 
 fn with_scope_prelude_context(error: ParseError<'_, CssError>) -> ParseError<'_, CssError> {
-    if crate::error::is_nesting_limit_error(&error) {
+    if crate::diagnostic::error::is_nesting_limit_error(&error) {
         error
     } else {
         with_at_rule_prelude_context(
@@ -1296,13 +1304,13 @@ fn parse_keyframes_prelude<'i, 't>(
     Ok(name)
 }
 
-pub(super) struct StrictDeclarationParser<'s> {
+pub(crate) struct StrictDeclarationParser<'s> {
     source: &'s str,
     recovery: RecoveryState,
 }
 
 impl<'s> StrictDeclarationParser<'s> {
-    pub(super) fn new(source: &'s str, recovery: RecoveryState) -> Self {
+    pub(crate) fn new(source: &'s str, recovery: RecoveryState) -> Self {
         Self { source, recovery }
     }
 }
@@ -1357,14 +1365,14 @@ impl<'i> DeclarationParser<'i> for StrictDeclarationParser<'i> {
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum DeclarationMode {
+pub(crate) enum DeclarationMode {
     Ordinary,
     Keyframe,
 }
 
-pub(super) struct ParsedDeclaration {
-    pub(super) body: CssDeclarationBody,
-    pub(super) importance: CssImportance,
+pub(crate) struct ParsedDeclaration {
+    pub(crate) body: CssDeclarationBody,
+    pub(crate) importance: CssImportance,
     components: CssComponentValues,
     name: CssParsedOrigin,
     value_origin: CssParsedOrigin,
@@ -1373,12 +1381,12 @@ pub(super) struct ParsedDeclaration {
 
 impl ParsedDeclaration {
     fn into_declaration(self) -> CssDeclaration {
-        self.into_declaration_in_context(crate::syntax::DeclarationContext::Ordinary)
+        self.into_declaration_in_context(crate::declaration::syntax::DeclarationContext::Ordinary)
     }
 
     fn into_declaration_in_context(
         self,
-        declaration_context: crate::syntax::DeclarationContext,
+        declaration_context: crate::declaration::syntax::DeclarationContext,
     ) -> CssDeclaration {
         CssDeclaration::new_parsed(
             self.parser_context,
@@ -1399,9 +1407,9 @@ impl ParsedDeclaration {
 enum DeclarationBoundaryContext<'a> {
     OrdinarySvgGlyph,
     KeyframeSvgGlyph,
-    OrdinaryKnown(crate::CssKnownProperty),
+    OrdinaryKnown(crate::property::CssKnownProperty),
     OrdinaryCustom(CssCustomPropertyName),
-    KeyframeKnown(crate::CssKnownProperty),
+    KeyframeKnown(crate::property::CssKnownProperty),
     KeyframeCustom(CssCustomPropertyName),
     Descriptor {
         at_rule: &'a str,
@@ -1424,7 +1432,7 @@ pub(crate) fn keyframe_property_admitted(property: CssKnownProperty) -> bool {
     )
 }
 
-pub(super) fn parse_declaration_core<'i, 't>(
+pub(crate) fn parse_declaration_core<'i, 't>(
     mode: DeclarationMode,
     name: CowRcStr<'i>,
     input: &mut Parser<'i, 't>,
@@ -1465,7 +1473,7 @@ pub(super) fn parse_declaration_core<'i, 't>(
                     parse_property_declaration_source(
                         PropertyValueGrammar::Custom(&custom_name),
                         input,
-                        &crate::numeric::NumericInputContext::parsed(source_snapshot),
+                        &crate::numeric::expression::NumericInputContext::parsed(source_snapshot),
                         parser_context,
                     )
                     .map_err(|error| with_property_context(error, name.as_ref()))
@@ -1482,8 +1490,8 @@ pub(super) fn parse_declaration_core<'i, 't>(
                 collect_declaration_value(input, source_snapshot, |input| {
                     parse_svg_glyph_declaration_body(
                         input,
-                        &crate::numeric::NumericInputContext::parsed(source_snapshot),
-                        crate::svg_glyph::SvgGlyphAdmission::css(parser_context),
+                        &crate::numeric::expression::NumericInputContext::parsed(source_snapshot),
+                        crate::property::svg_glyph::SvgGlyphAdmission::css(parser_context),
                     )
                 })
             })?;
@@ -1496,7 +1504,7 @@ pub(super) fn parse_declaration_core<'i, 't>(
         if matches!(mode, DeclarationMode::Keyframe) && !keyframe_property_admitted(known_property)
         {
             return Err(with_property_context(
-                crate::error::unexpected_at(declaration_start.source_location()),
+                crate::diagnostic::error::unexpected_at(declaration_start.source_location()),
                 known_property.canonical_name(),
             ));
         }
@@ -1510,7 +1518,7 @@ pub(super) fn parse_declaration_core<'i, 't>(
                     parse_known_declaration_body(
                         resolved_property,
                         input,
-                        &crate::numeric::NumericInputContext::parsed(source_snapshot),
+                        &crate::numeric::expression::NumericInputContext::parsed(source_snapshot),
                         parser_context,
                     )
                 })
@@ -1527,7 +1535,7 @@ pub(super) fn parse_declaration_core<'i, 't>(
     })
 }
 
-pub(super) fn collect_declaration_value<'i, 't, T>(
+pub(crate) fn collect_declaration_value<'i, 't, T>(
     input: &mut Parser<'i, 't>,
     source_snapshot: &CssSourceSnapshot,
     parse_value: impl FnOnce(&mut Parser<'i, 't>) -> std::result::Result<T, ParseError<'i, CssError>>,
@@ -1537,7 +1545,10 @@ pub(super) fn collect_declaration_value<'i, 't, T>(
     input.reset(&start);
     let components =
         CssComponentValues::collect_from_parser(input, source_snapshot).map_err(|error| {
-            crate::error::invalid_component_value(input.current_source_location(), error)
+            crate::diagnostic::error::invalid_component_value(
+                input.current_source_location(),
+                error,
+            )
         })?;
     let origin = CssParsedOrigin::from_range(
         source_snapshot,
@@ -1553,8 +1564,8 @@ pub(crate) fn parse_color_scheme_value_controlled(
     components: &CssComponentValues,
     parser_context: crate::CssParserContext,
     source: &CssSourceSnapshot,
-    control: &crate::utf16_value::Control<'_>,
-) -> Result<Result<CssDeclarationBody, crate::CssPropertyValueError>, ()> {
+    control: &crate::values::color_adjust::utf16_value::Control<'_>,
+) -> Result<Result<CssDeclarationBody, crate::property::CssPropertyValueError>, ()> {
     control.step()?;
     let mut document = match crate::syntax_consumption::normalize_checked_controlled(
         components.items(),
@@ -1568,8 +1579,10 @@ pub(crate) fn parse_color_scheme_value_controlled(
                 return Err(());
             }
             control.component_resource(error.kind)?;
-            return crate::CssPropertyValueError::from_component_controlled(error, control)
-                .map(Err);
+            return crate::property::CssPropertyValueError::from_component_controlled(
+                error, control,
+            )
+            .map(Err);
         }
     };
     document.bind_controlled_source(source)?;
@@ -1583,9 +1596,9 @@ pub(crate) fn parse_color_scheme_value_controlled(
             unreachable!("controlled checked component")
         };
         if let Some(origin) = component.implicit_termination_origin() {
-            return crate::CssPropertyValueError::from_direct_grammar_controlled(
-                crate::error::property::implicit_eof_kind(),
-                crate::CssSerializedOrigin::End(Some(origin.clone())),
+            return crate::property::CssPropertyValueError::from_direct_grammar_controlled(
+                crate::diagnostic::error::property::implicit_eof_kind(),
+                crate::component::CssSerializedOrigin::End(Some(origin.clone())),
                 control,
             )
             .map(Err);
@@ -1595,7 +1608,7 @@ pub(crate) fn parse_color_scheme_value_controlled(
     let result = parse_property_value_from_parser(
         PropertyValueGrammar::Known(CssKnownProperty::ColorScheme.grammar()),
         &mut parser,
-        &crate::numeric::NumericInputContext::Checked,
+        &crate::numeric::expression::NumericInputContext::Checked,
         parser_context,
     );
     if control.failure().is_some() {
@@ -1605,8 +1618,10 @@ pub(crate) fn parse_color_scheme_value_controlled(
         Ok(body) => Ok(Ok(body)),
         Err(error) => {
             let (kind, origin) = error.into_parts_controlled(control)?;
-            crate::CssPropertyValueError::from_direct_grammar_controlled(kind, origin, control)
-                .map(Err)
+            crate::property::CssPropertyValueError::from_direct_grammar_controlled(
+                kind, origin, control,
+            )
+            .map(Err)
         }
     }
 }
@@ -1615,13 +1630,13 @@ pub(crate) fn parse_property_value_body(
     property: CssPropertyNameRef<'_>,
     components: &CssComponentValues,
     parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, crate::CssPropertyValueError> {
+) -> Result<CssDeclarationBody, crate::property::CssPropertyValueError> {
     let grammar = match property {
         CssPropertyNameRef::Known(property) => PropertyValueGrammar::Known(property.grammar()),
         CssPropertyNameRef::Custom(name) => PropertyValueGrammar::Custom(name),
-        CssPropertyNameRef::SvgGlyphOrientationVertical => {
-            PropertyValueGrammar::SvgGlyph(crate::svg_glyph::SvgGlyphAdmission::css(parser_context))
-        }
+        CssPropertyNameRef::SvgGlyphOrientationVertical => PropertyValueGrammar::SvgGlyph(
+            crate::property::svg_glyph::SvgGlyphAdmission::css(parser_context),
+        ),
     };
     parse_property_value_body_selected(grammar, components, parser_context)
 }
@@ -1630,7 +1645,7 @@ pub(crate) fn parse_property_value_body_for_grammar(
     grammar: CssPropertyGrammar,
     components: &CssComponentValues,
     parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, crate::CssPropertyValueError> {
+) -> Result<CssDeclarationBody, crate::property::CssPropertyValueError> {
     parse_property_value_body_selected(
         PropertyValueGrammar::Known(grammar),
         components,
@@ -1642,14 +1657,14 @@ pub(crate) fn parse_property_value_body_for_grammar(
 enum PropertyValueGrammar<'a> {
     Known(CssPropertyGrammar),
     Custom(&'a CssCustomPropertyName),
-    SvgGlyph(crate::svg_glyph::SvgGlyphAdmission),
+    SvgGlyph(crate::property::svg_glyph::SvgGlyphAdmission),
 }
 
 fn parse_property_value_body_selected(
     grammar: PropertyValueGrammar<'_>,
     components: &CssComponentValues,
     parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, crate::CssPropertyValueError> {
+) -> Result<CssDeclarationBody, crate::property::CssPropertyValueError> {
     parse_property_value_slice_selected(
         grammar,
         components.items(),
@@ -1660,28 +1675,28 @@ fn parse_property_value_body_selected(
 
 fn parse_property_value_slice_selected(
     grammar: PropertyValueGrammar<'_>,
-    components: &[crate::CssComponentValue],
+    components: &[crate::component::CssComponentValue],
     depth: u32,
     parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, crate::CssPropertyValueError> {
-    let refused = crate::CssPropertyValueError::from_component;
+) -> Result<CssDeclarationBody, crate::property::CssPropertyValueError> {
+    let refused = crate::property::CssPropertyValueError::from_component;
     bounded_execution::components(components, depth, refused, || {
         let document = crate::syntax_consumption::normalize(
             crate::syntax_consumption::SyntaxInput::CheckedComponents(components),
             crate::syntax_consumption::SyntaxInputLimits::default(),
             0,
         )
-        .map_err(crate::CssPropertyValueError::from_component)?;
+        .map_err(crate::property::CssPropertyValueError::from_component)?;
         let mut parser = property_input::Parser::new(&document);
         parse_property_value_from_parser(
             grammar,
             &mut parser,
-            &crate::numeric::NumericInputContext::Checked,
+            &crate::numeric::expression::NumericInputContext::Checked,
             parser_context,
         )
         .map_err(|error| {
             let (kind, origin) = error.into_parts();
-            crate::CssPropertyValueError::from_direct_grammar(kind, origin)
+            crate::property::CssPropertyValueError::from_direct_grammar(kind, origin)
         })
     })
 }
@@ -1689,10 +1704,12 @@ fn parse_property_value_slice_selected(
 fn parse_property_value_from_parser<'i>(
     grammar: PropertyValueGrammar<'_>,
     parser: &mut property_input::Parser<'i, '_>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, crate::error::property::ParseError<'i, crate::error::property::Error>>
-{
+) -> Result<
+    CssDeclarationBody,
+    crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>,
+> {
     // Root delimiters precede lexical and symbolic-value admission. Each next
     // skips a complete nested component without promoting or validating it.
     let start = parser.state();
@@ -1710,14 +1727,14 @@ fn parse_property_value_from_parser<'i>(
             match token {
                 Token::Delim(value) => crate::syntax_consumption::TokenKind::Delim(value),
                 Token::Semicolon => crate::syntax_consumption::TokenKind::Semicolon,
-                Token::CloseCurlyBracket => {
-                    crate::syntax_consumption::TokenKind::Closing(crate::CssBlockKind::CurlyBracket)
-                }
-                Token::CloseParenthesis => {
-                    crate::syntax_consumption::TokenKind::Closing(crate::CssBlockKind::Parenthesis)
-                }
+                Token::CloseCurlyBracket => crate::syntax_consumption::TokenKind::Closing(
+                    crate::component::CssBlockKind::CurlyBracket,
+                ),
+                Token::CloseParenthesis => crate::syntax_consumption::TokenKind::Closing(
+                    crate::component::CssBlockKind::Parenthesis,
+                ),
                 Token::CloseSquareBracket => crate::syntax_consumption::TokenKind::Closing(
-                    crate::CssBlockKind::SquareBracket,
+                    crate::component::CssBlockKind::SquareBracket,
                 ),
                 _ => crate::syntax_consumption::TokenKind::Other,
             }
@@ -1748,10 +1765,12 @@ fn parse_property_value_from_parser<'i>(
 fn parse_property_declaration_body_from_property_input<'i>(
     grammar: PropertyValueGrammar<'_>,
     parser: &mut property_input::Parser<'i, '_>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     parser_context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, crate::error::property::ParseError<'i, crate::error::property::Error>>
-{
+) -> Result<
+    CssDeclarationBody,
+    crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>,
+> {
     match grammar {
         PropertyValueGrammar::Known(grammar) => parse_known_declaration_body_from_property_input(
             grammar.resolved(),
@@ -1776,10 +1795,11 @@ fn parse_property_declaration_body_from_property_input<'i>(
 fn parse_property_declaration_source<'i>(
     grammar: PropertyValueGrammar<'_>,
     input: &mut Parser<'i, '_>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     parser_context: crate::CssParserContext,
 ) -> Result<CssDeclarationBody, ParseError<'i, CssError>> {
-    let crate::numeric::NumericInputContext::Parsed(snapshot) = numeric.ordinary() else {
+    let crate::numeric::expression::NumericInputContext::Parsed(snapshot) = numeric.ordinary()
+    else {
         unreachable!("native property adapters receive source input")
     };
     let start = input.position().byte_index();
@@ -1797,7 +1817,7 @@ fn parse_property_declaration_source<'i>(
         0,
     )
     .map_err(|error| {
-        crate::error::invalid_component_value(input.current_source_location(), error)
+        crate::diagnostic::error::invalid_component_value(input.current_source_location(), error)
     })?;
     let mut property_input = property_input::Parser::new(&document);
     parse_property_declaration_body_from_property_input(
@@ -1820,7 +1840,7 @@ fn parse_property_declaration_source<'i>(
 fn parse_known_declaration_body<'i, 't>(
     resolved_property: CssResolvedPropertyName,
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     parser_context: crate::CssParserContext,
 ) -> Result<CssDeclarationBody, ParseError<'i, CssError>> {
     parse_property_declaration_source(
@@ -1833,8 +1853,8 @@ fn parse_known_declaration_body<'i, 't>(
 
 fn parse_svg_glyph_declaration_body<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-    admission: crate::svg_glyph::SvgGlyphAdmission,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+    admission: crate::property::svg_glyph::SvgGlyphAdmission,
 ) -> Result<CssDeclarationBody, ParseError<'i, CssError>> {
     parse_property_declaration_source(
         PropertyValueGrammar::SvgGlyph(admission),
@@ -1847,11 +1867,11 @@ fn parse_svg_glyph_declaration_body<'i, 't>(
 fn parse_known_declaration_body_from_property_input<'i, 't>(
     resolved_property: CssResolvedPropertyName,
     input: &mut property_input::Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     parser_context: crate::CssParserContext,
 ) -> std::result::Result<
     CssDeclarationBody,
-    crate::error::property::ParseError<'i, crate::error::property::Error>,
+    crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>,
 > {
     let known_property = resolved_property.property();
     let context_name = known_property.canonical_name();
@@ -1861,7 +1881,9 @@ fn parse_known_declaration_body_from_property_input<'i, 't>(
         numeric,
         variables::SubstitutionContext::KnownProperty,
     )
-    .map_err(|error| crate::error::property::with_property_context(error, context_name))?;
+    .map_err(|error| {
+        crate::diagnostic::error::property::with_property_context(error, context_name)
+    })?;
     if has_substitution {
         return Ok(CssDeclarationBody::Known(
             CssKnownDeclaration::from_substitution_dependent(
@@ -1877,8 +1899,10 @@ fn parse_known_declaration_body_from_property_input<'i, 't>(
     if let Ok(ident) = input.expect_ident_cloned() {
         if let Some(keyword) = parse_global_keyword(&ident) {
             if !input.is_exhausted() {
-                return Err(crate::error::property::with_property_context(
-                    crate::error::property::invalid_syntax(input.current_source_location()),
+                return Err(crate::diagnostic::error::property::with_property_context(
+                    crate::diagnostic::error::property::invalid_syntax(
+                        input.current_source_location(),
+                    ),
                     context_name,
                 ));
             }
@@ -1916,10 +1940,10 @@ fn parse_known_declaration_body_from_property_input<'i, 't>(
         if let Some(control) = input.control() {
             control.released(authored_bytes);
         }
-        crate::error::property::with_property_context(error, context_name)
+        crate::diagnostic::error::property::with_property_context(error, context_name)
     })?;
     input.expect_exhausted().map_err(|error| {
-        crate::error::property::with_property_context(error.into(), context_name)
+        crate::diagnostic::error::property::with_property_context(error.into(), context_name)
     })?;
     Ok(CssDeclarationBody::Known(declaration.with_grammar(
         CssPropertyGrammar::from_resolved(resolved_property),
@@ -1928,10 +1952,12 @@ fn parse_known_declaration_body_from_property_input<'i, 't>(
 
 fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
     input: &mut property_input::Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-    admission: crate::svg_glyph::SvgGlyphAdmission,
-) -> Result<CssDeclarationBody, crate::error::property::ParseError<'i, crate::error::property::Error>>
-{
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+    admission: crate::property::svg_glyph::SvgGlyphAdmission,
+) -> Result<
+    CssDeclarationBody,
+    crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>,
+> {
     let name = "glyph-orientation-vertical";
     let parse = |input: &mut property_input::Parser<'i, 't>| {
         let state = input.state();
@@ -1959,10 +1985,12 @@ fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
                     CssDeclaredValue::Global(global)
                 } else if ident.eq_ignore_ascii_case("auto") {
                     input.expect_exhausted()?;
-                    CssDeclaredValue::Value(crate::CssSvgGlyphOrientationVerticalValue::auto())
+                    CssDeclaredValue::Value(
+                        crate::property::CssSvgGlyphOrientationVerticalValue::auto(),
+                    )
                 } else {
                     return Err(first_location
-                        .new_unexpected_token_error::<crate::error::property::Error>(
+                        .new_unexpected_token_error::<crate::diagnostic::error::property::Error>(
                             Token::Ident(ident),
                         ));
                 }
@@ -1978,27 +2006,27 @@ fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
                 input.reset(&literal_start);
                 let component = input
                     .collect_component()
-                    .map_err(crate::CssNumericConstructionError::component)
+                    .map_err(crate::numeric::CssNumericConstructionError::component)
                     .map_err(|error| values::angle_error(numeric, &error, location, offset))?;
                 let root_origin = component.origin().clone();
                 let value = if matches!(
                     component.view(),
-                    crate::CssComponentValueRef::Token(crate::CssValueTokenRef::Number(_))
+                    crate::component::CssComponentValueRef::Token(crate::component::CssValueTokenRef::Number(_))
                 ) {
-                    crate::CssSvgGlyphOrientationVerticalValue::try_from_unitless(
+                    crate::property::CssSvgGlyphOrientationVerticalValue::try_from_unitless(
                         component.clone().into_owned(),
                     )
                 } else {
-                    crate::CssNumeric::<crate::CssAngle>::from_parser_component(
+                    crate::numeric::CssNumeric::<crate::numeric::CssAngle>::from_parser_component(
                         component.clone().into_owned(),
                         numeric,
                     )
-                    .and_then(crate::CssSvgGlyphOrientationVerticalValue::from_parser_angle)
+                    .and_then(crate::property::CssSvgGlyphOrientationVerticalValue::from_parser_angle)
                 }
                 .map_err(|error| {
                     let mapped = values::angle_error(numeric, &error, location, offset);
                     if let Some(token) = &root_token
-                        && !crate::error::property::is_resource_parse_error(&mapped)
+                        && !crate::diagnostic::error::property::is_resource_parse_error(&mapped)
                         && (matches!(
                             token,
                             Token::Number { .. }
@@ -2006,8 +2034,8 @@ fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
                                 | Token::Percentage { .. }
                         ) || (matches!(
                             error.kind(),
-                            crate::CssNumericConstructionErrorKind::Component(
-                                crate::CssComponentValueErrorKind::InvalidToken
+                            crate::numeric::expression::CssNumericConstructionErrorKind::Component(
+                                crate::component::values::CssComponentValueErrorKind::InvalidToken
                             )
                         ) && error.origin() == Some(&root_origin))
                             || (matches!(
@@ -2018,20 +2046,20 @@ fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
                                     | Token::CurlyBracketBlock
                             ) && matches!(
                                 error.kind(),
-                                crate::CssNumericConstructionErrorKind::RootDomainMismatch
+                                crate::numeric::expression::CssNumericConstructionErrorKind::RootDomainMismatch
                             ) && error.path() == Some(&[0][..])
                                 && error.origin() == Some(&root_origin)))
                     {
-                        location.new_unexpected_token_error::<crate::error::property::Error>(
+                        location.new_unexpected_token_error::<crate::diagnostic::error::property::Error>(
                             token.clone(),
                         )
                     } else {
                         if matches!(
                             error.kind(),
-                            crate::CssNumericConstructionErrorKind::UnknownFunction
-                                | crate::CssNumericConstructionErrorKind::IncompatibleTypes
-                                | crate::CssNumericConstructionErrorKind::InvalidArgumentType
-                                | crate::CssNumericConstructionErrorKind::MalformedExpression
+                            crate::numeric::expression::CssNumericConstructionErrorKind::UnknownFunction
+                                | crate::numeric::expression::CssNumericConstructionErrorKind::IncompatibleTypes
+                                | crate::numeric::expression::CssNumericConstructionErrorKind::InvalidArgumentType
+                                | crate::numeric::expression::CssNumericConstructionErrorKind::MalformedExpression
                         ) && error.path().is_some_and(|path| !path.is_empty())
                             && error.origin().is_some()
                         {
@@ -2040,12 +2068,12 @@ fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
                                 && !matches!(token, Token::WhiteSpace(_) | Token::Comment(_))
                                 && (!matches!(
                                     error.kind(),
-                                    crate::CssNumericConstructionErrorKind::MalformedExpression
+                                    crate::numeric::expression::CssNumericConstructionErrorKind::MalformedExpression
                                 ) || svg_glyph_numeric_present_rejection(&component, &error))
                             {
                                 return mapped
                                     .location
-                                    .new_unexpected_token_error::<crate::error::property::Error>(
+                                    .new_unexpected_token_error::<crate::diagnostic::error::property::Error>(
                                         token,
                                     );
                             }
@@ -2055,7 +2083,7 @@ fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
                 })?;
                 if !value.admitted(admission) {
                     return Err(location
-                        .new_unexpected_token_error::<crate::error::property::Error>(
+                        .new_unexpected_token_error::<crate::diagnostic::error::property::Error>(
                             root_token.expect("only a direct Number has mode-dependent admission"),
                         ));
                 }
@@ -2064,23 +2092,25 @@ fn parse_svg_glyph_declaration_body_from_property_input<'i, 't>(
             }
         };
         Ok(CssDeclarationBody::SvgGlyphOrientationVertical(
-            crate::CssSvgGlyphOrientationVerticalDeclaration::new(declared, admission),
+            crate::property::CssSvgGlyphOrientationVerticalDeclaration::new(declared, admission),
         ))
     };
-    parse(input).map_err(|error| crate::error::property::with_property_context(error, name))
+    parse(input)
+        .map_err(|error| crate::diagnostic::error::property::with_property_context(error, name))
 }
 
 fn svg_glyph_numeric_present_rejection(
-    root: &crate::CssComponentValue,
-    error: &crate::CssNumericConstructionError,
+    root: &crate::component::CssComponentValue,
+    error: &crate::numeric::CssNumericConstructionError,
 ) -> bool {
-    use crate::{CssComponentValueRef as Component, CssValueTokenRef as Value};
-    let operand = |component: &crate::CssComponentValue| match component.view() {
+    use crate::component::CssComponentValueRef as Component;
+    use crate::component::CssValueTokenRef as Value;
+    let operand = |component: &crate::component::CssComponentValue| match component.view() {
         Component::Token(
             Value::Number(_) | Value::Dimension { .. } | Value::Percentage(_) | Value::Ident(_),
         )
         | Component::Function(_) => true,
-        Component::Block(block) => block.kind() == crate::CssBlockKind::Parenthesis,
+        Component::Block(block) => block.kind() == crate::component::CssBlockKind::Parenthesis,
         _ => false,
     };
     let Some(path) = error.path() else {
@@ -2143,10 +2173,10 @@ fn svg_glyph_numeric_present_rejection(
 }
 
 pub(crate) fn parse_svg_glyph_value_body(
-    admission: crate::svg_glyph::SvgGlyphAdmission,
+    admission: crate::property::svg_glyph::SvgGlyphAdmission,
     components: &CssComponentValues,
     context: crate::CssParserContext,
-) -> Result<CssDeclarationBody, crate::CssPropertyValueError> {
+) -> Result<CssDeclarationBody, crate::property::CssPropertyValueError> {
     parse_property_value_body_selected(
         PropertyValueGrammar::SvgGlyph(admission),
         components,
@@ -2158,10 +2188,10 @@ fn parse_legacy_property_alias_value<'i, 't>(
     alias: CssLegacyPropertyAlias,
     authored: CssAuthoredDeclarationValue,
     input: &mut property_input::Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<
     CssKnownDeclaration,
-    crate::error::property::ParseError<'i, crate::error::property::Error>,
+    crate::diagnostic::error::property::ParseError<'i, crate::diagnostic::error::property::Error>,
 > {
     match alias {
         CssLegacyPropertyAlias::GlyphOrientationVertical => {
@@ -2232,7 +2262,7 @@ pub(crate) fn trailing_importance<T>(
 /// `invalid` receives the `!` location and, for a malformed annotation, the
 /// first token that is not part of it.
 /// <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-declaration>
-pub(super) fn parse_importance_boundary<'i, 't, T>(
+pub(crate) fn parse_importance_boundary<'i, 't, T>(
     input: &mut Parser<'i, 't>,
     importance_admitted: bool,
     invalid: impl FnOnce(
@@ -2287,7 +2317,7 @@ fn invalid_annotation_for_context<'i>(
     match context {
         DeclarationBoundaryContext::OrdinarySvgGlyph
         | DeclarationBoundaryContext::KeyframeSvgGlyph => {
-            crate::error::invalid_svg_glyph_declaration_annotation(
+            crate::diagnostic::error::invalid_svg_glyph_declaration_annotation(
                 location,
                 matches!(context, DeclarationBoundaryContext::KeyframeSvgGlyph),
             )
@@ -2311,7 +2341,7 @@ fn invalid_annotation_for_context<'i>(
     }
 }
 
-pub(super) fn parse_descriptor_boundary<'i, 't, T>(
+pub(crate) fn parse_descriptor_boundary<'i, 't, T>(
     input: &mut Parser<'i, 't>,
     at_rule: &str,
     descriptor: &str,
@@ -2326,12 +2356,12 @@ pub(super) fn parse_descriptor_boundary<'i, 't, T>(
     parse_declaration_boundary(input, &context, parse_value).map(|(value, _)| value)
 }
 
-struct CustomMediaPrelude {
-    name: crate::CssCustomMediaName,
-    body: crate::CssCustomMediaBody,
-    body_origin: crate::CssValueOrigin,
-    semicolon: crate::CssValueOrigin,
-    diagnostics: Vec<crate::CssRecoveryDiagnostic>,
+pub(crate) struct CustomMediaPrelude {
+    name: crate::query::media::CssCustomMediaName,
+    body: crate::query::media::CssCustomMediaBody,
+    body_origin: crate::component::CssValueOrigin,
+    semicolon: crate::component::CssValueOrigin,
+    diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     implicit: Vec<usize>,
 }
 fn parse_custom_media_prelude<'i>(
@@ -2342,21 +2372,22 @@ fn parse_custom_media_prelude<'i>(
     input.skip_whitespace();
     let location = input.current_source_location();
     let component =
-        crate::CssComponentValue::collect_from_parser(input, recovery.source_snapshot())
-            .map_err(|e| crate::error::invalid_component_value(location, e))?;
-    let name = crate::CssCustomMediaName::try_from_component(component).map_err(|_| {
-        with_at_rule_prelude_context(
-            invalid_syntax(location),
-            "custom-media",
-            "ext.rule.custom-media",
-            "an extension name followed by a custom-media body",
-        )
-    })?;
+        crate::component::CssComponentValue::collect_from_parser(input, recovery.source_snapshot())
+            .map_err(|e| crate::diagnostic::error::invalid_component_value(location, e))?;
+    let name =
+        crate::query::media::CssCustomMediaName::try_from_component(component).map_err(|_| {
+            with_at_rule_prelude_context(
+                invalid_syntax(location),
+                "custom-media",
+                "ext.rule.custom-media",
+                "an extension name followed by a custom-media body",
+            )
+        })?;
     let body_start = input.state();
     let boolean = input
         .try_parse(|p| {
             let name = p.expect_ident_cloned().map_err(basic)?;
-            let boolean = crate::custom_media::boolean_keyword(&name)
+            let boolean = crate::rule::custom_media::boolean_keyword(&name)
                 .ok_or_else(|| invalid_syntax(p.current_source_location()))?;
             p.expect_exhausted().map_err(basic)?;
             Ok::<_, ParseError<'i, CssError>>(boolean)
@@ -2367,17 +2398,19 @@ fn parse_custom_media_prelude<'i>(
     let mut implicit = Vec::new();
     let (body, body_origin) = if let Some(boolean) = boolean {
         input.skip_whitespace();
-        let token =
-            crate::CssComponentValue::collect_from_parser(input, recovery.source_snapshot())
-                .map_err(|e| {
-                    crate::error::invalid_component_value(input.current_source_location(), e)
-                })?;
+        let token = crate::component::CssComponentValue::collect_from_parser(
+            input,
+            recovery.source_snapshot(),
+        )
+        .map_err(|e| {
+            crate::diagnostic::error::invalid_component_value(input.current_source_location(), e)
+        })?;
         while input.next_including_whitespace_and_comments().is_ok() {}
         (
             if boolean {
-                crate::CssCustomMediaBody::True
+                crate::query::media::CssCustomMediaBody::True
             } else {
-                crate::CssCustomMediaBody::False
+                crate::query::media::CssCustomMediaBody::False
             },
             token.origin().clone(),
         )
@@ -2388,18 +2421,18 @@ fn parse_custom_media_prelude<'i>(
         implicit.extend(parsed.implicit_closures);
         implicit.extend(probe.pending_component_closures());
         (
-            crate::CssCustomMediaBody::Media(parsed.queries),
-            crate::CssValueOrigin::Programmatic,
+            crate::query::media::CssCustomMediaBody::Media(parsed.queries),
+            crate::component::CssValueOrigin::Programmatic,
         )
     };
     let end = input.position().byte_index();
     let semicolon = if source.as_bytes().get(end) == Some(&b';') {
-        crate::CssValueOrigin::Parsed(
+        crate::component::CssValueOrigin::Parsed(
             CssParsedOrigin::from_range(recovery.source_snapshot(), end..end + 1)
                 .expect("custom-media semicolon"),
         )
     } else {
-        crate::CssValueOrigin::Programmatic
+        crate::component::CssValueOrigin::Programmatic
     };
     Ok(CustomMediaPrelude {
         name,
@@ -2415,12 +2448,12 @@ fn finish_custom_media(
     prelude: CustomMediaPrelude,
     start: &ParserState,
     recovery: &RecoveryState,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
-) -> crate::CssCustomMediaRule {
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
+) -> crate::rule::CssCustomMediaRule {
     let at = rule_list::collect_at_keyword(source, start, recovery);
     diagnostics.extend(prelude.diagnostics);
     recovery.retain_component_closures(prelude.implicit);
-    crate::CssCustomMediaRule::parsed(
+    crate::rule::CssCustomMediaRule::parsed(
         prelude.name,
         prelude.body,
         at.origin().clone(),

@@ -5,7 +5,20 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::color_adjust::{
+    CssColorScheme, CssColorSchemeKeyword, CssColorSchemeName, CssForcedColorAdjust,
+    CssPrintColorAdjust,
+};
+use surgeist_css::values::common::CssIdent;
 
 fn scheme(source: &CssDeclaration) -> &CssColorScheme {
     let CssKnownPropertyValueRef::ColorScheme(value) =

@@ -5,7 +5,13 @@
 //! coordinates and diagnostics").
 
 use crate::css::support::property_admission::GrammarFacts;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{
+    CssKnownProperty, CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget,
+};
 
 fn encountered(error: &dyn GrammarFacts) -> Option<String> {
     assert_eq!(

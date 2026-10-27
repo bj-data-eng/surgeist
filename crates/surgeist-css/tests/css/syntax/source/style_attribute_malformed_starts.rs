@@ -17,7 +17,11 @@
 //! This supersedes the CSS Style Attributes 2013 / CSS 2.1 §4.2 reading, in
 //! which a `}` is an ordinary invalid token and a malformed declaration is read
 //! through its `;`.
-use surgeist_css::*;
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParseReport, CssParser};
 
 fn names(report: &CssParseReport<CssDeclarationList>) -> Vec<String> {
     report

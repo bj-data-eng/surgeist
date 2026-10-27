@@ -12,7 +12,27 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::value_assertions::assert_component_rejected;
 use crate::css::support::value_assertions::literal_specified;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssFrequency, CssFrequencyUnit, CssInteger, CssLength, CssNumber, CssNumeric,
+    CssNumericLiteral, CssPercentage, CssResolution, CssResolutionUnit, CssTime,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFontFaceSource, CssFontFaceSourceList, CssFontFaceUrlSource, CssFontLocalName,
+};
+use surgeist_css::serialization::{
+    CssSerializationLimits, serialize_css_comma_separated_list, serialize_css_identifier,
+    serialize_css_string, serialize_css_whitespace_separated_list,
+};
+use surgeist_css::values::common::{CssAutoOr, CssUrl};
+use surgeist_css::values::effects::CssClip;
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

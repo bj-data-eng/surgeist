@@ -1,7 +1,9 @@
 use crate::css::support::math_depth::MathDepthBoundary;
-use surgeist_css::{
-    CssErrorCode, CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridGeneralTrackComponent,
-    CssKnownProperty, CssKnownPropertyValueRef, CssParser, CssRecoveryAction, CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::layout::{
+    CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridGeneralTrackComponent,
 };
 
 #[test]

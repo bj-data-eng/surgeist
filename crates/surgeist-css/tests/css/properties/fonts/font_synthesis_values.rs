@@ -4,7 +4,18 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{CssContributions, CssExpansion, CssKnownPropertyValueRef};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::font::{
+    CssFontSynthesis, CssFontSynthesisPosition, CssFontSynthesisSmallCaps, CssFontSynthesisStyle,
+    CssFontSynthesisValues, CssFontSynthesisWeight,
+};
 
 const CAPABILITIES: [&str; 4] = ["weight", "style", "small-caps", "position"];
 

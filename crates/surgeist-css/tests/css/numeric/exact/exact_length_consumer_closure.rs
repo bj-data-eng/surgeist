@@ -6,7 +6,40 @@
 
 use crate::css::support::position_view::CartesianPosition as _;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssLength, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::background::CssBackgroundSize;
+use surgeist_css::values::border::{
+    CssBorderImageOutset, CssBorderImageOutsetComponent, CssBorderImageWidth,
+    CssBorderImageWidthComponent,
+};
+use surgeist_css::values::box_model::{CssFlowTolerance, CssFlowToleranceRef};
+use surgeist_css::values::common::{CssAutoOr, CssSidePair};
+use surgeist_css::values::effects::{
+    CssBoxShadow, CssClip, CssClipPath, CssClipPathShape, CssClipRect, CssDropShadow, CssFilter,
+    CssFilterBlur, CssFilterFunction, CssShadow,
+};
+use surgeist_css::values::image::{
+    CssColorStopListItem, CssGradient, CssGradientColorStop, CssImageValue, CssRadialEllipseSize,
+    CssRadialSize,
+};
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssPosition, CssVerticalPosition,
+};
+use surgeist_css::values::shape::{
+    CssBasicShape, CssCircleRadius, CssCircleShape, CssInsetShapeOffsets, CssPolygonPoint,
+};
+use surgeist_css::values::text::{CssTextDecorationThickness, CssTextIndent, CssVerticalAlign};
+use surgeist_css::values::transform::{
+    CssTransform, CssTransformFunction, CssTransformOrigin, CssTransformPerspective, CssTranslate,
+    CssTranslateValues,
+};
 
 macro_rules! value {
     ($source:expr, $variant:ident, $accessor:ident) => {{

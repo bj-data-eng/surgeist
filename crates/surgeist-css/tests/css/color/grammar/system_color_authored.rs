@@ -5,10 +5,12 @@
 //! computed-value mappings belong downstream; authored aliases remain distinct.
 
 use crate::css::support::parsed_color;
-use surgeist_css::{
-    CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor, CssKnownProperty, CssParser,
-    CssRecoveryAction, CssSystemColor,
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor, CssSystemColor,
 };
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::CssKnownProperty;
 
 const SYSTEM_COLORS: [(&str, CssSystemColor, &str); 19] = [
     ("AccentColor", CssSystemColor::AccentColor, "accentcolor"),

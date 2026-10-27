@@ -9,7 +9,10 @@ use crate::css::support::sole_declaration as declaration;
 use descriptor_phases::*;
 
 use std::fmt::Debug;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::CssCounterStyleRule;
 
 fn counter(source: &str) -> CssCounterStyleRule {
     let report = CssParser::default().parse_sheet(source);

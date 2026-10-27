@@ -11,8 +11,21 @@ use crate::css::support::{
     authored_checked_declaration as checked, authored_parsed_declaration as parsed,
     known_property as property,
 };
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssCalculation, CssLength, CssNumeric};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssLonghandContributions, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 use crate::css::support::authored_property;
 use crate::css::support::check_named_components as checked_components;

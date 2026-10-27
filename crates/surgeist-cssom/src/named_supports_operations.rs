@@ -1,7 +1,14 @@
 //! Surgeist's inert named-support policy; CSS owns syntax and reconstruction.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::{model::State, rule_operations::component_limits, *};
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValue, CssComponentValueRef, CssValueOrigin};
+use surgeist_css::query::supports::{
+    CssSupportsConditionName, CssSupportsTestBody, CssSupportsTestChild, CssSupportsTestChildRef,
+};
+use surgeist_css::rule::CssStyleAncestor;
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::{CssRuleGraphInput, CssRuleSerializationLimits};
+use surgeist_css::{CssParser, CssParserContext};
 
 fn own_child(child: CssSupportsTestChildRef<'_>) -> CssSupportsTestChild {
     match child {

@@ -1,7 +1,11 @@
-use surgeist_css::{
-    CssConditionKind, CssErrorCode, CssImportance, CssKnownProperty, CssNamespaceConstraint,
-    CssParser, CssPropertyNameRef, CssRecoveryAction, CssRule, CssSelector, CssSupportsLeaf,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssNamespaceConstraint, CssSelector};
 
 #[test]
 fn supports_conditions_and_group_rules_follow_conditional3() {

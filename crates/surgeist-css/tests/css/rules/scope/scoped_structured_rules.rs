@@ -17,10 +17,10 @@ fn scoped_style_body_accepts_nested_rules_and_surrounding_declarations() {
 }
 
 fn scoped_parent(
-    report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>,
+    report: &surgeist_css::CssParseReport<surgeist_css::rule::CssSheet>,
     scope_depth: usize,
-) -> &surgeist_css::CssStyleRule {
-    use surgeist_css::CssRule;
+) -> &surgeist_css::rule::CssStyleRule {
+    use surgeist_css::rule::CssRule;
 
     let [CssRule::Scope(mut_scope)] = report.syntax().rules() else {
         panic!("expected one outer scope");
@@ -40,7 +40,8 @@ fn scoped_parent(
 
 #[test]
 fn scoped_style_children_and_trailing_declarations_survive_structural_splits() {
-    use surgeist_css::{CssKnownProperty, CssRule};
+    use surgeist_css::property::CssKnownProperty;
+    use surgeist_css::rule::CssRule;
 
     for scope_depth in [1, 62, 63, 64, 126, 127, 128, 254] {
         let source = format!(
@@ -90,7 +91,9 @@ fn scoped_style_children_and_trailing_declarations_survive_structural_splits() {
 
 #[test]
 fn nested_conditionals_keep_scoped_parent_context_and_order_across_splits() {
-    use surgeist_css::{CssKnownProperty, CssRule, CssSelectorCombinator, CssStyleSelector};
+    use surgeist_css::property::CssKnownProperty;
+    use surgeist_css::rule::CssRule;
+    use surgeist_css::selector::{CssSelectorCombinator, CssStyleSelector};
 
     for scope_depth in [1, 61, 62, 63, 64] {
         let source = format!(

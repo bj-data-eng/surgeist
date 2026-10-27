@@ -1,11 +1,12 @@
 //! Rejected radial radii identify the responsible argument, preserving recovery.
 //! The public diagnostic contract uses original UTF-8 offsets and UTF-16 columns.
 
-use surgeist_css::{
-    CssErrorCode, CssKnownProperty, CssParser, CssRecoveryAction, CssRule, CssTokenKind,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
 
-fn assert_failure(source: &str, diagnostic: &surgeist_css::CssRecoveryDiagnostic) {
+fn assert_failure(source: &str, diagnostic: &surgeist_css::diagnostic::CssRecoveryDiagnostic) {
     let responsible = source.find("calc(").unwrap();
     assert_eq!(
         diagnostic.error().code(),

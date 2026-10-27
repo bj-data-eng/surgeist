@@ -6,7 +6,15 @@
 
 use crate::css::support::authored_checked_declaration;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownPropertyValueRef, CssLonghandValue,
+    CssLonghandValueRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::ui::CssResize;
 
 fn declaration(name: &str, text: &str) -> CssDeclaration {
     authored_checked_declaration(name, text, false)

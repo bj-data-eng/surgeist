@@ -4,7 +4,14 @@ use crate::css::support::checked_grammar_declaration as checked;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as parsed;
-use surgeist_css::*;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::CssOverflowWrap;
 
 fn exact_value(source: &CssDeclaration) -> CssOverflowWrap {
     let CssKnownPropertyValueRef::OverflowWrap(wrapper) =

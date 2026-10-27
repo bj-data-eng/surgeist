@@ -9,7 +9,16 @@ use crate::css::support::authored_syntax::{
 };
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssDeclarationList, CssImportance,
+};
+use surgeist_css::property::{CssPropertyGrammar, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

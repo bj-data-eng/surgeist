@@ -1,6 +1,12 @@
 #![forbid(unsafe_code)]
 //! Visit authored style features without reparsing text or evaluating the query.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::query::container::{
+    CssContainerLeaf, CssContainerStyleFeature, CssContainerStyleRangeOperand,
+    CssContainerStyleRangeOperandRef, CssContainerStyleRangeRef, CssStyleQueryLeaf,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
 fn main() {
     let condition = CssCondition::<CssContainerLeaf>::try_from_components(

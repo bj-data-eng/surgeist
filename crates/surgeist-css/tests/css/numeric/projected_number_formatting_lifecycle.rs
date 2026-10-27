@@ -14,7 +14,22 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::numeric_failure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::numeric::{
+    CssAngle, CssCalculation, CssFrequency, CssInteger, CssLength, CssLengthPercentage,
+    CssNonNegative, CssNumber, CssNumeric, CssNumericLiteral, CssPercentage, CssTime,
+};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::CssEasing;
+use surgeist_css::values::border::{
+    CssBorderImage, CssBorderImageOutset, CssBorderImageOutsetComponent, CssBorderImageSlice,
+    CssBorderImageSliceComponent, CssBorderImageWidth, CssBorderImageWidthComponent,
+};
+use surgeist_css::values::box_model::{CssBoxSize, CssCalcSize};
+use surgeist_css::values::common::{CssAutoOr, CssBoxSideKind, CssFourSides, CssSidePair};
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

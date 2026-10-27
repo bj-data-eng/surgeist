@@ -4,7 +4,14 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::serialization_limits::assert_node_limits;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssColorComponent};
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::background::{CssBlendMode, CssBlendModeList};
+use surgeist_css::values::box_model::{CssContain, CssContainComponent, CssContainComponentList};
+use surgeist_css::values::ui::CssCaretColor;
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

@@ -2,7 +2,9 @@
 
 use std::collections::HashSet;
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssCustomPropertyName, CssImportance};
+use surgeist_css::property::{CssPropertyNameRef, CssPropertyTextTarget};
 
 #[test]
 fn semantic_names_preserve_supplied_characters_without_trimming_or_tokenization() {

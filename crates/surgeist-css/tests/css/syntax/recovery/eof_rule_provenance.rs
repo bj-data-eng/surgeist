@@ -1,4 +1,7 @@
-use surgeist_css::{CssErrorCode, CssKnownProperty, CssParser, CssRecoveryAction, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
 
 // The public nesting-limit contract identifies the enclosing grammar production.
 // CSS Syntax token identity is case-insensitive for at-rule names, including
@@ -68,9 +71,12 @@ fn eof_supports_limit_uses_decoded_at_keyword_identity() {
 #[test]
 fn canonical_media_and_supports_eof_limits_keep_their_productions() {
     assert_eof_limit("@media", "width > 1px", "official.media.query-list-core");
-    let media_list = surgeist_css::feature_metadata("official.media.query-list-core")
+    let media_list = surgeist_css::conformance::feature_metadata("official.media.query-list-core")
         .expect("the attributed media production is an atomic catalog record");
-    assert_eq!(media_list.kind(), surgeist_css::CssFeatureKind::MediaQuery);
+    assert_eq!(
+        media_list.kind(),
+        surgeist_css::conformance::CssFeatureKind::MediaQuery
+    );
     assert_eq!(media_list.production(), "#mq-syntax");
     assert_eof_limit("@supports", "display: grid", "baseline.rule.supports");
 }

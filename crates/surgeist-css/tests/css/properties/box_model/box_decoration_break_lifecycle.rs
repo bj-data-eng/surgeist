@@ -5,7 +5,16 @@
 use crate::css::support::known_property;
 use crate::css::support::property_admission::assert_invalid_value;
 use crate::css::support::validated_important_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssLonghandContribution,
+    CssPropertyGrammar, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
 
 use crate::css::support::authored_property;
 

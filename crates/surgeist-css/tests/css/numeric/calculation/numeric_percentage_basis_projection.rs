@@ -2,9 +2,10 @@
 //! CSS Values 4 specifies simplification without resolving an unknown percentage basis:
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification
 
-use surgeist_css::{
-    CssCalculation, CssComponentValues, CssLengthPercentage, CssNonNegative, CssNumeric,
-    CssNumericDimension, CssParser,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{
+    CssCalculation, CssLengthPercentage, CssNonNegative, CssNumeric, CssNumericDimension,
 };
 
 fn specified(source: &str) -> String {

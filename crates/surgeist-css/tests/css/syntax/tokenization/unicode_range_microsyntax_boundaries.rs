@@ -8,14 +8,22 @@
 //! These literal endpoints use consumed source text, not decoded numeric values.
 use crate::css::support::failure_classes::SerializationFailure as OutputError;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssAuthoredFontFaceDescriptorValue,
-    CssComponentValue, CssComponentValueRef as Component, CssComponentValues, CssError,
-    CssErrorCode, CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value,
-    CssNamespaceContext, CssNumericTokenKind, CssParser, CssRecoveryAction, CssRule, CssSelector,
-    CssSelectorCombinator, CssSerializationLimits as OutputLimits, CssSerializedOrigin,
-    CssUnicodeRange, CssUnicodeRangeList, CssValueOrigin, CssValueTokenRef as Token,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValueRef as Component;
+use surgeist_css::component::CssValueTokenRef as Token;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssNumericTokenKind, CssSerializedOrigin, CssValueOrigin,
 };
+use surgeist_css::diagnostic::{CssError, CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue as Authored;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue as Value;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssUnicodeRange, CssUnicodeRangeList,
+};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector, CssSelectorCombinator};
+use surgeist_css::serialization::CssSerializationLimits as OutputLimits;
 
 fn endpoints(value: &Authored) -> Vec<(u32, u32)> {
     let Authored::Ordinary(Value::UnicodeRange(ranges)) = value else {
@@ -555,7 +563,7 @@ fn missing_range_tokens_or_endpoints_name_the_last_authored_token() {
         assert_eq!(
             detail
                 .encountered()
-                .map(surgeist_css::CssTokenSummary::authored),
+                .map(surgeist_css::diagnostic::CssTokenSummary::authored),
             last,
             "{source:?}"
         );
@@ -716,7 +724,7 @@ fn every_front_names_the_same_responsible_unicode_range_token() {
                     diagnostic.error().position().byte_offset().value() - start,
                     detail
                         .encountered()
-                        .map(surgeist_css::CssTokenSummary::authored),
+                        .map(surgeist_css::diagnostic::CssTokenSummary::authored),
                 ),
                 (offset, Some(spelling)),
                 "{value:?} {front}"

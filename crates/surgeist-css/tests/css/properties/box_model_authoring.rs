@@ -1,7 +1,22 @@
 //! Box model, spacing, borders, radii and shadows keep authored syntax, and
 //! their checked constructors reject invalid states.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssHexColor, CssNamedColor};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationType, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric,
+};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::values::border::{CssBorder, CssLineStyle, CssLineWidth};
+use surgeist_css::values::box_model::{
+    CssBoxDecorationBreak, CssInsetValue, CssMarginValue, CssZIndexValue,
+};
+use surgeist_css::values::common::CssSidePair;
+use surgeist_css::values::effects::{CssBoxShadow, CssShadow};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;

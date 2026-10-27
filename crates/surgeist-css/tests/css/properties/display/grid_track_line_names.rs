@@ -6,10 +6,12 @@
 //! Empty `[]` is still a valid single `<line-names>` block.
 
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
-use surgeist_css::{
-    CssComponentValues, CssDeclaration, CssErrorCode, CssImportance, CssKnownProperty as Property,
-    CssParser, CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty as Property;
+use surgeist_css::property::{CssPropertyNameRef, CssPropertyTarget};
 
 #[test]
 fn adjacent_line_name_blocks_do_not_form_general_track_lists() {

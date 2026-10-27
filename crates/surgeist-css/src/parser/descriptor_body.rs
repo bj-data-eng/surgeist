@@ -6,8 +6,8 @@ use cssparser::{Parser, RuleBodyItemParser, RuleBodyParser};
 
 use super::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
 use super::{consume_failed_rule_block, structural_rule_diagnostic};
-use crate::error::CssError;
-use crate::{CssRecoveryAction, CssRecoveryDiagnostic};
+use crate::diagnostic::CssError;
+use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
 
 pub(super) struct RecoveryContext<'a, 'i> {
     pub(super) source: &'i str,

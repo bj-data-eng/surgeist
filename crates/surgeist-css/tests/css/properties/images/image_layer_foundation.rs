@@ -9,7 +9,22 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::longhand_contributions;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandValue, CssLonghandValueRef,
+    CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::background::CssBackgroundSize;
+use surgeist_css::values::common::{CssUrl, CssUrlFunction};
+use surgeist_css::values::effects::{CssMaskLayer, CssMaskList};
+use surgeist_css::values::image::{CssGradient, CssImageValue, CssImageValueList};
 
 fn authored(source: &CssDeclaration) -> &CssImageValueList {
     match source.known().unwrap().property_value().unwrap() {

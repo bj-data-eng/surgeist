@@ -2,14 +2,24 @@
 //! functional notation; their unknown arguments remain authored syntax.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#url-modifiers
 
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue, CssComponentValue, CssComponentValueRef,
-    CssComponentValues, CssDeclaration, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
-    CssFontFaceSource, CssIdent, CssImageValue, CssImportRule, CssImportTarget, CssImportance,
-    CssKnownProperty, CssKnownPropertyValueRef, CssNamespaceContext, CssParser, CssPropertyNameRef,
-    CssPropertyTarget, CssRule, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
-    CssValueOrigin, CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFontFaceSource,
+};
+use surgeist_css::rule::{CssImportRule, CssImportTarget, CssRule};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::values::common::{
+    CssIdent, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
+};
+use surgeist_css::values::image::CssImageValue;
 
 fn modifier(url: &CssUrl) -> &CssUrlModifierFunction {
     let [CssUrlModifier::Function(function)] = url.modifiers() else {

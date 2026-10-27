@@ -1,5 +1,8 @@
 use std::cell::Cell;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::property::{CssKnownProperty, CssPropertyGrammar, CssPropertyNameRef};
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind;
+use surgeist_css::rule::page::CssPageDescriptorKind;
 use surgeist_cssom::*;
 
 fn version(id: &str, revision: u64) -> CssomInputVersion {

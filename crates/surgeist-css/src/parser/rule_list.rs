@@ -8,8 +8,59 @@
 //! body grammar, while [`parse_at_rule_prelude`] owns every prelude.
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-at-rule>
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents>
-use super::*;
+use crate::declaration::{CssDeclaration, CssDeclarationList};
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::{
+    invalid_at_rule_block, invalid_at_rule_placement, invalid_syntax, with_at_rule_prelude_context,
+    with_media_query_context,
+};
+use crate::parser::counter_style::{CounterStylePrelude, parse_counter_style_rule};
+use crate::parser::font_face::parse_font_face_rule;
+use crate::parser::import::{CssImportPrelude, parse_import_prelude};
+use crate::parser::keyframes::parse_keyframes_rule;
+use crate::parser::nesting::{parse_style_contents, parse_style_rule_block};
+use crate::parser::page::parse_page_rule;
+use crate::parser::queries::parse_media_query_list as parse_media_query_list_inner;
+use crate::parser::recovery::{RecoveryLoopOutcome, RecoveryProgress, RecoveryState};
+use crate::parser::selectors::{
+    SelectorRecovery, parse_rule_selector_list, parse_scoped_style_selector_list,
+};
+use crate::parser::supports::{parse_supports_condition, with_supports_prelude_context};
+use crate::parser::{
+    CssNamespacePrelude, CssScopePrelude, CustomMediaPrelude, ScopedBodyKind,
+    StrictDeclarationParser, TopLevelPreludePhase, block_item_diagnostic, color_profile,
+    consume_failed_rule_block, finish_custom_media, font_feature_values, font_palette_values,
+    is_declaration_recovery_unit, named_supports, nesting, parse_container_prelude,
+    parse_counter_style_prelude, parse_custom_media_prelude, parse_font_face_prelude,
+    parse_keyframes_prelude, parse_layer_prelude, parse_namespace_prelude,
+    parse_nested_group_rules, parse_page_prelude, parse_scope_prelude, parse_scoped_rule_list,
+    queries, selectors, structural_recovery_action, structural_recovery_production,
+    structural_rule_diagnostic, syntax_bridge, when, with_container_prelude_context,
+    with_scope_prelude_context,
+};
+use crate::query::container::CssContainerPrelude;
+use crate::query::media::CssMediaQueryList;
+use crate::query::supports::CssSupportsLeaf;
+use crate::query::{CssCondition, CssWhenLeaf};
+use crate::rule::color_profile::CssColorProfileRuleName;
+use crate::rule::counter_style::CssCounterStyleRule;
+use crate::rule::font_face::{CssFontFaceFamily, CssFontFaceRule};
+use crate::rule::font_palette_values::CssFontPaletteName;
+use crate::rule::keyframes::{CssKeyframesName, CssKeyframesRule};
+use crate::rule::page::{CssPageRule, CssPageSelectorList};
+use crate::rule::syntax::StyleContents;
+use crate::rule::{
+    CssContainerRule, CssImportRule, CssLayerBlockRule, CssLayerName, CssLayerNameList,
+    CssLayerStatementRule, CssMediaRule, CssNamespaceName, CssNamespacePrefix, CssNamespaceRule,
+    CssNestedDeclarationsRule, CssRule, CssScopeRule, CssSheet, CssSupportsRule,
+};
+use crate::selector::CssStyleSelectorList;
+use crate::syntax_consumption::RuleListSyntax;
 use crate::syntax_consumption::{GenericRuleResult, SyntaxDocument};
+use cssparser::{
+    AtRuleParser, CowRcStr, DeclarationParser, ParseError, Parser, ParserInput, ParserState,
+    QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, Token, match_ignore_ascii_case,
+};
 
 /// Where a rule list appears.
 #[derive(Clone, Copy)]
@@ -95,7 +146,7 @@ pub(super) fn at_rule_production(name: &str) -> Option<&'static str> {
 }
 
 /// A parsed at-rule prelude, independent of its placement.
-pub(super) enum AtRulePrelude {
+pub(crate) enum AtRulePrelude {
     CustomMedia(Box<CustomMediaPrelude>),
     FontFeatureValues(Vec<CssFontFaceFamily>),
     FontPaletteValues(CssFontPaletteName),
@@ -182,7 +233,7 @@ pub(super) fn parse_at_rule_prelude<'i>(
     source: &'i str,
     name: CowRcStr<'i>,
     input: &mut Parser<'i, '_>,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
 ) -> Result<AtRulePrelude, ParseError<'i, CssError>> {
     match_ignore_ascii_case! { &name,
@@ -356,7 +407,7 @@ pub(super) fn parse_at_rule_prelude<'i>(
 }
 
 /// Per-unit observations a grammar records for its recovery step.
-pub(super) struct UnitState<'i> {
+pub(crate) struct UnitState<'i> {
     pub(super) boundary: nesting::StyleRuleBoundary,
     /// A typed resource failure from a qualified-rule attempt, which a native
     /// declaration fallback would otherwise discard.
@@ -385,7 +436,7 @@ impl<'i> UnitState<'i> {
         prelude: bool,
     ) {
         if let Err(error) = result {
-            if crate::error::is_nesting_limit_error(error) {
+            if crate::diagnostic::error::is_nesting_limit_error(error) {
                 self.qualified_resource_error = Some(error.clone());
             } else if prelude {
                 self.qualified_prelude_error = Some(error.clone());
@@ -395,7 +446,7 @@ impl<'i> UnitState<'i> {
 }
 
 /// A rule-list grammar: native callbacks plus the unit state its recovery reads.
-pub(super) trait RuleListGrammar<'i, I>:
+pub(crate) trait RuleListGrammar<'i, I>:
     RuleBodyItemParser<'i, I, CssError>
     + AtRuleParser<'i, AtRule = I, Error = CssError>
     + QualifiedRuleParser<'i, QualifiedRule = I, Error = CssError>
@@ -403,11 +454,11 @@ pub(super) trait RuleListGrammar<'i, I>:
 {
     fn unit(&mut self) -> &mut UnitState<'i>;
     fn recovery(&self) -> &RecoveryState;
-    fn diagnostics(&mut self) -> &mut Vec<crate::CssRecoveryDiagnostic>;
+    fn diagnostics(&mut self) -> &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>;
 }
 
 /// Receives a rule list's retained items in source order.
-pub(super) trait RuleListSink<I> {
+pub(crate) trait RuleListSink<I> {
     /// A rule boundary ends any pending declaration run.
     fn partition(&mut self) {}
     fn retain(
@@ -415,12 +466,12 @@ pub(super) trait RuleListSink<I> {
         item: I,
         source: &str,
         unit_end: usize,
-        diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+        diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     );
 }
 
 /// How a list's units are delimited.
-pub(super) enum RuleListUnits {
+pub(crate) enum RuleListUnits {
     /// Units selected by the generic Syntax 3 consumer; declarations are not
     /// admitted in this list.
     Selected {
@@ -439,7 +490,7 @@ impl RuleListUnits {
         input: &Parser<'i, '_>,
         recovery: &RecoveryState,
         list: RuleListSyntax,
-    ) -> Result<Self, crate::CssComponentValueError> {
+    ) -> Result<Self, crate::component::CssComponentValueError> {
         let (document, selected) = syntax_bridge::rules(source, input, recovery, list)?;
         Ok(Self::Selected { document, selected })
     }
@@ -450,7 +501,10 @@ impl RuleListUnits {
         recovery: &RecoveryState,
     ) -> Result<Self, ParseError<'i, CssError>> {
         Self::select(source, input, recovery, RuleListSyntax::BlockContents).map_err(|error| {
-            crate::error::invalid_component_value(input.current_source_location(), error)
+            crate::diagnostic::error::invalid_component_value(
+                input.current_source_location(),
+                error,
+            )
         })
     }
 }
@@ -458,7 +512,7 @@ impl RuleListUnits {
 /// The single rule-list recovery loop: each unit is admitted by `grammar`,
 /// retained into `sink` or dropped with one diagnostic spanning exactly that
 /// unit, and the loop always makes progress.
-pub(super) fn recover_rule_list<'i, I, G, S>(
+pub(crate) fn recover_rule_list<'i, I, G, S>(
     source: &'i str,
     input: &mut Parser<'i, '_>,
     grammar: &mut G,
@@ -589,7 +643,7 @@ where
                 *error,
                 failed_unit,
                 unit_end,
-                crate::CssRecoveryAction::DropDeclaration,
+                crate::diagnostic::CssRecoveryAction::DropDeclaration,
             ) {
                 grammar.diagnostics().push(diagnostic);
             }
@@ -632,10 +686,10 @@ pub(super) enum LeafRule {
     Page(CssPageRule),
     FontFace(CssFontFaceRule),
     Keyframes(CssKeyframesRule),
-    FontFeatureValues(crate::CssFontFeatureValuesRule),
-    FontPaletteValues(crate::CssFontPaletteValuesRule),
-    ColorProfile(crate::CssColorProfileRule),
-    SupportsCondition(crate::CssSupportsConditionRule),
+    FontFeatureValues(crate::rule::font_feature_values::CssFontFeatureValuesRule),
+    FontPaletteValues(crate::rule::font_palette_values::CssFontPaletteValuesRule),
+    ColorProfile(crate::rule::color_profile::CssColorProfileRule),
+    SupportsCondition(crate::rule::CssSupportsConditionRule),
 }
 
 impl From<LeafRule> for CssRule {
@@ -663,7 +717,7 @@ pub(super) fn parse_leaf_block<'i>(
     source: &'i str,
     start: &ParserState,
     input: &mut Parser<'i, '_>,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
 ) -> Result<Result<LeafRule, AtRulePrelude>, ParseError<'i, CssError>> {
     let rule = match prelude {
@@ -759,7 +813,7 @@ pub(super) fn parse_leaf_block<'i>(
 }
 
 /// A rule list's ordinary items: declarations only in a style-rule body.
-pub(super) enum RuleListItem {
+pub(crate) enum RuleListItem {
     Declaration(Box<CssDeclaration>),
     Rules(Vec<CssRule>),
 }
@@ -774,14 +828,14 @@ impl RuleListItem {
 }
 
 /// The ordinary rule grammar of a stylesheet, group or style-rule body.
-pub(super) struct RuleParser<'s> {
+pub(crate) struct RuleParser<'s> {
     source: &'s str,
     top_level_phase: Option<TopLevelPreludePhase>,
     /// Whether an enclosing style rule supplies declarations and parent selectors.
     style: bool,
     /// The kind of `@scope` body this list is, or lives within.
     scope: Option<ScopedBodyKind>,
-    pub(super) diagnostics: Vec<crate::CssRecoveryDiagnostic>,
+    pub(super) diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     pub(super) recovery: RecoveryState,
     unit: UnitState<'s>,
 }
@@ -888,7 +942,7 @@ impl<'s> RuleParser<'s> {
         true
     }
 
-    fn position(&self, start: &ParserState) -> crate::CssSourcePosition {
+    fn position(&self, start: &ParserState) -> crate::source::CssSourcePosition {
         self.recovery.source_position(start.position().byte_index())
     }
 
@@ -944,7 +998,7 @@ impl<'i> RuleListGrammar<'i, RuleListItem> for RuleParser<'i> {
     fn recovery(&self) -> &RecoveryState {
         &self.recovery
     }
-    fn diagnostics(&mut self) -> &mut Vec<crate::CssRecoveryDiagnostic> {
+    fn diagnostics(&mut self) -> &mut Vec<crate::diagnostic::CssRecoveryDiagnostic> {
         &mut self.diagnostics
     }
 }
@@ -998,7 +1052,7 @@ impl<'i> AtRuleParser<'i> for RuleParser<'i> {
                     prelude.layer,
                     prelude.supports,
                     prelude.media,
-                    crate::imports::ImportSyntax {
+                    crate::rule::imports::ImportSyntax {
                         at_keyword,
                         prelude: prelude.syntax,
                     },
@@ -1247,18 +1301,21 @@ pub(super) fn collect_at_keyword(
     source: &str,
     start: &ParserState,
     recovery: &RecoveryState,
-) -> crate::CssComponentValue {
+) -> crate::component::CssComponentValue {
     // An at-keyword never holds a URL repair, so the unprepared source is
     // its exact token stream; reading it is bounded by the token itself.
     let mut token_input = ParserInput::new(source);
     let mut token_parser = Parser::new(&mut token_input);
     token_parser.reset(start);
-    crate::CssComponentValue::collect_from_parser(&mut token_parser, recovery.source_snapshot())
-        .expect("parsed statement at-keyword")
+    crate::component::CssComponentValue::collect_from_parser(
+        &mut token_parser,
+        recovery.source_snapshot(),
+    )
+    .expect("parsed statement at-keyword")
 }
 
 /// Rules retained by a group body.
-pub(super) struct GroupSink(pub(super) Vec<CssRule>);
+pub(crate) struct GroupSink(pub(super) Vec<CssRule>);
 
 impl RuleListSink<RuleListItem> for GroupSink {
     fn retain(
@@ -1266,7 +1323,7 @@ impl RuleListSink<RuleListItem> for GroupSink {
         item: RuleListItem,
         _: &str,
         _: usize,
-        _: &mut Vec<crate::CssRecoveryDiagnostic>,
+        _: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     ) {
         self.0.extend(item.into_rules());
     }
@@ -1274,7 +1331,7 @@ impl RuleListSink<RuleListItem> for GroupSink {
 
 /// Rules retained by a stylesheet, which also reports a namespace prefix
 /// declared again (CSS Namespaces 3 §3: the last declaration wins).
-pub(super) struct SheetSink(pub(super) CssSheet);
+pub(crate) struct SheetSink(pub(super) CssSheet);
 
 impl RuleListSink<RuleListItem> for SheetSink {
     fn retain(
@@ -1282,7 +1339,7 @@ impl RuleListSink<RuleListItem> for SheetSink {
         item: RuleListItem,
         source: &str,
         unit_end: usize,
-        diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+        diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     ) {
         for rule in item.into_rules() {
             if let CssRule::Namespace(namespace) = &rule
@@ -1302,20 +1359,20 @@ impl RuleListSink<RuleListItem> for SheetSink {
             {
                 let position = namespace.position().expect("parsed namespace rule");
                 let previous_position = previous.position().expect("parsed namespace rule");
-                let span = crate::CssSourceSpan::new(
+                let span = crate::source::CssSourceSpan::new(
                     position,
-                    crate::CssSourcePosition::from_byte_offset_in(source, unit_end),
+                    crate::source::CssSourcePosition::from_byte_offset_in(source, unit_end),
                 )
                 .expect("retained namespace rule lies within its source unit");
                 diagnostics.push(
-                    crate::CssRecoveryDiagnostic::new(
-                        crate::error::namespace_redeclaration(
+                    crate::diagnostic::CssRecoveryDiagnostic::new(
+                        crate::diagnostic::error::namespace_redeclaration(
                             namespace.prefix().cloned(),
                             position,
                             previous_position,
                         ),
                         span,
-                        crate::CssRecoveryAction::RetainNonconformingRule,
+                        crate::diagnostic::CssRecoveryAction::RetainNonconformingRule,
                     )
                     .expect("namespace error is at the retained rule's source start"),
                 );
@@ -1377,7 +1434,7 @@ impl RuleListSink<RuleListItem> for StyleSink {
         item: RuleListItem,
         _: &str,
         _: usize,
-        _: &mut Vec<crate::CssRecoveryDiagnostic>,
+        _: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     ) {
         match item {
             RuleListItem::Declaration(declaration) => self.buffer.push(*declaration),
@@ -1392,7 +1449,7 @@ impl RuleListSink<RuleListItem> for StyleSink {
 }
 
 /// A scope body, whose declaration runs are nested declarations rules.
-pub(super) struct ScopedSink {
+pub(crate) struct ScopedSink {
     rules: Vec<CssRule>,
     buffer: Vec<CssDeclaration>,
 }
@@ -1426,7 +1483,7 @@ impl RuleListSink<RuleListItem> for ScopedSink {
         item: RuleListItem,
         _: &str,
         _: usize,
-        _: &mut Vec<crate::CssRecoveryDiagnostic>,
+        _: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     ) {
         match item {
             RuleListItem::Declaration(declaration) => self.buffer.push(*declaration),

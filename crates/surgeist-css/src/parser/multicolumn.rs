@@ -2,16 +2,20 @@ use super::border_style::parse_border_style;
 use super::border_width::{parse_exact_line_triple, parse_exact_line_width};
 use super::combinators::{Combinator, Tail, fill, keyword, parse_group};
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::match_ignore_ascii_case;
 
 use super::values::{next_is_ident, parse_positive_integer_value};
-use crate::syntax::*;
-use crate::{CssLineWidth, CssSizeValue};
+use crate::values::border::CssLineStyle;
+use crate::values::border::CssLineWidth;
+use crate::values::box_model::CssSizeValue;
+use crate::values::layout::{
+    CssColumnCount, CssColumnFill, CssColumnRule, CssColumnSpan, CssColumns,
+};
 
-pub(super) fn parse_column_count<'i, 't>(
+pub(crate) fn parse_column_count<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssColumnCount, ParseError<'i, Error>> {
     if input
         .try_parse(|input| input.expect_ident_matching("auto"))
@@ -23,7 +27,7 @@ pub(super) fn parse_column_count<'i, 't>(
     }
 }
 
-pub(super) fn parse_column_fill<'i, 't>(
+pub(crate) fn parse_column_fill<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssColumnFill, ParseError<'i, Error>> {
     let location = input.current_source_location();
@@ -36,28 +40,28 @@ pub(super) fn parse_column_fill<'i, 't>(
     }
 }
 
-pub(super) fn parse_line_style<'i, 't>(
+pub(crate) fn parse_line_style<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssLineStyle, ParseError<'i, Error>> {
     parse_border_style(input)
 }
 
-pub(super) fn parse_line_width<'i, 't>(
+pub(crate) fn parse_line_width<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssLineWidth, ParseError<'i, Error>> {
     parse_exact_line_width(input, numeric)
 }
 
-pub(super) fn parse_column_rule<'i, 't>(
+pub(crate) fn parse_column_rule<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssColumnRule, ParseError<'i, Error>> {
     let (width, style, color) = parse_exact_line_triple(input, numeric)?;
     Ok(CssColumnRule::try_new(width, style, color).expect("parsed nonempty column rule"))
 }
 
-pub(super) fn parse_column_span<'i, 't>(
+pub(crate) fn parse_column_span<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> Result<CssColumnSpan, ParseError<'i, Error>> {
     let location = input.current_source_location();
@@ -69,16 +73,16 @@ pub(super) fn parse_column_span<'i, 't>(
     }
 }
 
-pub(super) fn parse_column_width<'i, 't>(
+pub(crate) fn parse_column_width<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssSizeValue, ParseError<'i, Error>> {
     super::sizing::parse_size_value(input, numeric)
 }
 
-pub(super) fn parse_columns<'i, 't>(
+pub(crate) fn parse_columns<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssColumns, ParseError<'i, Error>> {
     // `<'column-width'> || <'column-count'>`. Both admit `auto`, so `auto`
     // operands are ambiguous and the group holds at most two components.

@@ -10,7 +10,11 @@
 //! EOF. A root `}` ends the contents. An at-rule ends after its block or its
 //! `;`.
 use crate::css::support::authored_syntax::property_names as names;
-use surgeist_css::*;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
+use surgeist_css::values::text::CssTextOrientation;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 /// A unit dropped without reaching a `{}` block is a dropped declaration.
 fn dropped(source: &str, expected_names: &[&str], unit: &str, responsible: usize) {

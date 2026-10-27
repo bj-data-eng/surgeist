@@ -1,6 +1,12 @@
 //! Existing-callable authored admission contracts from Pseudo4 WD20250627.
 //! These selectors remain symbolic: admission does not assert live matching.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPartName, CssPseudoElement, CssPseudoElementSegment, CssSelector,
+};
 
 fn same_semantics(left: &CssSelector, left_source: &str, right: &CssSelector, right_source: &str) {
     let (CssSelector::Compound(left), CssSelector::Compound(right)) = (left, right) else {

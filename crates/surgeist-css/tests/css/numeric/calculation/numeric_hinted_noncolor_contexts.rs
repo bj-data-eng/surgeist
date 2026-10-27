@@ -16,7 +16,13 @@
 use crate::css::support::authored_property;
 use crate::css::support::component_values as components;
 use crate::css::support::value_assertions::property_rejection;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
 
 const HINTED: &str = "calc((1px + 1%) / 1px)";
 const PURE: &str = "calc(1px / 1px)";

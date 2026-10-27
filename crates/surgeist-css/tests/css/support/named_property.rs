@@ -8,7 +8,14 @@
 
 use super::authored_property::{self, ParserFront};
 use super::{declaration, known_property, selected_grammar};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssError, CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssExpansionError, CssKnownProperty,
+    CssLonghandContribution, CssLonghandContributions, CssPropertyTarget, CssPropertyValueError,
+};
 
 /// The sole clean style-attribute declaration of `property`, written with
 /// `importance`, that keeps the property identity.

@@ -9,7 +9,27 @@ use crate::css::support::authored_syntax::{
     assert_origin_bytes as origin, assert_position as point, fragment_body as body,
     fragment_recovery as recovered,
 };
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueOrigin};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::color_profile::{
+    CssColorProfileDescriptor, CssColorProfileDescriptorKind, CssColorProfileDescriptorValueRef,
+    CssColorProfileRenderingIntent,
+};
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorRef, CssCounterStyleDescriptors, CssCounterStyleSystem,
+    CssCounterSymbol,
+};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontDisplay, CssFontFaceDescriptorKind,
+    CssFontFaceDescriptorValue, CssFontFaceDescriptors, CssFontFaceFamily,
+};
+use surgeist_css::rule::font_palette_values::{
+    CssFontPaletteBase, CssFontPaletteDescriptor, CssFontPaletteDescriptorKind,
+    CssFontPaletteDescriptorValueRef,
+};
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule};
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::{CssParseReport, CssParser};
 
 fn clean<T: Clone + std::fmt::Debug + PartialEq>(
     report: &CssParseReport<Option<CssBlockFragment<T>>>,
@@ -286,8 +306,8 @@ fn counter_extends_symbol_combination_retains_authored_body_with_undefined_defin
                 .prospective()
                 .unwrap()
                 .definition_status(),
-            surgeist_css::CssCounterStyleDefinitionStatus::Undefined(
-                surgeist_css::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
+            surgeist_css::rule::counter_style::CssCounterStyleDefinitionStatus::Undefined(
+                surgeist_css::rule::counter_style::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
             )
         );
     }

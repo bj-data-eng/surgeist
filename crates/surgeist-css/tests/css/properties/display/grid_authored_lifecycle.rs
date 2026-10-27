@@ -11,8 +11,36 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::{
     assert_checked_closure_rejected, assert_numeric_rejected,
 };
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssInteger, CssLengthPercentage, CssNonNegative, CssNumeric, CssPositive,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandContributions,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::common::CssIdent;
+use surgeist_css::values::layout::{
+    CssColumnCount, CssGrid, CssGridAutoFlowAxis, CssGridAutoFlowMode, CssGridAutoTrackComponent,
+    CssGridFixedRepeatComponent, CssGridFixedRepeatContent, CssGridFixedSize,
+    CssGridGeneralTrackComponent, CssGridGeneralTrackList, CssGridIntegerFixedRepeat,
+    CssGridIntegerTrackRepeat, CssGridLineName, CssGridLineNames, CssGridNameRepeat,
+    CssGridSubgridComponent, CssGridTemplate, CssGridTemplateAreaCell, CssGridTemplateAreaName,
+    CssGridTemplateAreaRow, CssGridTemplateAreaTrack, CssGridTrackBreadth, CssGridTrackBreadthKind,
+    CssGridTrackList, CssGridTrackRepeatComponent, CssGridTrackRepeatContent, CssGridTrackSize,
+    CssGridTrackSizeList,
+};
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

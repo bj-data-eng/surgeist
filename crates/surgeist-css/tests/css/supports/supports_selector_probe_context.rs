@@ -1,5 +1,17 @@
 //! Source-owned Supports selector probes preserve the outer lexical contract.
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule};
+use surgeist_css::selector::{
+    CssLanguageRange, CssNamespaceConstraint, CssNamespaceContext, CssPartName, CssPseudoClass,
+    CssPseudoElement, CssPseudoElementSegment, CssPseudoSelectorListItem, CssSelector,
+};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 fn checked(source: &str, namespaces: &CssNamespaceContext) -> CssCondition<CssSupportsLeaf> {
     let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();

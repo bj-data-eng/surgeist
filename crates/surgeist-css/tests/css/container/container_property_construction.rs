@@ -2,7 +2,18 @@
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/
 use crate::css::support::authored_syntax::container_names as names;
 use crate::css::support::important_checked_components as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
+};
+use surgeist_css::query::container::{
+    CssContainer, CssContainerName, CssContainerNameList, CssContainerNames, CssContainerType,
+};
 
 fn assert_programmatic(components: &CssComponentValues) {
     assert!(

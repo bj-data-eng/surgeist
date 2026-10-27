@@ -5,10 +5,10 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_selector_item_dropped,
 };
-use surgeist_css::{
-    CssNamespaceContext, CssParser, CssPseudoClass, CssRecoveryAction, CssRule, CssSelector,
-    CssSelectorList,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssNamespaceContext, CssPseudoClass, CssSelector, CssSelectorList};
 
 #[test]
 fn fullscreen_spelling_case_and_escapes_retain_one_symbolic_identity() {

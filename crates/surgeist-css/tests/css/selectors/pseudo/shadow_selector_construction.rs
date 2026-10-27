@@ -2,7 +2,14 @@
 //! in shadow_selector_grammar.rs. These are new API tests without stub RED.
 use crate::css::support::admitted_selector as selector;
 use crate::css::support::color_and_selector_fixtures::assert_unrepresentable_construction;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::selector::{
+    CssCompoundSelectorArgument, CssNamespaceConstraint, CssNamespaceContext, CssNthChildPattern,
+    CssNthPattern, CssPartName, CssPartNameList, CssPseudoClass, CssPseudoElement,
+    CssPseudoElementSegment, CssPseudoElementSequence, CssPseudoSelectorList, CssRelativeSelector,
+    CssRelativeSelectorList, CssSelector, CssSelectorCombinator,
+};
 
 fn argument(source: &str) -> CssCompoundSelectorArgument {
     CssCompoundSelectorArgument::try_new(selector(source)).unwrap()

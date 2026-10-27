@@ -5,7 +5,31 @@
 //! coordinates in the shorter serialization used by checked grammar admission.
 
 use crate::css::support::value_assertions::url_consumer_text as property_text;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssLonghandValueRef, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyValueError,
+};
+use surgeist_css::rule::color_profile::{
+    CssColorProfileDescriptorKind, CssColorProfileDescriptorValue,
+    CssColorProfileDescriptorValueRef,
+};
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorKind, CssCounterStyleDescriptorValue,
+    CssCounterStyleDescriptorValueRef, CssCounterSymbol,
+};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFontFaceSource,
+};
+use surgeist_css::rule::{CssImportRule, CssImportTarget};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::values::common::{CssUrl, CssUrlFunction, CssUrlModifier};
+use surgeist_css::values::image::CssImageValue;
 
 const PREFIX_BYTES: usize = 128;
 // Contextual property/font errors select the modifier opening; import errors

@@ -1,28 +1,24 @@
 //! Complete typed Color DFS followed by contiguous canonical component runs.
 
-use super::super::{
-    component::{CheckedScalar, ComponentContext, SyntaxFailure},
-    grammar::{
-        ComponentRecord, ComponentRole, FunctionRecipe, GrammarInput, GrammarRecord, GrammarTable,
-        Interpolation, Leaf, MixRecord, ProfileSpace, RawComponent, Recipe, RecipeKind, Site,
-    },
-    keywords::ColorFunction as F,
-    protocol::{
-        ColorProtocolError, CssColorBank, CssColorOperationOwner, CssColorSlot, Data, RecordRange,
-        RecordTable,
-    },
-    syntax_pass::ValidatedGrammar,
+use super::super::component::{CheckedScalar, ComponentContext, SyntaxFailure};
+use super::super::grammar::{
+    ComponentRecord, ComponentRole, FunctionRecipe, GrammarInput, GrammarRecord, GrammarTable,
+    Interpolation, Leaf, MixRecord, ProfileSpace, RawComponent, Recipe, RecipeKind, Site,
 };
+use super::super::keywords::ColorFunction as F;
+use super::super::syntax_pass::ValidatedGrammar;
+use super::input::{Fields, Operand, Shape};
 use super::position::Position;
-use super::{
-    CssColorPathStep,
-    input::{self, Fields, Operand, Shape},
-    scalar::{self, ScalarLowering},
-    site::SiteRecord,
-    spelling::{self, NameSpelling},
-};
-use crate::CssColor;
-use crate::syntax::color::operands::{self, ColorHeader, ColorNode};
+use super::scalar::ScalarLowering;
+use super::site::SiteRecord;
+use super::spelling::NameSpelling;
+use super::{input, scalar, spelling};
+use crate::color::CssColor;
+use crate::color::CssColorPathStep;
+use crate::color::controlled::protocol::{ColorProtocolError, Data, RecordRange, RecordTable};
+use crate::color::controlled::{CssColorBank, CssColorOperationOwner, CssColorSlot};
+use crate::color::syntax::operands;
+use crate::color::syntax::operands::{ColorHeader, ColorNode};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Stage {
@@ -64,8 +60,8 @@ struct FrameInput<'css> {
     alpha: bool,
     source: bool,
     children: [bool; 2],
-    profile: Option<&'css crate::CssColorProfileName>,
-    interpolation: Option<&'css crate::CssColorInterpolation>,
+    profile: Option<&'css crate::color::CssColorProfileName>,
+    interpolation: Option<&'css crate::color::CssColorInterpolation>,
 }
 #[derive(Clone, Copy)]
 pub(crate) struct Frame<'css> {
@@ -204,7 +200,7 @@ enum State<'css> {
     ProfileHeader(Frame<'css>),
     InterpolationProfile {
         frame: Frame<'css>,
-        profile: &'css crate::CssColorProfileName,
+        profile: &'css crate::color::CssColorProfileName,
     },
     Name {
         frame: Frame<'css>,
@@ -330,12 +326,14 @@ impl<'css> Lowering<'css> {
             State::Color(_) => operands::header_bytes(),
             State::Payload { header, .. } => header.node.local_bytes(),
             State::Child { frame, edge } => input::child_bytes(frame.node, *edge)?,
-            State::InterpolationProfile { .. } => std::mem::size_of::<crate::CssColorProfileName>(),
+            State::InterpolationProfile { .. } => {
+                std::mem::size_of::<crate::color::CssColorProfileName>()
+            }
             State::ProfileHeader(frame) => {
                 if frame.input.profile.is_some() {
-                    std::mem::size_of::<crate::CssColorProfileName>()
+                    std::mem::size_of::<crate::color::CssColorProfileName>()
                 } else {
-                    std::mem::size_of::<crate::CssColorInterpolation>()
+                    std::mem::size_of::<crate::color::CssColorInterpolation>()
                 }
             }
             State::Hex { digits, offset, .. } if *offset < digits.len() => 1,
@@ -867,10 +865,10 @@ impl<'css> Lowering<'css> {
         }
         Ok(())
     }
-    pub(super) fn kernel(&self) -> crate::color::CssColorKernel {
+    pub(super) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
         match &self.state {
             State::Scalar { cursor, .. } => cursor.kernel(),
-            _ => crate::color::CssColorKernel::Transition,
+            _ => crate::color::controlled::CssColorKernel::Transition,
         }
     }
     pub(super) fn compute(&mut self) -> Result<(), ColorProtocolError> {
@@ -1202,12 +1200,10 @@ fn same_data(left: Data<'_>, right: Data<'_>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::operation as core;
     use crate::color::{
-        facts::{
-            CssColorFactIdentity, CssColorFacts, CssColorPropertyFacts, CssColorSchemeFact,
-            CssDeviceColorFact,
-        },
-        operation as core,
+        CssColorFactIdentity, CssColorFacts, CssColorPropertyFacts, CssColorSchemeFact,
+        CssDeviceColorFact,
     };
     use surgeist_color::{Color, ColorSpace, PredefinedColorSpace};
 
@@ -1215,10 +1211,12 @@ mod tests {
     fn parsed(source: &str) -> CssColor {
         let report = crate::CssParser::default().parse_property_value(
             source,
-            crate::CssPropertyTextTarget::Property(crate::CssPropertyNameRef::Known(
-                crate::CssKnownProperty::Color,
-            )),
-            crate::CssImportance::Normal,
+            crate::property::CssPropertyTextTarget::Property(
+                crate::property::CssPropertyNameRef::Known(
+                    crate::property::CssKnownProperty::Color,
+                ),
+            ),
+            crate::declaration::CssImportance::Normal,
         );
         // CSS Syntax 3 (CRD 2026-10-01) §5.5.10 closes an unclosed function at
         // EOF as a parse error that retains the value.
@@ -1227,12 +1225,12 @@ mod tests {
                 .diagnostics()
                 .iter()
                 .all(|diagnostic| diagnostic.action()
-                    == crate::CssRecoveryAction::RetainWithImplicitClosure),
+                    == crate::diagnostic::CssRecoveryAction::RetainWithImplicitClosure),
             "{source}: {:?}",
             report.diagnostics()
         );
         let declaration = report.into_parts().0.expect("retained color value");
-        let Some(crate::CssKnownPropertyValueRef::Color(value)) =
+        let Some(crate::property::CssKnownPropertyValueRef::Color(value)) =
             declaration.known().and_then(|known| known.property_value())
         else {
             panic!("typed color: {declaration:?}");
@@ -1355,8 +1353,8 @@ mod tests {
     #[test]
     fn authored_color_recipes_use_literal_results_and_original_child_order() {
         let id = CssColorFactIdentity::new(2, 3);
-        let palette = [crate::CssColorPaletteEntry::new(
-            crate::CssSystemColor::CanvasText,
+        let palette = [crate::color::CssColorPaletteEntry::new(
+            crate::color::CssSystemColor::CanvasText,
             id,
             Color::from_srgba8([255, 0, 0, 255]),
         )];
@@ -1414,14 +1412,15 @@ mod tests {
             assert_eq!(actual.channels(), channels.map(Some), "{source}");
             assert_eq!(actual.alpha(), Some(alpha), "{source}");
         }
-        let profile = crate::CssColorProfileName::try_new("--p").unwrap();
+        let profile = crate::color::CssColorProfileName::try_new("--p").unwrap();
         let resource = CssColorFactIdentity::new(8, 9);
-        let intent = crate::CssColorProfileRenderingIntent::RelativeColorimetric;
-        let names = [crate::CssColorProfileComponentName::try_new("x").unwrap()];
-        let bindings = [crate::CssColorProfileBinding::new(
+        let intent =
+            crate::rule::color_profile::CssColorProfileRenderingIntent::RelativeColorimetric;
+        let names = [crate::color::CssColorProfileComponentName::try_new("x").unwrap()];
+        let bindings = [crate::color::CssColorProfileBinding::new(
             &profile,
             resource,
-            crate::CssColorProfileAvailability::Loaded,
+            crate::color::CssColorProfileAvailability::Loaded,
             intent,
             5,
             &names,
@@ -1437,8 +1436,8 @@ mod tests {
             ],
             surgeist_color::UnitInterval::new(1.0),
         );
-        let conversions = [crate::CssColorProfileConversion::Resolved(
-            crate::CssColorProfileConversionRecord::new(
+        let conversions = [crate::color::CssColorProfileConversion::Resolved(
+            crate::color::CssColorProfileConversionRecord::new(
                 resource, &inputs, intent, target, converted,
             ),
         )];

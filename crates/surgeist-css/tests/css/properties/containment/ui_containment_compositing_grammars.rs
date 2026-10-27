@@ -1,6 +1,19 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssLength, CssNumeric};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::values::background::{CssBlendMode, CssBlendModeList};
+use surgeist_css::values::box_model::{CssContain, CssContainComponent, CssContainComponentList};
+use surgeist_css::values::common::CssBoxEdgeKeyword;
+use surgeist_css::values::effects::CssIsolation;
+use surgeist_css::values::transform::CssTransformBox;
+use surgeist_css::values::ui::{CssCaretColor, CssResize};
 
 #[test]
 fn residual_ui_containment_and_compositing_properties_are_typed() {
@@ -524,9 +537,9 @@ fn ui_containment_and_compositing_eof_and_non_bmp_recovery_preserve_coordinates(
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }

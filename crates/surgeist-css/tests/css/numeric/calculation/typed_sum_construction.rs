@@ -2,11 +2,14 @@
 //! typing. Root-only unitless-zero admission does not turn zero into a length.
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::{
-    CssCalculation, CssCalculationExpressionRef, CssCalculationSumOperator as Op,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
     CssComponentValueError, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssLengthPercentage, CssNumericConstructionError, CssParser, CssSerializedOrigin,
-    CssValueOrigin,
+    CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::numeric::CssCalculationSumOperator as Op;
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssLengthPercentage, CssNumericConstructionError,
 };
 
 type Calculation = CssCalculation<CssLengthPercentage>;
@@ -188,7 +191,11 @@ fn root_only_unitless_zero_is_rechecked_as_an_arithmetic_operand() {
 
 #[test]
 fn trusted_parsed_recovery_remains_in_the_child_while_strict_component_admission_rejects_it() {
-    use surgeist_css::*;
+    use surgeist_css::CssParser;
+    use surgeist_css::component::{CssComponentValueRef, CssValueOrigin};
+    use surgeist_css::diagnostic::CssErrorCode;
+    use surgeist_css::property::CssKnownPropertyValueRef;
+    use surgeist_css::values::box_model::CssFlowToleranceRef;
     let report = CssParser::default().parse_block_contents("flow-tolerance:calc(1px");
     crate::css::support::value_assertions::assert_first_code(
         report.diagnostics(),

@@ -2,11 +2,12 @@
 use super::*;
 use crate::parser::buffer::Utf16Buffer;
 use std::cell::{Cell, RefCell};
-use surgeist_css::{
-    CssColorScheme, CssColorSchemeParseReport, CssComponentValueLimits, CssParser,
-    CssParserContext, CssParserMode, CssUtf16InputLimits, CssUtf16PropertyValueLimits,
-    CssUtf16ValueAdmission,
+use surgeist_css::component::CssComponentValueLimits;
+use surgeist_css::source::{
+    CssUtf16InputLimits, CssUtf16PropertyValueLimits, CssUtf16ValueAdmission,
 };
+use surgeist_css::values::color_adjust::{CssColorScheme, CssColorSchemeParseReport};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 /// One admitted immutable provider occurrence. This never enters the string pool.
 struct ProviderReceipt {

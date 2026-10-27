@@ -2,18 +2,60 @@
 //! authored syntax and reject invalid arguments and cross-family values.
 
 use crate::css::support::value_assertions::checked_range;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssNamedColor};
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::numeric::{
+    CssAngleOrZero, CssNonNegative, CssNumber, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit,
+};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::keyframes::CssKeyframesIdent;
+use surgeist_css::values::animation::{
+    CssAnimation, CssAnimationComponents, CssAnimationDirection, CssAnimationFillMode,
+    CssAnimationIterationCount, CssAnimationIterationCountList, CssAnimationList, CssAnimationName,
+    CssAnimationNameList, CssAnimationPlayState, CssAnimationPlayStateList, CssDurationList,
+    CssEasing, CssEasingKeyword, CssTransition, CssTransitionList, CssTransitionProperty,
+    CssTransitionPropertyList, CssTransitionPropertyName,
+};
+use surgeist_css::values::background::{
+    CssBackgroundAttachment, CssBackgroundAttachmentList, CssBackgroundBox, CssBackgroundBoxList,
+    CssBackgroundPosition, CssBackgroundPositionList, CssBackgroundRepeat, CssBackgroundRepeatList,
+    CssBackgroundRepeatStyle, CssBackgroundSize, CssBackgroundSizeList,
+};
+use surgeist_css::values::border::{CssLineWidth, CssOutline, CssOutlineColor, CssOutlineStyle};
+use surgeist_css::values::common::{CssAutoOr, CssCustomIdent, CssUrl};
+use surgeist_css::values::effects::{
+    CssClipPath, CssFilter, CssFilterAmount, CssFilterFunction, CssMaskList,
+};
+use surgeist_css::values::image::{CssImageValue, CssImageValueList};
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
+};
+use surgeist_css::values::shape::{CssBasicShape, CssCircleRadius};
+use surgeist_css::values::transform::{
+    CssScaleValues, CssTransform, CssTransformFunction, CssTransformFunctionKind,
+    CssTransformOrigin, CssTransformScaleComponent, CssTranslateValues,
+};
+use surgeist_css::values::ui::{
+    CssCursor, CssCursorImageSource, CssCursorImages, CssCursorKeyword, CssPointerEvents,
+    CssUserSelect,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;
 
-fn exact_number(component: Option<&surgeist_css::CssComponentValue>, representation: &str) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == representation)
+fn exact_number(
+    component: Option<&surgeist_css::component::CssComponentValue>,
+    representation: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Number(number))) if number.representation() == representation)
 }
 
-fn checked_number(representation: &str) -> surgeist_css::CssNumeric<surgeist_css::CssNumber> {
-    surgeist_css::CssNumeric::<surgeist_css::CssNumber>::try_from_component(
-        surgeist_css::CssComponentValue::try_number(representation).unwrap(),
+fn checked_number(
+    representation: &str,
+) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssNumber> {
+    surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssNumber>::try_from_component(
+        surgeist_css::component::CssComponentValue::try_number(representation).unwrap(),
     )
     .unwrap()
 }

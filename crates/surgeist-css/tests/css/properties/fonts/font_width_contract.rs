@@ -4,7 +4,15 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::numeric_failure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssNonNegative, CssNumeric, CssPercentage};
+use surgeist_css::property::{CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyTarget};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::{CssFontWidth, CssFontWidthKeyword};
 
 fn scalar(text: &str) -> CssNumeric<CssPercentage, CssNonNegative> {
     let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();

@@ -26,8 +26,24 @@ use crate::css::support::property_expectations::{
 };
 use crate::css::support::serialization_limits::LimitLadder;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin,
+};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenSummary};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownDeclaredValueRef,
+    CssLonghandContributions, CssPropertyGrammar, CssPropertyKindRef, CssPropertyNameRef,
+    CssPropertyTextTarget, CssPropertyValueError,
+};
+use surgeist_css::{CssParseReport, CssParser};
 
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("initial", CssGlobalKeyword::Initial),

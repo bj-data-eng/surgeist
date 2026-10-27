@@ -9,16 +9,23 @@ use crate::css::support::property_admission::{
     assert_checked_rejected, assert_component_rejected, assert_invalid_value,
     assert_numeric_rejected,
 };
-use surgeist_css::{
-    CssAspectRatioValue, CssCalculation, CssComponentValue, CssComponentValues,
-    CssContributionValueRef, CssContributions, CssDeclaration, CssExpansion, CssGlobalKeyword,
-    CssImportance, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLonghandValueRef, CssNonNegative, CssNormalizedItem, CssNumber, CssNumeric, CssParser,
-    CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction,
-    CssSerializationLimits, CssSpecifiedRatio, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{
+    CssCalculation, CssNonNegative, CssNumber, CssNumeric, CssSpecifiedRatio,
 };
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::CssAspectRatioValue;
 
-fn parsed(value: &str) -> surgeist_css::CssDeclaration {
+fn parsed(value: &str) -> surgeist_css::declaration::CssDeclaration {
     let source = format!("aspect-ratio:{value}");
     let report = CssParser::default().parse_block_contents(&source);
     assert!(report.is_clean(), "{value}: {:?}", report.diagnostics());
@@ -33,7 +40,7 @@ fn parsed(value: &str) -> surgeist_css::CssDeclaration {
     declaration
 }
 
-fn checked(value: &str) -> surgeist_css::CssDeclaration {
+fn checked(value: &str) -> surgeist_css::declaration::CssDeclaration {
     let components = CssComponentValues::parse(&CssParser::default(), value).unwrap();
     let declaration = CssDeclaration::try_from_components(
         &CssParser::default(),
@@ -51,7 +58,7 @@ fn checked(value: &str) -> surgeist_css::CssDeclaration {
     declaration
 }
 
-fn assert_authored_ratio(declaration: &surgeist_css::CssDeclaration, value: &str) {
+fn assert_authored_ratio(declaration: &surgeist_css::declaration::CssDeclaration, value: &str) {
     let CssKnownPropertyValueRef::AspectRatio(authored) =
         declaration.known().unwrap().property_value().unwrap()
     else {
@@ -91,7 +98,7 @@ fn assert_authored_ratio(declaration: &surgeist_css::CssDeclaration, value: &str
     ) {
         if let Some(component) = operand.literal().map(|literal| literal.component()) {
             assert!(
-                matches!(component.view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number)) if number.representation() == spelling)
+                matches!(component.view(), surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Number(number)) if number.representation() == spelling)
             );
         } else {
             assert!(
@@ -167,7 +174,7 @@ fn ordinary_numbers_keep_their_authored_single_operand() {
             };
             assert!(ratio.denominator().is_none());
             assert!(
-                matches!(ratio.numerator().literal().map(|literal| literal.component()).unwrap().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number)) if number.representation() == value)
+                matches!(ratio.numerator().literal().map(|literal| literal.component()).unwrap().view(), surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Number(number)) if number.representation() == value)
             );
         }
     }

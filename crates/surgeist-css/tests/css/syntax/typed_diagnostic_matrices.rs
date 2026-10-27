@@ -1,7 +1,12 @@
 //! Malformed sheets and property-family crossovers report the exact
 //! diagnostic kind and authored identity responsible for the rejection.
 
-use surgeist_css::*;
+use surgeist_css::values::animation::{CssAnimation, CssAnimationComponents, CssTransitionList};
+use surgeist_css::values::font::CssFontFamilyList;
+use surgeist_css::values::layout::CssGridGeneralTrackList;
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
+};
 
 use crate::css::support::sheet_cases::*;
 

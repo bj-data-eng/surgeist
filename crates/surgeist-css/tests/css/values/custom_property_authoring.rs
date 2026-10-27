@@ -1,7 +1,12 @@
 //! Custom properties and `var()` references (CSS Variables 1) keep authored
 //! syntax, names and fallbacks through the public parser.
 
-use surgeist_css::*;
+use surgeist_css::declaration::{
+    CssAuthoredDeclarationValue, CssCustomPropertyName, CssCustomPropertyValue, CssDeclaration,
+    CssGlobalKeyword,
+};
+use surgeist_css::diagnostic::{CssErrorCode, CssTokenKind};
+use surgeist_css::property::CssKnownProperty;
 
 use crate::css::support::sheet_cases::*;
 

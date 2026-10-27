@@ -6,7 +6,14 @@ use crate::css::support::declaration_color;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use surgeist_color::{ColorSpace, HueInterpolation};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorInterpolation, CssColorInterpolationMethod, CssColorMix,
+    CssColorMixComponent, CssNamedColor,
+};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn constructed(space: ColorSpace, hue: HueInterpolation) -> CssColor {
     CssColor::from_color_mix(

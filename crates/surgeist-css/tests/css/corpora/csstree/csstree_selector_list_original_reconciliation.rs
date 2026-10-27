@@ -2,8 +2,9 @@
 //! diagnostic contracts. Expected values never come from the runtime or registry.
 
 use serde_json::{Value, json};
-use surgeist_css::{
-    CssParsedStyleSelectors, CssParser, CssSelector, CssStyleSelector, CssStyleSelectorContext,
+use surgeist_css::CssParser;
+use surgeist_css::selector::{
+    CssParsedStyleSelectors, CssSelector, CssStyleSelector, CssStyleSelectorContext,
 };
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
@@ -19,7 +20,7 @@ fn reconciliation() -> Reconciliation {
     )
 }
 
-fn compound_meaning(compound: &surgeist_css::CssCompoundSelector) -> Value {
+fn compound_meaning(compound: &surgeist_css::selector::CssCompoundSelector) -> Value {
     let name = compound.type_selector().expect("original type selector");
     json!({"type": {"local_name": name.local_name(), "namespace": format!("{:?}", name.namespace())},
         "ids": compound.ids(), "classes": compound.classes(),
@@ -49,7 +50,7 @@ fn typed_meaning(selector: &CssSelector) -> Value {
     }
 }
 
-fn list_meaning(list: &surgeist_css::CssStyleSelectorList) -> Value {
+fn list_meaning(list: &surgeist_css::selector::CssStyleSelectorList) -> Value {
     let selectors: Vec<_> = list
         .selectors()
         .iter()

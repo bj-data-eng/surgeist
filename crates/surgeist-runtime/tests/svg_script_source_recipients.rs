@@ -1,6 +1,6 @@
 //! Actual Source suspension and observer reentry share the canonical SVG gate.
 use std::sync::{Arc, atomic::AtomicBool};
-use surgeist_css::CssUtf16InputLimits;
+use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_cssom::CssomStore;
 use surgeist_dom::*;
 use surgeist_runtime::*;

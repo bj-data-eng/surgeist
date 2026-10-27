@@ -1,6 +1,13 @@
 //! Raw literal family preludes through the native feature-value grammar.
-use super::{StyleContextCaptures, fragments, recovery::RecoveryState, syntax_bridge};
-use crate::*;
+use super::recovery::RecoveryState;
+use super::{fragments, syntax_bridge};
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{CssComponentValueError, CssComponentValueLimits, CssValueOrigin};
+use crate::diagnostic::CssRecoveryAction;
+use crate::parser::recovery::StyleContextCaptures;
+use crate::rule::font_feature_values::CssFontFeatureValuesFamilyList;
+use crate::source::CssParsedOrigin;
+use crate::{CssParseReport, CssParserContext};
 use cssparser::{Parser, ParserInput};
 
 pub(crate) fn parse_with_context(
@@ -42,7 +49,7 @@ pub(crate) fn parse_with_context(
                     let origin = CssParsedOrigin::from_range(&snapshot, range)
                         .expect("native member source range");
                     origins.try_reserve(1).map_err(|_| {
-                        crate::error::invalid_component_value(
+                        crate::diagnostic::error::invalid_component_value(
                             location,
                             CssComponentValueError::new(
                                 CssComponentValueErrorKind::CapacityOverflow,
@@ -54,7 +61,9 @@ pub(crate) fn parse_with_context(
                     Ok(())
                 },
             )?;
-            input.expect_exhausted().map_err(crate::error::basic)?;
+            input
+                .expect_exhausted()
+                .map_err(crate::diagnostic::error::basic)?;
             Ok(families)
         })();
         match result {

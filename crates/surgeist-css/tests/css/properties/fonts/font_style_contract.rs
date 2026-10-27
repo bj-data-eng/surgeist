@@ -2,12 +2,21 @@
 
 use crate::css::support::named_property::assert_programmatic_rejection;
 use crate::css::support::named_property::normal_grammar_components;
-use surgeist_css::{
-    CssAngle, CssCalculation, CssComponentValue, CssComponentValueRef, CssComponentValues,
-    CssContributions, CssExpansion, CssFontStyle, CssFontStyleKeyword, CssFontValue, CssImportance,
-    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
-    CssNumeric, CssObliqueAngleRange, CssParser, CssPropertyKindRef, CssRecoveryAction,
-    CssSerializationLimits, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssAngle, CssCalculation, CssNumeric};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::{
+    CssFontStyle, CssFontStyleKeyword, CssFontValue, CssObliqueAngleRange,
 };
 
 fn angle(text: &str) -> CssNumeric<CssAngle, CssObliqueAngleRange> {

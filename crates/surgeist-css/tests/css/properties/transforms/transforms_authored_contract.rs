@@ -10,7 +10,22 @@ use crate::css::support::named_property::sole_completed_contributions as complet
 use crate::css::support::serialization_limits::LimitLadder;
 use CssSerializationLimits as L;
 use authored_property::{ParserFront, assert_source, checked, checked_components, invalid};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget, CssPropertyValueError,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::transform::CssTranslate;
 
 const FRONTS: [ParserFront; 5] = [
     ParserFront::StyleAttribute,

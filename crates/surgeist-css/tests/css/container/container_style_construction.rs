@@ -2,7 +2,18 @@
 use crate::css::support::authored_syntax::checked_container_condition as construct;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::property::{CssKnownProperty, CssPropertyGrammar};
+use surgeist_css::query::container::{
+    CssContainerLeaf, CssContainerStyleFeature, CssContainerStyleFeatureName,
+    CssContainerStyleRange, CssContainerStyleRangeOperand, CssContainerStyleRangeOperandRef,
+    CssContainerStyleRangeRef, CssContainerStyleValue, CssStyleQueryLeaf,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind, CssQueryComparison};
 
 fn style(condition: &CssCondition<CssContainerLeaf>) -> &CssCondition<CssStyleQueryLeaf> {
     let CssConditionKind::Leaf(CssContainerLeaf::Style(query)) = condition.kind() else {

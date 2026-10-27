@@ -3,7 +3,18 @@
 //! Grid 3 (2026-01-21) §4.1 reuses these properties on its grid axis.
 
 use crate::css::support::property_admission::assert_same_grammar_facts;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{CssNormalizationLimits, CssNormalizationResource};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssPropertyGrammar, CssPropertyKindRef,
+    CssPropertyTarget,
+};
+use surgeist_css::values::layout::CssGridLine;
 
 const LONGHANDS: [&str; 4] = [
     "grid-row-start",

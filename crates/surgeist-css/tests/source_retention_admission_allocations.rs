@@ -3,9 +3,8 @@
 
 use stats_alloc::{INSTRUMENTED_SYSTEM, Region, StatsAlloc};
 use std::{alloc::System, cell::Cell};
-use surgeist_css::{
-    CssParser, CssSourceRetention, CssSourceRetentionAction, CssSourceRetentionError,
-};
+use surgeist_css::CssParser;
+use surgeist_css::source::{CssSourceRetention, CssSourceRetentionAction, CssSourceRetentionError};
 
 #[global_allocator]
 static GLOBAL: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;

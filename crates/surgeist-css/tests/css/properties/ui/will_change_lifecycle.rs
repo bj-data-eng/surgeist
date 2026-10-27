@@ -3,7 +3,16 @@
 //! this candidate exercises admission and the already-existing authored lifecycle APIs.
 
 use crate::css::support::validated_important_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssPropertyGrammar,
+    CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
 
 use crate::css::support::authored_property;
 use crate::css::support::named_property::sole_longhand_contribution as contribution;

@@ -11,7 +11,15 @@
 //! Logical role tests assert the adopted authored model, not completed expansion.
 
 use crate::css::support::serialization_limits::assert_node_limits;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric,
+};
+use surgeist_css::property::{CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyTarget};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::common::{CssAutoOr, CssBoxSideKind, CssFourSides, CssSidePair};
 
 type Limits = CssSerializationLimits;
 type Error = CssSerializationError;

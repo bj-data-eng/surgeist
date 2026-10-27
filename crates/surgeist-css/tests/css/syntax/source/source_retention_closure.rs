@@ -1,4 +1,22 @@
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssBlockKind, CssComponentValue, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance, CssSpecifiedDeclarationBlock};
+use surgeist_css::property::{
+    CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::supports::{
+    CssSupportsConditionName, CssSupportsLeaf, CssSupportsTestBody,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind, CssWhenLeaf};
+use surgeist_css::rule::{
+    CssRule, CssSheet, CssSupportsConditionRule, CssSupportsRule, CssWhenRule,
+};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::source::{
+    CssSourceRetention, CssSourceRetentionError, CssSourceRetentionResource,
+};
+use surgeist_css::{CssParser, CssParserContext};
 
 fn programmatic(text: &str) -> Vec<CssComponentValue> {
     text.split_whitespace()

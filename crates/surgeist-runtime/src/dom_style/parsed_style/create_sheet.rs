@@ -15,7 +15,7 @@ pub enum DomStyleParsedSheetError {
     /// Original phase/mapping or the actual qualified producer refused.
     Sheet(DomParsedHtmlStyleSheetError),
     /// Real CSS input refusal, preserving its actual original/Runtime poll cause.
-    Css(surgeist_css::CssUtf16InputError<DomStyleRuntimeError>),
+    Css(surgeist_css::source::CssUtf16InputError<DomStyleRuntimeError>),
 }
 impl From<DomStyleRuntimeError> for DomStyleParsedSheetError {
     fn from(value: DomStyleRuntimeError) -> Self {

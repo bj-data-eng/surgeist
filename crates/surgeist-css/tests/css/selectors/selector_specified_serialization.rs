@@ -1,10 +1,12 @@
 //! Independent authored selector-provider expectations. Rule traversal is separate.
 use crate::css::support::failure_classes::SerializationFailure as Kind;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssNamespaceContext, CssParser, CssPseudoClass, CssPseudoSelectorList, CssRule, CssSelector,
-    CssSerializationLimits as Limits, CssStyleSelector,
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssPseudoSelectorList, CssSelector, CssStyleSelector,
 };
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 fn parsed(source: &str) -> CssSelector {
     let report = CssParser::default().parse_sheet(format!("{source} {{ }}"));
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
@@ -75,7 +77,10 @@ fn nth_patterns_follow_syntax_anb_serialization() {
         ":nth-child(2n+1 of .a, #b):nth-last-child(2n):nth-of-type(-n+3):nth-last-of-type(2)",
     );
     let selector = CssSelector::PseudoClass(CssPseudoClass::NthOfType(
-        surgeist_css::CssNthPattern::AnPlusB(surgeist_css::CssNthAnPlusB::new(-1, i32::MIN)),
+        surgeist_css::selector::CssNthPattern::AnPlusB(surgeist_css::selector::CssNthAnPlusB::new(
+            -1,
+            i32::MIN,
+        )),
     ));
     assert_eq!(
         selector.serialize_specified(Default::default()).unwrap(),

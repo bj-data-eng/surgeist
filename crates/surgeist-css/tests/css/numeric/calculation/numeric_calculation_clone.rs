@@ -1,7 +1,8 @@
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{
     CssCalculation, CssCalculationExpressionRef, CssCalculationProductOperator,
-    CssCalculationSumOperator, CssComponentValue, CssComponentValues, CssLength, CssNumber,
-    CssNumeric, CssParser, CssValueOrigin,
+    CssCalculationSumOperator, CssLength, CssNumber, CssNumeric,
 };
 
 #[test]

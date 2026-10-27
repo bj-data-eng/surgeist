@@ -4,7 +4,17 @@
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{
+    CssExclusionReason, CssSpecificationTier, CssSupportStatus, conformance_exclusion,
+    feature_metadata,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::speech::{CssSpeak, CssSpeakAs, CssSpeakAsPunctuation};
 
 fn speak_as(text: &str) -> CssSpeakAs {
     let report = CssParser::default().parse_block_contents(format!("speak-as:{text}"));

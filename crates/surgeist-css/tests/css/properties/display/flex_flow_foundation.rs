@@ -2,7 +2,17 @@
 //! `flex-flow` sets both, including the initial of an omitted component.
 
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssLonghandContribution,
+    CssLonghandValue, CssPropertyKindRef,
+};
 
 fn expanded(source: &CssDeclaration) -> Vec<CssLonghandContribution> {
     let CssExpansion::Contributions(CssContributions::Longhands(items)) = source.expand().unwrap()

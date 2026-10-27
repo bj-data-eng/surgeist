@@ -3,7 +3,13 @@
 //! reusable pending substitution. The image wrapper contributes zero depth.
 
 use crate::css::support::check_property_components as checked;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::{CssExpansion, CssKnownProperty};
+use surgeist_css::values::image::{CssImage, CssImageValue};
 
 fn image_source(light_dark_functions: usize) -> String {
     // An unquoted URL is one raw token but one retained image function.

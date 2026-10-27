@@ -1,8 +1,8 @@
 //! Common declaration orchestration over the CSS-owned Page and Fonts descriptor domains.
 use super::*;
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptors, CssPageDescriptorValue, CssParser,
-};
+use surgeist_css::CssParser;
+use surgeist_css::rule::font_face::{CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptors};
+use surgeist_css::rule::page::CssPageDescriptorValue;
 
 #[derive(Clone, Copy)]
 pub(super) enum DescriptorName {

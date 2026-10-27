@@ -8,7 +8,14 @@
 //! https://www.w3.org/TR/2025/WD-css-images-4-20250930/#serialization
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::image::{CssImage, CssImageValue};
 
 const FUNCTIONS: [&str; 5] = [
     "linear-gradient",

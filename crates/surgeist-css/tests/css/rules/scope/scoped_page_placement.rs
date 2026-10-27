@@ -10,7 +10,12 @@
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule
 use crate::css::support::rules::normalized_rule_contexts as contexts;
 use crate::css::support::rules::page_pseudo;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::CssRuleContextKindRef;
+use surgeist_css::rule::page::CssPagePseudo;
+use surgeist_css::rule::{CssRule, CssStyleBlock};
+use surgeist_css::selector::CssNamespaceContext;
 
 fn assert_admitted(group: &str, expected_diagnostics: usize) {
     let bad = if expected_diagnostics == 0 {

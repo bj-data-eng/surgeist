@@ -1,6 +1,13 @@
 //! Color 5 alpha and authored absolute-eligibility contracts.
 use crate::css::support::checked_color as color;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssAlphaColor, CssColor,
+    CssRelativeColorChannel, CssRelativeColorEnvironment, CssRelativeColorExpression,
+    CssRelativeColorExpressionValue, CssRelativeColorResultDomain,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{CssCalculationExpressionRef, CssCalculationType};
 
 fn alpha(text: &str) -> CssRelativeColorExpression {
     CssRelativeColorExpression::try_from_components(

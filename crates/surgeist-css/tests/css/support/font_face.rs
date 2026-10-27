@@ -5,10 +5,10 @@
 macro_rules! ordinary_face {
     ($descriptors:expr, $kind:ident) => {{
         $descriptors
-            .effective(surgeist_css::CssFontFaceDescriptorKind::$kind)
+            .effective(surgeist_css::rule::font_face::CssFontFaceDescriptorKind::$kind)
             .and_then(|record| match record.value() {
-                surgeist_css::CssAuthoredFontFaceDescriptorValue::Ordinary(
-                    surgeist_css::CssFontFaceDescriptorValue::$kind(value),
+                surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue::Ordinary(
+                    surgeist_css::rule::font_face::CssFontFaceDescriptorValue::$kind(value),
                 ) => Some(value),
                 _ => None,
             })
@@ -17,7 +17,8 @@ macro_rules! ordinary_face {
 
 macro_rules! string_format {
     ($source:expr) => {{
-        let Some(surgeist_css::CssFontFormat::String(value)) = $source.format() else {
+        let Some(surgeist_css::rule::font_face::CssFontFormat::String(value)) = $source.format()
+        else {
             panic!("expected an authored string format");
         };
         value.as_str()

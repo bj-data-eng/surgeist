@@ -9,7 +9,17 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::literal_specified;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{
+    CssCalculation, CssNonNegative, CssNumeric, CssNumericLiteral, CssResolution, CssResolutionUnit,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssAutoOr;
+use surgeist_css::values::effects::CssClip;
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

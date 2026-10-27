@@ -1,8 +1,8 @@
 //! Syntax 3 exact-one admission, with CSS-owned typed grammar and inner recovery.
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssParser,
-    CssRecoveryAction, CssRule, CssSelector, CssStyleSelector,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector, CssStyleSelector};
 
 fn parse(source: &str) -> surgeist_css::CssParseReport<Option<CssRule>> {
     CssRule::parse(
@@ -171,7 +171,7 @@ fn namespaces_and_unicode_positions_come_from_the_supplied_context_and_source() 
     assert_eq!(compound.nesting_selectors(), 1);
     assert_eq!(
         compound.type_selector().unwrap().namespace(),
-        &surgeist_css::CssNamespaceConstraint::Named(prefix.clone())
+        &surgeist_css::selector::CssNamespaceConstraint::Named(prefix.clone())
     );
     assert_eq!(
         rule.declarations()[0]
@@ -325,12 +325,12 @@ fn style_and_scope_depths_preserve_supported_content_and_typed_limits() {
         };
         let mut scope = mut_scope;
         for _ in 1..depth {
-            let [surgeist_css::CssRule::Scope(child)] = scope.rules().rules() else {
+            let [surgeist_css::rule::CssRule::Scope(child)] = scope.rules().rules() else {
                 panic!("scope chain")
             };
             scope = child;
         }
-        let [surgeist_css::CssRule::Style(leaf)] = scope.rules().rules() else {
+        let [surgeist_css::rule::CssRule::Style(leaf)] = scope.rules().rules() else {
             panic!("scope leaf")
         };
         assert_eq!(leaf.declarations().len(), 1);

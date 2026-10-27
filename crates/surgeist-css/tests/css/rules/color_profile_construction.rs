@@ -3,16 +3,24 @@
 use crate::css::support::failure_classes::SerializationFailure as EmitFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::{ExpectedRejection, descriptor_rejected_at, invalid_descriptor};
-use surgeist_css::{
-    CssColorProfileDescriptor, CssColorProfileDescriptorKind as Kind,
-    CssColorProfileDescriptorValue as Value, CssColorProfileDescriptorValueRef as View,
-    CssColorProfileName, CssColorProfileRenderingIntent as Intent, CssColorProfileRule,
-    CssColorProfileRuleName as Name, CssComponentValue, CssComponentValueLimits,
-    CssComponentValueRef, CssComponentValues, CssErrorCode, CssNormalizedItem, CssParser,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSerializationLimits as EmitLimits,
-    CssSerializedOrigin, CssSupportStatus, CssUrlFunction, CssValueOrigin, CssValueTokenRef,
-    feature_metadata,
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColorProfileName;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::color_profile::CssColorProfileDescriptorKind as Kind;
+use surgeist_css::rule::color_profile::CssColorProfileDescriptorValue as Value;
+use surgeist_css::rule::color_profile::CssColorProfileDescriptorValueRef as View;
+use surgeist_css::rule::color_profile::CssColorProfileRenderingIntent as Intent;
+use surgeist_css::rule::color_profile::CssColorProfileRuleName as Name;
+use surgeist_css::rule::color_profile::{CssColorProfileDescriptor, CssColorProfileRule};
+use surgeist_css::serialization::CssSerializationLimits as EmitLimits;
+use surgeist_css::values::common::CssUrlFunction;
 
 fn fragment(source: &str, kind: Kind) -> surgeist_css::CssParseReport<Option<Value>> {
     Value::parse(&CssParser::default(), source, kind)

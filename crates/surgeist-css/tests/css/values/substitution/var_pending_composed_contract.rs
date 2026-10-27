@@ -4,7 +4,18 @@
 //! The public pending transition preserves original occurrence, priority and origins.
 
 use crate::css::support::value_assertions::assert_first_diagnostic;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssCustomPropertyName, CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssLonghandValueRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
 
 #[test]
 fn later_var_commas_are_retained_fallback_tokens_in_known_and_custom_values() {

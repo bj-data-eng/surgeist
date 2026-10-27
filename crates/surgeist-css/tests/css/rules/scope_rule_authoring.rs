@@ -1,7 +1,15 @@
 //! `@scope` (Cascade 6) roots, limits and scoped rules through the public
 //! stylesheet parser and constructors.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFontFaceSource,
+};
+use surgeist_css::rule::{CssRule, CssScopeRule};
+use surgeist_css::selector::{
+    CssPseudoClass, CssPseudoElement, CssSelector, CssSelectorCombinator, CssStyleSelector,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;

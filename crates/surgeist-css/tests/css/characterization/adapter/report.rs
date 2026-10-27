@@ -2,13 +2,16 @@
 //! and recovery diagnostics, in the schema of the original report columns.
 
 use crate::css::support::failure_classes::{ComponentFailure, component_failure};
-use surgeist_css::{
-    CssColorComponentName, CssDeclaration, CssDeclarationContextRef, CssError, CssErrorCode,
-    CssEscapeFailure, CssGlobalKeyword, CssGrammarExpectation, CssImportance,
-    CssKnownDeclaredValueRef, CssKnownProperty, CssProductionId, CssPropertyNameRef,
-    CssPropertyValueError, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssTokenKind,
-    CssTokenSummary,
+use surgeist_css::color::CssColorComponentName;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{
+    CssDeclarationContextRef, CssError, CssErrorCode, CssEscapeFailure, CssGrammarExpectation,
+    CssProductionId, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind, CssTokenSummary,
 };
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssPropertyNameRef, CssPropertyValueError,
+};
+use surgeist_css::rule::CssRule;
 
 /// Retained identities and authored declarations collected in source order.
 #[derive(Default)]

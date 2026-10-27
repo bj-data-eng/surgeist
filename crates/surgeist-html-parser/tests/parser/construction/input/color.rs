@@ -118,9 +118,11 @@ fn color_currentcolor_without_palette_is_unavailable_and_reclaims_partial_constr
     assert_eq!(
         failure.reason(),
         HtmlParseFailureReason::Stop(HtmlParseStop::ColorProcessing(
-            HtmlColorProcessingError::Unavailable(surgeist_css::CssColorUnavailable::Palette(
-                surgeist_css::CssSystemColor::CanvasText
-            ))
+            HtmlColorProcessingError::Unavailable(
+                surgeist_css::color::CssColorUnavailable::Palette(
+                    surgeist_css::color::CssSystemColor::CanvasText
+                )
+            )
         ))
     );
     assert_eq!(failure.cleanup_error(), None);
@@ -355,7 +357,9 @@ fn color_utf16_reference_default_and_generated_history_keep_distinct_actual_valu
 // reserve/copy allowance is included in per-action compiled slot/layout cost.
 fn matrix_limits() -> HtmlParseLimits {
     use surgeist_color::Serialization;
-    use surgeist_css::{CssColorParse, CssColorSlot, CssColorTransform, CssUsedColorCheckpoint};
+    use surgeist_css::color::controlled::{
+        CssColorParse, CssColorSlot, CssColorTransform, CssUsedColorCheckpoint,
+    };
     let register = [
         CssColorParse::register_bytes(),
         Serialization::register_bytes(),

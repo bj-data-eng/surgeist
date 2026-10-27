@@ -1,9 +1,10 @@
 //! Component composition promises to preserve token identity and lexical numbers.
 //! The leading `--` in a CDC must not be consumed by its preceding token.
 
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssNumericTokenKind, CssParser, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+    CssNumericTokenKind, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
 
 const HAZARDOUS_LEFT_SPELLINGS: [&str; 7] = ["-", "@", "#", "1", "1e3", "+1", "-1"];

@@ -3,11 +3,13 @@ use descriptor_phases::*;
 
 use crate::css::support::failure_classes::SerializationFailure as Kind;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::{
-    CssCounterStyleDescriptorKind as DescriptorKind, CssCounterStyleDescriptorRef,
-    CssCounterStyleRule, CssCounterStyleSystem, CssParser, CssRule,
-    CssSerializationLimits as Limits,
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind as DescriptorKind;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorRef, CssCounterStyleRule, CssCounterStyleSystem,
 };
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 fn rule(source: &str) -> CssCounterStyleRule {
     let report = CssParser::default().parse_sheet(source);

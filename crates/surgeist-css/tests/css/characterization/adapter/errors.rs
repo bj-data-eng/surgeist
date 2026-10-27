@@ -5,7 +5,72 @@
 use std::error::Error as StdError;
 use std::sync::Arc;
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInput,
+    CssColorInterpolationMethod, CssColorMix, CssColorMixPercentage, CssColorOrdinaryLimits,
+    CssColorProfileName, CssColorPropertyFacts, CssColorResolveError, CssColorSchemeFact,
+    CssCustomColor, CssDeviceColorFact, CssNamedColor, parse_used_color,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssDeclaration, CssImportance, CssSpecifiedDeclarationBlock};
+use surgeist_css::normalize::CssNormalizationLimits;
+use surgeist_css::numeric::{
+    CssInteger, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssExpansion, CssKnownProperty, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::container::CssContainerLeaf;
+use surgeist_css::query::media::CssMediaQuery;
+use surgeist_css::query::supports::{CssSupportsConditionName, CssSupportsLeaf};
+use surgeist_css::query::{CssCondition, CssGeneralEnclosed, CssWhenLeaf};
+use surgeist_css::rule::color_profile::{
+    CssColorProfileDescriptorKind, CssColorProfileDescriptorValue,
+};
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorKind, CssCounterStyleDescriptorValue,
+};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind,
+    CssSpecifiedFontFaceDeclarationBlock,
+};
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureValue, CssFontFeatureValueIndex, CssFontFeatureValueKind,
+};
+use surgeist_css::rule::font_palette_values::{
+    CssFontPaletteDescriptorKind, CssFontPaletteDescriptorValue,
+};
+use surgeist_css::rule::keyframes::{
+    CssKeyframeRuleView, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
+};
+use surgeist_css::rule::page::CssMarginDeclarationBlock;
+use surgeist_css::rule::{
+    CssCustomMediaRule, CssImportRule, CssNamespacePrefix, CssRule, CssSheet,
+};
+use surgeist_css::selector::{
+    CssAttributeName, CssLanguageRangeList, CssNamespaceContext, CssQualifiedAttributeName,
+    CssQualifiedNamePrefix, CssSelectorList,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::source::{
+    CssDecodedStylesheetInput, CssStylesheetDecodeHints, CssStylesheetDecodeLimits,
+    CssUtf16InputLimits, CssUtf16PropertyValueLimits,
+};
+use surgeist_css::values::background::CssBackground;
+use surgeist_css::values::color_adjust::CssColorScheme;
+use surgeist_css::values::common::CssIdent;
+use surgeist_css::values::font::CssFontPaletteMix;
+use surgeist_css::values::image::{
+    CssAngularColorStop, CssAngularColorStopPosition, CssImage, CssImage1D, CssImageValue,
+};
+use surgeist_css::values::layout::CssGridTemplateAreas;
+use surgeist_css::values::position::{
+    CssHorizontalPosition, CssPhysicalPosition, CssVerticalPosition,
+};
+use surgeist_css::values::shape::{CssPathData, CssShapeCommandList};
+use surgeist_css::values::text::CssCharacterAlignment;
+use surgeist_css::values::transform::CssOffsetRotate;
 
 use super::{Observation, Stop, error_chain};
 

@@ -4,14 +4,22 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::{ExpectedRejection, invalid_descriptor};
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssErrorCode, CssFontPaletteBase, CssFontPaletteDescriptor,
-    CssFontPaletteDescriptorKind as Kind, CssFontPaletteDescriptorValue,
-    CssFontPaletteDescriptorValueRef, CssFontPaletteName, CssFontPaletteValuesRule, CssInteger,
-    CssNamespaceContext, CssNonNegative, CssNormalizedItem, CssNumeric, CssParser,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSerializationLimits, CssValueOrigin,
+    CssValueOrigin,
 };
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::numeric::{CssInteger, CssNonNegative, CssNumeric};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_palette_values::CssFontPaletteDescriptorKind as Kind;
+use surgeist_css::rule::font_palette_values::{
+    CssFontPaletteBase, CssFontPaletteDescriptor, CssFontPaletteDescriptorValue,
+    CssFontPaletteDescriptorValueRef, CssFontPaletteName, CssFontPaletteValuesRule,
+};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
 
 #[test]
 fn checked_construction_rejects_missing_family_negative_index_and_tight_component_budget() {
@@ -22,7 +30,9 @@ fn checked_construction_rejects_missing_family_negative_index_and_tight_componen
     );
     assert!(
         CssNumeric::<CssInteger, CssNonNegative>::try_from_literal(
-            surgeist_css::CssNumericLiteral::<surgeist_css::CssInteger>::from_i32(-1)
+            surgeist_css::numeric::CssNumericLiteral::<surgeist_css::numeric::CssInteger>::from_i32(
+                -1
+            )
         )
         .unwrap_err()
         .is_out_of_range()

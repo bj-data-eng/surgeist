@@ -1,5 +1,7 @@
 use std::sync::Arc;
-use surgeist_css::*;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 use surgeist_cssom::*;
 
 fn inputs() -> CssomSheetInputs {

@@ -1,6 +1,9 @@
 //! Public consumers of pending owner preparation, synchronization and retirement.
 use std::sync::Arc;
-use surgeist_css::*;
+use surgeist_css::property::CssPropertyGrammar;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
 
 fn version(role: CssomInputRole, name: &str, revision: u64) -> CssomInputVersion {

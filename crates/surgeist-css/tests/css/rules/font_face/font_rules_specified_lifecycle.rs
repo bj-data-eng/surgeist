@@ -5,13 +5,16 @@ use crate::css::support::descriptor_phases;
 use crate::css::support::rules::clean_sheet as sheet;
 use descriptor_phases::*;
 
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssFontDisplay,
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Value,
-    CssFontFeatureValueKind as BlockKind, CssFontFeatureValuesItem as Item,
-    CssFontFeatureValuesRule, CssNormalizedItem, CssRule, CssRuleContextKindRef,
-    CssSerializationLimits as Limits,
-};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue as Authored;
+use surgeist_css::rule::font_face::CssFontDisplay;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue as Value;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueKind as BlockKind;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesItem as Item;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesRule;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 fn features(rule: &CssRule) -> &CssFontFeatureValuesRule {
     let CssRule::FontFeatureValues(rule) = rule else {

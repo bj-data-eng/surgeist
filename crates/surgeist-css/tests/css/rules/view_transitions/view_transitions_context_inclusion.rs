@@ -1,4 +1,11 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssPseudoElement, CssPseudoElementSegment,
+    CssPseudoElementSequence, CssSelector,
+};
+use surgeist_css::values::common::CssCustomIdent;
+use surgeist_css::values::view_transition::CssViewTransitionNameSelector;
 
 // Ordinary pseudo-class permission includes OnlyChild and generic suffixes;
 // VT1's named descendants require exactly that narrower set. SearchText's

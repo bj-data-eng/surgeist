@@ -3,7 +3,24 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::clean_sheet as sheet;
 use crate::css::support::rules::ordinary_font_face_descriptor as ordinary;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptor, CssFontFaceDescriptorKind,
+    CssFontFaceDescriptors, CssFontFaceRule,
+};
+use surgeist_css::rule::{
+    CssContainerRule, CssLayerBlockRule, CssMediaRule, CssNamespaceName, CssNamespacePrefix,
+    CssRule, CssRuleConstructionError, CssScopeNestingContext, CssScopeRule, CssSheet,
+    CssSupportsRule,
+};
+use surgeist_css::selector::{
+    CssCompoundSelectorArgument, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorList,
+    CssScopeSelectorList, CssSelector, CssStyleSelector,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn rule(source: &str) -> CssRule {
     sheet(source).rules()[0].clone()

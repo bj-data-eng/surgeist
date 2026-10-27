@@ -1,7 +1,32 @@
 //! New typed APIs, tested functionally with implementation from UI4/Images4 and CSSOM.
 use crate::css::support::normal_checked_declaration as declaration;
 use crate::css::support::serialization_limits::assert_node_limits;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssColor;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::conformance::conformance_exclusion;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{
+    CssCalculation, CssFlex, CssNonNegative, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::border::CssOutlineColor;
+use surgeist_css::values::common::CssSidePair;
+use surgeist_css::values::image::{
+    CssImage1D, CssStripe, CssStripeLengthPercentage, CssStripeThickness, CssStripes,
+};
+use surgeist_css::values::ui::{
+    CssAccentColor, CssAppearance, CssCaret, CssCaretAnimation, CssCaretColor, CssCaretShape,
+    CssInteractivity, CssInterestDelayValue, CssNavigation, CssNavigationId,
+    CssNavigationReference, CssNavigationTarget, CssNavigationTargetName,
+};
 
 fn caret(text: &str) -> CssCaret {
     let declaration = declaration(CssKnownProperty::Caret, text);

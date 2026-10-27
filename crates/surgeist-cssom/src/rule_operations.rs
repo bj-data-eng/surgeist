@@ -1,8 +1,28 @@
 //! Source rule algorithms over the current retained graph. CSS owns all parsing.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::{model::State, *};
-use surgeist_css::CssRule;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues};
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::query::container::{CssContainerPrelude, CssContainerQueryEntry};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::{
+    CssKeyframeSelectorMatcher, CssKeyframesName, CssKeyframesString, CssParsedKeyframeRule,
+    CssParsedKeyframeSelectors,
+};
+use surgeist_css::rule::page::CssPageSelectorList;
+use surgeist_css::rule::{
+    CssImportLayer, CssImportTarget, CssNamespacePrefix, CssRuleAdmissionContext, CssRuleSyntax,
+    CssScopeNestingContext, CssStyleAncestor,
+};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssScopeSelectorCssomContext,
+    CssStyleSelectorContext,
+};
+use surgeist_css::serialization::{
+    CssSerializationLimits, serialize_css_comma_separated_list, serialize_css_identifier,
+    serialize_css_whitespace_separated_list,
+};
+use surgeist_css::{CssParser, CssParserContext};
 
 /// A newly owned dictionary for one authored container entry. Reads retain
 /// entry order/duplicates; modifying this transport cannot modify the rule.

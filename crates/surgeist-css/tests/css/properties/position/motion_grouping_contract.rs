@@ -2,7 +2,14 @@
 //! Values3 §2.2: reorderable combinators are not associative; a || [b || c]
 //! excludes b a c. The modifier and angle cannot straddle the distance.
 use crate::css::support::{check_property_components, known_property};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssPropertyNameRef, CssPropertyTextTarget,
+    CssPropertyValueError,
+};
 
 fn checked(value: &str, grammar: bool) -> Result<CssDeclaration, CssPropertyValueError> {
     check_property_components(

@@ -4,12 +4,30 @@ use cssparser::{
 };
 
 use super::recovery::{RecoveryState, comma_member_span, recovery_action_for_error};
-use crate::CssViewTransitionNameSelector;
-use crate::error::{
-    CssError, CssFeatureId, from_parse_error, invalid_selector, invalid_selector_at,
-    selector_basic, selector_component_error,
+use crate::diagnostic::error::{
+    from_parse_error, invalid_selector, invalid_selector_at, selector_basic,
+    selector_component_error,
 };
-use crate::syntax::*;
+use crate::diagnostic::{CssError, CssFeatureId};
+use crate::rule::CssNamespacePrefix;
+use crate::selector::selector_syntax::{
+    CssCompoundMembers, CssPseudoSuffixContext, CssSelectorGrammarContext,
+    selector_is_valid_pseudo_suffix,
+};
+use crate::selector::{
+    CssAttributeCaseSensitivity, CssAttributeMatcher, CssAttributeName, CssAttributeSelector,
+    CssComplexSelector, CssComplexSelectorPart, CssCompoundSelector, CssCompoundSelectorArgument,
+    CssInvalidNestingSelectorItem, CssLanguageRange, CssLanguageRangeList, CssNamespaceConstraint,
+    CssNthAnPlusB, CssNthChildPattern, CssNthPattern, CssPartName, CssPartNameList, CssPseudoClass,
+    CssPseudoElement, CssPseudoElementSegment, CssPseudoElementSequence, CssPseudoSelectorList,
+    CssPseudoSelectorListItem, CssQualifiedAttributeName, CssQualifiedNamePrefix,
+    CssQualifiedSelectorName, CssRelativeSelector, CssRelativeSelectorList, CssScopeSelectorList,
+    CssSelector, CssSelectorCombinator, CssStyleSelector, CssStyleSelectorList,
+    CssUnknownWebkitPseudoElement,
+};
+use crate::values::common::{CssCustomIdent, CssIdent};
+use crate::values::text::CssDirectionality;
+use crate::values::view_transition::CssViewTransitionNameSelector;
 
 pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
     CssFeatureId::new("baseline.selector.complex"),
@@ -64,16 +82,16 @@ pub(super) static IMPLEMENTED_SELECTORS: &[CssFeatureId] = &[
     CssFeatureId::new("ext.pseudo-element.unknown-webkit"),
 ];
 
-pub(super) struct SelectorRecovery<'a> {
+pub(crate) struct SelectorRecovery<'a> {
     source: &'a str,
-    diagnostics: &'a mut Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: &'a mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     state: RecoveryState,
 }
 
 impl<'a> SelectorRecovery<'a> {
     pub(super) fn new(
         source: &'a str,
-        diagnostics: &'a mut Vec<crate::CssRecoveryDiagnostic>,
+        diagnostics: &'a mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
         state: RecoveryState,
     ) -> Self {
         Self {
@@ -112,8 +130,10 @@ impl<'a> SelectorRecovery<'a> {
         // forgiveness. The component owner sees bad tokens and mismatched
         // closers at every depth, while allowing missing EOF delimiters.
         let start = input.state();
-        let result =
-            crate::CssComponentValues::collect_from_parser(input, self.state.source_snapshot());
+        let result = crate::component::CssComponentValues::collect_from_parser(
+            input,
+            self.state.source_snapshot(),
+        );
         input.reset(&start);
         result
             .map(|_| ())
@@ -127,7 +147,7 @@ impl<'a> SelectorRecovery<'a> {
         member_end: usize,
         following_comma: Option<(usize, usize)>,
         preceding_comma: Option<(usize, usize)>,
-        ordinary_action: crate::CssRecoveryAction,
+        ordinary_action: crate::diagnostic::CssRecoveryAction,
     ) {
         let action = recovery_action_for_error(&error, ordinary_action);
         let error = from_parse_error(self.source, error);
@@ -140,13 +160,14 @@ impl<'a> SelectorRecovery<'a> {
         ) else {
             return;
         };
-        if let Some(diagnostic) = crate::CssRecoveryDiagnostic::new(error, span, action) {
+        if let Some(diagnostic) = crate::diagnostic::CssRecoveryDiagnostic::new(error, span, action)
+        {
             self.diagnostics.push(diagnostic);
         }
     }
 }
 
-pub(super) fn parse_rule_selector_list<'i, 't>(
+pub(crate) fn parse_rule_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<Vec<CssSelector>, ParseError<'i, CssError>> {
@@ -162,7 +183,7 @@ pub(super) fn parse_rule_selector_list<'i, 't>(
     Ok(selectors)
 }
 
-pub(super) fn parse_scope_boundary_selector_list<'i, 't>(
+pub(crate) fn parse_scope_boundary_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
     anchors: SelectorAnchorMode,
@@ -188,7 +209,7 @@ pub(super) fn parse_scope_boundary_selector_list<'i, 't>(
     CssScopeSelectorList::try_new(selectors).ok_or_else(|| invalid_selector(input))
 }
 
-pub(super) fn parse_scoped_style_selector_list<'i, 't>(
+pub(crate) fn parse_scoped_style_selector_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     recovery: &mut SelectorRecovery<'_>,
 ) -> std::result::Result<CssStyleSelectorList, ParseError<'i, CssError>> {
@@ -292,7 +313,7 @@ pub(super) fn parse_rule_selector<'i, 't>(
 }
 
 #[derive(Clone, Copy)]
-pub(super) enum SelectorAnchorMode {
+pub(crate) enum SelectorAnchorMode {
     Nesting,
     Scope,
 }
@@ -489,7 +510,9 @@ fn parse_selector_after_first_compound<'i, 't>(
 
     if rest.is_empty() {
         Ok(compound_selector_to_selector(first))
-    } else if crate::syntax::complex_selector_has_non_terminal_pseudo_elements(&first, &rest) {
+    } else if crate::selector::selector_syntax::complex_selector_has_non_terminal_pseudo_elements(
+        &first, &rest,
+    ) {
         Err(invalid_selector(input))
     } else {
         // The parser has proved each compound under its own grammar/recovery
@@ -1389,10 +1412,12 @@ fn parse_part_names<'i, 't>(
         let start = input.state();
         input.expect_ident().map_err(selector_basic)?;
         input.reset(&start);
-        let name =
-            crate::CssComponentValue::collect_from_parser(input, recovery.state.source_snapshot())
-                .and_then(CssPartName::from_component)
-                .map_err(|error| selector_component_error(start.source_location(), error))?;
+        let name = crate::component::CssComponentValue::collect_from_parser(
+            input,
+            recovery.state.source_snapshot(),
+        )
+        .and_then(CssPartName::from_component)
+        .map_err(|error| selector_component_error(start.source_location(), error))?;
         names.push(name);
     }
     CssPartNameList::try_new(names).ok_or_else(|| invalid_selector(input))
@@ -1435,9 +1460,12 @@ fn parse_directionality<'i, 't>(
     let start = input.state();
     input.expect_ident().map_err(selector_basic)?;
     input.reset(&start);
-    crate::CssComponentValue::collect_from_parser(input, recovery.state.source_snapshot())
-        .and_then(CssDirectionality::from_component)
-        .map_err(|error| selector_component_error(start.source_location(), error))
+    crate::component::CssComponentValue::collect_from_parser(
+        input,
+        recovery.state.source_snapshot(),
+    )
+    .and_then(CssDirectionality::from_component)
+    .map_err(|error| selector_component_error(start.source_location(), error))
 }
 
 fn parse_language_ranges<'i, 't>(
@@ -1450,10 +1478,12 @@ fn parse_language_ranges<'i, 't>(
         let start = input.state();
         input.expect_ident_or_string().map_err(selector_basic)?;
         input.reset(&start);
-        let range =
-            crate::CssComponentValue::collect_from_parser(input, recovery.state.source_snapshot())
-                .and_then(CssLanguageRange::from_component)
-                .map_err(|error| selector_component_error(start.source_location(), error))?;
+        let range = crate::component::CssComponentValue::collect_from_parser(
+            input,
+            recovery.state.source_snapshot(),
+        )
+        .and_then(CssLanguageRange::from_component)
+        .map_err(|error| selector_component_error(start.source_location(), error))?;
         ranges.push(range);
         if input.try_parse(Parser::expect_comma).is_err() {
             break;
@@ -1484,9 +1514,9 @@ fn parse_pseudo_selector_list_items_with_options<'i, 't>(
         selectors.try_reserve(1).map_err(|_| {
             selector_component_error(
                 input.current_source_location(),
-                crate::CssComponentValueError::new(
-                    crate::CssComponentValueErrorKind::CapacityOverflow,
-                    crate::CssValueOrigin::Programmatic,
+                crate::component::CssComponentValueError::new(
+                    crate::component::values::CssComponentValueErrorKind::CapacityOverflow,
+                    crate::component::CssValueOrigin::Programmatic,
                 ),
             )
         })?;
@@ -1517,11 +1547,11 @@ fn parse_forgiving_pseudo_selector_list<'i, 't>(
                     Err(error)
                         if matches!(&error.kind,
                     cssparser::ParseErrorKind::Custom(error)
-                    if matches!(error.kind(), crate::ErrorKind::InvalidSelector(_))) =>
+                    if matches!(error.kind(), crate::diagnostic::error::ErrorKind::InvalidSelector(_))) =>
                     {
                         member.reset(&start);
                         Some(
-                            crate::CssComponentValues::collect_from_parser(
+                            crate::component::CssComponentValues::collect_from_parser(
                                 member,
                                 recovery.state.source_snapshot(),
                             )
@@ -1553,9 +1583,9 @@ fn parse_forgiving_pseudo_selector_list<'i, 't>(
                     .contains_delimiter('&')
                     .map_err(|error| selector_component_error(location, error))?;
                 let action = if contains_nesting {
-                    crate::CssRecoveryAction::PreserveInvalidSelectorListItem
+                    crate::diagnostic::CssRecoveryAction::PreserveInvalidSelectorListItem
                 } else {
-                    crate::CssRecoveryAction::DropSelectorListItem
+                    crate::diagnostic::CssRecoveryAction::DropSelectorListItem
                 };
                 recovery.diagnose_forgiving_member(
                     error,
@@ -1566,7 +1596,7 @@ fn parse_forgiving_pseudo_selector_list<'i, 't>(
                     action,
                 );
                 if contains_nesting {
-                    let origin = crate::CssParsedOrigin::from_range(
+                    let origin = crate::source::CssParsedOrigin::from_range(
                         recovery.state.source_snapshot(),
                         member_start..member_end,
                     )
@@ -1583,9 +1613,9 @@ fn parse_forgiving_pseudo_selector_list<'i, 't>(
             items.try_reserve(1).map_err(|_| {
                 selector_component_error(
                     input.current_source_location(),
-                    crate::CssComponentValueError::new(
-                        crate::CssComponentValueErrorKind::CapacityOverflow,
-                        crate::CssValueOrigin::Programmatic,
+                    crate::component::CssComponentValueError::new(
+                        crate::component::values::CssComponentValueErrorKind::CapacityOverflow,
+                        crate::component::CssValueOrigin::Programmatic,
                     ),
                 )
             })?;

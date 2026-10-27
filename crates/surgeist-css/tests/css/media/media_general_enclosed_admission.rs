@@ -1,7 +1,9 @@
 use crate::css::support::authored_syntax::assert_diagnostics;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::{CssErrorCode, CssMediaQuery, CssMediaQueryList, CssParser, CssRecoveryAction};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
 
 // MQ5 section 3 prefers media conditions/features before general-enclosed,
 // whose optional any-value contents come from Syntax 3 section 7.2.
@@ -98,12 +100,16 @@ fn nested_commas_do_not_split_query_members() {
     else {
         panic!("one enclosed member and print");
     };
-    assert_eq!(last.media_type(), surgeist_css::CssMediaType::Print);
+    assert_eq!(
+        last.media_type(),
+        surgeist_css::query::media::CssMediaType::Print
+    );
 }
 
 #[test]
 fn invalid_any_value_tokens_recover_without_losing_the_next_member() {
-    use surgeist_css::{CssErrorCode, CssValueOrigin};
+    use surgeist_css::component::CssValueOrigin;
+    use surgeist_css::diagnostic::CssErrorCode;
     for (source, kind) in [
         (
             "future(]), print",
@@ -122,7 +128,10 @@ fn invalid_any_value_tokens_recover_without_losing_the_next_member() {
         else {
             panic!("expected rejected enclosure then print: {source}");
         };
-        assert_eq!(last.media_type(), surgeist_css::CssMediaType::Print);
+        assert_eq!(
+            last.media_type(),
+            surgeist_css::query::media::CssMediaType::Print
+        );
         let [diagnostic] = report.diagnostics() else {
             panic!(
                 "one lexical diagnostic: {source}: {:?}",
@@ -162,7 +171,8 @@ fn enclosing_a_mixed_operator_body_allows_the_general_enclosed_alternative() {
 
 #[test]
 fn known_features_and_explicit_condition_groups_precede_fallback() {
-    use surgeist_css::{CssConditionKind, CssMediaLeaf};
+    use surgeist_css::query::CssConditionKind;
+    use surgeist_css::query::media::CssMediaLeaf;
     for source in ["(width <= 10px)", "(width </**/= 10px)"] {
         let report = CssMediaQuery::parse(&CssParser::default(), source);
         assert!(report.is_clean());
@@ -196,7 +206,8 @@ fn known_features_and_explicit_condition_groups_precede_fallback() {
 
 #[test]
 fn general_enclosed_operands_keep_their_operator_structure() {
-    use surgeist_css::{CssConditionKind, CssMediaLeaf, CssMediaType};
+    use surgeist_css::query::CssConditionKind;
+    use surgeist_css::query::media::{CssMediaLeaf, CssMediaType};
     for (source, expected) in [
         ("not future()", 0),
         ("future() and (color)", 1),
@@ -231,7 +242,9 @@ fn general_enclosed_operands_keep_their_operator_structure() {
 
 #[test]
 fn media_and_import_rules_share_member_local_admission_and_recovery() {
-    use surgeist_css::{CssMediaType, CssRecoveryAction, CssRule};
+    use surgeist_css::diagnostic::CssRecoveryAction;
+    use surgeist_css::query::media::CssMediaType;
+    use surgeist_css::rule::CssRule;
     for source in [
         "@media future(), screen and, print {} .after {color:red}",
         "@import \"x\" future(), screen and, print; .after {color:red}",
@@ -285,7 +298,7 @@ fn eof_closure_is_retained_with_a_recovery_diagnostic() {
     };
     assert_eq!(
         diagnostic.action(),
-        surgeist_css::CssRecoveryAction::RetainWithImplicitClosure
+        surgeist_css::diagnostic::CssRecoveryAction::RetainWithImplicitClosure
     );
     assert!(report.into_validation_result().is_err());
 }

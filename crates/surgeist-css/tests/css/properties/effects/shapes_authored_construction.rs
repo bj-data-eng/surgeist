@@ -4,7 +4,26 @@
 
 use crate::css::support::important_checked_components as checked;
 use crate::css::support::serialization_limits::assert_limits as budget;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssLengthPercentage, CssNonNegative, CssNumeric, CssNumericDimension,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
+use surgeist_css::values::effects::{CssOpacityScalarKind, CssOpacityValue};
+use surgeist_css::values::image::{CssImage, CssImageValue, CssLightDarkImage};
+use surgeist_css::values::shape::{
+    CssBasicShape, CssCircleRadius, CssCircleShape, CssShapeBox, CssShapeOutside,
+    CssShapeOutsideShape,
+};
 
 fn parsed(property: CssKnownProperty, text: &str) -> CssDeclaration {
     let report = CssParser::default().parse_property_value(

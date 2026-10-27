@@ -3,9 +3,11 @@
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#universal-selector
 
 use crate::css::support::color_and_selector_fixtures::namespace_context as context;
-use surgeist_css::{
-    CssNamespaceConstraint, CssNamespaceContext, CssNamespacePrefix, CssParser, CssPseudoClass,
-    CssPseudoSelectorListItem, CssSelector,
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssNamespacePrefix;
+use surgeist_css::selector::{
+    CssNamespaceConstraint, CssNamespaceContext, CssPseudoClass, CssPseudoSelectorListItem,
+    CssSelector,
 };
 
 fn assert_universal(selector: &CssSelector, expected: &CssNamespaceConstraint, suffix: &str) {

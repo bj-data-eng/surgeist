@@ -3,11 +3,15 @@ use crate::css::support::authored_syntax::component_list as values;
 use crate::css::support::byte_limits;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::{
-    CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValues, CssCondition,
-    CssConditionKind, CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaQueryList,
-    CssMediaRangeRef, CssParser, CssSerializedOrigin, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueLimits, CssComponentValues,
+    CssSerializedOrigin, CssValueOrigin,
 };
+use surgeist_css::query::media::{
+    CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaQueryList, CssMediaRangeRef,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
 fn plain_width(value: CssComponentValue) -> CssComponentValues {
     values(vec![
@@ -41,7 +45,7 @@ fn programmatic_numeric_queries_have_checked_values_without_source_coordinates()
     let CssMediaRangeRef::Plain { value } = range.view() else {
         panic!("plain value");
     };
-    let surgeist_css::CssCalculationExpressionRef::Value(literal) =
+    let surgeist_css::numeric::CssCalculationExpressionRef::Value(literal) =
         value.calculation().expression()
     else {
         panic!("exact length");
@@ -265,7 +269,7 @@ fn a_recovered_member_prevents_partial_list_serialization() {
 
 #[test]
 fn unknown_features_keep_their_domain_reason_and_original_component() {
-    use surgeist_css::CssUnknownMediaFeatureReason;
+    use surgeist_css::query::media::CssUnknownMediaFeatureReason;
     for (source, reason) in [
         ("(future: foo)", CssUnknownMediaFeatureReason::UnknownName),
         ("(min-width)", CssUnknownMediaFeatureReason::UnknownName),
@@ -319,9 +323,12 @@ fn negation_preserves_unknown_conditions_and_separate_unknown_media_types() {
     };
     assert_eq!(
         query.modifier(),
-        Some(surgeist_css::CssMediaQueryModifier::Not)
+        Some(surgeist_css::query::media::CssMediaQueryModifier::Not)
     );
-    assert_eq!(query.media_type(), surgeist_css::CssMediaType::Unknown);
+    assert_eq!(
+        query.media_type(),
+        surgeist_css::query::media::CssMediaType::Unknown
+    );
     assert!(query.unknown_media_type().is_some());
 }
 
@@ -346,7 +353,7 @@ fn generic_feature_math_uses_named_numeric_domains_without_admitting_percentages
         };
         assert_eq!(
             unknown.reason(),
-            surgeist_css::CssUnknownMediaFeatureReason::UnknownName
+            surgeist_css::query::media::CssUnknownMediaFeatureReason::UnknownName
         );
     }
     for source in ["(future: calc(1%))", "(future: calc(1px * 1px))"] {
@@ -369,7 +376,8 @@ fn generic_feature_math_uses_named_numeric_domains_without_admitting_percentages
 fn repeated_identifiers_retain_the_middle_feature_names_own_origin() {
     let source = "(future < future < future)";
     let components = CssComponentValues::parse(&CssParser::default(), source).unwrap();
-    let surgeist_css::CssComponentValueRef::Block(block) = components.items()[0].view() else {
+    let surgeist_css::component::CssComponentValueRef::Block(block) = components.items()[0].view()
+    else {
         panic!("parenthesized feature");
     };
     let expected = block.values().items()[4].origin().clone();

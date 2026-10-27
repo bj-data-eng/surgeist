@@ -4,7 +4,26 @@ use crate::css::support::property_expectations;
 use surgeist_color::{ColorSpace, PredefinedColorSpace};
 
 use common::CssParseReportTestExt;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssRelativeColorChannel, CssRelativeColorEnvironment,
+    CssRelativeColorExpressionValue, CssRelativeColorFunction, CssSystemColor,
+};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::animation::CssEasing;
+use surgeist_css::values::border::{CssLineStyle, CssOutlineStyle};
+use surgeist_css::values::effects::{
+    CssBoxShadow, CssClipPath, CssFilter, CssFilterAmount, CssFilterFunction,
+};
+use surgeist_css::values::font::{CssFontVariantCaps, CssFontVariantValue};
+use surgeist_css::values::shape::{CssBasicShape, CssCircleRadius};
+use surgeist_css::values::text::CssTextDecorationLineComponent;
+use surgeist_css::values::transform::{CssTransform, CssTransformFunction};
 
 #[test]
 fn direct_color_wrappers_keep_system_named_global_and_substitution_branches_distinct() {
@@ -76,11 +95,11 @@ fn core_font_wrappers_keep_current_global_and_substitution_branches_distinct() {
                 assert_eq!(value.value().families()[0].as_str(), "Arial");
                 assert_eq!(
                     value.value().families()[1].generic_family(),
-                    Some(surgeist_css::CssGenericFontFamily::Serif)
+                    Some(surgeist_css::values::font::CssGenericFontFamily::Serif)
                 );
             }
             CssKnownPropertyValueRef::Font(value) => {
-                let surgeist_css::CssFontValue::Explicit(font) = value.value() else {
+                let surgeist_css::values::font::CssFontValue::Explicit(font) = value.value() else {
                     panic!("expected explicit font");
                 };
                 assert_eq!(font.families().families()[0].as_str(), "Arial");
@@ -88,7 +107,7 @@ fn core_font_wrappers_keep_current_global_and_substitution_branches_distinct() {
             CssKnownPropertyValueRef::FontFeatureSettings(value) => {
                 assert!(matches!(
                     value.value(),
-                    surgeist_css::CssAuthoredFontFeatureSettings::Features(_)
+                    surgeist_css::values::font::CssAuthoredFontFeatureSettings::Features(_)
                 ));
             }
             _ => panic!("expected core font wrapper"),
@@ -389,7 +408,7 @@ fn explicit_property_dispatch_cases_preserve_ordinary_and_important_behavior() {
                 important_declaration
                     .known()
                     .and_then(|known| known.global()),
-                Some(surgeist_css::CssGlobalKeyword::Inherit),
+                Some(surgeist_css::declaration::CssGlobalKeyword::Inherit),
             );
             let error = CssParser::default()
                 .parse_sheet(&source)
@@ -506,7 +525,7 @@ fn object_and_transform_origin_wrappers_keep_ordinary_global_and_substitution_br
     };
     assert!(matches!(
         value.value().horizontal(),
-        surgeist_css::CssHorizontalPosition::LeftOffset(_)
+        surgeist_css::values::position::CssHorizontalPosition::LeftOffset(_)
     ));
     assert!(object.global().is_none());
     assert!(object.substitution_dependent().is_none());
@@ -529,7 +548,7 @@ fn object_and_transform_origin_wrappers_keep_ordinary_global_and_substitution_br
     assert!(global.property_value().is_none());
     assert_eq!(
         global.global(),
-        Some(surgeist_css::CssGlobalKeyword::Inherit)
+        Some(surgeist_css::declaration::CssGlobalKeyword::Inherit)
     );
     assert!(global.substitution_dependent().is_none());
 
@@ -561,7 +580,8 @@ fn object_and_transform_origin_wrappers_keep_ordinary_global_and_substitution_br
 
 #[test]
 fn timing_wrappers_expose_exact_property_specific_accessors() {
-    use surgeist_css::{CssAnimationIterationCount, CssTimeUnit, CssTransitionProperty};
+    use surgeist_css::numeric::CssTimeUnit;
+    use surgeist_css::values::animation::{CssAnimationIterationCount, CssTransitionProperty};
     let report = CssParser::default().parse_block_contents(concat!(
         "transition-duration: calc(1s + 2s); transition-delay: -1s; ",
         "animation-duration: calc(3ms * 2); animation-delay: -4ms; ",
@@ -1241,15 +1261,15 @@ fn deferred_basic_shape_math_drops_only_the_invalid_declaration() {
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }
 fn exact_percentage(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }

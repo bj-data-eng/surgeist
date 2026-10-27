@@ -4,10 +4,21 @@
 use crate::css::support::failure_classes::SerializationFailure as E;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssDeclaration, CssHorizontalPosition as H, CssParser,
-    CssSerializationLimits as L, CssVerticalPosition as V, *,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::background::{CssBackgroundPosition, CssBackgroundPositionList};
+use surgeist_css::values::position::CssHorizontalPosition as H;
+use surgeist_css::values::position::CssPhysicalPosition;
+use surgeist_css::values::position::CssVerticalPosition as V;
 
 fn authored(source: &CssDeclaration) -> &CssBackgroundPositionList {
     let CssKnownPropertyValueRef::BackgroundPosition(value) =

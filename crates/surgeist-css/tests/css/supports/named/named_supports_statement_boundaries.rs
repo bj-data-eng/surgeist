@@ -1,11 +1,13 @@
 //! Conditional 5 §8 selects modern block contents, including nested at-rule
 //! termination at a real parent close. Checked output may supply a semicolon.
 
-use surgeist_css::{
-    CssComponentValues, CssParser, CssRecoveryAction, CssRule, CssSerializedOrigin,
-    CssSupportsAtRuleTest, CssSupportsConditionRule, CssSupportsTestBody, CssSupportsTestItem,
-    CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::supports::{
+    CssSupportsAtRuleTest, CssSupportsTestBody, CssSupportsTestItem,
 };
+use surgeist_css::rule::{CssRule, CssSupportsConditionRule};
 
 fn statement(body: &CssSupportsTestBody) -> &CssSupportsAtRuleTest {
     let [CssSupportsTestItem::AtRule(statement)] = body.items() else {

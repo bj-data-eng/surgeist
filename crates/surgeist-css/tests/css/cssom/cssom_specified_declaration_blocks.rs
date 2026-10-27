@@ -7,7 +7,23 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_expectations as expectations;
 use crate::css::support::value_assertions::specified_property_value as read;
 use expectations::{CASES, INDEPENDENT_TERMINALS, MetadataExpectation};
-use surgeist_css::*;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{
+    CssDeclaration, CssDeclarationBlockError, CssDeclarationList, CssImportance,
+    CssInvalidKeyframeSourceReason, CssSpecifiedDeclarationBlock, CssSpecifiedDeclarationEntry,
+    CssSpecifiedDeclarationValueRef,
+};
+use surgeist_css::diagnostic::CssTokenSummary;
+use surgeist_css::numeric::{CssCalculation, CssNumeric, CssTime};
+use surgeist_css::property::{
+    CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget, CssSvgGlyphOrientationVerticalDeclaration,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::CssKeyframesRule;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::CssOverflow;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 fn all_terminal_expectations() -> Vec<(CssPropertyNameRef<'static>, u8, &'static str)> {
     let mut values: Vec<_> = CASES

@@ -7,7 +7,31 @@ use crate::css::support::failure_classes::numeric_failure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{
+    CssCalculation, CssInteger, CssNonNegative, CssNumber, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandValue, CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::{
+    CssAuthoredFontFeature, CssAuthoredFontFeatureList, CssAuthoredFontFeatureSettings,
+    CssAuthoredFontFeatureValue, CssFontLanguageOverride, CssFontLanguageString, CssFontSizeAdjust,
+    CssFontVariation, CssFontVariationList, CssFontVariationSettings, CssOpenTypeTag,
+};
 
 const PROPERTIES: [(&str, &str); 6] = [
     ("font-feature-settings", "normal"),

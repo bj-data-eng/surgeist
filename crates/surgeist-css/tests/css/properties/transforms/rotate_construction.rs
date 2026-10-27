@@ -1,6 +1,18 @@
 //! Authored Transforms2 §5 angle/axis construction, identity and provenance.
 //! These tests deliberately exercise no canonical rotate output or matrix execution.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssCalculation, CssNumber, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::transform::{CssRotate, CssRotateAxis, CssRotateValues};
 
 fn angle(text: &str) -> CssNumeric<CssAngle> {
     CssNumeric::<CssAngle>::try_from_literal(

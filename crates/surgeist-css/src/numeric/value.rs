@@ -11,20 +11,26 @@ use std::fmt;
 use std::marker::PhantomData;
 
 use super::{
-    CalculationRoot, CssCalculationExpression, CssCalculationExpressionRef, CssCalculationType,
-    CssNumericConstructionError, CssNumericConstructionErrorKind as Kind, CssNumericType,
-    CssNumericUnit, NumericInputContext,
+    CssCalculationExpressionRef, CssCalculationType, CssNumericConstructionError, CssNumericType,
+    CssNumericUnit,
 };
-use crate::exact_decimal::LexicalDecimal;
-use crate::specified_numeric::{CalculationAdmission, admit_calculation};
-use crate::specified_serialization::SpecifiedSerializationContext;
-use crate::{
-    CssAngleUnit, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
-    CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssFrequencyUnit,
-    CssLengthUnit, CssNumericTokenKind, CssNumericTokenRef, CssResolutionUnit,
-    CssSerializationError, CssSerializationLimits, CssSerializedValue, CssSourcePosition,
-    CssSpecifiedValueSerializationErrorKind, CssTimeUnit, CssValueOrigin, CssValueTokenRef,
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{
+    CssComponentValue, CssComponentValueError, CssComponentValueLimits, CssComponentValueRef,
+    CssComponentValues, CssNumericTokenKind, CssNumericTokenRef, CssSerializedValue,
+    CssValueOrigin, CssValueTokenRef,
 };
+use crate::numeric::expression::CssNumericConstructionErrorKind as Kind;
+use crate::numeric::expression::{CalculationRoot, CssCalculationExpression, NumericInputContext};
+use crate::numeric::specified_numeric::{CalculationAdmission, admit_calculation};
+use crate::numeric::{
+    CssAngleUnit, CssFrequencyUnit, CssLengthUnit, CssResolutionUnit, CssTimeUnit,
+};
+use crate::serialization::exact_decimal::LexicalDecimal;
+use crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind;
+use crate::serialization::specified_serialization::SpecifiedSerializationContext;
+use crate::serialization::{CssSerializationError, CssSerializationLimits};
+use crate::source::CssSourcePosition;
 
 type Result<T> = std::result::Result<T, CssNumericConstructionError>;
 type SerializationResult<T> = std::result::Result<T, CssSerializationError>;
@@ -116,12 +122,13 @@ pub trait CssDimensionRoot: CssNumericRoot {
 /// another root cannot be named. It is sealed: only CSS defines ranges.
 ///
 /// ```compile_fail,E0277
-/// use surgeist_css::{CssNumeric, CssObliqueAngleRange, CssTime};
+/// use surgeist_css::numeric::{CssNumeric, CssTime};
+/// use surgeist_css::values::font::CssObliqueAngleRange;
 /// fn mismatched(_: CssNumeric<CssTime, CssObliqueAngleRange>) {}
 /// ```
 ///
 /// ```compile_fail,E0277
-/// use surgeist_css::{CssNumber, CssRange};
+/// use surgeist_css::numeric::{CssNumber, CssRange};
 /// #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// enum Positive {}
 /// impl CssRange<CssNumber> for Positive {}
@@ -396,14 +403,14 @@ impl<T: CssNumericRoot> CssNumericLiteral<T> {
         let kind = root_kind::<T>();
         match kind {
             RootKind::Length | RootKind::LengthPercentage if self.quirky => {
-                crate::specified_numeric::capture_quirky_length(&self.component, context)
+                crate::numeric::specified_numeric::capture_quirky_length(&self.component, context)
             }
             RootKind::Number
             | RootKind::HintedNumber
             | RootKind::Percentage
             | RootKind::Length
             | RootKind::LengthPercentage => {
-                crate::specified_numeric::capture_literal(&self.component, context)
+                crate::numeric::specified_numeric::capture_literal(&self.component, context)
             }
             RootKind::Flex => {
                 context.charge_nodes(1)?;
@@ -414,7 +421,7 @@ impl<T: CssNumericRoot> CssNumericLiteral<T> {
                     .remaining_bytes()
                     .checked_sub(2)
                     .ok_or_else(byte_limit)?;
-                let mut output = crate::numeric_formatting::format_css_number(
+                let mut output = crate::serialization::numeric_formatting::format_css_number(
                     self.numeric().representation(),
                     0,
                     limit,
@@ -427,7 +434,7 @@ impl<T: CssNumericRoot> CssNumericLiteral<T> {
                 if context.output_suppressed() {
                     return Ok(String::new());
                 }
-                crate::integer_value::serialize_integer_digits(
+                crate::numeric::integer_value::serialize_integer_digits(
                     self.numeric().representation(),
                     context.remaining_bytes(),
                 )
@@ -464,7 +471,7 @@ impl<T: CssNumericRoot> CssNumericLiteral<T> {
         if context.output_suppressed() {
             return Ok(String::new());
         }
-        crate::specified_serialization::format_coefficient(
+        crate::serialization::specified_serialization::format_coefficient(
             self.numeric().representation(),
             shift,
             suffix,
@@ -483,7 +490,7 @@ impl<T: CssNumericRoot> CssNumericLiteral<T> {
         }
         let unit = self.unit.expect("checked resolution unit");
         if unit == CssNumericUnit::Resolution(CssResolutionUnit::Dppx) {
-            return crate::specified_serialization::format_coefficient(
+            return crate::serialization::specified_serialization::format_coefficient(
                 self.numeric().representation(),
                 0,
                 "dppx",
@@ -496,7 +503,7 @@ impl<T: CssNumericRoot> CssNumericLiteral<T> {
             .ok_or_else(byte_limit)?;
         let factor = super::units::exact_factor(unit)
             .expect("Values 4 fixes an exact ratio for every resolution unit");
-        let mut number = crate::exact_decimal::ExactRational::format_generic_number(
+        let mut number = crate::serialization::exact_decimal::ExactRational::format_generic_number(
             self.numeric().representation(),
             factor,
             number_bytes,
@@ -549,7 +556,7 @@ impl CssNumericLiteral<CssInteger> {
     /// `None` rather than a clamped value.
     #[must_use]
     pub fn value(&self) -> Option<i32> {
-        crate::integer_value::exact_i32(self.numeric().representation())
+        crate::numeric::integer_value::exact_i32(self.numeric().representation())
     }
 
     /// Constructs the canonical programmatic spelling of a machine integer.
@@ -722,14 +729,14 @@ fn literal_unit(kind: RootKind, component: &CssComponentValue) -> Result<Option<
 /// A calculation of another root is a different type:
 ///
 /// ```compile_fail,E0308
-/// use surgeist_css::{CssAngle, CssCalculation, CssLength, CssNonNegative, CssNumeric};
+/// use surgeist_css::numeric::{CssAngle, CssCalculation, CssLength, CssNonNegative, CssNumeric};
 /// fn mismatched(angle: CssCalculation<CssAngle>) {
 ///     let _ = CssNumeric::<CssLength, CssNonNegative>::try_from_calculation(angle);
 /// }
 /// ```
 ///
 /// ```compile_fail,E0308
-/// use surgeist_css::{CssCalculation, CssHintedNumber, CssNumber, CssNumeric};
+/// use surgeist_css::numeric::{CssCalculation, CssHintedNumber, CssNumber, CssNumeric};
 /// fn pure(value: CssCalculation<CssHintedNumber>) {
 ///     let _ = CssNumeric::<CssNumber>::try_from_calculation(value);
 /// }
@@ -777,7 +784,7 @@ impl<T: CssNumericRoot> CssCalculation<T> {
         values: CssComponentValues,
         limits: CssComponentValueLimits,
     ) -> Result<Self> {
-        super::construct(values, root_kind::<T>().calculation_root(), limits)
+        crate::numeric::expression::construct(values, root_kind::<T>().calculation_root(), limits)
             .map(Self::from_expression)
     }
 
@@ -854,7 +861,8 @@ impl<T: CssNumericRoot> CssCalculation<T> {
         context: &mut SpecifiedSerializationContext,
         output: &mut String,
     ) -> SerializationResult<()> {
-        super::project_specified_into(&self.expression, context, output).map(|_| ())
+        crate::numeric::projection::project_specified_into(&self.expression, context, output)
+            .map(|_| ())
     }
 
     /// Captures the specified projection as scratch text.
@@ -862,7 +870,8 @@ impl<T: CssNumericRoot> CssCalculation<T> {
         &self,
         context: &mut SpecifiedSerializationContext,
     ) -> SerializationResult<String> {
-        super::capture_specified(&self.expression, context).map(|(text, _)| text)
+        crate::numeric::projection::capture_specified(&self.expression, context)
+            .map(|(text, _)| text)
     }
 }
 
@@ -965,7 +974,10 @@ impl CssCalculation<CssLengthPercentage> {
 impl CssCalculation<CssInteger> {
     /// Whether the root is a math function whose result needs integer rounding.
     pub fn requires_rounding(&self) -> bool {
-        matches!(self.expression.kind, super::NodeKind::Function { .. })
+        matches!(
+            self.expression.kind,
+            crate::numeric::expression::NodeKind::Function { .. }
+        )
     }
 
     /// Constructs the canonical programmatic root of a machine integer.
@@ -1186,7 +1198,7 @@ impl<T: CssNumericRoot, R: CssRange<T>> CssNumeric<T, R> {
         &self,
         limits: CssSerializationLimits,
     ) -> SerializationResult<String> {
-        crate::specified_rule_serialization::serialize_specified(self, limits)
+        crate::serialization::specified_rule_serialization::serialize_specified(self, limits)
     }
 
     /// Narrows the range, rechecking a literal; retained math keeps its
@@ -1319,7 +1331,7 @@ impl<T: CssNumericRoot, R: CssRange<T>> CssNumeric<T, R> {
         };
         Some(match (left.quirky, right.quirky) {
             (true, true) | (false, false) => {
-                crate::specified_numeric::ordinary_length_literal_equal(
+                crate::numeric::specified_numeric::ordinary_length_literal_equal(
                     left.component(),
                     right.component(),
                 )
@@ -1373,12 +1385,12 @@ impl<R: CssRange<CssTime>> CssNumeric<CssTime, R> {
     }
 }
 
-impl<T: CssNumericRoot, R: CssRange<T>> crate::specified_rule_serialization::SpecifiedProvider
-    for CssNumeric<T, R>
+impl<T: CssNumericRoot, R: CssRange<T>>
+    crate::serialization::specified_rule_serialization::SpecifiedProvider for CssNumeric<T, R>
 {
     fn append_to_rule_writer(
         &self,
-        writer: &mut crate::specified_rule_serialization::SpecifiedRuleWriter,
+        writer: &mut crate::serialization::specified_rule_serialization::SpecifiedRuleWriter,
     ) -> SerializationResult<()> {
         self.append_specified(&mut writer.context, &mut writer.css)
     }
@@ -1396,4 +1408,4 @@ pub(crate) fn reject_recovered(values: &CssComponentValues) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

@@ -6,7 +6,19 @@ use crate::css::support::color_and_selector_fixtures::{
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::validated_selector_in as parsed;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssSelectorBinding};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix, CssRule};
+use surgeist_css::selector::{
+    CssComplexSelector, CssCompoundSelectorArgument, CssNamespaceConstraint, CssNamespaceContext,
+    CssNthChildPattern, CssNthPattern, CssPseudoClass, CssPseudoElement, CssPseudoElementSegment,
+    CssPseudoSelectorList, CssQualifiedNamePrefix, CssRelativeSelector, CssRelativeSelectorList,
+    CssSelector, CssSelectorCombinator, CssStyleSelector,
+};
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn complex(selector: &CssSelector) -> &CssComplexSelector {
     let CssSelector::Complex(value) = selector else {

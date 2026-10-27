@@ -1,7 +1,10 @@
 //! CSS Syntax preprocessing and original-unit provenance for String notifications.
 #![forbid(unsafe_code)]
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssCustomPropertyName;
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::source::CssSourceSnapshot;
 use surgeist_cssom::*;
 
 fn selected_notification_source() -> CssSourceSnapshot {
@@ -42,7 +45,7 @@ fn selected_notification_source() -> CssSourceSnapshot {
                 value: Some("--x:a\r\nb".into()),
                 echo: None,
             },
-            surgeist_css::CssUtf16InputLimits::default(),
+            surgeist_css::source::CssUtf16InputLimits::default(),
             CssomDeclarationRequestLimits::default(),
             || Ok::<_, ()>(()),
         )

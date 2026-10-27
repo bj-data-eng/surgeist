@@ -10,7 +10,20 @@ use crate::css::support::color_and_selector_fixtures::{
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{validated_selector as parsed, validated_selector_in as parsed_in};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::rule::{CssNamespacePrefix, CssRule};
+use surgeist_css::selector::{
+    CssAttributeCaseSensitivity, CssAttributeMatcher, CssAttributeName, CssComplexSelector,
+    CssComplexSelectorPart, CssCompoundSelector, CssCompoundSelectorArgument,
+    CssNamespaceConstraint, CssNamespaceContext, CssNthAnPlusB, CssNthChildPattern, CssNthPattern,
+    CssParsedStyleSelectors, CssPseudoClass, CssPseudoSelectorList, CssPseudoSelectorListItem,
+    CssQualifiedAttributeName, CssQualifiedNamePrefix, CssQualifiedSelectorName,
+    CssRelativeSelector, CssRelativeSelectorList, CssSelector, CssSelectorCombinator,
+    CssSelectorList, CssStyleSelector, CssStyleSelectorContext,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssIdent;
 
 fn exact_in(source: &str, expected: &str, context: &CssNamespaceContext) -> CssSelector {
     let selector = parsed_in(source, context);

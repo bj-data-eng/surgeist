@@ -5,10 +5,11 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::rules::assert_exact_specified_sheet as exact;
 use crate::css::support::rules::clean_sheet as sheet;
-use surgeist_css::{
-    CssErrorCode, CssMediaRule, CssNamespaceContext, CssParser, CssRecoveryAction, CssRule,
-    CssSerializationLimits as Limits, CssSheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::{CssMediaRule, CssRule, CssSheet};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 #[test]
 fn namespace_and_font_providers_remain_callable_controls() {
@@ -159,7 +160,7 @@ fn logical_utf8_output_serializes_retained_rules_after_unknown_charset_recovery(
         };
         assert_eq!(
             diagnostic.error().code(),
-            surgeist_css::CssErrorCode::UnknownAtRule
+            surgeist_css::diagnostic::CssErrorCode::UnknownAtRule
         );
         assert_eq!(diagnostic.action(), CssRecoveryAction::DropAtRule);
         let parsed = report.syntax();

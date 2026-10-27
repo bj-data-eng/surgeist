@@ -2,10 +2,10 @@
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#grammar
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#attrnmsp
 //! The fixture context binds only `ns`; `a` and `xlink` are undeclared.
-use surgeist_css::{
-    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssParser, CssRecoveryAction,
-    CssSelector,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
 
 #[test]
 fn basic_selector_authored_admission_matches_selected_context() {

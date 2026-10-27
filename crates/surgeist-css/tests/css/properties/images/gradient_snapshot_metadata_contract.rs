@@ -1,6 +1,6 @@
 // Snapshot 2026 section 4 selects conic gradients and gradient interpolation;
 // the selected Images 4 stop-list grammar is their bounded shared dependency.
-use surgeist_css::{CssSpecificationTier, feature_metadata};
+use surgeist_css::conformance::{CssSpecificationTier, feature_metadata};
 
 fn selected_gradient_source(feature: &str) {
     let source = feature_metadata(feature)

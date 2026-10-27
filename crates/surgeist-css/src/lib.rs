@@ -16,7 +16,9 @@
 //! # Stylesheets and recovery
 //!
 //! ```
-//! use surgeist_css::{CssErrorCode, CssRecoveryAction, CssRule, CssParser};
+//! use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+//! use surgeist_css::rule::CssRule;
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_sheet(".before { color: red; } @unknown value; .after { color: blue; }");
 //! assert_eq!(report.syntax().rules().len(), 2);
@@ -29,11 +31,12 @@
 //! # Authored nesting
 //!
 //! A style rule owns its complete selector list, leading declarations, and ordered child
-//! rules. Later declaration runs use [`CssRule::NestedDeclarations`], preserving their place
+//! rules. Later declaration runs use [`CssRule::NestedDeclarations`](crate::rule::CssRule::NestedDeclarations), preserving their place
 //! after a nested rule without selecting cascade winners or expanding parent selectors.
 //!
 //! ```
-//! use surgeist_css::{CssRule, CssParser};
+//! use surgeist_css::rule::CssRule;
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_sheet(".card, #featured { color: red; &:hover { opacity: 1; } color: blue; }");
 //! assert!(report.is_clean());
@@ -52,10 +55,12 @@
 //! Style attributes share the ordinary declaration grammar used by style-rule
 //! blocks. Declarations retain authored order, semantic source positions,
 //! property/value coupling, custom-property text, substitution-dependent text,
-//! and terminal [`CssImportance`].
+//! and terminal [`CssImportance`](crate::declaration::CssImportance).
 //!
 //! ```
-//! use surgeist_css::{CssImportance, CssKnownProperty, CssPropertyNameRef, CssParser};
+//! use surgeist_css::declaration::CssImportance;
+//! use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef};
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_block_contents("--Theme: RGB(1, 2, var(--fallback)); mystery: 1; width: var(--size, 2px) !important");
 //! assert_eq!(report.syntax().len(), 2);
@@ -86,22 +91,25 @@
 //!
 //! # Declaration inspection and API evolution
 //!
-//! Parsing and `CssDeclaration::try_from_components` construct [`CssKnownDeclaration`] through the same
-//! property grammar. Its fields are private, and [`CssKnownDeclaration::property`] derives
+//! Parsing and `CssDeclaration::try_from_components` construct [`CssKnownDeclaration`](crate::property::CssKnownDeclaration) through the same
+//! property grammar. Its fields are private, and [`CssKnownDeclaration::property`](crate::property::CssKnownDeclaration::property) derives
 //! identity from the active coupled value, so callers cannot create a property/value mismatch.
-//! [`CssKnownDeclaration::declared_value`] returns exactly one of the
-//! [`CssKnownDeclaredValueRef::Property`], [`CssKnownDeclaredValueRef::Global`],
-//! or [`CssKnownDeclaredValueRef::SubstitutionDependent`] branches. The
-//! [`CssKnownDeclaration::property_value`], [`CssKnownDeclaration::global`], and
-//! [`CssKnownDeclaration::substitution_dependent`] convenience accessors are
+//! [`CssKnownDeclaration::declared_value`](crate::property::CssKnownDeclaration::declared_value) returns exactly one of the
+//! [`CssKnownDeclaredValueRef::Property`](crate::property::CssKnownDeclaredValueRef::Property), [`CssKnownDeclaredValueRef::Global`](crate::property::CssKnownDeclaredValueRef::Global),
+//! or [`CssKnownDeclaredValueRef::SubstitutionDependent`](crate::property::CssKnownDeclaredValueRef::SubstitutionDependent) branches. The
+//! [`CssKnownDeclaration::property_value`](crate::property::CssKnownDeclaration::property_value), [`CssKnownDeclaration::global`](crate::property::CssKnownDeclaration::global), and
+//! [`CssKnownDeclaration::substitution_dependent`](crate::property::CssKnownDeclaration::substitution_dependent) convenience accessors are
 //! mutually exclusive views of those same branches.
 //!
-//! The property branch borrows a non-exhaustive [`CssKnownPropertyValueRef`].
+//! The property branch borrows a non-exhaustive [`CssKnownPropertyValueRef`](crate::property::CssKnownPropertyValueRef).
 //! Match the variant that names the property and retain a wildcard for future
 //! variants:
 //!
 //! ```
-//! use surgeist_css::{CssBoxSize, CssImportance, CssKnownDeclaredValueRef, CssKnownPropertyValueRef, CssSizeValue, CssParser};
+//! use surgeist_css::values::box_model::{CssBoxSize, CssSizeValue};
+//! use surgeist_css::declaration::CssImportance;
+//! use surgeist_css::property::{CssKnownDeclaredValueRef, CssKnownPropertyValueRef};
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_block_contents("width: calc(100% - 12px) !important");
 //! let declaration = &report.syntax()[0];
@@ -127,34 +135,34 @@
 //! }
 //! ```
 //!
-//! Each ordinary property variant borrows one private-field [`CssPropertyValue`] holding the
+//! Each ordinary property variant borrows one private-field [`CssPropertyValue`](crate::property::CssPropertyValue) holding the
 //! authored declaration and its grammar-checked semantic value. The property identity belongs to
-//! the [`CssKnownPropertyValueRef`] variant, so one generic type serves every property whose
+//! the [`CssKnownPropertyValueRef`](crate::property::CssKnownPropertyValueRef) variant, so one generic type serves every property whose
 //! grammar produces the same value. `as_css()` returns the exact authored
 //! ordinary slice, excluding boundary trivia and terminal importance. Checked
 //! construction uses token-preserving serialization; original or programmatic
-//! provenance remains available through [`CssDeclaration::value_components`].
+//! provenance remains available through [`CssDeclaration::value_components`](crate::declaration::CssDeclaration::value_components).
 //! Its one semantic accessor is `value()`.
 //! The `all` property accepts only global or substitution-dependent values and
 //! has no ordinary value.
 //!
-//! The `background-image` and `mask-image` values are [`CssImageValueList`]s read
+//! The `background-image` and `mask-image` values are [`CssImageValueList`](crate::values::image::CssImageValueList)s read
 //! through `value()`, retaining URL, `none`, gradient and LightDark branches in order.
-//! [`CssLightDarkColor::try_new`] and [`CssLightDarkImage::try_new`] retain two
+//! [`CssLightDarkColor::try_new`](crate::color::CssLightDarkColor::try_new) and [`CssLightDarkImage::try_new`](crate::values::image::CssLightDarkImage::try_new) retain two
 //! checked branches and enforce the complete composed subtree's 256-level ceiling.
 //! Color pairs remain contextual; image pairs may contain two `none` branches.
 //! Specified serialization shares the enclosing resource budget and preserves both
-//! branches. [`CssColorParse`] selects color branches from an explicit
-//! [`CssColorSchemeFact`]; consumers supply that fact and select image branches
+//! branches. [`CssColorParse`](crate::color::controlled::CssColorParse) selects color branches from an explicit
+//! [`CssColorSchemeFact`](crate::color::CssColorSchemeFact); consumers supply that fact and select image branches
 //! and resources.
-//! [`CssContrastColor::try_new`] retains one checked symbolic color input, enforcing
+//! [`CssContrastColor::try_new`](crate::color::CssContrastColor::try_new) retains one checked symbolic color input, enforcing
 //! the complete composed depth ceiling. Its input uses ordinary Standalone specified
-//! serialization under the enclosing budget. [`CssColorParse`] resolves
+//! serialization under the enclosing budget. [`CssColorParse`](crate::color::controlled::CssColorParse) resolves
 //! admitted source and facts, then uses [`surgeist_color::Color::black_white_contrast`]
 //! to choose white or black; authored CSS retains the input unchanged.
-//! [`CssDeviceCmykColor::try_new`] retains four ordered, unbounded ink channels
+//! [`CssDeviceCmykColor::try_new`](crate::color::CssDeviceCmykColor::try_new) retains four ordered, unbounded ink channels
 //! and optional alpha. Legacy form is number-only with no alpha; modern form
-//! also accepts percentages and `none`. [`CssColor::device_cmyk_value`] borrows
+//! also accepts percentages and `none`. [`CssColor::device_cmyk_value`](crate::color::CssColor::device_cmyk_value) borrows
 //! the device-dependent input. Declared Standalone/Mix output scales direct
 //! percentages to numbers; Origin preserves their domains and explicit alpha.
 //! Calculations remain symbolic, and every child shares the enclosing depth and
@@ -164,7 +172,7 @@
 //! [`surgeist_color::naively_convert_srgba_to_cmyk`] implement
 //! the uncalibrated Color 5 numerical fallback with [`surgeist_color::Finite`] coordinates.
 //! They preserve alpha bits and do not resolve authored colors or device profiles.
-//! Source resolution consults explicit [`CssDeviceColorFact`] values; those
+//! Source resolution consults explicit [`CssDeviceColorFact`](crate::color::CssDeviceColorFact) values; those
 //! contextual choices remain CSS-owned.
 //! [`surgeist_color::convert_lab_to_lch`] and [`surgeist_color::convert_oklab_to_oklch`] provide
 //! pure numerical
@@ -188,11 +196,11 @@
 //! clipping, preserving intermediate range with binary64 significand precision.
 //! Same-space conversion retains all bits; cross-space missing channels become
 //! zero locally. Alpha and authored expression evaluation remain separate.
-//! The `overflow` value is a [`CssOverflowValue`], retaining the authored one- or two-axis
+//! The `overflow` value is a [`CssOverflowValue`](crate::values::box_model::CssOverflowValue), retaining the authored one- or two-axis
 //! form.
 //!
 //! Public enums marked `#[non_exhaustive]` require a wildcard arm in downstream
-//! matches. Closed enums, including [`CssImportance`] and [`CssSupportStatus`],
+//! matches. Closed enums, including [`CssImportance`](crate::declaration::CssImportance) and [`CssSupportStatus`](crate::conformance::CssSupportStatus),
 //! remain exhaustively matchable. This inspection model does not change parsing,
 //! recovery, or diagnostics.
 //!
@@ -203,10 +211,7 @@
 //! inspected through borrowed views while the owned compound representation remains private.
 //!
 //! ```
-//! use surgeist_css::{
-//!     CssAngle, CssAngleUnit, CssCalculation, CssCalculationExpressionRef, CssCalculationType,
-//!     CssCalculationValueRef,
-//! };
+//! use surgeist_css::numeric::{CssAngle, CssAngleUnit, CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssCalculationValueRef};
 //!
 //! let angle = CssCalculation::<CssAngle>::try_literal("-0.5", CssAngleUnit::Turns)
 //!     .expect("checked authored angle");
@@ -225,12 +230,13 @@
 //! # Property-specific authored positions
 //!
 //! Generic CSS positions retain both axes and distinguish free offsets from offsets authored
-//! against a named edge. [`CssNumeric<CssLengthPercentage>`] accepts only the symbolic
+//! against a named edge. [`CssNumeric<CssLengthPercentage>`](crate::numeric::CssNumeric) accepts only the symbolic
 //! length-percentage domain;
 //! it does not resolve percentages, calculations, writing modes, or positioning boxes.
 //!
 //! ```
-//! use surgeist_css::{CssComponentValue, CssLengthPercentage, CssNumeric};
+//! use surgeist_css::component::CssComponentValue;
+//! use surgeist_css::numeric::{CssLengthPercentage, CssNumeric};
 //!
 //! let offset = CssNumeric::<CssLengthPercentage>::try_from_component(
 //!     CssComponentValue::try_token("25%").expect("exact authored percentage"),
@@ -241,33 +247,35 @@
 //! ).is_err());
 //! ```
 //!
-//! [`CssPhysicalPosition::try_new`] checks the generic position's cross-axis pairing of edge
+//! [`CssPhysicalPosition::try_new`](crate::values::position::CssPhysicalPosition::try_new) checks the generic position's cross-axis pairing of edge
 //! offsets. Its borrowed horizontal and vertical views make omitted centered axes and authored
 //! edge origins explicit. `transform-origin` uses this physical grammar.
 //! `object-position`, `perspective-origin` and every `mask-position` layer use the Values 5
-//! [`CssPosition`], which also admits the flow-relative keywords and keeps them unresolved.
+//! [`CssPosition`](crate::values::position::CssPosition), which also admits the flow-relative keywords and keeps them unresolved.
 //! `background-position` instead exposes a
-//! nonempty [`CssBackgroundPositionList`] whose layers also admit the background-only
+//! nonempty [`CssBackgroundPositionList`](crate::values::background::CssBackgroundPositionList) whose layers also admit the background-only
 //! three-component form. Its noninherited longhand initial is one `0% 0%` layer.
-//! [`CssBackgroundPosition::serialize_specified`] and the list's matching method
+//! [`CssBackgroundPosition::serialize_specified`](crate::values::background::CssBackgroundPosition::serialize_specified) and the list's matching method
 //! emit horizontal-first specified values, preserving an omitted edge offset.
-//! The checked [`CssBackgroundLayer::try_new`] and [`CssBackground::try_new`]
+//! The checked [`CssBackgroundLayer::try_new`](crate::values::background::CssBackgroundLayer::try_new) and [`CssBackground::try_new`](crate::values::background::CssBackground::try_new)
 //! constructors retain optional authored components, couple size to position, and
 //! restrict color to the final layer. Intrinsic `background` expansion fills each
 //! of seven per-layer lists from the terminal schema initial and emits one color.
 //! It also resets `background-blend-mode` to one `normal` entry. Expansion and
 //! normalization account for nine terminal contributions; a CSS-wide keyword
 //! applies to all nine. The authored shorthand retains its eight settable members.
-//! [`CssBackground::serialize_specified`] composes canonical specified children in
+//! [`CssBackground::serialize_specified`](crate::values::background::CssBackground::serialize_specified) composes canonical specified children in
 //! grammar order, omitting proved simple initials under one cumulative budget.
 //! Omitted authored children still consume input and projection visits; an empty
 //! effective layer emits `none`. Keywords, calculations, and contextual colors
 //! retain their symbolic meaning.
 //! `transform-origin` exposes the directed 2D split plus an optional checked
-//! [`CssNumeric<CssLength>`] length.
+//! [`CssNumeric<CssLength>`](crate::numeric::CssNumeric) length.
 //!
 //! ```
-//! use surgeist_css::{CssHorizontalPosition, CssKnownPropertyValueRef, CssPositionRef, CssVerticalPosition, CssParser};
+//! use surgeist_css::values::position::{CssHorizontalPosition, CssPositionRef, CssVerticalPosition};
+//! use surgeist_css::property::CssKnownPropertyValueRef;
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_block_contents(concat!(
 //!     "background-position: left 10px top; ",
@@ -284,7 +292,7 @@
 //! assert!(matches!(
 //!     background.value().positions()[0].horizontal(),
 //!     CssHorizontalPosition::LeftOffset(offset)
-//!         if matches!(offset.literal().unwrap().component().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
+//!         if matches!(offset.literal().unwrap().component().view(), surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "10" && unit == "px")
 //! ));
 //!
 //! assert_eq!(
@@ -312,7 +320,7 @@
 //!     .known().expect("known transform origin")
 //!     .property_value().expect("ordinary transform origin")
 //! else { panic!("expected transform-origin") };
-//! assert!(matches!(transform.value().z().unwrap().literal().unwrap().component().view(), surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "50" && unit == "px"));
+//! assert!(matches!(transform.value().z().unwrap().literal().unwrap().component().view(), surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit }) if number.representation() == "50" && unit == "px"));
 //! ```
 //!
 //! A vertical-only planar keyword followed by a length (`top 50px` or
@@ -324,10 +332,10 @@
 //! The position property wrappers expose only their checked semantic models.
 //! `background-position` retains its distinct three-component grammar, while
 //! `object-position`, `perspective-origin`, `mask-position` and the mask shorthand use the full
-//! Values 5 [`CssPosition`], as do circle and ellipse; `transform-origin` keeps the physical
-//! [`CssPhysicalPosition`].
+//! Values 5 [`CssPosition`](crate::values::position::CssPosition), as do circle and ellipse; `transform-origin` keeps the physical
+//! [`CssPhysicalPosition`](crate::values::position::CssPhysicalPosition).
 //! Its checked Cartesian, named-flow and relative-flow constructors retain symbolic axes;
-//! [`CssPosition::view`] exposes borrowed payloads. All-center values have one Cartesian form.
+//! [`CssPosition::view`](crate::values::position::CssPosition::view) exposes borrowed payloads. All-center values have one Cartesian form.
 //! Specified output orders Cartesian axes horizontally/vertically and flow axes by block/inline.
 //! Cascade, substitution, contextual resolution, layout, painting, transforms, and cross-crate
 //! lowering remain outside this surface.
@@ -335,39 +343,39 @@
 //! # Dedicated authored function grammars
 //!
 //! Property accessors expose dedicated typed function families. Timing-function
-//! wrappers expose the sole [`CssEasingList`] through `timing_functions()`.
-//! Transform wrappers expose the sole [`CssTransform`] through `value()`; filter and
-//! backdrop-filter wrappers return [`CssFilter`], box-shadow returns [`CssBoxShadow`], and
-//! clip-path exposes the sole [`CssClipPath`] through `value()`.
+//! wrappers expose the sole [`CssEasingList`](crate::values::animation::CssEasingList) through `timing_functions()`.
+//! Transform wrappers expose the sole [`CssTransform`](crate::values::transform::CssTransform) through `value()`; filter and
+//! backdrop-filter wrappers return [`CssFilter`](crate::values::effects::CssFilter), box-shadow returns [`CssBoxShadow`](crate::values::effects::CssBoxShadow), and
+//! clip-path exposes the sole [`CssClipPath`](crate::values::effects::CssClipPath) through `value()`.
 //!
 //! Authored Shapes 1 adds three independent noninherited longhands:
-//! `shape-outside` borrows [`CssShapeOutside`], `shape-image-threshold` borrows
-//! [`CssOpacityValue`], and `shape-margin` borrows
-//! [`CssNumeric<CssLengthPercentage, CssNonNegative>`]. [`CssShapeOutsideShape`] retains
-//! an optional [`CssShapeBox`] with only the four visual/margin boxes. Omitted
+//! `shape-outside` borrows [`CssShapeOutside`](crate::values::shape::CssShapeOutside), `shape-image-threshold` borrows
+//! [`CssOpacityValue`](crate::values::effects::CssOpacityValue), and `shape-margin` borrows
+//! [`CssNumeric<CssLengthPercentage, CssNonNegative>`](crate::numeric::CssNumeric). [`CssShapeOutsideShape`](crate::values::shape::CssShapeOutsideShape) retains
+//! an optional [`CssShapeBox`](crate::values::shape::CssShapeBox) with only the four visual/margin boxes. Omitted
 //! boxes stay distinct from explicit margin-box, and canonical pairs emit the
 //! shape first. Threshold values remain unclamped; ordinary margin literals
 //! are nonnegative while actual math defers range handling. Geometry, resource
 //! loading, percentage bases and computed threshold clamping remain downstream.
 //!
-//! Motion Path's five offset longhands and [`CssOffset`] compose the shared
-//! numeric, URL, position and BasicShape owners. [`CssOffsetPath::view`]
-//! distinguishes none, box-only and a path with an optional [`CssCoordBox`].
-//! [`CssRay`] retains a strict angle bearing, optional authored size, containment
-//! and an optional [`CssPosition`] from the full symbolic Cartesian, named-flow
-//! and relative-flow families. [`CssOffsetRotate`] retains modifier/angle
+//! Motion Path's five offset longhands and [`CssOffset`](crate::values::transform::CssOffset) compose the shared
+//! numeric, URL, position and BasicShape owners. [`CssOffsetPath::view`](crate::values::transform::CssOffsetPath::view)
+//! distinguishes none, box-only and a path with an optional [`CssCoordBox`](crate::values::transform::CssCoordBox).
+//! [`CssRay`](crate::values::transform::CssRay) retains a strict angle bearing, optional authored size, containment
+//! and an optional [`CssPosition`](crate::values::position::CssPosition) from the full symbolic Cartesian, named-flow
+//! and relative-flow families. [`CssOffsetRotate`](crate::values::transform::CssOffsetRotate) retains modifier/angle
 //! absence without applying tangent rotation. Offset's five ordered reset
 //! contributions use central normal/none/zero/auto/auto initials; its specified
 //! output emits only authored constituents. Geometry, resources and animation
 //! execution remain downstream.
 //!
-//! Clip-path is a noninherited terminal with [`CssClipPath::None`] initial and the
+//! Clip-path is a noninherited terminal with [`CssClipPath::None`](crate::values::effects::CssClipPath::None) initial and the
 //! shared ordinary, CSS-wide, pending-reentry and normalization lifecycle. It accepts
-//! all seven [`CssBoxEdgeKeyword`] alternatives alone or with one shape in either
-//! authored order. [`CssClipPathShape`] retains optional reference-box omission;
+//! all seven [`CssBoxEdgeKeyword`](crate::values::common::CssBoxEdgeKeyword) alternatives alone or with one shape in either
+//! authored order. [`CssClipPathShape`](crate::values::effects::CssClipPathShape) retains optional reference-box omission;
 //! its serializer emits shape before box without resolving their geometry.
-//! [`CssEllipseRadii`] contains two independent [`CssEllipseRadius`] components,
-//! each an extent or a nonnegative length-percentage. [`CssEllipseShape::radii`]
+//! [`CssEllipseRadii`](crate::values::shape::CssEllipseRadii) contains two independent [`CssEllipseRadius`](crate::values::shape::CssEllipseRadius) components,
+//! each an extent or a nonnegative length-percentage. [`CssEllipseShape::radii`](crate::values::shape::CssEllipseShape::radii)
 //! distinguishes an omitted pair. Polygon round is an optional signed pure length,
 //! following optional fill-rule; percentages and reversed modifiers are rejected.
 //!
@@ -375,24 +383,24 @@
 //! bounded specified serializers preserving optional omissions, shape offset/radius arities, units,
 //! exact magnitudes and symbolic math through shared cumulative child providers.
 //! Circle and ellipse positions retain the full imported Cartesian, named-flow, and
-//! relative-flow grammar. [`CssRectShape`] retains four signed edges or `auto`;
-//! [`CssXywhShape`] retains signed offsets and nonnegative width and height. Both
-//! retain optional round radii. [`CssPathShape`] composes optional [`CssFillRule`]
-//! with checked [`CssPathData`], preserving the decoded SVG spelling and string origin.
+//! relative-flow grammar. [`CssRectShape`](crate::values::shape::CssRectShape) retains four signed edges or `auto`;
+//! [`CssXywhShape`](crate::values::shape::CssXywhShape) retains signed offsets and nonnegative width and height. Both
+//! retain optional round radii. [`CssPathShape`](crate::values::shape::CssPathShape) composes optional [`CssFillRule`](crate::values::shape::CssFillRule)
+//! with checked [`CssPathData`](crate::values::shape::CssPathData), preserving the decoded SVG spelling and string origin.
 //! Its complete SVG scanner admits move-only paths and rejects malformed suffixes
-//! without computing geometry. [`CssShapeFunction`] retains a full starting position
-//! and a nonempty ordered [`CssShapeCommandList`]. Curves and smooth commands couple
+//! without computing geometry. [`CssShapeFunction`](crate::values::shape::CssShapeFunction) retains a full starting position
+//! and a nonempty ordered [`CssShapeCommandList`](crate::values::shape::CssShapeCommandList). Curves and smooth commands couple
 //! absolute or relative endpoints with correspondingly typed controls; arcs retain
 //! signed radii and optional sweep, size and strict angles. Specified output retains
 //! authored omissions and emits the required first comma. Reference-box/default resolution,
 //! clipping and
 //! painting belong to downstream owners.
 //!
-//! [`CssShadow`] requires blur before spread, and [`CssBoxShadowList`] is nonempty.
-//! Box-shadow is a noninherited terminal with [`CssBoxShadow::None`] initial;
+//! [`CssShadow`](crate::values::effects::CssShadow) requires blur before spread, and [`CssBoxShadowList`](crate::values::effects::CssBoxShadowList) is nonempty.
+//! Box-shadow is a noninherited terminal with [`CssBoxShadow::None`](crate::values::effects::CssBoxShadow::None) initial;
 //! ordinary, CSS-wide, and pending values use the shared expansion and normalization
 //! lifecycle. Length components form one contiguous group, while color and inset
-//! may precede or follow that group. [`CssDropShadow`] has signed offsets and an
+//! may precede or follow that group. [`CssDropShadow`](crate::values::effects::CssDropShadow) has signed offsets and an
 //! optional nonnegative `standard_deviation()`, with optional color on either side.
 //! Its third length is a standard deviation; box-shadow retains `blur_radius()`.
 //!
@@ -404,7 +412,11 @@
 //! These operations preserve symbolic math/colors and diagnostic origins.
 //!
 //! ```
-//! use surgeist_css::{CssBasicShape, CssClipPath, CssFilterFunction, CssFilter, CssKnownPropertyValueRef, CssTransformFunction, CssTransform, CssParser};
+//! use surgeist_css::values::shape::CssBasicShape;
+//! use surgeist_css::values::effects::{CssClipPath, CssFilterFunction, CssFilter};
+//! use surgeist_css::property::CssKnownPropertyValueRef;
+//! use surgeist_css::values::transform::{CssTransformFunction, CssTransform};
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_block_contents(concat!(
 //!     "transform: translate3d(10%, 2px, 4em) rotate(45deg); ",
@@ -473,7 +485,7 @@
 //! Basic shapes and `clip-path` expose complete authored grammar support; this does
 //! not establish contextual geometry or exact calculation projection. The selected
 //! transition property family has intrinsic metadata and four ordered shorthand
-//! contributions, preserving one list entry per authored item. [`CssLonghandValueRef`]
+//! contributions, preserving one list entry per authored item. [`CssLonghandValueRef`](crate::property::CssLonghandValueRef)
 //! exposes property, duration, timing-function and delay lists, including explicit
 //! child origins and programmatic omission defaults. The selected Animation family
 //! likewise has intrinsic metadata and eight ordered contributions: duration,
@@ -485,16 +497,16 @@
 //! closures, while reused parser-produced typed children retain recovery origins.
 //! Support for a typed function does not promote an unselected production.
 //!
-//! [`CssCustomIdent`] owns decoded custom-identifier admission. Timing names refine
-//! that checked value through [`CssKeyframesIdent`] (shared by keyframe definitions
-//! and animation names) and [`CssTransitionPropertyName`]. [`CssGridLineNames`]
-//! contains checked [`CssGridLineName`] values with the Grid exclusions. Parsing
+//! [`CssCustomIdent`](crate::values::common::CssCustomIdent) owns decoded custom-identifier admission. Timing names refine
+//! that checked value through [`CssKeyframesIdent`](crate::rule::keyframes::CssKeyframesIdent) (shared by keyframe definitions
+//! and animation names) and [`CssTransitionPropertyName`](crate::values::animation::CssTransitionPropertyName). [`CssGridLineNames`](crate::values::layout::CssGridLineNames)
+//! contains checked [`CssGridLineName`](crate::values::layout::CssGridLineName) values with the Grid exclusions. Parsing
 //! and public construction both reject mixed `None` transition lists.
 //!
 //! Both filter properties are noninherited terminals with an intrinsic `none`
-//! initial. [`CssFilterHueRotate`] retains an omitted angle separately from its
-//! effective `0deg`; [`CssFilterBlur`] likewise retains omission and effective `0px`.
-//! [`CssFilter`], [`CssFilterFunctionList`] and [`CssFilterFunction`] serialize
+//! initial. [`CssFilterHueRotate`](crate::values::effects::CssFilterHueRotate) retains an omitted angle separately from its
+//! effective `0deg`; [`CssFilterBlur`](crate::values::effects::CssFilterBlur) likewise retains omission and effective `0px`.
+//! [`CssFilter`](crate::values::effects::CssFilter), [`CssFilterFunctionList`](crate::values::effects::CssFilterFunctionList) and [`CssFilterFunction`](crate::values::effects::CssFilterFunction) serialize
 //! specified values under one cumulative resource budget. They retain authored
 //! order, omitted arguments, explicit defaults, exact checked amounts and symbolic
 //! children. Ordinary angle literals keep their finite precision and units;
@@ -503,9 +515,9 @@
 //! in an immutable exploring draft, with its Level 1 dependency pinned to the
 //! selected 2018 publication. It does not select the complete Level 2 module.
 //! The four authored SVG filter declarations are also complete CSS grammars:
-//! `flood-color` and `lighting-color` reuse [`CssColor`], while `flood-opacity`
-//! reuses the exact [`CssOpacityValue`] without authored range clamping.
-//! [`CssColorInterpolationFilters`] distinguishes `Auto`, `Srgb` and `LinearRgb`
+//! `flood-color` and `lighting-color` reuse [`CssColor`](crate::color::CssColor), while `flood-opacity`
+//! reuses the exact [`CssOpacityValue`](crate::values::effects::CssOpacityValue) without authored range clamping.
+//! [`CssColorInterpolationFilters`](crate::values::effects::CssColorInterpolationFilters) distinguishes `Auto`, `Srgb` and `LinearRgb`
 //! and emits lowercase specified keywords. Their intrinsic initials are black,
 //! 1, white and linearRGB respectively; only color-interpolation-filters inherits.
 //! SVG presentation attributes, applicability, computed opacity clamping and
@@ -513,7 +525,7 @@
 //! is nonanimatable; this enum does not select a CSS filter-function color policy.
 //!
 //! ```
-//! use surgeist_css::{CssFilter, CssFilterFunction, CssFilterFunctionList, CssFilterHueRotate};
+//! use surgeist_css::values::effects::{CssFilter, CssFilterFunction, CssFilterFunctionList, CssFilterHueRotate};
 //! let functions = CssFilterFunctionList::try_new(vec![
 //!     CssFilterFunction::HueRotate(CssFilterHueRotate::omitted()),
 //! ]).unwrap();
@@ -525,18 +537,20 @@
 //!
 //! # Authored colors
 //!
-//! [`CssColor`] is the sole checked authored color graph. It retains named,
+//! [`CssColor`](crate::color::CssColor) is the sole checked authored color graph. It retains named,
 //! hexadecimal, system, RGB/HSL/HWB, Lab/LCH, predefined `color()`, relative,
 //! custom-profile, `alpha()`, and `color-mix()` branches. Ordinary color numbers,
 //! percentages, and angles retain exact lexical coefficients and origins;
 //! calculations remain symbolic. Color-bearing property wrappers expose this
 //! graph through `value()` or an aggregate `color()` accessor.
-//! [`CssColor::keyword_srgba8`] exposes the intrinsic encoded sRGB bytes of
+//! [`CssColor::keyword_srgba8`](crate::color::CssColor::keyword_srgba8) exposes the intrinsic encoded sRGB bytes of
 //! opaque named colors and transparent black, preserving their keyword identity.
 //! It returns `None` for representations outside this fixed keyword projection.
 //!
 //! ```
-//! use surgeist_css::{CssKnownPropertyValueRef, CssSystemColor, CssParser};
+//! use surgeist_css::property::CssKnownPropertyValueRef;
+//! use surgeist_css::color::CssSystemColor;
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_block_contents("color: ActiveBorder; border: solid #fff");
 //! assert!(report.is_clean());
@@ -559,11 +573,11 @@
 //! # Authored Grid repetition and keyframe structure
 //!
 //! The six Grid repetition consumers expose authored values through
-//! their `value()` accessors. [`CssGridTrackList`] represents `none`, general
-//! track lists, lists containing exactly one [`CssGridAutoRepeat`], and subgrid
-//! line-name lists. [`CssGridSubgridComponent`] retains ordered groups and
-//! [`CssGridNameRepeat`] values, allowing at most one auto-fill name repeat.
-//! Counted repeats use checked [`CssNumeric<CssInteger, CssPositive>`] children: bare roots
+//! their `value()` accessors. [`CssGridTrackList`](crate::values::layout::CssGridTrackList) represents `none`, general
+//! track lists, lists containing exactly one [`CssGridAutoRepeat`](crate::values::layout::CssGridAutoRepeat), and subgrid
+//! line-name lists. [`CssGridSubgridComponent`](crate::values::layout::CssGridSubgridComponent) retains ordered groups and
+//! [`CssGridNameRepeat`](crate::values::layout::CssGridNameRepeat) values, allowing at most one auto-fill name repeat.
+//! Counted repeats use checked [`CssNumeric<CssInteger, CssPositive>`](crate::numeric::CssNumeric) children: bare roots
 //! must be positive, while function math retains its graph and deferred range.
 //! Integer
 //! and automatic repetition are non-recursive. Under the
@@ -572,10 +586,10 @@
 //! automatic bodies admit general track sizes, including intrinsic and flexible
 //! sizes, while surrounding tracks and integer repeats retain fixed sizes.
 //! `grid-auto-rows` and `grid-auto-columns` expose
-//! [`CssGridTrackSizeList`] values without `repeat()`.
-//! [`CssGridAutoRepeat::content`] therefore borrows
-//! [`CssGridTrackRepeatContent`], while surrounding fixed repeats retain
-//! [`CssGridFixedRepeatContent`].
+//! [`CssGridTrackSizeList`](crate::values::layout::CssGridTrackSizeList) values without `repeat()`.
+//! [`CssGridAutoRepeat::content`](crate::values::layout::CssGridAutoRepeat::content) therefore borrows
+//! [`CssGridTrackRepeatContent`](crate::values::layout::CssGridTrackRepeatContent), while surrounding fixed repeats retain
+//! [`CssGridFixedRepeatContent`](crate::values::layout::CssGridFixedRepeatContent).
 //! Track breadths retain exact ordinary `fr`, length, and percentage quantities
 //! in checked specified scalars. Flex-result math follows the pinned WebKit
 //! behavior where [Grid 2's `fr` rule](https://www.w3.org/TR/2025/CRD-css-grid-2-20250326/#fr-unit)
@@ -586,16 +600,16 @@
 //! constructors and bounded canonical `serialize_specified()` separately from
 //! declaration `as_css()`.
 //!
-//! [`CssKeyframesRule`] and [`CssKeyframeBlock`] preserve source structure. Empty
+//! [`CssKeyframesRule`](crate::rule::keyframes::CssKeyframesRule) and [`CssKeyframeBlock`](crate::rule::keyframes::CssKeyframeBlock) preserve source structure. Empty
 //! rules and blocks remain present, while repeated selector blocks, equivalent
 //! offsets across blocks, and repeated equivalent selectors within one
-//! [`CssKeyframeSelectorList`] remain in authored order. Dropping an invalid
+//! [`CssKeyframeSelectorList`](crate::rule::keyframes::CssKeyframeSelectorList) remain in authored order. Dropping an invalid
 //! declaration leaves its valid empty parents; an invalid selector still drops
 //! the smallest invalid block. The parser does not sort, merge, or deduplicate
 //! keyframes.
 //!
-//! [`CssGridTemplate`] also retains area-string rows with optional authored
-//! sizes and boundary names through [`CssGridTemplateAreaTrack`], reusing the
+//! [`CssGridTemplate`](crate::values::layout::CssGridTemplate) also retains area-string rows with optional authored
+//! sizes and boundary names through [`CssGridTemplateAreaTrack`](crate::values::layout::CssGridTemplateAreaTrack), reusing the
 //! existing checked area matrix and repeat-free column list. Intrinsic expansion
 //! emits three ordered template members or six grid members through shared
 //! metadata, strict pending reentry and normalization. Template axes and areas
@@ -606,8 +620,8 @@
 //! `@keyframes` supports the complete selected authored production. Quoted names
 //! admit empty and whitespace-only text. Literal percentage offsets use checked
 //! binary64; percentage-valued calculations retain typed graphs and origins.
-//! [`CssKeyframePercent::literal_value`] and [`CssKeyframePercent::calculation`]
-//! expose those states, while [`CssKeyframeSelector::offset`] clones the authored
+//! [`CssKeyframePercent::literal_value`](crate::rule::keyframes::CssKeyframePercent::literal_value) and [`CssKeyframePercent::calculation`](crate::rule::keyframes::CssKeyframePercent::calculation)
+//! expose those states, while [`CssKeyframeSelector::offset`](crate::rule::keyframes::CssKeyframeSelector::offset) clones the authored
 //! domain without evaluating it. Keyframe mode drops the eight prohibited Animation
 //! declarations and retains animation-timing-function even at the final endpoint.
 //! Computed range clamping, endpoint easing use and name lookup remain downstream.
@@ -625,7 +639,9 @@
 //! preserves complete wrap/pack groups and emits all four constituents.
 //!
 //! ```rust
-//! use surgeist_css::{CssKnownPropertyValueRef, CssItemWrap, CssItemWrapOrder, CssParser};
+//! use surgeist_css::property::CssKnownPropertyValueRef;
+//! use surgeist_css::values::layout::{CssItemWrap, CssItemWrapOrder};
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_block_contents("item-flow: balance dense reverse -2px row");
 //! assert!(report.is_clean());
@@ -650,7 +666,9 @@
 //! These values do not execute text processing or resolve contextual wrapping.
 //!
 //! ```rust
-//! use surgeist_css::{CssKnownPropertyValueRef, CssTextWrap, CssTextWrapMode, CssTextWrapStyle, CssWhiteSpaceKeyword, CssParser};
+//! use surgeist_css::property::CssKnownPropertyValueRef;
+//! use surgeist_css::values::text::{CssTextWrap, CssTextWrapMode, CssTextWrapStyle, CssWhiteSpaceKeyword};
+//! use surgeist_css::CssParser;
 //!
 //! let wrapping = CssTextWrap::try_new(
 //!     Some(CssTextWrapMode::NoWrap), Some(CssTextWrapStyle::Balance),
@@ -668,23 +686,25 @@
 //!
 //! # Authored text transformations, break preferences and tabs
 //!
-//! [`CssTextTransform`] distinguishes `none`, `math-auto` and a checked nonempty
-//! [`CssTextTransformSet`]. Case, width and kana roles retain independent presence;
-//! specified output emits them in that order. [`CssWrapInside`],
-//! [`CssWrapBoundary`] and [`CssLineBreak`] retain finite break preferences, while
-//! [`CssWordSpaceTransform`] retains `none` or a separator base and optional phrase flag.
-//! [`CssTabSize`] keeps checked Number and Length domains distinct: bare zero is
+//! [`CssTextTransform`](crate::values::text::CssTextTransform) distinguishes `none`, `math-auto` and a checked nonempty
+//! [`CssTextTransformSet`](crate::values::text::CssTextTransformSet). Case, width and kana roles retain independent presence;
+//! specified output emits them in that order. [`CssWrapInside`](crate::values::text::CssWrapInside),
+//! [`CssWrapBoundary`](crate::values::text::CssWrapBoundary) and [`CssLineBreak`](crate::values::text::CssLineBreak) retain finite break preferences, while
+//! [`CssWordSpaceTransform`](crate::values::text::CssWordSpaceTransform) retains `none` or a separator base and optional phrase flag.
+//! [`CssTabSize`](crate::values::text::CssTabSize) keeps checked Number and Length domains distinct: bare zero is
 //! a number, explicit `0px` a length, and typed calculation ranges remain deferred.
 //!
-//! These seven Text 4 longhands, [`CssTextIndent`] from Text 4 and
-//! [`CssVerticalAlign`] from CSS2 expose intrinsic initials, inheritance metadata
+//! These seven Text 4 longhands, [`CssTextIndent`](crate::values::text::CssTextIndent) from Text 4 and
+//! [`CssVerticalAlign`](crate::values::text::CssVerticalAlign) from CSS2 expose intrinsic initials, inheritance metadata
 //! and one typed contribution each. CSS-wide values stay symbolic; pending
 //! substitution uses strict, retryable reentry preserving original importance and
 //! replacement origins. Language processing, font metrics, indentation,
 //! alignment and tab-stop execution belong to downstream owners.
 //!
 //! ```rust
-//! use surgeist_css::{CssKnownPropertyValueRef, CssTabSize, CssTextTransform, CssTextTransformCase, CssTextTransformSet, CssParser};
+//! use surgeist_css::property::CssKnownPropertyValueRef;
+//! use surgeist_css::values::text::{CssTabSize, CssTextTransform, CssTextTransformCase, CssTextTransformSet};
+//! use surgeist_css::CssParser;
 //!
 //! let set = CssTextTransformSet::try_new(
 //!     Some(CssTextTransformCase::Uppercase), true, false,
@@ -728,7 +748,8 @@
 //! [reference](https://github.com/bj-data-eng/surgeist/blob/main/crates/surgeist-css/docs/reference.md#authored-hyphenation-justification-and-spacing).
 //!
 //! ```rust
-//! use surgeist_css::{CssContributions, CssExpansion, CssKnownProperty, CssParser};
+//! use surgeist_css::property::{CssContributions, CssExpansion, CssKnownProperty};
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_block_contents("hyphenate-limit-chars:auto 2;text-justify:no-compress distribute;\
 //!      text-spacing:replace punctuation trim-both");
@@ -749,10 +770,7 @@
 //! Checked constituent construction preserves authored omissions:
 //!
 //! ```rust
-//! use surgeist_css::{
-//!     CssAutospace, CssAutospaceMode, CssAutospaceValues, CssSpacingTrim,
-//!     CssTextJustify, CssTextJustifyBase, CssTextSpacing, CssTextSpacingValues,
-//! };
+//! use surgeist_css::values::text::{CssAutospace, CssAutospaceMode, CssAutospaceValues, CssSpacingTrim, CssTextJustify, CssTextJustifyBase, CssTextSpacing, CssTextSpacingValues};
 //!
 //! assert!(CssTextJustify::try_new(None, false).is_none());
 //! let justify = CssTextJustify::try_new(Some(CssTextJustifyBase::Distribute), true)
@@ -771,17 +789,19 @@
 //! # Typography, font families, and font-face
 //!
 //! Family lists, the `@font-face` family descriptor, and `local()` names follow
-//! the selected September 7, 2026 Fonts 4 grammar. [`CssFontFamilyName`] preserves
+//! the selected September 7, 2026 Fonts 4 grammar. [`CssFontFamilyName`](crate::values::font::CssFontFamilyName) preserves
 //! decoded identifier tokens and distinguishes literal names from all fifteen
 //! typed generic families. Family and font wrappers expose their
 //! `families()` and `font()` models; use
-//! [`CssFontValue`] and [`CssExplicitFont`] for explicit or system fonts.
+//! [`CssFontValue`](crate::values::font::CssFontValue) and [`CssExplicitFont`](crate::values::font::CssExplicitFont) for explicit or system fonts.
 //! Other typography includes four-ASCII-character OpenType tags, non-negative
 //! feature indices, synthesis, and variant longhands. Individual metadata
 //! records identify the implemented grammar and its dated source.
 //!
 //! ```
-//! use surgeist_css::{CssFontValue, CssKnownPropertyValueRef, CssSystemFont, CssParser};
+//! use surgeist_css::values::font::{CssFontValue, CssSystemFont};
+//! use surgeist_css::property::CssKnownPropertyValueRef;
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_block_contents("font: menu; font-weight: 725");
 //! assert!(report.is_clean());
@@ -795,8 +815,8 @@
 //!
 //! `@font-feature-values` retains ordered families, all seven subsidiary blocks,
 //! repeated definitions, and interleaved `font-display` occurrences through
-//! [`CssFontFeatureValuesRule`]. Checked constructors share parser constraints;
-//! [`CssFontFeatureValueIndex`] preserves exact nonnegative decimal digits without a
+//! [`CssFontFeatureValuesRule`](crate::rule::font_feature_values::CssFontFeatureValuesRule). Checked constructors share parser constraints;
+//! [`CssFontFeatureValueIndex`](crate::rule::font_feature_values::CssFontFeatureValueIndex) preserves exact nonnegative decimal digits without a
 //! machine-integer limit. Parsed integer origins address their complete original
 //! token, while Rust construction has no invented source coordinates.
 //!
@@ -814,11 +834,11 @@
 //! payload allocation. Fonts rules have canonical effective specified writers;
 //! generic group/sheet wrapper coverage remains with its separate owner.
 //!
-//! [`CssFontFaceDescriptors::occurrences`] exposes valid descriptor occurrences
+//! [`CssFontFaceDescriptors::occurrences`](crate::rule::font_face::CssFontFaceDescriptors::occurrences) exposes valid descriptor occurrences
 //! in authored order, while typed effective accessors return the last valid
 //! occurrence. Invalid and unknown occurrences recover with
-//! [`CssRecoveryAction::DropDescriptor`] without erasing valid neighbors. Empty
-//! [`CssFontFaceRule`] values remain in the authored tree; whether a face can be
+//! [`CssRecoveryAction::DropDescriptor`](crate::diagnostic::CssRecoveryAction::DropDescriptor) without erasing valid neighbors. Empty
+//! [`CssFontFaceRule`](crate::rule::font_face::CssFontFaceRule) values remain in the authored tree; whether a face can be
 //! used belongs to later contextual processing.
 //!
 //! Family, font, source-list, and font-face records cite `I-FONTS4-20260907`.
@@ -836,14 +856,14 @@
 //!
 //! # Authored font-synthesis
 //!
-//! [`CssFontSynthesis`] represents `none` or a checked set of weight, style,
+//! [`CssFontSynthesis`](crate::values::font::CssFontSynthesis) represents `none` or a checked set of weight, style,
 //! small-caps, and position capabilities. Intrinsic expansion contributes four
 //! inherited longhands: selected capabilities become `auto`, omitted ones become
-//! `none`. Their initial values are `auto`; only [`CssFontSynthesisStyle`] admits
+//! `none`. Their initial values are `auto`; only [`CssFontSynthesisStyle`](crate::values::font::CssFontSynthesisStyle) admits
 //! `oblique-only`. Font matching and glyph synthesis remain downstream.
 //!
 //! ```
-//! use surgeist_css::{CssFontSynthesis, CssFontSynthesisValues};
+//! use surgeist_css::values::font::{CssFontSynthesis, CssFontSynthesisValues};
 //!
 //! let value = CssFontSynthesis::Values(
 //!     CssFontSynthesisValues::try_new(true, false, false, true).unwrap(),
@@ -853,15 +873,15 @@
 //!
 //! # Authored font palettes
 //!
-//! [`CssFontPalette`] retains keywords, symbolic names and checked ordered mixes.
-//! [`CssFontPaletteMix`] shares color interpolation and percentage providers,
+//! [`CssFontPalette`](crate::values::font::CssFontPalette) retains keywords, symbolic names and checked ordered mixes.
+//! [`CssFontPaletteMix`](crate::values::font::CssFontPaletteMix) shares color interpolation and percentage providers,
 //! accepts one or more recursive palette components, and checks their complete
 //! structural depth. Its specified output preserves symbolic values without
 //! selecting a font or evaluating a palette. The property is inherited, initially
 //! `normal`, and independent of the `font` shorthand.
 //!
 //! ```
-//! use surgeist_css::{CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent};
+//! use surgeist_css::values::font::{CssFontPalette, CssFontPaletteMix, CssFontPaletteMixComponent};
 //!
 //! let value = CssFontPalette::Mix(Box::new(CssFontPaletteMix::try_new(None, vec![
 //!     CssFontPaletteMixComponent::new(CssFontPalette::Light, None),
@@ -943,7 +963,9 @@
 //! range processing remain unfinished.
 //!
 //! ```
-//! use surgeist_css::{CssKnownPropertyValueRef, CssNonNegative, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit, CssParser};
+//! use surgeist_css::property::CssKnownPropertyValueRef;
+//! use surgeist_css::numeric::{CssNonNegative, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit};
+//! use surgeist_css::CssParser;
 //! let negative = CssNumericLiteral::<CssTime>::try_new("-1", CssTimeUnit::Seconds).unwrap();
 //! assert!(CssNumeric::<CssTime, CssNonNegative>::try_from_literal(negative).is_err());
 //! let report = CssParser::default().parse_block_contents("transition-duration: calc(-1s + 2s); transition-delay: -250ms");
@@ -965,17 +987,19 @@
 //!
 //! # Namespaces and complete Selectors 3 syntax
 //!
-//! [`CssRule::Namespace`] retains an optional decoded, case-sensitive
-//! [`CssNamespacePrefix`], a literal [`CssNamespaceName`], and its parser-produced position.
+//! [`CssRule::Namespace`](crate::rule::CssRule::Namespace) retains an optional decoded, case-sensitive
+//! [`CssNamespacePrefix`](crate::rule::CssNamespacePrefix), a literal [`CssNamespaceName`](crate::rule::CssNamespaceName), and its parser-produced position.
 //! Empty and non-URI names remain valid authored values; this crate does not normalize, resolve,
 //! or load them. Selector type, universal, and attribute names expose
-//! [`CssNamespaceConstraint`] and [`CssQualifiedSelectorName`]. `Named` requires an earlier active
+//! [`CssNamespaceConstraint`](crate::selector::CssNamespaceConstraint) and [`CssQualifiedSelectorName`](crate::selector::CssQualifiedSelectorName). `Named` requires an earlier active
 //! prefix, `ExplicitNone` represents `|`, `Any` represents `*|`, and `Default` represents an
 //! unqualified type or universal selector while a default declaration is active. Unqualified
 //! attributes are always `ExplicitNone`.
 //!
 //! ```
-//! use surgeist_css::{CssNamespaceConstraint, CssPseudoElement, CssPseudoElementSegment, CssRule, CssSelector, CssParser};
+//! use surgeist_css::selector::{CssNamespaceConstraint, CssPseudoElement, CssPseudoElementSegment, CssSelector};
+//! use surgeist_css::rule::CssRule;
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_sheet(concat!(
 //!     "@namespace svg \"urn:svg\";",
@@ -1016,7 +1040,7 @@
 //! Imports precede namespaces. A layer statement after either import or namespace
 //! declarations, or a body rule, closes both prelude sequences. Invalid or ignored
 //! rules do not change the phase or active bindings. Malformed, block-form, nested,
-//! or late namespaces recover as one [`CssRecoveryAction::DropAtRule`].
+//! or late namespaces recover as one [`CssRecoveryAction::DropAtRule`](crate::diagnostic::CssRecoveryAction::DropAtRule).
 //!
 //! Complete Selectors 3 syntax includes all attribute matchers and four combinators, ordered
 //! repeated IDs and classes, the structural/UI/dynamic pseudo-class families, `:lang()`, and
@@ -1027,50 +1051,50 @@
 //! while unforgiving style, scope, nesting, `:not()`, `:has()`, and nth `of` consumers drop their
 //! established containing unit. Matching, specificity, cascade, namespace URI resolution,
 //! CSSOM serialization, and cross-crate lowering remain downstream.
-//! `:autofill` and required `:-webkit-autofill` share [`CssPseudoClass::Autofill`]
+//! `:autofill` and required `:-webkit-autofill` share [`CssPseudoClass::Autofill`](crate::selector::CssPseudoClass::Autofill)
 //! and emit the standard spelling. Nonfunctional unknown `::-webkit-*` names
-//! retain checked [`CssUnknownWebkitPseudoElement`] identities with ASCII-lowercase
+//! retain checked [`CssUnknownWebkitPseudoElement`](crate::selector::CssUnknownWebkitPseudoElement) identities with ASCII-lowercase
 //! semantic names and escaped specified output. They remain symbolic match-nothing
 //! pseudos subject to ordinary attachment, suffix and receiving-context restrictions;
 //! unknown functional forms remain invalid. User-action suffixes on non-tree-abiding
 //! pseudos retain the selected draft's at-risk status. No currently admitted pseudo
 //! has internal combinator permission.
-//! Pseudo 4 adds [`CssPseudoElement::Prefix`], [`CssPseudoElement::Suffix`],
-//! [`CssPseudoElement::SearchText`], [`CssPseudoElement::TargetText`],
-//! [`CssPseudoElement::SpellingError`], [`CssPseudoElement::GrammarError`],
-//! [`CssPseudoElement::Highlight`], [`CssPseudoElement::Placeholder`],
-//! [`CssPseudoElement::FileSelectorButton`] and [`CssPseudoElement::DetailsContent`].
-//! Highlight retains one checked, case-preserving [`CssCustomIdent`]. FirstLetter
+//! Pseudo 4 adds [`CssPseudoElement::Prefix`](crate::selector::CssPseudoElement::Prefix), [`CssPseudoElement::Suffix`](crate::selector::CssPseudoElement::Suffix),
+//! [`CssPseudoElement::SearchText`](crate::selector::CssPseudoElement::SearchText), [`CssPseudoElement::TargetText`](crate::selector::CssPseudoElement::TargetText),
+//! [`CssPseudoElement::SpellingError`](crate::selector::CssPseudoElement::SpellingError), [`CssPseudoElement::GrammarError`](crate::selector::CssPseudoElement::GrammarError),
+//! [`CssPseudoElement::Highlight`](crate::selector::CssPseudoElement::Highlight), [`CssPseudoElement::Placeholder`](crate::selector::CssPseudoElement::Placeholder),
+//! [`CssPseudoElement::FileSelectorButton`](crate::selector::CssPseudoElement::FileSelectorButton) and [`CssPseudoElement::DetailsContent`](crate::selector::CssPseudoElement::DetailsContent).
+//! Highlight retains one checked, case-preserving [`CssCustomIdent`](crate::values::common::CssCustomIdent). FirstLetter
 //! permits Prefix and Suffix children; recognized initial Prefix/Suffix names
-//! retain their implied universal origin. Nonfunctional [`CssPseudoClass::Current`]
+//! retain their implied universal origin. Nonfunctional [`CssPseudoClass::Current`](crate::selector::CssPseudoClass::Current)
 //! is admitted only in SearchText and element-backed suffix contexts, including
 //! inherited logical arguments. Ordinary `:current`, `:current()`, `:past` and
 //! `:future` remain unsupported. Part, FileSelectorButton and DetailsContent admit
 //! otherwise supported pseudo syntax, with each following segment resetting the
 //! receiving permissions. This syntax does not evaluate matching prohibitions,
 //! live highlights or optional UA implementation of SearchText.
-//! View Transitions 1 retains [`CssViewTransitionName`] as `none` or a checked,
-//! case-sensitive [`CssViewTransitionIdent`], excluding `none` and `auto` from
-//! the custom-name branch. [`CssPseudoElement::ViewTransition`] and its Group,
+//! View Transitions 1 retains [`CssViewTransitionName`](crate::values::view_transition::CssViewTransitionName) as `none` or a checked,
+//! case-sensitive [`CssViewTransitionIdent`](crate::values::view_transition::CssViewTransitionIdent), excluding `none` and `auto` from
+//! the custom-name branch. [`CssPseudoElement::ViewTransition`](crate::selector::CssPseudoElement::ViewTransition) and its Group,
 //! ImagePair, Old and New functional variants retain wildcard or custom-ident
-//! [`CssViewTransitionNameSelector`] arguments. Named descendants add OnlyChild
+//! [`CssViewTransitionNameSelector`](crate::values::view_transition::CssViewTransitionNameSelector) arguments. Named descendants add OnlyChild
 //! to generic suffix permission, inherited by Not/Is/Where. Exact compounds follow
 //! root → group → image-pair → old/new, and Slotted admits all five tree-abiding
 //! identities. Participant discovery, matching and live transitions belong downstream.
 //!
 //! # Counter styles and page rules
 //!
-//! [`CssRule::CounterStyle`] retains a checked, case-sensitive [`CssCounterStyleName`], every
+//! [`CssRule::CounterStyle`](crate::rule::CssRule::CounterStyle) retains a checked, case-sensitive [`CssCounterStyleName`](crate::rule::counter_style::CssCounterStyleName), every
 //! valid descriptor occurrence in authored order, the effective last valid occurrence of each
 //! descriptor, and the rule position. The typed descriptor values cover Counter Styles 3
 //! `system`, `negative`, `prefix`, `suffix`, `range`, `pad`, `fallback`, `symbols`,
 //! `additive-symbols`, and `speak-as`. Invalid individual descriptors recover locally.
 //! A grammar-valid collection can still fail to define a counter style; the separate
-//! [`CssCounterStyleDefinitionStatus`] records that distinction. Prospective descriptor
+//! [`CssCounterStyleDefinitionStatus`](crate::rule::counter_style::CssCounterStyleDefinitionStatus) records that distinction. Prospective descriptor
 //! entries retain real named occurrences or honestly source-free programmatic values.
 //!
-//! [`CssRule::Page`] retains an empty prelude or a complete named and compound
-//! [`CssPageSelectorList`], including comma lists and logical `:recto`/`:verso`.
+//! [`CssRule::Page`](crate::rule::CssRule::Page) retains an empty prelude or a complete named and compound
+//! [`CssPageSelectorList`](crate::rule::page::CssPageSelectorList), including comma lists and logical `:recto`/`:verso`.
 //! Selectors expose the Page-specific three-component specificity. Page declarations
 //! preserve a distinct typed descriptor domain (`size`, `page-orientation`, `marks`,
 //! `bleed`) alongside applicable shared properties and custom values. Sixteen canonical
@@ -1078,13 +1102,16 @@
 //! values are reused, including font-relative lengths; no layout or variable lookup runs.
 //! `CssDeclaration::try_from_components`, `CssPageDescriptorValue::parse`, and `CssBlockFragment::parse`
 //! check detached inputs with genuine origins. Checked selected blocks and borrowed
-//! [`CssPageRuleView`] support immutable edits without re-expanding authored shorthands.
+//! [`CssPageRuleView`](crate::rule::page::CssPageRuleView) support immutable edits without re-expanding authored shorthands.
 //! Page and margin CSSOM output follows the adopted Blink whole-rule wrapper under one
 //! cumulative atomic budget. Page matching, pagination, cascade, counter registration,
 //! inheritance resolution, and generated-marker execution remain downstream.
 //!
 //! ```
-//! use surgeist_css::{CssCounterStyleSystem, CssPagePseudo, CssRule, CssParser};
+//! use surgeist_css::rule::counter_style::CssCounterStyleSystem;
+//! use surgeist_css::rule::page::CssPagePseudo;
+//! use surgeist_css::rule::CssRule;
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_sheet(concat!(
 //!     "@counter-style digits { system: numeric; symbols: \"0\" \"1\"; suffix: \".\"; } ",
@@ -1097,7 +1124,7 @@
 //! assert_eq!(counter.name().as_str(), "digits");
 //! assert!(matches!(
 //!     counter.descriptors().system().map(|value| value.value().view()),
-//!     Some(surgeist_css::CssCounterStyleDescriptorValueRef::System(&CssCounterStyleSystem::Numeric))
+//!     Some(surgeist_css::rule::counter_style::CssCounterStyleDescriptorValueRef::System(&CssCounterStyleSystem::Numeric))
 //! ));
 //! assert_eq!(counter.descriptors().occurrences().count(), 3);
 //! assert_eq!(page.selectors().selectors()[0].pseudos(), &[CssPagePseudo::Left]);
@@ -1124,16 +1151,16 @@
 //! reconciliation, canonical reparse policy and unresolved normative clauses.
 //!
 //! Ordinary `glyph-orientation-vertical` is an explicit restricted legacy shorthand that maps to a
-//! parser-produced [`CssKnownProperty::TextOrientation`] value. It is not a name-equivalent
-//! schema alias: [`CssKnownProperty::aliases`] remains empty for `TextOrientation`, while
-//! [`feature_metadata`] exposes its distinct [`CssFeatureKind::PropertyAlias`] record. That
+//! parser-produced [`CssKnownProperty::TextOrientation`](crate::property::CssKnownProperty::TextOrientation) value. It is not a name-equivalent
+//! schema alias: [`CssKnownProperty::aliases`](crate::property::CssKnownProperty::aliases) remains empty for `TextOrientation`, while
+//! [`feature_metadata`](crate::conformance::feature_metadata) exposes its distinct [`CssFeatureKind::PropertyAlias`](crate::conformance::CssFeatureKind::PropertyAlias) record. That
 //! record is partial: the admitted literal mapping is supported, while numeric-terminal
 //! spelling and math applicability remain unresolved by the selected standards. The shared
 //! box-edge and blend-mode productions have independent complete records.
 //!
 //! `background-blend-mode`, `isolation`, and `mix-blend-mode` provide noninherited
 //! intrinsic initials of one `normal` list entry, `auto`, and `normal`. Their
-//! [`CssLonghandValueRef`] variants borrow the existing typed values. Expansion,
+//! [`CssLonghandValueRef`](crate::property::CssLonghandValueRef) variants borrow the existing typed values. Expansion,
 //! pending-substitution reentry, and normalization retain authored blend-list
 //! order, duplicates, source occurrences, and declaration importance. Checked
 //! admission requires complete original components, while browser recovery stays
@@ -1141,7 +1168,10 @@
 //! cumulative limits and return no partial public result on failure.
 //!
 //! ```
-//! use surgeist_css::{CssBlendMode, CssFeatureKind, CssKnownProperty, CssKnownPropertyValueRef, CssSupportStatus, feature_metadata, CssParser};
+//! use surgeist_css::values::background::CssBlendMode;
+//! use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+//! use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_block_contents(concat!(
 //!     "border-spacing: 2px 3px; ",
@@ -1169,16 +1199,16 @@
 //!
 //! # Authored when and else groups
 //!
-//! [`CssCondition<CssWhenLeaf>`] owns the adopted symbolic grammar: homogeneous boolean
+//! [`CssCondition<CssWhenLeaf>`](crate::query::CssCondition) owns the adopted symbolic grammar: homogeneous boolean
 //! terms, explicit groups, single media-feature and supports-declaration leaves,
 //! and valid opaque enclosures. `CssCondition::<CssWhenLeaf>::parse` returns checked syntax
-//! without evaluation. [`CssWhenRule`] and [`CssElseRule`] retain ordinary children;
+//! without evaluation. [`CssWhenRule`](crate::rule::CssWhenRule) and [`CssElseRule`](crate::rule::CssElseRule) retain ordinary children;
 //! their scoped counterparts retain the separate scoped grammar. Parsed Else
 //! chains require original-token adjacency after complete recovery reconstruction.
 //! Checked enclosing assembly instead validates actual supplied sibling order.
 //! Normalization retains immutable branch headers and nearest style contexts.
 //! Shared specified output composes the graph under cumulative limits; ordinary
-//! literal CSSOM returns [`CssRuleCssomKind::When`] or [`CssRuleCssomKind::Else`]
+//! literal CSSOM returns [`CssRuleCssomKind::When`](crate::serialization::CssRuleCssomKind::When) or [`CssRuleCssomKind::Else`](crate::serialization::CssRuleCssomKind::Else)
 //! as source-undefined. The current Scope literal front remains format-unavailable.
 //! See the [adopted authored profile](https://github.com/bj-data-eng/surgeist/issues/647).
 //!
@@ -1186,15 +1216,19 @@
 //!
 //! Media syntax preserves unknown conditions separately from malformed-member recovery.
 //! A structurally valid unknown feature or value is retained as
-//! [`CssMediaLeaf::UnknownFeature`] with no diagnostic. Arbitrary checked enclosures
-//! use [`CssMediaLeaf::GeneralEnclosed`] when no preceding grammar branch applies.
+//! [`CssMediaLeaf::UnknownFeature`](crate::query::media::CssMediaLeaf::UnknownFeature) with no diagnostic. Arbitrary checked enclosures
+//! use [`CssMediaLeaf::GeneralEnclosed`](crate::query::media::CssMediaLeaf::GeneralEnclosed) when no preceding grammar branch applies.
 //! Both preserve unknown truth under negation; query evaluation belongs downstream.
 //! A reserved or structurally
-//! malformed list member becomes [`CssMediaQuery::Never`] and emits
-//! [`CssRecoveryAction::ReplaceMediaQueryWithNever`], allowing later comma siblings to survive.
+//! malformed list member becomes [`CssMediaQuery::Never`](crate::query::media::CssMediaQuery::Never) and emits
+//! [`CssRecoveryAction::ReplaceMediaQueryWithNever`](crate::diagnostic::CssRecoveryAction::ReplaceMediaQueryWithNever), allowing later comma siblings to survive.
 //!
 //! ```
-//! use surgeist_css::{CssConditionKind, CssMediaLeaf, CssMediaQuery, CssRecoveryAction, CssRule, CssParser};
+//! use surgeist_css::query::CssConditionKind;
+//! use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery};
+//! use surgeist_css::diagnostic::CssRecoveryAction;
+//! use surgeist_css::rule::CssRule;
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_sheet("@media (future-mode: active), ???, print {}");
 //! let [CssRule::Media(media)] = report.syntax().rules() else {
@@ -1223,14 +1257,17 @@
 //! general-enclosed fallback syntax. Unselected Selectors 4 pseudo-classes and
 //! pseudo-elements, and syntax outside the named extension rows remain outside the typed subset.
 //! These nodes describe authored tests; the crate never evaluates whether a condition matches.
-//! `font-tech()` retains one shared [`CssFontTechHint`], `font-format()` retains
-//! the distinct keyword or string [`CssFontFormat`], and `at-rule()` retains a
-//! genuine at-keyword argument through [`CssSupportsAtRule`]. Unknown names and
+//! `font-tech()` retains one shared [`CssFontTechHint`](crate::rule::font_face::CssFontTechHint), `font-format()` retains
+//! the distinct keyword or string [`CssFontFormat`](crate::rule::font_face::CssFontFormat), and `at-rule()` retains a
+//! genuine at-keyword argument through [`CssSupportsAtRule`](crate::query::supports::CssSupportsAtRule). Unknown names and
 //! `@charset` remain authored predicates. Balanced invalid arguments use the
 //! general-enclosed fallback; lexical and resource failures remain terminal.
 //!
 //! ```
-//! use surgeist_css::{CssConditionKind, CssRule, CssSupportsLeaf, CssParser};
+//! use surgeist_css::query::CssConditionKind;
+//! use surgeist_css::rule::CssRule;
+//! use surgeist_css::query::supports::CssSupportsLeaf;
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_sheet(concat!(
 //!     "@supports selector(.card > .item:hover) {}",
@@ -1260,7 +1297,10 @@
 //! evaluation, cascade, selector matching, and root/sibling lowering are downstream work.
 //!
 //! ```
-//! use surgeist_css::{CssConditionKind, CssImportLayer, CssRule, CssSupportsLeaf, CssParser};
+//! use surgeist_css::query::CssConditionKind;
+//! use surgeist_css::rule::{CssImportLayer, CssRule};
+//! use surgeist_css::query::supports::CssSupportsLeaf;
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_sheet(concat!(
 //!     "@layer reset; ",
@@ -1280,20 +1320,20 @@
 //!
 //! # Diagnostics and coordinates
 //!
-//! Each [`CssRecoveryDiagnostic`] exposes a typed [`CssError`] and stable
-//! [`CssErrorCode`], the first responsible [`CssSourcePosition`], the complete
-//! [`CssSourceSpan`] of the recovery unit, and the [`CssRecoveryAction`] taken.
+//! Each [`CssRecoveryDiagnostic`](crate::diagnostic::CssRecoveryDiagnostic) exposes a typed [`CssError`](crate::diagnostic::CssError) and stable
+//! [`CssErrorCode`](crate::diagnostic::CssErrorCode), the first responsible [`CssSourcePosition`](crate::source::CssSourcePosition), the complete
+//! [`CssSourceSpan`](crate::source::CssSourceSpan) of the recovery unit, and the [`CssRecoveryAction`](crate::diagnostic::CssRecoveryAction) taken.
 //! Byte offsets index the original UTF-8 input. Lines and columns are zero-based,
 //! and columns count UTF-16 code units. Display and debug prose are for people;
 //! control flow should match typed variants and include a wildcard for every
-//! non-exhaustive enum. Closed enums such as [`CssImportance`] and
-//! [`CssSupportStatus`] remain exhaustively matchable.
+//! non-exhaustive enum. Closed enums such as [`CssImportance`](crate::declaration::CssImportance) and
+//! [`CssSupportStatus`](crate::conformance::CssSupportStatus) remain exhaustively matchable.
 //!
 //! Evolving authored-syntax enums intentionally require a wildcard in external
 //! matches. These representative exhaustive matches therefore do not compile:
 //!
 //! ```compile_fail
-//! use surgeist_css::CssMediaQueryModifier;
+//! use surgeist_css::query::media::CssMediaQueryModifier;
 //!
 //! fn describe(value: CssMediaQueryModifier) -> &'static str {
 //!     match value {
@@ -1304,7 +1344,7 @@
 //! ```
 //!
 //! ```compile_fail
-//! use surgeist_css::CssSelectorCombinator;
+//! use surgeist_css::selector::CssSelectorCombinator;
 //!
 //! fn describe(value: CssSelectorCombinator) -> &'static str {
 //!     match value {
@@ -1318,7 +1358,7 @@
 //!
 //!
 //! ```compile_fail
-//! use surgeist_css::CssAnimationDirection;
+//! use surgeist_css::values::animation::CssAnimationDirection;
 //!
 //! fn describe(value: CssAnimationDirection) -> &'static str {
 //!     match value {
@@ -1331,7 +1371,7 @@
 //! ```
 //!
 //! ```compile_fail
-//! use surgeist_css::CssGridAutoFlowAxis;
+//! use surgeist_css::values::layout::CssGridAutoFlowAxis;
 //!
 //! fn describe(value: CssGridAutoFlowAxis) -> &'static str {
 //!     match value {
@@ -1343,7 +1383,7 @@
 //!
 //! ```compile_fail,E0004
 //! use surgeist_color::PredefinedColorSpace;
-//! use surgeist_css::CssRelativeColorFunction;
+//! use surgeist_css::color::CssRelativeColorFunction;
 //!
 //! fn describe(value: CssRelativeColorFunction) -> &'static str {
 //!     match value {
@@ -1364,14 +1404,14 @@
 //!
 //! Background and image values preserve authored layer, image, gradient, stop,
 //! border-image, and object-sizing structure. Selected Images 4 additions admit
-//! conic gradients, explicit shared [`CssColorInterpolation`], singleton lists,
-//! and two authored positions per stop. [`CssGradientColorStop::positions`]
-//! retains linear positions; [`CssAngularColorStopPosition`] retains conic angle,
-//! percentage, exact zero, and [`CssCalculation<CssAnglePercentage>`] branches.
-//! Radial and conic `at` fields use the full symbolic [`CssPosition`] owner.
+//! conic gradients, explicit shared [`CssColorInterpolation`](crate::color::CssColorInterpolation), singleton lists,
+//! and two authored positions per stop. [`CssGradientColorStop::positions`](crate::values::image::CssGradientColorStop::positions)
+//! retains linear positions; [`CssAngularColorStopPosition`](crate::values::image::CssAngularColorStopPosition) retains conic angle,
+//! percentage, exact zero, and [`CssCalculation<CssAnglePercentage>`](crate::numeric::CssCalculation) branches.
+//! Radial and conic `at` fields use the full symbolic [`CssPosition`](crate::values::position::CssPosition) owner.
 //! They do not resolve URLs, load or
 //! decode images, compute geometry, or paint.
-//! `background-color` contributes one noninherited [`CssColor`] with transparent
+//! `background-color` contributes one noninherited [`CssColor`](crate::color::CssColor) with transparent
 //! intrinsic initial. Its existing color serializer retains symbolic dependencies;
 //! CSS-wide keywords remain symbolic and pending values reenter the color grammar.
 //! Background and mask size/repeat longhands expose ordered semantic lists through
@@ -1388,7 +1428,10 @@
 //! without adding an authored input node.
 //!
 //! ```
-//! use surgeist_css::{CssGradient, CssImageValue, CssKnownPropertyValueRef, CssSupportStatus, feature_metadata, CssParser};
+//! use surgeist_css::values::image::{CssGradient, CssImageValue};
+//! use surgeist_css::property::CssKnownPropertyValueRef;
+//! use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_block_contents(concat!(
 //!     "background-image: linear-gradient(to right, red 0%, 40%, blue); ",
@@ -1436,7 +1479,10 @@
 //! are public Complete atomic metadata.
 //!
 //! ```
-//! use surgeist_css::{CssColumnCount, CssFlexDirection, CssKnownPropertyValueRef, CssSupportStatus, feature_metadata, CssParser};
+//! use surgeist_css::values::layout::{CssColumnCount, CssFlexDirection};
+//! use surgeist_css::property::CssKnownPropertyValueRef;
+//! use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_block_contents("flex-flow: column wrap; columns: 3 12em");
 //! assert!(report.is_clean(), "{:?}", report.diagnostics());
@@ -1488,33 +1534,30 @@
 //! remainder metadata. `@font-face` and `@font-feature-values` provide complete
 //! selected authored rule construction and effective specified serialization.
 //! The Fonts 4 index-source contradiction remains explicit in the reference.
-//! [`feature_catalog`] owns its current cardinality, which is distinct from the
+//! [`feature_catalog`](crate::conformance::feature_catalog) owns its current cardinality, which is distinct from the
 //! immutable official inventory of property units, normative legacy shorthands,
-//! and non-property units; [`conformance_exclusions`] owns the exclusion rows.
+//! and non-property units; [`conformance_exclusions`](crate::conformance::conformance_exclusions) owns the exclusion rows.
 //!
 //! # Support metadata and application policy
 //!
-//! [`feature_catalog`] describes each declared conformance production as
-//! [`CssSupportStatus::Complete`], [`CssSupportStatus::Partial`], or
-//! [`CssSupportStatus::RecognizedUnsupported`]. Partial records state both their
+//! [`feature_catalog`](crate::conformance::feature_catalog) describes each declared conformance production as
+//! [`CssSupportStatus::Complete`](crate::conformance::CssSupportStatus::Complete), [`CssSupportStatus::Partial`](crate::conformance::CssSupportStatus::Partial), or
+//! [`CssSupportStatus::RecognizedUnsupported`](crate::conformance::CssSupportStatus::RecognizedUnsupported). Partial records state both their
 //! accepted subset and scope not claimed as supported. A remainder may describe
 //! known-valid unimplemented syntax or unresolved standard applicability; it does
 //! not establish that every other form is valid CSS. A diagnostic-free use of a
 //! partial production's accepted subset is still a clean parse.
 //!
 //! The source registry assigns every selected dated specification or preserved
-//! repository baseline a stable [`CssSpecificationSourceId`], module, level, and
-//! [`CssSpecificationTier`]. A tier classifies provenance only; it never implies
+//! repository baseline a stable [`CssSpecificationSourceId`](crate::conformance::CssSpecificationSourceId), module, level, and
+//! [`CssSpecificationTier`](crate::conformance::CssSpecificationTier). A tier classifies provenance only; it never implies
 //! parser support. Each source has exactly one immutable specification URL or
-//! repository provenance value. [`specification_source`], [`feature_metadata`],
-//! and [`conformance_exclusion`] use exact, case-sensitive IDs without trimming
+//! repository provenance value. [`specification_source`](crate::conformance::specification_source), [`feature_metadata`](crate::conformance::feature_metadata),
+//! and [`conformance_exclusion`](crate::conformance::conformance_exclusion) use exact, case-sensitive IDs without trimming
 //! or aliasing.
 //!
 //! ```
-//! use surgeist_css::{
-//!     CssExclusionReason, CssFeatureKind, CssSpecificationTier, CssSupportStatus,
-//!     conformance_exclusion, feature_metadata, specification_source,
-//! };
+//! use surgeist_css::conformance::{CssExclusionReason, CssFeatureKind, CssSpecificationTier, CssSupportStatus, conformance_exclusion, feature_metadata, specification_source};
 //!
 //! let color = specification_source("O-COLOR4").expect("dated Color 4 source");
 //! assert_eq!(color.tier(), CssSpecificationTier::Snapshot2026Official);
@@ -1539,7 +1582,7 @@
 //! Every feature record is atomic and parser-facing, with one truthful support
 //! status. Private reserved coverage slots describe later grammar boundaries only: they
 //! are not feature records, carry no support status, and do not make their
-//! spellings recognized. [`conformance_exclusions`] records informative,
+//! spellings recognized. [`conformance_exclusions`](crate::conformance::conformance_exclusions) records informative,
 //! superseded, and out-of-boundary official source items separately; exclusions
 //! carry no support status and never change parser diagnostics. These metadata
 //! and inventory boundaries do not change accepted CSS, retained syntax,
@@ -1559,10 +1602,11 @@
 //! nesting, empty rules, conditions, imports, layers, scopes, and complete
 //! nonstyle payloads without multiplying selectors or selecting cascade winners.
 //! The current property-expansion slice remains explicit: valid declarations
-//! outside it fail atomically with [`CssNormalizationError`].
+//! outside it fail atomically with [`CssNormalizationError`](crate::normalize::CssNormalizationError).
 //!
 //! ```
-//! use surgeist_css::{CssNormalizedItem, CssParser};
+//! use surgeist_css::normalize::CssNormalizedItem;
+//! use surgeist_css::CssParser;
 //!
 //! let report = CssParser::default().parse_sheet(".a, #b { margin-block: 1px; & .child { padding-block: 2px } }");
 //! let normalized = report.normalize(Default::default()).expect("supported expansion");
@@ -1583,16 +1627,15 @@
 //! The decoration shorthand sets Line, Thickness, Style and Color only; skip
 //! sets Self, Box, Inset, Spaces and Ink; emphasis sets Style and Color only.
 //! CSS-wide values and pending values stay symbolic, with original components.
-//! [`CssTextEmphasisMark`] preserves fill/shape omissions and origins;
-//! [`CssTextEmphasisPosition`] preserves an omitted Right side. Canonical output
+//! [`CssTextEmphasisMark`](crate::values::text::CssTextEmphasisMark) preserves fill/shape omissions and origins;
+//! [`CssTextEmphasisPosition`](crate::values::text::CssTextEmphasisPosition) preserves an omitted Right side. Canonical output
 //! omits assumed Filled before a shape and explicit Right after a vertical side.
 //! Strings remain untruncated and font-dependent shape selection stays downstream.
-//! [`CssTextShadowLayer`] checks nonnegative text spread and original closure,
+//! [`CssTextShadowLayer`](crate::values::text::CssTextShadowLayer) checks nonnegative text spread and original closure,
 //! reusing the box-shadow provider while preserving its signed-spread policy.
 //!
 //! ```
-//! use surgeist_css::{CssTextEmphasisFill, CssTextEmphasisMark, CssTextEmphasisShape,
-//!     CssTextEmphasisPosition, CssTextEmphasisVertical, CssTextSide};
+//! use surgeist_css::values::text::{CssTextEmphasisFill, CssTextEmphasisMark, CssTextEmphasisShape, CssTextEmphasisPosition, CssTextEmphasisVertical, CssTextSide};
 //! let mark = CssTextEmphasisMark::try_new(Some(CssTextEmphasisFill::Filled),
 //!     Some(CssTextEmphasisShape::Dot)).unwrap();
 //! assert_eq!(mark.serialize_specified(Default::default()).unwrap(), "dot");
@@ -1613,415 +1656,46 @@
 //! validate computed post-substitution values; evaluate queries; match selectors;
 //! resolve URLs, resources or general style units; perform layout, painting or
 //! animation; or expose a mutable CSSOM.
+//!
+//! Public items live in their domain modules; the crate root re-exports only the
+//! parser and its report types, so a root path to a module item does not resolve
+//! (CF24):
+//!
+//! ```compile_fail,E0432
+//! use surgeist_css::CssSheet;
+//! ```
 
-use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
-mod background_layer_serialization;
-mod background_serialization;
-mod border_color;
-mod border_image_serialization;
-mod clip_path_serialization;
-mod color_adjustment;
-mod motion_serialization;
-mod shape_outside_serialization;
-pub use color_adjustment::{
-    CssColorScheme, CssColorSchemeConstructionError, CssColorSchemeKeyword, CssColorSchemeName,
-    CssForcedColorAdjust, CssPrintColorAdjust,
-};
-mod block_fragments;
-mod color_profile;
-mod color_profile_serialization;
-mod common_serialization;
-mod common_values;
-mod component_values;
-mod conformance;
-mod content_serialization;
-mod content_values;
-mod counter_changes;
-mod counter_changes_serialization;
-mod counter_definition;
-mod counter_style_serialization;
-pub use counter_definition::{
-    CssCounterStyleAlgorithm, CssCounterStyleDefinitionIssue, CssCounterStyleDefinitionStatus,
-    CssCounterStyleDescriptorCollection, CssCounterStyleDescriptorEntry,
-};
-mod descriptor_values;
-pub use block_fragments::{
-    CssBlockBody, CssBlockContext, CssBlockFragment, CssRuleList, CssStyleAncestor,
-};
-mod stylesheet_input;
-mod syntax_consumption;
-pub use descriptor_values::{
-    CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef, CssCounterStyleValueError,
-    CssFontFeatureDisplayValue, CssFontFeatureDisplayValueRef, CssFontFeatureValue,
-    CssFontFeatureValueRef,
-};
-mod cursor_serialization;
-mod cursor_values;
-mod declaration_serialization;
-mod easing_serialization;
-mod error;
-mod expansion;
-mod filter_serialization;
-mod font_face_declaration_block;
-mod font_face_values;
-mod font_family_serialization;
-mod font_feature_values;
-mod font_palette;
-mod font_palette_serialization;
-mod font_palette_values;
-mod font_rule_serialization;
-pub use font_face_declaration_block::{
-    CssFontFaceDeclarationBlockError, CssSpecifiedFontFaceDeclarationBlock,
-};
-mod font_source_serialization;
-mod font_synthesis;
-mod font_variant;
-mod font_variant_serialization;
-mod image_orientation_serialization;
-mod image_serialization;
-mod imports;
-mod keyword_property_serialization;
-mod list_style_serialization;
-mod list_styles;
-mod misc_property_serialization;
-mod outline_serialization;
-mod quotes;
-mod shape_serialization;
-mod specified_declaration_block;
-mod specified_inverse;
-mod text_value_serialization;
-mod timed_property_serialization;
-mod transform_value_serialization;
-pub use imports::*;
-mod custom_media;
-pub use custom_media::*;
-mod named_supports;
-pub use named_supports::*;
-mod condition;
-pub(crate) use condition::SupportsAuthoredForm;
-pub use condition::{CssCondition, CssConditionKind, CssConditionLeaf, CssConditionList};
-mod container;
-mod container_features;
-mod container_properties;
-pub use container_properties::*;
-mod container_scroll;
-pub use container_scroll::*;
-mod container_style;
-pub use container_features::*;
-pub use container_style::*;
-mod when;
-pub use when::*;
-mod supports;
-pub use supports::{CssSupportsAtRule, CssSupportsConstructionError};
-mod cssom_rule_serialization;
-mod edited_rule;
-pub use edited_rule::{CssGroupPreludeRef, CssRuleGraphInput, CssRuleSerializationLimits};
-mod keyframe_matching;
-mod keyframe_serialization;
-pub use keyframe_matching::{
-    CssKeyframeSelectorComparisonError, CssKeyframeSelectorComparisonStage,
-    CssKeyframeSelectorMatcher,
-};
-pub use keyframe_serialization::{
-    CssKeyframeRuleView, CssKeyframeRuleViewError, CssKeyframesRuleView,
-};
-mod media;
-mod named_supports_composition;
-mod named_supports_serialization;
-mod page_keyframe_serialization;
-mod page_projection;
-mod page_serialization;
-pub use page_projection::{
-    CssMarginRuleView, CssPageProjectionError, CssPageRuleView, CssSpecifiedPageDeclarationBlock,
-    CssSpecifiedPageDeclarationEntry,
-};
-mod query_rule_serialization;
-mod rule_construction;
-mod selector_serialization;
-pub use selector_serialization::CssScopeSelectorCssomContext;
-mod selector_anchors;
-mod shadow_serialization;
-#[cfg(test)]
-mod specified_provider_composition_tests;
-mod specified_rule_graph;
-mod specified_rule_serialization;
-pub use rule_construction::CssRuleConstructionError;
-mod url_serialization;
-pub use media::*;
-mod media_features;
-mod normalization;
-pub use media_features::*;
-mod alignment;
-mod angle;
-mod aspect_ratio;
-mod border_radius;
-mod border_spacing;
-pub(crate) use border_spacing::BorderSpacingLength;
-mod border_style;
-mod border_width;
-mod box_spacing;
-mod break_controls;
-mod calc_size;
-mod clip;
-mod color;
-mod utf16_value;
-pub use color::{
-    CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssAuthoredColorResult,
-    CssAuthoredColorStandardFailure, CssColorActionLayout, CssColorBank, CssColorComponentPath,
-    CssColorCompute, CssColorError, CssColorFactDefect, CssColorFactIdentity, CssColorFactRead,
-    CssColorFacts, CssColorFailureCheckpoint, CssColorGrammarRequest, CssColorInitializationLayout,
-    CssColorInput, CssColorInputKind, CssColorInputRange, CssColorKernel, CssColorOperationOwner,
-    CssColorOrdinaryLimits, CssColorOrdinaryOutcome, CssColorOrdinaryResource,
-    CssColorOrdinaryResult, CssColorPaletteEntry, CssColorParse, CssColorParseAction,
-    CssColorParseOutcome, CssColorParseStep, CssColorPathStep, CssColorProfileAvailability,
-    CssColorProfileBinding, CssColorProfileConversion, CssColorProfileConversionRecord,
-    CssColorPropertyFacts, CssColorReadFact, CssColorReadInput, CssColorReadSlot,
-    CssColorResolveError, CssColorSchemeFact, CssColorSlot, CssColorSlotReceipt,
-    CssColorSourceDescriptor, CssColorStandardFailure, CssColorStandardFailureKind,
-    CssColorTransform, CssColorUnavailable, CssColorUnsupported, CssColorWriteSlot,
-    CssDeviceColorFact, CssUsedColorCheckpoint, parse_used_color,
-};
-pub use utf16_value::{
-    CssColorSchemeParseReport, CssUtf16PropertyValueLimits, CssUtf16ValueAdmission,
-    CssUtf16ValueStorage,
-};
-mod color_alpha;
-mod color_scalar;
-mod column_rule;
-mod column_sizing;
-mod contain_intrinsic_size;
-mod display;
-mod exact_decimal;
-mod gap;
-mod grid_template_areas;
-mod inset;
-mod integer_value;
-mod item_flow;
-mod numeric;
-mod numeric_formatting;
-mod opacity_scalar;
-mod pending_serialization;
-mod position_serialization;
-mod rotate;
-mod scroll_snap;
-mod serialization_escaping;
-mod sizing;
-mod sizing_controls;
-mod speech;
-pub use speech::{
-    CssAudioCue, CssCue, CssDecibelLiteral, CssGenericVoice, CssSemitoneLiteral, CssSpeak,
-    CssSpeakAs, CssSpeakAsPunctuation, CssSpeechBreak, CssSpeechBreakStrength, CssVoiceAge,
-    CssVoiceBalance, CssVoiceBalanceKeyword, CssVoiceDuration, CssVoiceFamily, CssVoiceFamilyEntry,
-    CssVoiceFamilyList, CssVoiceFamilyName, CssVoiceFamilyNameRef, CssVoiceGender, CssVoiceLevel,
-    CssVoiceOffset, CssVoicePitchRange, CssVoiceRate, CssVoiceRateKeyword, CssVoiceStress,
-    CssVoiceVolume, CssVoiceVolumeLevel,
-};
-mod image_1d;
-mod text_alignment;
-mod text_box;
-mod text_controls;
-mod text_decoration;
-mod text_spacing;
-mod ui;
-mod ui_serialization;
-pub use alignment::{
-    CssAlignContentValue, CssAlignItemsValue, CssAlignSelfValue, CssAlignmentPosition,
-    CssAlignmentValue, CssBaselinePosition, CssJustifyContentValue, CssJustifyItemsValue,
-    CssJustifySelfValue, CssLegacyAlignment, CssOverflowPosition, CssPlaceContentValue,
-    CssPlaceItemsValue, CssPlaceSelfValue,
-};
-pub use angle::{CssAngleOrZero, CssZeroLiteral};
-pub use aspect_ratio::CssSpecifiedRatio;
-pub(crate) use border_radius::CornerRadiusLength;
-pub use border_radius::CssBorderRadiusShorthand;
-pub use border_width::{CssBorder, CssLineWidth};
-pub use box_spacing::{CssMarginValue, CssPaddingValue};
-pub use calc_size::{CssBoxCalcSize, CssCalcSize, CssCalcSizeBasisRef, CssIntrinsicSizeKeyword};
-pub use color_alpha::{CssColorAlphaScalarRef, CssParsedColorAlphaRef};
-pub use color_scalar::{CssColorNumberLiteral, CssColorPercentageLiteral};
-pub use common_values::{CssAutoOr, CssBoxSideKind, CssFourSides, CssSidePair};
-pub use contain_intrinsic_size::{CssContainIntrinsicSizeFallback, CssContainIntrinsicSizeValue};
-pub use display::{
-    CssDisplayBox, CssDisplayInside, CssDisplayInternal, CssDisplayLegacy,
-    CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,
-};
-pub use gap::CssGapValue;
-pub use grid_template_areas::{
-    CssGridTemplateAreaCell, CssGridTemplateAreaError, CssGridTemplateAreaName,
-    CssGridTemplateAreaRow, CssGridTemplateAreaRows, CssGridTemplateAreas,
-};
-pub use image_1d::*;
-pub use ui::*;
-mod font_width;
-pub use font_width::{CssFontFaceWidth, CssFontWidth, CssFontWidthKeyword};
-mod font_controls;
-pub use font_controls::{
-    CssFontKerning, CssFontLanguageOverride, CssFontLanguageString, CssFontOpticalSizing,
-    CssFontSizeAdjust,
-};
-mod font_settings;
-pub use font_settings::{
-    CssAuthoredFontFeature, CssAuthoredFontFeatureList, CssAuthoredFontFeatureSettings,
-    CssAuthoredFontFeatureValue, CssFontVariation, CssFontVariationList, CssFontVariationSettings,
-    CssOpenTypeTag,
-};
-mod font_size;
-pub use font_size::CssFontSize;
-mod flex;
-mod font_shorthand;
-pub use flex::{
-    CssFlexBasisRef, CssFlexBasisValue, CssFlexComponents, CssFlexDirection, CssFlexFlow,
-    CssFlexValue, CssFlexWrap,
-};
-mod line_height;
-pub use line_height::CssLineHeight;
-mod font_style;
-pub use font_style::{
-    CssFontFaceObliqueRange, CssFontFaceStyle, CssFontStyle, CssFontStyleKeyword,
-    CssObliqueAngleRange,
-};
-mod font_weight;
-pub use font_weight::{
-    CssAbsoluteFontWeight, CssFontFaceWeight, CssFontWeight, CssFontWeightRange,
-};
-pub use inset::CssInsetValue;
-pub use item_flow::{
-    CssItemDirection, CssItemFlow, CssItemPack, CssItemWrap, CssItemWrapMode, CssItemWrapOrder,
-};
-pub use overflow::CssOverflowValue;
-pub use overflow_controls::{
-    CssOverflowAnchor, CssOverflowClipMargin, CssScrollBehavior, CssScrollbarGutter,
-};
-mod view_transitions;
-pub use view_transitions::{
-    CssViewTransitionIdent, CssViewTransitionName, CssViewTransitionNameSelector,
-};
-mod will_change;
-pub use scroll_snap::{
-    CssScrollSnapAlignment, CssScrollSnapAxis, CssScrollSnapStop, CssScrollSnapStrictness,
-    CssScrollSnapType,
-};
-pub(crate) use scroll_snap::{ScrollMarginSide, ScrollPaddingSide};
-pub use scrollbar::CssScrollbarColor;
-pub use sizing::{CssBoxSize, CssMaxSizeValue, CssSizeValue};
-pub use sizing_controls::{CssFrameSizing, CssMinIntrinsicSizing};
-pub use text_alignment::{
-    CssCharacterAlignment, CssTextAlignAllValue, CssTextAlignLastValue, CssTextAlignPosition,
-    CssTextAlignValue, CssTextConstructionError,
-};
-pub use text_spacing::CssTextSpacingAdjustment;
-pub use will_change::{
-    CssWillChange, CssWillChangeFeature, CssWillChangeFeatures, CssWillChangePropertyName,
-};
-mod float_clear;
-mod overflow;
-mod overflow_controls;
-mod scrollbar;
-mod specified_numeric;
-mod specified_serialization;
-mod writing_modes;
-pub use opacity_scalar::{CssOpacityScalar, CssOpacityScalarKind};
-pub(crate) use specified_serialization::CssSpecifiedValueSerializationErrorKind;
-pub use specified_serialization::{CssSerializationError, CssSerializationLimits};
+pub mod color;
+pub mod component;
+pub mod conformance;
+pub mod declaration;
+pub mod diagnostic;
+pub mod normalize;
+pub mod numeric;
+pub mod property;
+pub mod query;
+pub mod rule;
+pub mod selector;
+pub mod serialization;
+pub mod source;
+pub mod values;
+
 mod parser;
 mod parser_context;
-mod svg_glyph;
-pub use svg_glyph::{
-    CssSvgGlyphOrientationVerticalDeclaration, CssSvgGlyphOrientationVerticalMetadata,
-    CssSvgGlyphOrientationVerticalValue,
-};
-mod properties;
-mod property_value;
-pub use parser_context::{CssParser, CssParserContext, CssParserMode};
 mod report;
-mod source;
-mod source_retention;
-pub use source_retention::*;
-mod utf16_input;
-pub use utf16_input::*;
-mod utf16_declaration_block;
-pub use utf16_declaration_block::CssDeclarationBlockParseReport;
-mod syntax;
-mod tokenization;
-pub use numeric::{
-    CssAngle, CssAnglePercentage, CssAnyRange, CssCalculation, CssCalculationConstantRef,
-    CssCalculationExpressionRef, CssCalculationFunctionRef, CssCalculationProductFactorRef,
-    CssCalculationProductOperator, CssCalculationProductRef, CssCalculationProfileChannelRef,
-    CssCalculationSizeRef, CssCalculationSumOperator, CssCalculationSumRef,
-    CssCalculationSumTermRef, CssCalculationTreeCountingRef, CssCalculationType,
-    CssCalculationUnaryRef, CssCalculationValueRef, CssCalculationVariableRef, CssDimensionRoot,
-    CssFlex, CssFrequency, CssFrequencyPercentage, CssHintedNumber, CssInteger, CssLength,
-    CssLengthPercentage, CssMathFunction, CssNonNegative, CssNumber, CssNumeric,
-    CssNumericConstant, CssNumericConstructionError, CssNumericDimension, CssNumericLiteral,
-    CssNumericLiteralRef, CssNumericRoot, CssNumericType, CssNumericUnit, CssPercentage,
-    CssPositive, CssProfileColorCalculation, CssProfileColorExpression,
-    CssProfileColorExpressionRef, CssRange, CssResolution, CssRoundingStrategy, CssTime,
-    CssTreeCountingFunction,
-};
+mod specified_inverse;
+mod syntax_consumption;
 #[cfg(test)]
 mod test_support;
+#[cfg(test)]
+mod tests;
+mod tokenization;
 mod validation;
 
-pub use color_profile::*;
-pub use common_serialization::{
-    serialize_css_comma_separated_list, serialize_css_identifier, serialize_css_string,
-    serialize_css_whitespace_separated_list,
-};
-pub(crate) use component_values::CssComponentValueErrorKind;
-pub use component_values::{
-    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueLimits,
-    CssComponentValueRef, CssComponentValues, CssFunctionValue, CssHashFlag, CssNumericTokenKind,
-    CssNumericTokenRef, CssSerializedOrigin, CssSerializedOriginSegment, CssSerializedValue,
-    CssSimpleBlock, CssValueOrigin, CssValueTokenRef,
-};
-pub use conformance::*;
-pub use content_values::*;
-pub use counter_changes::{CssCounterChangeValue, CssCounterChangesValue, CssCounterProperty};
-pub use cssom_rule_serialization::{
-    CssRuleCssomFormat, CssRuleCssomKind, CssRuleSerializationError,
-};
-pub use cursor_values::*;
-pub use error::*;
-pub use expansion::{
-    CssContributionValueRef, CssContributions, CssCustomPropertyContribution, CssExpansion,
-    CssExpansionError, CssFourSideShorthandMetadata, CssInitialValueRef, CssLonghandContribution,
-    CssLonghandContributions, CssLonghandInitialValue, CssLonghandMetadata, CssLonghandProperty,
-    CssLonghandValue, CssLonghandValueRef, CssPendingSubstitution, CssPropertyKindRef,
-    CssPropertyMetadata, CssPropertyMetadataError, CssShorthandMetadata,
-    CssSvgGlyphOrientationVerticalContribution, CssUniversalReset, CssUniversalResetMetadata,
-    CssUserAgentInitial,
-};
-pub use font_face_values::{
-    CssFontMetricOverride, CssFontNamedInstance, CssFontNamedInstanceString,
-};
-pub use font_family_serialization::serialize_font_face_family_list;
-pub use font_feature_values::*;
-pub use font_palette::*;
-pub use font_palette_values::*;
-pub use font_synthesis::*;
-pub use font_variant::*;
-pub use list_styles::{CssListStyleTypeValue, CssListStyleValue, CssMarkerSide};
-pub use normalization::{
-    CssNormalizationError, CssNormalizationLimits, CssNormalizationResource,
-    CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedReport, CssNormalizedSelector,
-    CssNormalizedSheet, CssRuleContext, CssRuleContextKindRef, CssSelectorBinding,
-    CssSelectorContext,
-};
-pub use parser::{
-    CssNamespaceContext, CssParsedKeyframeRule, CssParsedKeyframeSelectors,
-    CssParsedStyleSelectors, CssRuleAdmissionContext, CssRuleSyntax, CssRuleSyntaxKind,
-    CssStyleSelectorContext,
-};
-pub use properties::*;
-pub use property_value::{CssPropertyTarget, CssPropertyTextTarget, CssPropertyValueError};
-pub use report::*;
-pub use source::*;
-pub use specified_declaration_block::{
-    CssDeclarationBlockError, CssInvalidKeyframeSourceReason, CssSpecifiedDeclarationBlock,
-    CssSpecifiedDeclarationEntry, CssSpecifiedDeclarationValueRef,
-};
-pub use stylesheet_input::*;
-pub use syntax::*;
+#[doc(inline)]
+pub use parser_context::{CssParser, CssParserContext, CssParserMode};
+#[doc(inline)]
+pub use report::{CssParseReport, CssValidationFailure};
 
 /// Crate-issued seals for the public numeric traits.
 ///
@@ -2031,7 +1705,7 @@ pub use syntax::*;
 pub(crate) mod sealed {
     /// The crate-issued identity of one numeric root marker.
     #[derive(Clone, Copy)]
-    pub struct Root(pub(crate) crate::numeric::RootKind);
+    pub struct Root(pub(crate) crate::numeric::value::RootKind);
 
     /// Seals `CssNumericRoot`; only CSS implements it.
     pub trait NumericRoot {
@@ -2046,30 +1720,25 @@ pub(crate) mod sealed {
         fn parse_block(
             parser: &crate::CssParser,
             source: &str,
-            context: &crate::CssBlockContext<'_>,
-        ) -> crate::CssParseReport<Option<crate::CssBlockFragment<Self>>>;
+            context: &crate::rule::CssBlockContext<'_>,
+        ) -> crate::CssParseReport<Option<crate::rule::CssBlockFragment<Self>>>;
     }
 
     /// The range check behind `CssRange<T>`; only CSS implements it.
-    pub trait RangeBounds<T: crate::CssNumericRoot> {
+    pub trait RangeBounds<T: crate::numeric::CssNumericRoot> {
         /// Whether an exact literal of root `T` lies in this range, compared
         /// exactly, without binary64 conversion.
-        fn admits(literal: &crate::CssNumericLiteral<T>) -> bool;
+        fn admits(literal: &crate::numeric::CssNumericLiteral<T>) -> bool;
     }
 
     /// The unit vocabulary of one dimension root; only CSS implements it.
     pub trait DimensionUnit: Copy {
         /// Selects this vocabulary's unit from a decoded registry unit.
-        fn from_numeric(unit: crate::CssNumericUnit) -> Option<Self>;
+        fn from_numeric(unit: crate::numeric::CssNumericUnit) -> Option<Self>;
         /// Returns this unit's registry identity.
-        fn into_numeric(self) -> crate::CssNumericUnit;
+        fn into_numeric(self) -> crate::numeric::CssNumericUnit;
     }
 }
 
 /// Shared ceiling for authored rules and owned component-value trees.
 const STRUCTURAL_NESTING_LIMIT: u32 = 256;
-#[cfg(test)]
-pub(crate) use test_support::CssParseReportTestExt;
-
-#[cfg(test)]
-mod tests;

@@ -1,5 +1,7 @@
 use std::sync::Arc;
-use surgeist_css::*;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::source::{CssUtf16InputLimits, CssUtf16Resource};
+use surgeist_css::{CssParseReport, CssParser, CssParserContext, CssParserMode};
 
 fn parse(raw: Arc<Vec<u16>>) -> CssParseReport<CssMediaQueryList> {
     CssMediaQueryList::parse_utf16(

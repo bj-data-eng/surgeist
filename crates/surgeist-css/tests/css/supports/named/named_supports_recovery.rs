@@ -2,10 +2,10 @@
 //! The selected Syntax block consumer and the catalog's named-test reconciliation
 //! require local recovery, with recovered input rejected by checked construction.
 
-use surgeist_css::{
-    CssParser, CssRecoveryAction, CssRule, CssSheet, CssSupportsConditionRule, CssSupportsTestBody,
-    CssSupportsTestItem,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::supports::{CssSupportsTestBody, CssSupportsTestItem};
+use surgeist_css::rule::{CssRule, CssSheet, CssSupportsConditionRule};
 
 fn definition(sheet: &CssSheet) -> &CssSupportsConditionRule {
     sheet

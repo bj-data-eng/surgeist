@@ -4,7 +4,10 @@
 //! The authored calculation must preserve its
 //! percentage basis, even when percentage dimensions cancel algebraically.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::numeric::CssNumericDimension;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::text::CssTextSpacingAdjustment;
 
 fn authored(name: &str, value: &str) -> CssTextSpacingAdjustment {
     let source = format!("{name}: {value}");

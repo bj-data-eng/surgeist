@@ -3,7 +3,16 @@
 //! https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/
 use crate::css::support::rules::normalized_pages as page_rules;
 use crate::css::support::rules::page_pseudo;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssValueTokenRef};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::page::{CssPagePseudo, CssPageRule};
+use surgeist_css::selector::{CssNamespaceConstraint, CssSelector, CssStyleSelector};
+use surgeist_css::values::box_model::CssMarginValue;
 
 fn assert_margin(page: &CssPageRule) {
     assert_eq!(page.declarations().properties().len(), 1);

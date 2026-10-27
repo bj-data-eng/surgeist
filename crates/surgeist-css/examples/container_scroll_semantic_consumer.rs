@@ -1,6 +1,13 @@
 #![forbid(unsafe_code)]
 //! Inspect scroll keyword and pending domains without resolving them.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::query::container::{
+    CssContainerLeaf, CssContainerPendingValue, CssContainerScrollDirectionValueRef,
+    CssContainerScrollFeature, CssContainerSnappedValueRef, CssContainerStuckValueRef,
+    CssScrollStateLeaf,
+};
+use surgeist_css::query::{CssCondition, CssConditionKind};
 
 fn main() {
     let condition = CssCondition::<CssContainerLeaf>::try_from_components(

@@ -37,7 +37,8 @@ use adapters::{
     PropertyOrDescriptor, REGISTRY, RegistryEntry, UnsupportedPolicy as RegistryUnsupportedPolicy,
 };
 #[cfg(test)]
-use surgeist_css::{CssParser, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
 
 const CORPUS_ROOT: &str = "tests/corpus/csstree";
 const EXPECTED_CLASSES_PATH: &str = "tests/csstree/expected-classes.json";
@@ -2701,7 +2702,7 @@ mod tests {
             source.find("unknown").unwrap()
         );
         let report = CssRule::parse(&CssParser::default(), source, &corpus_namespace_context());
-        let Some(surgeist_css::CssRule::Media(media)) = report.syntax() else {
+        let Some(surgeist_css::rule::CssRule::Media(media)) = report.syntax() else {
             panic!("expected retained media rule");
         };
         assert_eq!(
@@ -2728,7 +2729,7 @@ mod tests {
                 .value(),
             5
         );
-        let [surgeist_css::CssRule::Style(style)] = media.rules() else {
+        let [surgeist_css::rule::CssRule::Style(style)] = media.rules() else {
             panic!("expected retained style child");
         };
         assert!(style.declarations().is_empty());
@@ -3256,7 +3257,7 @@ mod tests {
         assert!(report.is_clean(), "{:?}", report.diagnostics());
         assert!(matches!(
             report.syntax().rules(),
-            [surgeist_css::CssRule::Media(_)]
+            [surgeist_css::rule::CssRule::Media(_)]
         ));
 
         let mut expected: RawExpectedClasses =

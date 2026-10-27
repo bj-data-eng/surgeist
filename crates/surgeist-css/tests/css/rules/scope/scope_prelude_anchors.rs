@@ -7,7 +7,17 @@
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-syntax
 //! https://www.w3.org/TR/2024/WD-css-cascade-6-20240906/#scope-bounds
 use crate::css::support::rules::sole_scope_selector as single;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizedItem, CssNormalizedSheet, CssRuleContext, CssRuleContextKindRef,
+    CssSelectorBinding,
+};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::{CssRule, CssScopeRule, CssStyleBlock};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoClass, CssSelector, CssSelectorCombinator, CssStyleSelector,
+};
 
 fn anchor(selector: &CssSelector, nesting: usize, scope: bool) {
     let CssSelector::Compound(compound) = selector else {
@@ -207,8 +217,8 @@ fn anchor_modes_propagate_through_exact_function_members_and_combinators() {
         panic!("is function")
     };
     let [
-        surgeist_css::CssPseudoSelectorListItem::Selector(parent),
-        surgeist_css::CssPseudoSelectorListItem::Selector(fallback),
+        surgeist_css::selector::CssPseudoSelectorListItem::Selector(parent),
+        surgeist_css::selector::CssPseudoSelectorListItem::Selector(fallback),
     ] = root.items()
     else {
         panic!("both authored members, no forgiving loss")
@@ -218,7 +228,7 @@ fn anchor_modes_propagate_through_exact_function_members_and_combinators() {
     let CssSelector::PseudoClass(CssPseudoClass::Not(limit)) = single(limit) else {
         panic!("not function")
     };
-    let [surgeist_css::CssPseudoSelectorListItem::Selector(limit)] = limit.items() else {
+    let [surgeist_css::selector::CssPseudoSelectorListItem::Selector(limit)] = limit.items() else {
         panic!("one not member")
     };
     anchor(limit, 0, true);

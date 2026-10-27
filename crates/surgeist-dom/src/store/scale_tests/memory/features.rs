@@ -12,7 +12,9 @@ use crate::{
     DomSourceProgress, DomSourceRequest, DomStyleAction, DomStyleCssomOwnerBinding,
     DomStyleCssomRoot, DomStyleInlineCspObservation, Namespace, NodeId,
 };
-use surgeist_css::{CssMediaQueryList, CssParser, CssParserContext, CssUtf16InputLimits};
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::{
     CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs, CssomStore,
 };

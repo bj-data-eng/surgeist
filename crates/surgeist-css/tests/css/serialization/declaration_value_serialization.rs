@@ -8,7 +8,12 @@ use crate::css::support::authored_syntax::{
     assert_diagnostics, grammar_checked_declaration as checked, parsed_declaration as parsed,
 };
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::declaration::{CssCustomPropertyName, CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::serialization::CssSerializationLimits;
 
 type Limits = CssSerializationLimits;
 

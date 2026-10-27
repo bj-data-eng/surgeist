@@ -1,13 +1,17 @@
-use surgeist_css::{
-    CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssErrorCode,
-    CssFontFamilyNameKind, CssFontSize, CssFontStyle, CssFontSynthesis, CssFontValue,
-    CssFontVariantCaps, CssFontVariantEastAsian, CssFontVariantEastAsianVariant,
-    CssFontVariantEastAsianWidth, CssFontVariantLigatureState, CssFontVariantLigatures,
-    CssFontVariantNumeric, CssFontVariantNumericFigure, CssFontVariantNumericFraction,
-    CssFontVariantNumericSpacing, CssFontVariantPosition, CssFontVariantValue,
-    CssGenericFontFamily, CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLineHeight, CssParser, CssSystemFont,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
 };
+use surgeist_css::values::font::{
+    CssAuthoredFontFeatureSettings, CssAuthoredFontFeatureValue, CssFontFamilyNameKind,
+    CssFontSize, CssFontStyle, CssFontSynthesis, CssFontValue, CssFontVariantCaps,
+    CssFontVariantEastAsian, CssFontVariantEastAsianVariant, CssFontVariantEastAsianWidth,
+    CssFontVariantLigatureState, CssFontVariantLigatures, CssFontVariantNumeric,
+    CssFontVariantNumericFigure, CssFontVariantNumericFraction, CssFontVariantNumericSpacing,
+    CssFontVariantPosition, CssFontVariantValue, CssGenericFontFamily, CssSystemFont,
+};
+use surgeist_css::values::text::CssLineHeight;
 
 #[test]
 fn font_variant_longhands_and_shorthand_enforce_keyword_groups() {
@@ -468,7 +472,7 @@ fn kerning_size_adjust_and_synthesis_follow_fonts3() {
     };
     assert!(matches!(
         kerning.value(),
-        surgeist_css::CssFontKerning::Normal
+        surgeist_css::values::font::CssFontKerning::Normal
     ));
     assert_eq!(kerning.as_css(), "normal");
 
@@ -482,7 +486,7 @@ fn kerning_size_adjust_and_synthesis_follow_fonts3() {
     };
     assert!(matches!(
         size_adjust.value(),
-        surgeist_css::CssFontSizeAdjust::Number(value) if value.serialize_specified(Default::default()).unwrap() == "0.5"
+        surgeist_css::values::font::CssFontSizeAdjust::Number(value) if value.serialize_specified(Default::default()).unwrap() == "0.5"
     ));
 
     let CssKnownPropertyValueRef::FontSynthesis(synthesis) = report.syntax()[2]
@@ -801,7 +805,7 @@ fn system_fonts_are_whole_values_and_explicit_components_are_unique() {
     assert_eq!(
         font.style(),
         Some(&CssFontStyle::Keyword(
-            surgeist_css::CssFontStyleKeyword::Italic
+            surgeist_css::values::font::CssFontStyleKeyword::Italic
         ))
     );
     assert_eq!(font.families().families()[0].as_str(), "Arial");
@@ -838,11 +842,11 @@ fn font_shorthand_retains_ambiguous_normal_before_explicit_style() {
     assert_eq!(report.syntax().len(), 6);
 
     for (index, expected_style) in [
-        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
-        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
-        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
-        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
-        CssFontStyle::Keyword(surgeist_css::CssFontStyleKeyword::Italic),
+        CssFontStyle::Keyword(surgeist_css::values::font::CssFontStyleKeyword::Italic),
+        CssFontStyle::Keyword(surgeist_css::values::font::CssFontStyleKeyword::Italic),
+        CssFontStyle::Keyword(surgeist_css::values::font::CssFontStyleKeyword::Italic),
+        CssFontStyle::Keyword(surgeist_css::values::font::CssFontStyleKeyword::Italic),
+        CssFontStyle::Keyword(surgeist_css::values::font::CssFontStyleKeyword::Italic),
         CssFontStyle::Oblique { angle: None },
     ]
     .iter()

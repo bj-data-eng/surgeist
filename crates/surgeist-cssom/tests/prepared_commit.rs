@@ -1,6 +1,10 @@
 //! Public consumer evidence for exclusive private preparation and real publication.
 use std::sync::{Arc, Weak};
-use surgeist_css::*;
+use surgeist_css::property::CssPropertyGrammar;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::CssSheet;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
 
 fn version(role: CssomInputRole, name: &str, revision: u64) -> CssomInputVersion {

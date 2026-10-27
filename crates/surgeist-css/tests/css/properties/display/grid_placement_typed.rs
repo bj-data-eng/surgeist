@@ -1,7 +1,15 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::positive_literal;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssCalculation, CssInteger, CssNumeric, CssNumericLiteral, CssPositive,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::CssIdent;
+use surgeist_css::values::layout::{CssGridArea, CssGridLine, CssGridLineName, CssGridLineRange};
 
 fn line_name(value: &str) -> CssGridLineName {
     CssGridLineName::try_new(CssIdent::try_new(value).unwrap()).unwrap()
@@ -92,8 +100,8 @@ fn checked_construction_excludes_invalid_states_and_keeps_authored_variants() {
     assert!(CssGridLineName::try_new(CssIdent::try_new("none").unwrap()).is_some());
     assert!(
         CssGridLine::try_indexed(
-            CssNumeric::<CssInteger>::try_from_literal(surgeist_css::CssNumericLiteral::<
-                surgeist_css::CssInteger,
+            CssNumeric::<CssInteger>::try_from_literal(surgeist_css::numeric::CssNumericLiteral::<
+                surgeist_css::numeric::CssInteger,
             >::from_i32(0))
             .unwrap(),
             None
@@ -118,8 +126,8 @@ fn checked_construction_excludes_invalid_states_and_keeps_authored_variants() {
     assert_eq!(
         small,
         CssGridLine::try_indexed(
-            CssNumeric::<CssInteger>::try_from_literal(surgeist_css::CssNumericLiteral::<
-                surgeist_css::CssInteger,
+            CssNumeric::<CssInteger>::try_from_literal(surgeist_css::numeric::CssNumericLiteral::<
+                surgeist_css::numeric::CssInteger,
             >::from_i32(2))
             .unwrap(),
             None
@@ -145,8 +153,8 @@ fn checked_construction_excludes_invalid_states_and_keeps_authored_variants() {
     assert!(matches!(literal.origin(), CssValueOrigin::Programmatic));
     assert_eq!(large, parsed_line("2147483648"));
     let named = CssGridLine::try_indexed(
-        CssNumeric::<CssInteger>::try_from_literal(surgeist_css::CssNumericLiteral::<
-            surgeist_css::CssInteger,
+        CssNumeric::<CssInteger>::try_from_literal(surgeist_css::numeric::CssNumericLiteral::<
+            surgeist_css::numeric::CssInteger,
         >::from_i32(2))
         .unwrap(),
         Some(line_name("main")),
@@ -210,8 +218,8 @@ fn authored_omissions_and_effective_members_remain_distinct() {
     );
 
     let indexed = CssGridLine::try_indexed(
-        CssNumeric::<CssInteger>::try_from_literal(surgeist_css::CssNumericLiteral::<
-            surgeist_css::CssInteger,
+        CssNumeric::<CssInteger>::try_from_literal(surgeist_css::numeric::CssNumericLiteral::<
+            surgeist_css::numeric::CssInteger,
         >::from_i32(2))
         .unwrap(),
         Some(line_name("Hero")),

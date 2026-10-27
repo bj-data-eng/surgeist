@@ -3,14 +3,23 @@
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use crate::css::support::rules::import_from_components as construct;
-use surgeist_css::{
-    CssCalculationExpressionRef, CssComponentValue, CssComponentValueError,
-    CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssConditionKind,
-    CssImportLayer, CssImportRule, CssImportTarget, CssKnownPropertyValueRef,
-    CssMediaConstructionError, CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaRangeRef,
-    CssMediaType, CssNamespaceConstraint, CssNamespaceContext, CssOpacityValue, CssParser, CssRule,
-    CssSelector, CssSerializationError, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueError, CssComponentValueLimits, CssComponentValueRef,
+    CssComponentValues, CssSerializedOrigin, CssValueOrigin,
 };
+use surgeist_css::numeric::CssCalculationExpressionRef;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{
+    CssMediaConstructionError, CssMediaFeatureQuery, CssMediaLeaf, CssMediaQuery, CssMediaRangeRef,
+    CssMediaType,
+};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::{CssImportLayer, CssImportRule, CssImportTarget, CssRule};
+use surgeist_css::selector::{CssNamespaceConstraint, CssNamespaceContext, CssSelector};
+use surgeist_css::serialization::CssSerializationError;
+use surgeist_css::values::effects::CssOpacityValue;
 
 fn values(items: Vec<CssComponentValue>) -> CssComponentValues {
     CssComponentValues::try_new(items, Default::default()).unwrap()
@@ -325,7 +334,7 @@ fn programmatic_import_and_mixed_numeric_children_keep_honest_independent_origin
     )
     .unwrap();
     let media = CssComponentValue::try_block(
-        surgeist_css::CssBlockKind::Parenthesis,
+        surgeist_css::component::CssBlockKind::Parenthesis,
         values(vec![token("width"), token(":"), media_leaf]),
     )
     .unwrap();

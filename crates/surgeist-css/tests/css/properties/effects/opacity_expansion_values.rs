@@ -4,7 +4,19 @@
 //! canonical opacity serialization assertions.
 
 use crate::css::support::important_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationSumOperator,
+    CssCalculationType, CssCalculationValueRef,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandContribution, CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::effects::CssOpacityValue;
 
 fn expanded(source: &CssDeclaration) -> CssLonghandContributions {
     let CssExpansion::Contributions(CssContributions::Longhands(values)) = source.expand().unwrap()

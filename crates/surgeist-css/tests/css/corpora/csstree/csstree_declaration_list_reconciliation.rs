@@ -2,7 +2,9 @@
 //! diagnostic contracts. Expected values never come from the runtime or registry.
 
 use serde_json::{Value, json};
-use surgeist_css::{CssDeclarationList, CssImportance, CssKnownPropertyValueRef, CssParser};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclarationList, CssImportance};
+use surgeist_css::property::CssKnownPropertyValueRef;
 
 use crate::css::support::csstree::adapters::{EntryPoint, Extractor};
 use crate::css::support::csstree::reconciliation::{

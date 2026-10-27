@@ -1,6 +1,8 @@
 use std::cell::Cell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use surgeist_css::{CssErrorCode, CssParser, CssPropertyGrammar, CssRecoveryAction};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssPropertyGrammar;
 use surgeist_cssom::*;
 
 fn version(identity: &str, revision: u64) -> CssomInputVersion {

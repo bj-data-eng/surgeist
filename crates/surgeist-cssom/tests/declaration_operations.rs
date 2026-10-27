@@ -1,4 +1,15 @@
-use surgeist_css::*;
+use surgeist_css::declaration::{
+    CssDeclarationList, CssImportance, CssSpecifiedDeclarationEntry,
+    CssSpecifiedDeclarationValueRef,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssPropertyGrammar, CssPropertyNameRef,
+    CssSvgGlyphOrientationVerticalDeclaration,
+};
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind;
+use surgeist_css::rule::page::CssPageDescriptorKind;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
 
 fn version(role: CssomInputRole, identity: &str, revision: u64) -> CssomInputVersion {
@@ -1385,7 +1396,7 @@ fn inline_external_attribute_changes_bypass_readonly_without_echoing_owner() {
         .prepare_style_attribute_change(
             &id,
             &change,
-            surgeist_css::CssUtf16InputLimits::default(),
+            surgeist_css::source::CssUtf16InputLimits::default(),
             CssomDeclarationRequestLimits::default(),
             || Ok::<_, ()>(()),
         )
@@ -1407,7 +1418,7 @@ fn inline_external_attribute_changes_bypass_readonly_without_echoing_owner() {
         .prepare_style_attribute_change(
             &id,
             &null,
-            surgeist_css::CssUtf16InputLimits::default(),
+            surgeist_css::source::CssUtf16InputLimits::default(),
             CssomDeclarationRequestLimits::default(),
             || Ok::<_, ()>(()),
         )
@@ -1440,7 +1451,7 @@ fn nonqualifying_inline_notifications_do_not_parse_and_stale_owner_is_atomic() {
             edit.prepare_style_attribute_change(
                 &id,
                 &change,
-                surgeist_css::CssUtf16InputLimits::default(),
+                surgeist_css::source::CssUtf16InputLimits::default(),
                 CssomDeclarationRequestLimits {
                     max_input_bytes: 0,
                     ..Default::default()
@@ -1467,7 +1478,7 @@ fn nonqualifying_inline_notifications_do_not_parse_and_stale_owner_is_atomic() {
         edit.prepare_style_attribute_change(
             &id,
             &change,
-            surgeist_css::CssUtf16InputLimits::default(),
+            surgeist_css::source::CssUtf16InputLimits::default(),
             CssomDeclarationRequestLimits::default(),
             || Ok::<_, ()>(())
         ),

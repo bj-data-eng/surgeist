@@ -1,14 +1,15 @@
 //! Sizing 4 physical size pairs and finite intrinsic controls.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::match_ignore_ascii_case;
 
 use super::side_shapes::parse_side_pair;
 use super::sizing::{parse_max_size_value, parse_size_value};
-use crate::numeric::NumericInputContext;
-use crate::{CssFrameSizing, CssMinIntrinsicSizing, CssSidePair};
-use crate::{CssMaxSizeValue, CssSizeValue};
+use crate::numeric::expression::NumericInputContext;
+use crate::values::box_model::{CssFrameSizing, CssMinIntrinsicSizing};
+use crate::values::box_model::{CssMaxSizeValue, CssSizeValue};
+use crate::values::common::CssSidePair;
 
 pub(super) fn parse_size_pair<'i, 't>(
     input: &mut Parser<'i, 't>,

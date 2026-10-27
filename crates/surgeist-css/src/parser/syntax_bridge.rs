@@ -1,8 +1,14 @@
 //! Selected generic units bridged to existing contextual grammar callbacks.
-use super::*;
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::from_parse_error;
+use crate::parser::consume_failed_rule_block;
+use crate::parser::recovery::{RecoveryState, recovery_action_for_error};
 use crate::syntax_consumption::{
     self as syntax, GenericFaultKind, GenericRule, GenericRuleResult, RuleListSyntax,
     RuleTermination, SyntaxDocument,
+};
+use cssparser::{
+    AtRuleParser, Delimiter, ParseError, Parser, ParserState, QualifiedRuleParser, Token,
 };
 
 pub(super) fn rules(
@@ -12,7 +18,7 @@ pub(super) fn rules(
     list: RuleListSyntax,
 ) -> Result<
     (std::rc::Rc<SyntaxDocument<'static>>, Vec<GenericRuleResult>),
-    crate::CssComponentValueError,
+    crate::component::CssComponentValueError,
 > {
     let document = recovery.syntax_document(source)?;
     let start = document
@@ -48,7 +54,7 @@ where
         + QualifiedRuleParser<'i, QualifiedRule = R, Error = CssError>,
 {
     let document = recovery.syntax_document(source).map_err(|error| {
-        crate::error::invalid_component_value(input.current_source_location(), error)
+        crate::diagnostic::error::invalid_component_value(input.current_source_location(), error)
     })?;
     let selected = syntax::consume_one_rule(&mut document.cursor(document.root));
     let selected = match selected {
@@ -318,31 +324,31 @@ where
 
 pub(super) fn arena_error(
     source: &str,
-    error: crate::CssComponentValueError,
-) -> crate::CssRecoveryDiagnostic {
+    error: crate::component::CssComponentValueError,
+) -> crate::diagnostic::CssRecoveryDiagnostic {
     component_error_diagnostic(
         source,
         error,
-        crate::CssSourceSpan::new(
-            crate::CssSourcePosition::from_byte_offset_in(source, 0),
-            crate::CssSourcePosition::from_byte_offset_in(source, source.len()),
+        crate::source::CssSourceSpan::new(
+            crate::source::CssSourcePosition::from_byte_offset_in(source, 0),
+            crate::source::CssSourcePosition::from_byte_offset_in(source, source.len()),
         )
         .expect("complete source span"),
-        crate::CssRecoveryAction::DropQualifiedRule,
+        crate::diagnostic::CssRecoveryAction::DropQualifiedRule,
     )
 }
 
 pub(super) fn component_error_diagnostic(
     source: &str,
-    error: crate::CssComponentValueError,
-    span: crate::CssSourceSpan,
-    ordinary_action: crate::CssRecoveryAction,
-) -> crate::CssRecoveryDiagnostic {
+    error: crate::component::CssComponentValueError,
+    span: crate::source::CssSourceSpan,
+    ordinary_action: crate::diagnostic::CssRecoveryAction,
+) -> crate::diagnostic::CssRecoveryDiagnostic {
     let position = match error.origin() {
-        crate::CssValueOrigin::Parsed(origin) => origin.span().start(),
-        _ => crate::CssSourcePosition::from_byte_offset_in(source, 0),
+        crate::component::CssValueOrigin::Parsed(origin) => origin.span().start(),
+        _ => crate::source::CssSourcePosition::from_byte_offset_in(source, 0),
     };
-    let parsed = crate::error::invalid_component_value(
+    let parsed = crate::diagnostic::error::invalid_component_value(
         cssparser::SourceLocation {
             line: position.line().value(),
             column: position.column().value() + 1,
@@ -350,7 +356,7 @@ pub(super) fn component_error_diagnostic(
         error,
     );
     let action = recovery_action_for_error(&parsed, ordinary_action);
-    crate::CssRecoveryDiagnostic::new(from_parse_error(source, parsed), span, action)
+    crate::diagnostic::CssRecoveryDiagnostic::new(from_parse_error(source, parsed), span, action)
         .expect("arena failure belongs to this source")
 }
 
@@ -402,7 +408,7 @@ pub(super) fn retain_statement_eof(
     source: &str,
     recovery: &RecoveryState,
     start: &ParserState,
-    diagnostics: &mut Vec<crate::CssRecoveryDiagnostic>,
+    diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
 ) {
     let document = recovery
         .syntax_document(source)
@@ -421,16 +427,19 @@ pub(super) fn retain_statement_eof(
             .source
             .expect("source statement EOF has a bounded source point")
             .offset;
-        let span = crate::CssSourceSpan::new(
-            crate::CssSourcePosition::from_byte_offset_in(source, start.position().byte_index()),
-            crate::CssSourcePosition::from_byte_offset_in(source, end),
+        let span = crate::source::CssSourceSpan::new(
+            crate::source::CssSourcePosition::from_byte_offset_in(
+                source,
+                start.position().byte_index(),
+            ),
+            crate::source::CssSourcePosition::from_byte_offset_in(source, end),
         )
         .expect("source statement range");
         diagnostics.push(
-            crate::CssRecoveryDiagnostic::new(
-                crate::error::unterminated_at_rule(source, error_end),
+            crate::diagnostic::CssRecoveryDiagnostic::new(
+                crate::diagnostic::error::unterminated_at_rule(source, error_end),
                 span,
-                crate::CssRecoveryAction::RetainNonconformingRule,
+                crate::diagnostic::CssRecoveryAction::RetainNonconformingRule,
             )
             .expect("statement EOF lies within its source unit"),
         );

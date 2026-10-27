@@ -4,11 +4,17 @@
 //! obtained from an admitted occurrence, without referring to future enum variants.
 
 use crate::css::support::rules::{invalid_descriptor, rejected_bang};
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssAuthoredFontFaceDescriptorValue,
-    CssComponentValueLimits, CssComponentValues, CssErrorCode, CssFontFaceDescriptor,
-    CssFontFaceDescriptorKind, CssFontFaceDescriptors, CssNormalizedItem, CssParser,
-    CssRecoveryAction, CssRule, CssRuleContextKindRef, CssSerializedOrigin, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueLimits, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue as Authored;
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptor, CssFontFaceDescriptorKind,
+    CssFontFaceDescriptors,
 };
 
 fn kind_from_sheet(name: &str, value: &str) -> CssFontFaceDescriptorKind {

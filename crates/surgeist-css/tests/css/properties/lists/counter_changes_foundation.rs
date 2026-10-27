@@ -9,7 +9,19 @@ use crate::css::support::named_property::validated_important_property_declaratio
 use crate::css::support::named_property::{
     assert_checked_value_rejected_at, assert_programmatic_rejection, assert_value_diagnostic_at,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssPropertyKindRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
 
 const PROPERTIES: [CssKnownProperty; 3] = [
     CssKnownProperty::CounterReset,

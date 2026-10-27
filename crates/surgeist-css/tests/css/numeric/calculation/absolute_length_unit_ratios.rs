@@ -4,9 +4,9 @@
 //! different units are therefore mathematically equal inside math functions,
 //! so their ratio is exactly 1 and their difference is exactly zero.
 
-use surgeist_css::{
-    CssCalculation, CssComponentValues, CssLength, CssNumber, CssNumeric, CssParser,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{CssCalculation, CssLength, CssNumber, CssNumeric};
 
 /// Pairs of equal absolute lengths, each spelled in two different units.
 const EQUAL_LENGTHS: [(&str, &str); 12] = [

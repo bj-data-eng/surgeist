@@ -3,11 +3,11 @@
 //! https://www.w3.org/TR/2014/REC-css-namespaces-3-20140320/#prefixes
 
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::{
-    CssErrorCode, CssNamespaceConstraint, CssNamespaceContext, CssNamespacePrefix,
-    CssNormalizedItem, CssParseReport, CssParser, CssRecoveryAction, CssRule,
-    CssRuleContextKindRef, CssSelector, CssSheet,
-};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::{CssNamespacePrefix, CssRule, CssSheet};
+use surgeist_css::selector::{CssNamespaceConstraint, CssNamespaceContext, CssSelector};
+use surgeist_css::{CssParseReport, CssParser};
 
 fn prefix(value: &str) -> CssNamespacePrefix {
     CssNamespacePrefix::try_new(value).expect("decoded namespace prefix")
@@ -512,10 +512,13 @@ fn named_and_default_redeclarations_preserve_typed_prior_origins_through_normali
 #[test]
 fn fragment_context_bindings_do_not_manufacture_authored_namespace_redeclarations() {
     let context = CssNamespaceContext::from_bindings([
-        (None, surgeist_css::CssNamespaceName::new("urn:default")),
+        (
+            None,
+            surgeist_css::rule::CssNamespaceName::new("urn:default"),
+        ),
         (
             Some(prefix("svg")),
-            surgeist_css::CssNamespaceName::new("urn:original"),
+            surgeist_css::rule::CssNamespaceName::new("urn:original"),
         ),
     ]);
     let original = context.clone();

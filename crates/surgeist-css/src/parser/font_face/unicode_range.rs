@@ -11,11 +11,12 @@
 
 use cssparser::{ParseError, Parser, SourceLocation, SourcePosition, Token};
 
-use crate::CssSerializedOrigin;
-use crate::numeric::NumericInputContext;
+use crate::component::CssSerializedOrigin;
+use crate::numeric::expression::NumericInputContext;
 
-use crate::error::{CssError, incomplete_descriptor_at, invalid_descriptor_token_at};
-use crate::syntax::CssUnicodeRange;
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::{incomplete_descriptor_at, invalid_descriptor_token_at};
+use crate::rule::font_face::CssUnicodeRange;
 
 struct RangeToken<'i> {
     token: Token<'i>,

@@ -7,7 +7,25 @@
 //! both pinned under `references/`.
 
 use crate::css::support::sole_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValue;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::numeric::{
+    CssInteger, CssLengthPercentage, CssNonNegative, CssNumeric, CssNumericLiteral, CssPositive,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::background::CssBackgroundSize;
+use surgeist_css::values::border::{CssLineStyle, CssLineWidth};
+use surgeist_css::values::box_model::CssPaddingValue;
+use surgeist_css::values::common::{CssAutoOr, CssBoxSideKind, CssFourSides};
+use surgeist_css::values::content::CssBookmarkLevel;
+use surgeist_css::values::effects::CssClip;
+use surgeist_css::values::layout::{
+    CssGridIntegerTrackRepeat, CssGridTrackBreadth, CssGridTrackRepeatComponent,
+    CssGridTrackRepeatContent, CssGridTrackSize,
+};
+use surgeist_css::values::transform::CssCoordBox;
 
 fn written(css: &str) -> String {
     sole_declaration(css)

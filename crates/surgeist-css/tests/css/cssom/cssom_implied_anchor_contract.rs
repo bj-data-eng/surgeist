@@ -2,11 +2,14 @@
 //! absolutizes relative nested selectors; §3.1 preserves selectors containing
 //! an ampersand, including retained invalid forgiving members. Compact authored
 //! and general-relative output remain distinct.
-use surgeist_css::{
-    CssNamespaceContext, CssParsedStyleSelectors, CssParser, CssRecoveryAction,
-    CssRelativeSelectorList, CssRule, CssRuleGraphInput, CssSpecifiedDeclarationBlock,
-    CssStyleAncestor, CssStyleSelectorContext,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::{CssRule, CssStyleAncestor};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssRelativeSelectorList, CssStyleSelectorContext,
 };
+use surgeist_css::serialization::CssRuleGraphInput;
 
 #[test]
 fn nested_literal_implicit_descendant_and_each_leading_combinator_have_implied_anchor() {

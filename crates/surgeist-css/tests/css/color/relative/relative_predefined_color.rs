@@ -8,7 +8,20 @@
 
 use crate::css::support::{declaration_color, parsed_color as parsed};
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssNamedColor, CssRelativeColor, CssRelativeColorChannel,
+    CssRelativeColorEnvironment, CssRelativeColorExpression, CssRelativeColorExpressionValue,
+    CssRelativeColorFunction, CssRelativeColorResultDomain,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::CssCalculationType;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssLonghandValueRef,
+};
 
 #[derive(Clone, Copy)]
 struct Space {

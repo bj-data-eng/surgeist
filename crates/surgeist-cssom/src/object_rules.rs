@@ -3,7 +3,8 @@
 //! retain the same immutable snapshot throughout a chain. Mutations inherit the
 //! supplied store’s existing quotas; lookup/formatting reads accept native limits.
 use crate::*;
-use surgeist_css::{CssRecoveryDiagnostic, CssSerializationLimits};
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::serialization::CssSerializationLimits;
 
 macro_rules! value_reader {
     ($kind:ident, $name:ident, $native:ident, $result:ty $(, $arg:ident : $ty:ty)*) => {

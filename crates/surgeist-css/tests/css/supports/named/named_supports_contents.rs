@@ -4,14 +4,21 @@ use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::SerializationFailure as Resource;
 use crate::css::support::failure_classes::component_failure;
 use crate::css::support::serialization_limits::LimitFailure;
-use surgeist_css::{
-    CssComponentValueLimits, CssComponentValues, CssErrorCode, CssGroupPreludeRef,
-    CssMediaQueryList, CssNamespaceContext, CssParser, CssParserContext, CssRecoveryAction,
-    CssRule, CssRuleCssomFormat, CssRuleGraphInput, CssRuleSerializationLimits,
-    CssSerializationLimits, CssStyleAncestor, CssSupportsConditionName, CssSupportsTestBody,
-    CssSupportsTestChild as Child, CssSupportsTestChild, CssSupportsTestChildRef as Ref,
-    CssSupportsTestItem, CssValueOrigin,
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues, CssValueOrigin};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::query::supports::CssSupportsTestChild as Child;
+use surgeist_css::query::supports::CssSupportsTestChildRef as Ref;
+use surgeist_css::query::supports::{
+    CssSupportsConditionName, CssSupportsTestBody, CssSupportsTestChild, CssSupportsTestItem,
 };
+use surgeist_css::rule::{CssRule, CssStyleAncestor};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::{
+    CssGroupPreludeRef, CssRuleCssomFormat, CssRuleGraphInput, CssRuleSerializationLimits,
+    CssSerializationLimits,
+};
+use surgeist_css::{CssParser, CssParserContext};
 
 fn child(source: &str) -> Child {
     let report = CssSupportsTestChild::parse(&CssParser::default(), source);
@@ -27,7 +34,7 @@ fn limits(depth: usize) -> CssRuleSerializationLimits {
 fn graph(
     input: CssRuleGraphInput<'_>,
     limits: CssRuleSerializationLimits,
-) -> Result<String, surgeist_css::CssRuleSerializationError> {
+) -> Result<String, surgeist_css::serialization::CssRuleSerializationError> {
     input.serialize_cssom(
         &CssNamespaceContext::default(),
         CssStyleAncestor::Absent,
@@ -502,7 +509,7 @@ fn ordinary_ancestor_and_current_named_payload_share_depth_and_output_budget() {
     assert_eq!(error.rule_path(), &[0]);
     let cause = std::error::Error::source(&error)
         .unwrap()
-        .downcast_ref::<surgeist_css::CssSerializationError>()
+        .downcast_ref::<surgeist_css::serialization::CssSerializationError>()
         .unwrap();
     let CssValueOrigin::Parsed(origin) = cause.origin().expect("actual opaque component origin")
     else {

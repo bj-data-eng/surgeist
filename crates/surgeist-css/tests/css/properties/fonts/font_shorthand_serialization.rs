@@ -2,7 +2,20 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::important_declaration;
 use crate::css::support::named_property::longhand_contributions as longhands;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance, CssSpecifiedDeclarationBlock};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownPropertyValueRef,
+    CssLonghandValue,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::{
+    CssAbsoluteFontWeight, CssExplicitFont, CssFontFamilyList, CssFontFamilyName,
+    CssFontFamilyNameKind, CssFontSize, CssFontStyle, CssFontStyleKeyword, CssFontValue,
+    CssFontVariant, CssFontWeight, CssFontWidthKeyword, CssGenericFontFamily, CssSystemFont,
+};
+use surgeist_css::values::text::CssLineHeight;
 
 fn font(source: &str) -> CssFontValue {
     let report = CssParser::default().parse_block_contents(format!("font:{source}"));

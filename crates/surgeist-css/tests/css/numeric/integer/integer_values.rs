@@ -1,7 +1,19 @@
 //! Exact authored integer fidelity and Values4 specified math projection.
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssNumericTokenKind, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssInteger, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::CssZIndexValue;
 
 fn order(text: &str) -> CssNumeric<CssInteger> {
     let report = CssParser::default().parse_block_contents(format!("order:{text}"));
@@ -187,8 +199,8 @@ fn ordinary_integer_serialization_is_exact_and_canonical_without_magnitude_round
 #[test]
 fn ordinary_integer_limits_charge_canonical_bytes_and_one_node_per_stage() {
     for value in [
-        CssNumeric::<CssInteger>::try_from_literal(surgeist_css::CssNumericLiteral::<
-            surgeist_css::CssInteger,
+        CssNumeric::<CssInteger>::try_from_literal(surgeist_css::numeric::CssNumericLiteral::<
+            surgeist_css::numeric::CssInteger,
         >::from_i32(-2))
         .unwrap(),
         exact("-0002"),

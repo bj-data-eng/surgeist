@@ -2,7 +2,70 @@
 //! inverse composites. This consumer preserves authored branches and field
 //! order; the numeric owner alone schedules and admits graph work slots.
 
-use super::*;
+use crate::color::CssColor;
+use crate::component::CssComponentValue;
+use crate::numeric::{CssAngleOrZero, CssCalculation, CssNumeric, CssNumericRoot, CssRange};
+#[cfg(test)]
+use crate::property::CssKnownPropertyValueRef;
+#[cfg(test)]
+use crate::serialization::CssSerializationLimits;
+#[cfg(test)]
+use crate::serialization::specified_serialization::CssSpecifiedValueSerializationErrorKind;
+use crate::serialization::specified_serialization::SpecifiedSerializationContext;
+use crate::specified_inverse::EqualityResult;
+#[cfg(test)]
+use crate::values::animation::CssEasingKeyword;
+use crate::values::animation::{
+    CssCubicBezier, CssCubicBezierX, CssEasing, CssEasingList, CssLinearEasing, CssLinearStop,
+    CssSteps,
+};
+use crate::values::background::{CssBackgroundPosition, CssBackgroundPositionList};
+use crate::values::border::CssBorderRadiusShorthand;
+use crate::values::box_model::{CssBoxSize, CssFlowTolerance, CssFlowToleranceRef, CssSizeValue};
+use crate::values::common::CssAutoOr;
+use crate::values::content::{
+    CssCounterStyleValue, CssCounterSymbolValue, CssListStyleTypeValue, CssSymbolsStyleValue,
+};
+use crate::values::effects::{
+    CssDropShadow, CssFilterAmount, CssFilterBlur, CssFilterFunction, CssFilterFunctionList,
+    CssFilterHueRotate, CssFilterImageInput, CssFilterImageInputRef,
+};
+use crate::values::font::{CssAbsoluteFontWeight, CssFontSize, CssFontStyle, CssFontWeight};
+use crate::values::image::{
+    CssAngularColorStop, CssAngularColorStopList, CssAngularColorStopListItem,
+    CssAngularColorStopPosition, CssColorStopList, CssColorStopListItem, CssConicGradient,
+    CssGradient, CssGradientColorStop, CssImage, CssImageValue, CssImageValueList,
+    CssLinearGradient, CssLinearGradientDirection, CssRadialEllipseSize, CssRadialGradient,
+    CssRadialSize,
+};
+use crate::values::layout::{
+    CssColumnCount, CssFlexBasisRef, CssFlexBasisValue, CssGridAutoRepeat,
+    CssGridAutoTrackComponent, CssGridAutoTrackList, CssGridFixedRepeatComponent,
+    CssGridFixedRepeatContent, CssGridFixedSize, CssGridGeneralTrackComponent,
+    CssGridGeneralTrackList, CssGridIntegerFixedRepeat, CssGridIntegerTrackRepeat, CssGridLine,
+    CssGridNameRepeat, CssGridSubgridComponent, CssGridTrackBreadth, CssGridTrackBreadthKind,
+    CssGridTrackList, CssGridTrackRepeatComponent, CssGridTrackRepeatContent, CssGridTrackSize,
+    CssGridTrackSizeKind, CssGridTrackSizeList,
+};
+use crate::values::position::{
+    CssBlockPosition, CssCartesianPosition, CssHorizontalPosition, CssInlinePosition,
+    CssNamedFlowPosition, CssPhysicalPosition, CssPosition, CssPositionList, CssPositionRef,
+    CssRelativeAxisPosition, CssRelativeFlowPosition, CssVerticalPosition,
+};
+use crate::values::shape::{
+    CssBasicShape, CssCircleRadius, CssCircleShape, CssEllipseRadii, CssEllipseRadius,
+    CssEllipseShape, CssInsetShape, CssInsetShapeOffsets, CssPolygonPoint, CssPolygonPointList,
+    CssPolygonShape, CssRectShape, CssShapeAbsoluteControlPoint, CssShapeAbsoluteControlPointRef,
+    CssShapeArc, CssShapeArcRadii, CssShapeCommand, CssShapeCommandList, CssShapeCoordinatePair,
+    CssShapeCurve, CssShapeCurveRef, CssShapeEndpoint, CssShapeFunction, CssShapeHorizontalLine,
+    CssShapeRelativeControlPoint, CssShapeSmooth, CssShapeSmoothRef, CssShapeVerticalLine,
+    CssXywhShape,
+};
+use crate::values::text::{CssLineHeight, CssTextDecorationThickness};
+use crate::values::transform::{
+    CssOffsetAnchor, CssOffsetPath, CssOffsetPathKind, CssOffsetPathRef, CssOffsetPathValue,
+    CssOffsetPosition, CssOffsetRotate, CssRay,
+};
 
 pub(crate) trait BoundedStructuralEquality {
     fn bounded_eq(
@@ -373,7 +436,7 @@ impl BoundedStructuralEquality for CssLinearStop {
             other.output().literal_component(),
         ) {
             (Some(left), Some(right)) => {
-                crate::specified_numeric::ordinary_literal_equal(left, right)
+                crate::numeric::specified_numeric::ordinary_literal_equal(left, right)
             }
             (None, None) => self
                 .output()
@@ -396,7 +459,7 @@ impl BoundedStructuralEquality for CssLinearStop {
         for (left, right) in self.inputs().iter().zip(other.inputs()) {
             let equal = match (left.literal_component(), right.literal_component()) {
                 (Some(left), Some(right)) => {
-                    crate::specified_numeric::ordinary_literal_equal(left, right)
+                    crate::numeric::specified_numeric::ordinary_literal_equal(left, right)
                 }
                 (None, None) => left
                     .calculation()

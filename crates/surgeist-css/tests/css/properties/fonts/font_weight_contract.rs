@@ -3,13 +3,19 @@
 use crate::css::support::named_property::assert_checked_value_rejected_at;
 use crate::css::support::named_property::assert_programmatic_rejection;
 use crate::css::support::named_property::normal_grammar_components;
-use surgeist_css::{
-    CssAbsoluteFontWeight as Absolute, CssCalculation, CssComponentValue, CssComponentValues,
-    CssContributions, CssExpansion, CssFontStyle, CssFontValue, CssFontWeight, CssFontWeightRange,
-    CssImportance, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
-    CssLonghandValueRef, CssNumber, CssNumeric, CssParser, CssPropertyKindRef,
-    CssSerializationLimits, CssSerializedOrigin, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
 };
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::numeric::{CssCalculation, CssNumber, CssNumeric};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::CssAbsoluteFontWeight as Absolute;
+use surgeist_css::values::font::{CssFontStyle, CssFontValue, CssFontWeight, CssFontWeightRange};
 
 fn number(text: &str) -> CssNumeric<CssNumber, CssFontWeightRange> {
     let component = CssComponentValue::try_number(text).unwrap();

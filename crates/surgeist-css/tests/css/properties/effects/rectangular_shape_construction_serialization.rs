@@ -5,7 +5,19 @@ use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::normal_declaration;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::serialization_limits::assert_limits as budget;
-use surgeist_css::{CssComponentValue, CssComponentValues, CssSerializationLimits as L, *};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::border::CssBorderRadiusShorthand;
+use surgeist_css::values::common::{CssAutoOr, CssBoxEdgeKeyword};
+use surgeist_css::values::effects::{CssClipPath, CssClipPathShape};
+use surgeist_css::values::image::CssRadialExtent;
+use surgeist_css::values::shape::{
+    CssBasicShape, CssCircleRadius, CssCircleShape, CssEllipseRadii, CssEllipseRadius,
+    CssEllipseShape, CssInsetShape, CssInsetShapeOffsets, CssPolygonPoint, CssPolygonPointList,
+    CssPolygonShape, CssRectShape, CssXywhShape,
+};
 
 fn lp(css: &str) -> CssNumeric<CssLengthPercentage> {
     CssNumeric::<CssLengthPercentage>::try_from_component(

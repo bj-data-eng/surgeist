@@ -1,7 +1,17 @@
 //! Selectors 4 pseudo-classes, pseudo-elements, combinators, attribute and
 //! `:nth-*()` selectors through the public stylesheet parser and constructors.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::declaration::CssCustomPropertyName;
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::selector::{
+    CssAttributeCaseSensitivity, CssAttributeMatcher, CssAttributeName, CssNamespaceConstraint,
+    CssNamespaceContext, CssNthAnPlusB, CssNthChildPattern, CssNthPattern, CssPseudoClass,
+    CssPseudoElement, CssPseudoElementSequence, CssPseudoSelectorList, CssPseudoSelectorListItem,
+    CssQualifiedSelectorName, CssRelativeSelector, CssRelativeSelectorList, CssSelector,
+    CssSelectorCombinator, CssSelectorList,
+};
 
 use crate::css::support::parse_report::CssParseReportTestExt;
 use crate::css::support::sheet_cases::*;

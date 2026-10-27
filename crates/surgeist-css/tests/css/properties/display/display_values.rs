@@ -1,7 +1,19 @@
 //! Independent specified-value tables from Display 3 §2 and Grid 3 §2.2.
 //! Legacy spellings remain distinct from modern outside/inside pairs (§2.6).
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyValue,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{
+    CssDisplayBox, CssDisplayInside, CssDisplayInternal, CssDisplayLegacy,
+    CssDisplayListItemInside, CssDisplayOutside, CssDisplayValue,
+};
 
 fn declaration(input: &str) -> CssDeclaration {
     let report = CssParser::default().parse_block_contents(format!("display:{input}!important"));

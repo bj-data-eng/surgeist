@@ -10,10 +10,11 @@
 
 use crate::css::support::property_admission::Responsible::At;
 use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
-use surgeist_css::{
-    CssComponentValues, CssDeclaration, CssErrorCode, CssGlobalKeyword, CssImportance,
-    CssKnownProperty, CssParser, CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
 
 fn flow_tolerance() -> CssKnownProperty {
     CssKnownProperty::from_name("flow-tolerance")

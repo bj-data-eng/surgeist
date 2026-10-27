@@ -5,7 +5,8 @@
 
 use super::component::{ComponentAction, ComponentSyntax, SyntaxFailure};
 use super::grammar::{ComponentRecord, GrammarRecord, GrammarTable, RecipeKind};
-use super::protocol::{ColorProtocolError, CssColorBank, CssColorSlot, Data};
+use crate::color::controlled::protocol::{ColorProtocolError, Data};
+use crate::color::controlled::{CssColorBank, CssColorSlot};
 
 #[expect(
     clippy::large_enum_variant,
@@ -137,7 +138,7 @@ impl<'owner> SyntaxPass<'owner> {
         } else if let GrammarRecord::Recipe(recipe) = record
             && let RecipeKind::Function(function) = recipe.kind
             && function.function == super::keywords::ColorFunction::Rgb
-            && function.syntax == crate::CssColorSyntax::Legacy
+            && function.syntax == crate::color::CssColorSyntax::Legacy
         {
             if function.count != 3 {
                 return Err(ColorProtocolError::WrongSlot);
@@ -263,10 +264,10 @@ impl<'owner> SyntaxPass<'owner> {
         self.expression_end = cursor.expression_end();
         Ok(())
     }
-    pub(crate) fn kernel(&self) -> super::CssColorKernel {
+    pub(crate) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
         match &self.state {
             State::Component { cursor, .. } => cursor.kernel(),
-            _ => super::CssColorKernel::Transition,
+            _ => crate::color::controlled::CssColorKernel::Transition,
         }
     }
     pub(crate) fn compute(&mut self) -> Result<(), ColorProtocolError> {
@@ -351,15 +352,16 @@ impl<'owner> SyntaxPass<'owner> {
 pub(crate) mod tests {
     use super::super::component::CheckedComponent;
     use super::super::grammar::{ColorGrammar, GrammarAction};
-    use super::super::protocol::{ActionDescription, CssColorOperationOwner, LexicalOperation};
     use super::*;
+    use crate::color::controlled::CssColorOperationOwner;
+    use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
     use crate::tokenization::bounded::InputKind;
 
     fn lexical<'owner>(
         owner: &'owner mut CssColorOperationOwner,
         input: &str,
     ) -> (
-        super::super::protocol::LexicalTable<'owner>,
+        crate::color::controlled::protocol::LexicalTable<'owner>,
         Vec<CssColorSlot<'owner>>,
     ) {
         let mut operation = LexicalOperation::start(owner, InputKind::Utf8, input.len()).unwrap();

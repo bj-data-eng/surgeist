@@ -3,10 +3,11 @@ use crate::css::support::property_expectations;
 use property_expectations::{
     BoundaryOutcome, CASES, CatalogExpectation, KNOWN_SERIALIZATION_DEFECTS,
 };
-use surgeist_css::{
-    CssErrorCode, CssFeatureKind, CssParser, CssSupportStatus, feature_metadata,
-    property_support_metadata,
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{
+    CssFeatureKind, CssSupportStatus, feature_metadata, property_support_metadata,
 };
+use surgeist_css::diagnostic::CssErrorCode;
 
 const CSS_WIDE_KEYWORDS: &[&str] = &["inherit", "initial", "unset", "revert", "revert-layer"];
 

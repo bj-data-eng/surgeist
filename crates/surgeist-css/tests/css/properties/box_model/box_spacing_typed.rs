@@ -1,10 +1,13 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
-use surgeist_css::{
-    CssBoxSideKind, CssCalculation, CssComponentValue, CssComponentValueRef, CssComponentValues,
-    CssFourSides, CssLengthPercentage, CssMarginValue, CssNonNegative, CssNumeric, CssPaddingValue,
-    CssParser, CssSerializationLimits, CssSidePair, CssValueOrigin, CssValueTokenRef,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssMarginValue, CssPaddingValue};
+use surgeist_css::values::common::{CssBoxSideKind, CssFourSides, CssSidePair};
 
 fn component(text: &str) -> CssComponentValue {
     let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();

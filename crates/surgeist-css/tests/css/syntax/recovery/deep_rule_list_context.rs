@@ -1,7 +1,8 @@
 //! Nested rule-list context remains semantic across bounded structural replay.
-use surgeist_css::{
-    CssErrorCode, CssParser, CssRecoveryAction, CssRule, CssSelector, CssSheet, CssTokenKind,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::selector::CssSelector;
 
 fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
     let CssRule::Style(style) = rule else {
@@ -231,7 +232,7 @@ fn check_root_only_statement(statement: &str, name: &str) {
         ("import", CssRule::Import(import)) => {
             assert!(matches!(
                 import.target(),
-                surgeist_css::CssImportTarget::String(target) if target.as_str() == "theme.css"
+                surgeist_css::rule::CssImportTarget::String(target) if target.as_str() == "theme.css"
             ));
         }
         ("namespace", CssRule::Namespace(namespace)) => {

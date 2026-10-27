@@ -6,7 +6,21 @@
 //! New z-index longhand payload and canonical Auto writer APIs require functional
 //! implementation alongside independent tests; this file does not call absent APIs.
 use crate::css::support::named_property::sole_longhand_contribution as contribution;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyValue,
+};
+use surgeist_css::values::box_model::CssZIndexValue;
 
 const VALID: &[&str] = &[
     "auto",

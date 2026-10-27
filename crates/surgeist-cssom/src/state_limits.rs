@@ -287,8 +287,12 @@ impl State {
                 CssomRuleData::Keyframes { name, .. } => add(
                     &mut strings,
                     match name {
-                        surgeist_css::CssKeyframesName::Ident(value) => value.as_str().len(),
-                        surgeist_css::CssKeyframesName::String(value) => value.as_str().len(),
+                        surgeist_css::rule::keyframes::CssKeyframesName::Ident(value) => {
+                            value.as_str().len()
+                        }
+                        surgeist_css::rule::keyframes::CssKeyframesName::String(value) => {
+                            value.as_str().len()
+                        }
                         _ => 0,
                     },
                 ),

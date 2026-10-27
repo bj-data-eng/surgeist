@@ -8,10 +8,11 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#block-contents
 use crate::css::support::authored_syntax::assert_strict_rejection;
-use surgeist_css::{
-    CssFontFaceDescriptorKind as Kind, CssFontFeatureValuesItem, CssParser, CssRecoveryAction,
-    CssRule, CssSheet,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesItem;
+use surgeist_css::rule::{CssRule, CssSheet};
 
 fn sheet(source: &str, actions: &[CssRecoveryAction]) -> CssSheet {
     let report = CssParser::default().parse_sheet(source);

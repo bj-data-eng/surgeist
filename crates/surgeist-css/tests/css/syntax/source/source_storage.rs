@@ -1,4 +1,8 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::rule::CssRule;
+use surgeist_css::source::{
+    CssSourceRetention, CssSourceRetentionError, CssSourceRetentionResource, CssSourceStorageUsage,
+};
 
 #[test]
 fn source_traversal_charges_exact_work_and_independent_representation_depth() {

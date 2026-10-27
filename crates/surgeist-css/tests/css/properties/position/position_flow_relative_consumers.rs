@@ -4,7 +4,14 @@
 //! The keywords stay unresolved in the specified value.
 
 use crate::css::support::sole_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::effects::CssMaskLayer;
+use surgeist_css::values::position::{
+    CssBlockPosition, CssHorizontalPosition, CssInlinePosition, CssPhysicalPosition, CssPosition,
+    CssPositionList, CssPositionRef, CssVerticalPosition,
+};
 
 fn clean(css: &str) -> CssDeclaration {
     let report = CssParser::default().parse_block_contents(css);

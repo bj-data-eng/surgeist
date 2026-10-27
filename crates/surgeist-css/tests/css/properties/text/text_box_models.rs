@@ -5,7 +5,19 @@
 
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::normal_checked_declaration as checked;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{
+    CssSpecificationTier, CssSupportStatus, property_support_metadata, specification_source,
+};
+use surgeist_css::declaration::{CssDeclaration, CssSpecifiedDeclarationBlock};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::{
+    CssTextBox, CssTextBoxEdge, CssTextBoxTrim, CssTextBoxValues, CssTextEdge, CssTextEdgeMetric,
+    CssTextOverEdge, CssTextUnderEdge,
+};
 
 fn typed_edge(declaration: &CssDeclaration) -> CssTextBoxEdge {
     let CssKnownPropertyValueRef::TextBoxEdge(value) =

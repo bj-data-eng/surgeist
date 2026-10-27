@@ -5,11 +5,13 @@
 
 use std::{borrow::Cow, ops::Range};
 
-use crate::utf16_value::Control;
-use crate::{
-    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueErrorKind,
-    CssComponentValueRef, CssParsedOrigin, CssSourceSnapshot, CssValueOrigin, CssValueTokenRef,
+use crate::component::values::CssComponentValueErrorKind;
+use crate::component::{
+    CssBlockKind, CssComponentValue, CssComponentValueError, CssComponentValueRef, CssValueOrigin,
+    CssValueTokenRef,
 };
+use crate::source::{CssParsedOrigin, CssSourceSnapshot};
+use crate::values::color_adjust::utf16_value::Control;
 use cssparser::Token;
 
 pub(crate) type NodeId = usize;
@@ -764,14 +766,14 @@ pub(crate) fn source_document(
 
 pub(crate) fn source_document_with_limits(
     text: &str,
-    limits: crate::CssComponentValueLimits,
+    limits: crate::component::CssComponentValueLimits,
 ) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
     source_document_with_optional_snapshot(text, None, limits)
 }
 
 pub(crate) fn source_document_snapshot_with_limits(
     original: &CssSourceSnapshot,
-    limits: crate::CssComponentValueLimits,
+    limits: crate::component::CssComponentValueLimits,
 ) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
     source_document_with_optional_snapshot(original.as_str(), Some(original), limits)
 }
@@ -779,7 +781,7 @@ pub(crate) fn source_document_snapshot_with_limits(
 fn source_document_with_optional_snapshot(
     text: &str,
     original: Option<&CssSourceSnapshot>,
-    limits: crate::CssComponentValueLimits,
+    limits: crate::component::CssComponentValueLimits,
 ) -> Result<SyntaxDocument<'static>, CssComponentValueError> {
     if text.len() > limits.max_css_bytes() {
         return Err(CssComponentValueError::new(
@@ -1726,22 +1728,22 @@ pub(crate) fn consume_block_declaration_candidate(cursor: &mut SyntaxCursor<'_>)
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
-mod independent_tests;
+pub(crate) mod independent_tests;
 
 #[cfg(test)]
-mod finer_recovery_independent_tests;
+pub(crate) mod finer_recovery_independent_tests;
 
 #[cfg(test)]
-mod source_payload_tests;
+pub(crate) mod source_payload_tests;
 
 #[cfg(test)]
-mod declaration_boundary_tests;
+pub(crate) mod declaration_boundary_tests;
 
 #[cfg(test)]
-mod raw_component_boundaries;
+pub(crate) mod raw_component_boundaries;
 
 // The controlled entry borrows checked components, so these are the only owned
 // normalization allocations. Other normalization fronts retain their old owner.

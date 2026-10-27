@@ -8,21 +8,35 @@ use crate::css::support::failure_classes::SerializationFailure as EmitFailure;
 use crate::css::support::failure_classes::component_failure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::assert_origin_bytes as point;
-use surgeist_css::{
-    CssBlockContext, CssBlockFragment, CssComponentValue, CssComponentValueLimits,
-    CssComponentValueRef, CssComponentValues, CssCounterStyleDescriptorKind as CounterKind,
-    CssCounterStyleDescriptorRef as CounterOccurrence, CssCounterStyleDescriptorValue as Counter,
-    CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef as CounterView,
-    CssCounterStyleDescriptors, CssCounterStyleValueError, CssCounterSymbol, CssFontDisplay,
-    CssFontFeatureDisplayOccurrence, CssFontFeatureDisplayValue as Display,
-    CssFontFeatureDisplayValue, CssFontFeatureDisplayValueRef as DisplayView,
-    CssFontFeatureValue as Feature, CssFontFeatureValue, CssFontFeatureValueBlock,
-    CssFontFeatureValueDefinition, CssFontFeatureValueKind as FeatureKind, CssFontFeatureValueName,
-    CssFontFeatureValueRef as FeatureView, CssFontFeatureValuesError,
-    CssFontFeatureValuesItem as Item, CssFontFeatureValuesItem, CssNormalizedItem, CssParsedOrigin,
-    CssParser, CssRule, CssRuleContextKindRef, CssSerializationLimits as EmitLimits,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
     CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind as CounterKind;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorRef as CounterOccurrence;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorValue as Counter;
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorValueRef as CounterView;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorValue, CssCounterStyleDescriptors, CssCounterStyleValueError,
+    CssCounterSymbol,
+};
+use surgeist_css::rule::font_face::CssFontDisplay;
+use surgeist_css::rule::font_feature_values::CssFontFeatureDisplayValue as Display;
+use surgeist_css::rule::font_feature_values::CssFontFeatureDisplayValueRef as DisplayView;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValue as Feature;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueKind as FeatureKind;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueRef as FeatureView;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesItem as Item;
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureDisplayOccurrence, CssFontFeatureDisplayValue, CssFontFeatureValue,
+    CssFontFeatureValueBlock, CssFontFeatureValueDefinition, CssFontFeatureValueName,
+    CssFontFeatureValuesError, CssFontFeatureValuesItem,
+};
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule};
+use surgeist_css::serialization::CssSerializationLimits as EmitLimits;
+use surgeist_css::source::CssParsedOrigin;
 
 fn components(source: &str) -> CssComponentValues {
     CssComponentValues::parse(&CssParser::default(), source).unwrap()
@@ -871,8 +885,8 @@ fn pending_system_does_not_invent_algorithm_and_extends_conflict_stays_authored(
             .prospective()
             .unwrap()
             .definition_status(),
-        surgeist_css::CssCounterStyleDefinitionStatus::Undefined(
-            surgeist_css::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
+        surgeist_css::rule::counter_style::CssCounterStyleDefinitionStatus::Undefined(
+            surgeist_css::rule::counter_style::CssCounterStyleDefinitionIssue::ExtendsWithSymbols
         )
     );
 }

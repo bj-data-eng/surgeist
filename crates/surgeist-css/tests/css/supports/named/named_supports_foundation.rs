@@ -5,10 +5,13 @@
 //! https://www.w3.org/TR/2024/CRD-css-conditional-3-20240815/#use
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#conditionals
 
-use surgeist_css::{
-    CssErrorCode, CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet, CssParser,
-    CssRecoveryAction, CssRule, CssRuleContext, CssRuleContextKindRef,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizedDeclaration, CssNormalizedItem, CssNormalizedSheet, CssRuleContext,
+    CssRuleContextKindRef,
 };
+use surgeist_css::rule::CssRule;
 
 fn rule_at(sheet: &CssNormalizedSheet, offset: usize) -> &CssRuleContext {
     sheet

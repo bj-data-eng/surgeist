@@ -6,10 +6,12 @@
 //! Fonts 4 vocabularies: https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-format-values
 //! and https://www.w3.org/TR/2026/WD-css-fonts-4-20260907/#font-tech-values
 
-use surgeist_css::{
-    CssComponentValues, CssCondition, CssConditionKind, CssNamespaceContext, CssParser, CssRule,
-    CssSupportsLeaf,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssNamespaceContext;
 
 fn assert_opaque_classification(condition: &str, expected_opaque: bool) {
     let checked = CssCondition::<CssSupportsLeaf>::try_from_components(

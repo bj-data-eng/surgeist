@@ -20,8 +20,24 @@ use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use crate::css::support::{
     checked_property_grammar_declaration as checked, sole_declaration as parsed,
 };
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::CssSystemColor;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssLonghandContributions,
+    CssLonghandProperty, CssLonghandValueRef, CssPropertyKindRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::background::{CssBlendMode, CssBlendModeList};
+use surgeist_css::values::effects::CssIsolation;
 
 const FAMILY: [(P, &str, &str); 3] = [
     (P::BackgroundBlendMode, "hue, normal, hue", "normal"),

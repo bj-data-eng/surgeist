@@ -5,7 +5,7 @@
 //! where an independent exact or CSS3 m1/m2 computation could differ by an ulp.
 
 use crate::css::support::checked_color as color;
-use surgeist_css::{
+use surgeist_css::color::{
     CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInput,
     CssColorOrdinaryLimits, CssColorOrdinaryOutcome, CssColorPropertyFacts, CssColorSchemeFact,
     CssDeviceColorFact, parse_used_color,

@@ -1,7 +1,13 @@
 //! Typed authored gap construction and specified serialization, from Box Alignment 3 §8.
 
 use crate::css::support::normal_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::{CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyTarget};
+use surgeist_css::values::common::CssSidePair;
+use surgeist_css::values::layout::CssGapValue;
 
 fn scalar(text: &str) -> CssGapValue {
     if text.eq_ignore_ascii_case("normal") {

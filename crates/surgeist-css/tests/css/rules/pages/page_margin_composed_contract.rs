@@ -6,7 +6,28 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::rules::assert_clean_and_valid as clean;
 use crate::css::support::rules::page_pseudo;
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{
+    CssDeclaration, CssDeclarationList, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem, CssRuleContextKindRef,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef,
+};
+use surgeist_css::rule::page::{CssPageBody, CssPagePseudo};
+use surgeist_css::rule::{
+    CssBlockContext, CssBlockFragment, CssRule, CssRuleList, CssStyleAncestor,
+};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::CssMarginValue;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 const GLOBALS: [(&str, CssGlobalKeyword); 5] = [
     ("inherit", CssGlobalKeyword::Inherit),

@@ -5,7 +5,16 @@
 
 use crate::css::support::important_declaration;
 use crate::css::support::property_admission::assert_checked_value_rejected;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyValue,
+};
+use surgeist_css::values::effects::CssOpacityValue;
 
 fn wrapper(declaration: &CssDeclaration) -> &CssPropertyValue<CssOpacityValue> {
     let CssKnownPropertyValueRef::Opacity(value) =

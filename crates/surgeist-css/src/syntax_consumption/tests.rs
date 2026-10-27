@@ -49,13 +49,14 @@ fn candidate_cursor_eof_is_the_excluded_semicolon_without_recharging_input() {
 #[test]
 fn admitted_node_promotion_preserves_provider_payloads_and_implicit_group_owner() {
     let document = source("-0 #id #123 f(/*c*/A");
-    let values = crate::component_values::promote_nodes(
+    let values = crate::component::values::parse::promote_nodes(
         &document,
         &document.lists[document.root],
-        crate::CssComponentValueLimits::default(),
+        crate::component::CssComponentValueLimits::default(),
     )
     .unwrap();
-    let expected = crate::component_values::parse_component_values("-0 #id #123 f(/*c*/A").unwrap();
+    let expected =
+        crate::component::values::parse_component_values("-0 #id #123 f(/*c*/A").unwrap();
     assert_eq!(values, expected);
     let original = &document.source.as_ref().unwrap().original;
     let CssValueOrigin::ImplicitClosure { opening, at } = values.first_implicit_origin().unwrap()
@@ -66,10 +67,10 @@ fn admitted_node_promotion_preserves_provider_payloads_and_implicit_group_owner(
     assert!(at.source().same_snapshot(original));
     let errors = source("A url(a b) B");
     assert_eq!(
-        crate::component_values::promote_nodes(
+        crate::component::values::parse::promote_nodes(
             &errors,
             &errors.lists[errors.root],
-            crate::CssComponentValueLimits::default()
+            crate::component::CssComponentValueLimits::default()
         )
         .unwrap_err()
         .kind(),
@@ -292,8 +293,8 @@ fn block_contents_discard_semicolons_and_stop_qualified_rules_at_them() {
 
 #[test]
 fn grouped_inputs_preserve_structure_and_mixed_snapshot_identity() {
-    let first = crate::component_values::parse_component_values("A").unwrap();
-    let second = crate::component_values::parse_component_values("B").unwrap();
+    let first = crate::component::values::parse_component_values("A").unwrap();
+    let second = crate::component::values::parse_component_values("B").unwrap();
     let values = [
         first.items()[0].clone(),
         second.items()[0].clone(),

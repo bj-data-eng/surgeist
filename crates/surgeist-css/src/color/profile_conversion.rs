@@ -1,13 +1,15 @@
 //! Admitted custom-channel normalization and concrete forward conversion join.
 
-use super::Color;
 use super::channels::{self, Component};
-use super::facts::{
+use super::profile::ProfileSelection;
+use crate::color::controlled::CssColorSlot;
+use crate::color::controlled::protocol::RecordRange;
+use crate::color::controlled::protocol::{ColorProtocolError, Data, RecordTable};
+use crate::color::{
     CssColorFactIdentity, CssColorFacts, CssColorProfileAvailability, CssColorProfileConversion,
 };
-use super::profile::ProfileSelection;
-use super::protocol::{ColorProtocolError, CssColorSlot, Data, RecordTable};
-use crate::{ColorSpace, color::protocol::RecordRange};
+use surgeist_color::Color;
+use surgeist_color::ColorSpace;
 use surgeist_color::UnitInterval;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -83,7 +85,7 @@ impl ProfileInputs<'_> {
             self.table.owner,
             self.table.phase,
             slot.index,
-            super::protocol::CssColorBank::Algorithm,
+            crate::color::controlled::CssColorBank::Algorithm,
         )
         .map_err(Error::Protocol)?;
         if self.index(ordinal) != Some(slot.index) || slot.index >= self.span.end {
@@ -250,7 +252,7 @@ impl<'owner, 'facts> ProfileInputBuilder<'owner, 'facts> {
             self.table.owner,
             self.table.phase,
             index,
-            super::protocol::CssColorBank::Algorithm,
+            crate::color::controlled::CssColorBank::Algorithm,
         )
         .map_err(Error::Protocol)?;
         if slot.index != index {
@@ -549,20 +551,19 @@ impl<'owner, 'facts> ProfileConversionLookup<'owner, 'facts> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{
-        facts::{
-            CssColorProfileBinding, CssColorProfileConversionRecord, CssColorPropertyFacts,
-            CssColorSchemeFact, CssDeviceColorFact,
-        },
-        profile::{ProfileAction, ProfileLookup},
-        protocol::{ActionDescription, CssColorOperationOwner, LexicalOperation},
-    };
+    use super::super::profile::{ProfileAction, ProfileLookup};
     use super::*;
-    use crate::color::protocol::LexicalTable;
-    use crate::{
-        CssColorProfileName, CssColorProfileRenderingIntent as Intent, PredefinedColorSpace,
-        tokenization::bounded::InputKind,
+    use crate::color::CssColorProfileName;
+    use crate::color::controlled::CssColorOperationOwner;
+    use crate::color::controlled::protocol::LexicalTable;
+    use crate::color::controlled::protocol::{ActionDescription, LexicalOperation};
+    use crate::color::{
+        CssColorProfileBinding, CssColorProfileConversionRecord, CssColorPropertyFacts,
+        CssColorSchemeFact, CssDeviceColorFact,
     };
+    use crate::rule::color_profile::CssColorProfileRenderingIntent as Intent;
+    use crate::tokenization::bounded::InputKind;
+    use surgeist_color::PredefinedColorSpace;
     fn lex<'a>(operation: &mut LexicalOperation<'a>, input: &str) -> Vec<CssColorSlot<'a>> {
         let mut slots = Vec::new();
         loop {
@@ -759,7 +760,7 @@ mod tests {
     fn excess_checked_inputs_are_ignored_and_missing_channel_stays_distinct() {
         let name = CssColorProfileName::try_new("--p").unwrap();
         let resource = CssColorFactIdentity::new(7, 8);
-        let names = [crate::CssColorProfileComponentName::try_new("first").unwrap()];
+        let names = [crate::color::CssColorProfileComponentName::try_new("first").unwrap()];
         let bindings = [CssColorProfileBinding::new(
             &name,
             resource,

@@ -3,17 +3,39 @@
 //! These cases moved from the public integration suite when the protocol
 //! became crate-private (#1353, 5.7); the ordinary front's cases stay there.
 
-use super::super::protocol::CssColorSlotKind;
-use super::*;
-use crate::color::ColorProtocolError;
-use crate::*;
+use crate::color::authored_resolution::controlled::{
+    AuthoredError, CssAuthoredColorActionDescription, CssAuthoredColorOperation,
+};
+#[cfg(test)]
+use crate::color::authored_resolution::controlled::{
+    CssAuthoredColorCleanupLayout, CssAuthoredColorObservation,
+};
+use crate::color::authored_resolution::path::{CssColorPathBuffer, CssColorPathReservationStatus};
+use crate::color::controlled::protocol::ColorProtocolError;
+use crate::color::controlled::protocol::CssColorSlotKind;
+use crate::color::controlled::{CssColorBank, CssColorOperationOwner, CssColorSlot};
+use crate::color::{CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssColorPathStep};
+use crate::color::{
+    CssColor, CssColorError, CssColorFactDefect, CssColorFactIdentity, CssColorFacts,
+    CssColorGrammarRequest, CssColorInput, CssColorOrdinaryLimits, CssColorOrdinaryResource,
+    CssColorPaletteEntry, CssColorProfileAvailability, CssColorProfileBinding,
+    CssColorProfileComponentName, CssColorProfileConversion, CssColorProfileName,
+    CssColorPropertyFacts, CssColorSchemeFact, CssColorUnavailable, CssColorUnsupported,
+    CssDeviceColorFact, CssSystemColor, parse_used_color,
+};
+use crate::declaration::CssImportance;
+use crate::numeric::{CssLengthUnit, CssNumericUnit};
+use crate::property::{CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef};
+use crate::rule::color_profile::CssColorProfileRenderingIntent;
 use surgeist_color::Color;
 
 fn color(source: &str) -> CssColor {
-    let declaration = crate::CssDeclaration::try_from_components(
+    let declaration = crate::declaration::CssDeclaration::try_from_components(
         &crate::CssParser::default(),
-        crate::CssPropertyTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Color)),
-        crate::component_values::parse_component_values(source).unwrap(),
+        crate::property::CssPropertyTarget::Property(CssPropertyNameRef::Known(
+            CssKnownProperty::Color,
+        )),
+        crate::component::values::parse_component_values(source).unwrap(),
         CssImportance::Important,
     )
     .unwrap_or_else(|error| panic!("{source}: {error:?}"));
@@ -129,7 +151,7 @@ fn controlled_site_less_failure_retains_its_actual_backing_until_explicit_recove
     assert_eq!(
         error,
         AuthoredError::Color(CssColorError::from(
-            crate::color::ColorErrorKind::Unavailable(CssColorUnavailable::CurrentColor)
+            crate::color::bounded::ColorErrorKind::Unavailable(CssColorUnavailable::CurrentColor)
         ))
     );
     assert_eq!(
@@ -643,7 +665,7 @@ fn reached_unavailable_unsupported_and_malformed_facts_remain_site_less_and_reco
     assert_eq!(
         error,
         AuthoredError::Color(CssColorError::from(
-            crate::color::ColorErrorKind::Unavailable(CssColorUnavailable::Scheme)
+            crate::color::bounded::ColorErrorKind::Unavailable(CssColorUnavailable::Scheme)
         ))
     );
     assert_eq!(cleanup.path_len, 0);
@@ -662,9 +684,11 @@ fn reached_unavailable_unsupported_and_malformed_facts_remain_site_less_and_reco
     let (error, cleanup) = stopped_error(&color("light-dark(red,CanvasText)"), &malformed);
     assert_eq!(
         error,
-        AuthoredError::Color(CssColorError::from(crate::color::ColorErrorKind::Facts(
-            CssColorFactDefect::DuplicatePalette(CssSystemColor::CanvasText)
-        )))
+        AuthoredError::Color(CssColorError::from(
+            crate::color::bounded::ColorErrorKind::Facts(CssColorFactDefect::DuplicatePalette(
+                CssSystemColor::CanvasText
+            ))
+        ))
     );
     assert_eq!(cleanup.path_len, 1);
     let root = color("red");
@@ -701,7 +725,9 @@ fn reached_unavailable_unsupported_and_malformed_facts_remain_site_less_and_reco
     assert_eq!(
         error,
         AuthoredError::Color(CssColorError::from(
-            crate::color::ColorErrorKind::Unsupported(CssColorUnsupported::ProfileConversion)
+            crate::color::bounded::ColorErrorKind::Unsupported(
+                CssColorUnsupported::ProfileConversion
+            )
         ))
     );
     assert_eq!(cleanup.path_len, 0);
@@ -709,7 +735,7 @@ fn reached_unavailable_unsupported_and_malformed_facts_remain_site_less_and_reco
     assert_eq!(
         error,
         AuthoredError::Color(CssColorError::from(
-            crate::color::ColorErrorKind::Unsupported(CssColorUnsupported::ReverseProfile)
+            crate::color::bounded::ColorErrorKind::Unsupported(CssColorUnsupported::ReverseProfile)
         ))
     );
     assert_eq!(cleanup.path_len, 1);
@@ -912,9 +938,9 @@ fn legitimate_contextual_unit_leaves_preserve_source_authored_reachability_and_o
     assert_eq!(
         error,
         AuthoredError::Color(CssColorError::from(
-            crate::color::ColorErrorKind::Unsupported(CssColorUnsupported::ContextualUnit(
-                CssNumericUnit::Length(CssLengthUnit::Em)
-            ))
+            crate::color::bounded::ColorErrorKind::Unsupported(
+                CssColorUnsupported::ContextualUnit(CssNumericUnit::Length(CssLengthUnit::Em))
+            )
         ))
     );
     assert_eq!(cleanup.path_len, 3);

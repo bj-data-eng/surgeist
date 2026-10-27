@@ -5,7 +5,14 @@ use crate::css::support;
 use crate::css::support::property_admission::{
     assert_checked_value_rejected, assert_declaration_rejected,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::box_model::CssVisibility;
 
 fn declaration(value: &str, important: bool) -> CssDeclaration {
     let importance = if important {

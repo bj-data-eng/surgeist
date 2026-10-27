@@ -6,9 +6,10 @@
 use super::channels::{Component, Domain, Error as ChannelError};
 use super::component::CheckedComponent;
 use super::expression::{EvaluationAction, Number, NumericEvaluation, Variable};
-use super::protocol::{ColorProtocolError, CssColorBank, CssColorSlot};
 use super::relative::Binding;
 use super::syntax_pass::ValidatedGrammar;
+use crate::color::controlled::protocol::ColorProtocolError;
+use crate::color::controlled::{CssColorBank, CssColorSlot};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Error {
@@ -23,7 +24,7 @@ pub(crate) enum Error {
     /// The existing fact envelope has no computed contextual numeric basis.
     UnitBasis {
         token: usize,
-        unit: crate::CssNumericUnit,
+        unit: crate::numeric::CssNumericUnit,
     },
 }
 impl From<ColorProtocolError> for Error {
@@ -190,14 +191,16 @@ impl<'owner> ComponentValue<'owner> {
         cursor.written(index, slot)?;
         Ok(())
     }
-    pub(crate) fn kernel(&self) -> super::CssColorKernel {
+    pub(crate) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
         match &self.state {
-            State::Variable { .. } => super::CssColorKernel::RelativeChannel,
+            State::Variable { .. } => crate::color::controlled::CssColorKernel::RelativeChannel,
             State::Evaluation { cursor, .. } => match cursor.action() {
-                EvaluationAction::ResolveVariable { .. } => super::CssColorKernel::RelativeChannel,
+                EvaluationAction::ResolveVariable { .. } => {
+                    crate::color::controlled::CssColorKernel::RelativeChannel
+                }
                 _ => cursor.kernel(),
             },
-            _ => super::CssColorKernel::Transition,
+            _ => crate::color::controlled::CssColorKernel::Transition,
         }
     }
     pub(crate) fn compute(&mut self) -> Result<(), Error> {
@@ -235,7 +238,7 @@ impl<'owner> ComponentValue<'owner> {
                         token,
                         Number {
                             value: component.value,
-                            ty: crate::CssNumericType::NUMBER,
+                            ty: crate::numeric::CssNumericType::NUMBER,
                         },
                     )?;
                     Ok(())
@@ -279,10 +282,10 @@ impl<'owner> ComponentValue<'owner> {
 #[cfg(test)]
 mod tests {
     use super::super::grammar::{FunctionRecipe, GrammarRecord, RecipeKind};
-    use super::super::protocol::CssColorOperationOwner;
     use super::super::syntax_pass::tests::{Fixture, fixture};
     use super::*;
-    use crate::CssRelativeColorEnvironment as Environment;
+    use crate::color::CssRelativeColorEnvironment as Environment;
+    use crate::color::controlled::CssColorOperationOwner;
 
     fn function(fixture: &Fixture<'_>) -> FunctionRecipe {
         let GrammarRecord::Recipe(recipe) = fixture
@@ -431,7 +434,7 @@ mod tests {
         );
         let binding = Binding::new(
             Environment::Rgb,
-            super::super::Color::from_srgba8([255, 0, 0, 255]),
+            surgeist_color::Color::from_srgba8([255, 0, 0, 255]),
         )
         .unwrap();
         let mut values = Vec::new();
@@ -455,7 +458,7 @@ mod tests {
             ),
             Ok(Component::number(1.0))
         );
-        let wrong = Binding::new(Environment::Hsl, super::super::Color::opaque_black()).unwrap();
+        let wrong = Binding::new(Environment::Hsl, surgeist_color::Color::opaque_black()).unwrap();
         assert_eq!(
             evaluate(
                 &fixture,
@@ -489,7 +492,7 @@ mod tests {
                 None
             ),
             Err(Error::UnitBasis {
-                unit: crate::CssNumericUnit::Length(crate::CssLengthUnit::Em),
+                unit: crate::numeric::CssNumericUnit::Length(crate::numeric::CssLengthUnit::Em),
                 ..
             })
         ));

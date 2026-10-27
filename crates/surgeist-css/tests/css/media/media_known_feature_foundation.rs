@@ -1,4 +1,6 @@
-use surgeist_css::{CssConditionKind, CssMediaLeaf, CssMediaQuery, CssParser};
+use surgeist_css::CssParser;
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery};
 
 // The selected MQ4/MQ5 grammar requires these to remain known feature syntax.
 // In particular, MQ4 section 2.4.3 requires signed range operands; failure of

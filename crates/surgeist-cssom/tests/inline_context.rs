@@ -1,6 +1,7 @@
 //! Per-block context is current association evidence, not a reparse of retained values.
 use std::cell::Cell;
-use surgeist_css::*;
+use surgeist_css::property::CssPropertyGrammar;
+use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
 
 fn version(role: CssomInputRole, identity: &str, revision: u64) -> CssomInputVersion {
@@ -509,7 +510,7 @@ fn explicit_empty_support_and_nonqualifying_notifications_do_not_resolve_or_pars
             edit.prepare_style_attribute_change(
                 &id,
                 &change,
-                surgeist_css::CssUtf16InputLimits::default(),
+                surgeist_css::source::CssUtf16InputLimits::default(),
                 CssomDeclarationRequestLimits {
                     max_input_bytes: 0,
                     ..Default::default()

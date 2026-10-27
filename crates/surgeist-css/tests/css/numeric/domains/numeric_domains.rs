@@ -1,7 +1,23 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::value_assertions::assert_component_rejected;
 use crate::css::support::value_assertions::positive_literal;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::numeric::{
+    CssAngle, CssFiniteNumber, CssInteger, CssLengthPercentage, CssNonNegative, CssNumber,
+    CssNumeric, CssNumericLiteral, CssRatio, CssResolution, CssResolutionUnit, CssTime,
+    CssTimeUnit,
+};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::CssKeyframePercent;
+use surgeist_css::values::animation::CssAnimationIterationCount;
+use surgeist_css::values::box_model::{CssFlowTolerance, CssFlowToleranceRef};
+use surgeist_css::values::effects::{CssOpacityScalarKind, CssOpacityValue};
+use surgeist_css::values::font::{CssFontSizeAdjust, CssFontWeightRange, CssObliqueAngleRange};
 
 #[test]
 fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_boundaries() {
@@ -89,8 +105,8 @@ fn checked_numeric_constructors_reject_non_finite_values_and_preserve_finite_bou
         CssFontSizeAdjust::Number(value) if value.serialize_specified(Default::default()).unwrap() == max_spelling
     ));
     assert_eq!(
-        surgeist_css::CssOpacityScalar::try_from_component(
-            surgeist_css::CssComponentValue::try_number("1").unwrap()
+        surgeist_css::values::effects::CssOpacityScalar::try_from_component(
+            surgeist_css::component::CssComponentValue::try_number("1").unwrap()
         )
         .unwrap()
         .numeric()
@@ -465,6 +481,9 @@ fn flow_tolerance_retains_exact_ordinary_percentages_beyond_float_storage() {
     }
 }
 
-fn exact_percentage(component: Option<&surgeist_css::CssComponentValue>, expected: &str) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation()==expected)
+fn exact_percentage(
+    component: Option<&surgeist_css::component::CssComponentValue>,
+    expected: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Percentage(number))) if number.representation()==expected)
 }

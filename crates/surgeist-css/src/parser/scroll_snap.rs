@@ -2,15 +2,19 @@
 
 use super::property_input::Parser;
 use super::side_shapes::{parse_auto_or, parse_four_sides, parse_side_pair};
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::match_ignore_ascii_case;
 
 use super::values::{parse_length, parse_nonnegative_length_percentage};
-use crate::numeric::NumericInputContext;
-use crate::{CssAutoOr, CssLengthPercentage, CssNonNegative, ScrollMarginSide, ScrollPaddingSide};
-use crate::{
-    CssFourSides, CssLength, CssNumeric, CssScrollSnapAlignment, CssScrollSnapAxis,
-    CssScrollSnapStop, CssScrollSnapStrictness, CssScrollSnapType, CssSidePair,
+use crate::numeric::expression::NumericInputContext;
+use crate::numeric::{CssLength, CssNumeric};
+use crate::numeric::{CssLengthPercentage, CssNonNegative};
+use crate::values::common::CssAutoOr;
+use crate::values::common::{CssFourSides, CssSidePair};
+use crate::values::layout::scroll_snap::{ScrollMarginSide, ScrollPaddingSide};
+use crate::values::layout::{
+    CssScrollSnapAlignment, CssScrollSnapAxis, CssScrollSnapStop, CssScrollSnapStrictness,
+    CssScrollSnapType,
 };
 
 pub(super) fn parse_scroll_snap_type<'i, 't>(

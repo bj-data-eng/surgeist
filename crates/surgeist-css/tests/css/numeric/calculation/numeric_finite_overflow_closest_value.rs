@@ -12,7 +12,8 @@
 //! calculation needing no conversion or arithmetic serializes its exact
 //! authored coefficient, as ordinary literals do (#1297).
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclaration;
 
 fn specified(declaration: &str) -> String {
     let report = CssDeclaration::parse(&CssParser::default(), declaration);

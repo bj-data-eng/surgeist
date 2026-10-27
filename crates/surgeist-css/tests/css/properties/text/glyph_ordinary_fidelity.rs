@@ -1,6 +1,11 @@
 //! Narrow exact-authored fidelity regression; does not settle the legacy math grammar.
 use crate::css::support::selected_grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{CssKnownPropertyValueRef, CssPropertyTarget};
+use surgeist_css::values::text::CssTextOrientation;
 
 const NEGATIVE: &[&str] = &["1e-100deg", "-1e-100deg", "90.000001deg", "89.999999deg"];
 

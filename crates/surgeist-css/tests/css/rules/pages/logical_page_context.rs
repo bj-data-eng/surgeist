@@ -4,7 +4,16 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::ExpectedRejection;
 use crate::css::support::rules::normalized_pages as pages;
-use surgeist_css::*;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 #[test]
 fn logical_page_pseudos_retain_symbolic_spelling_without_becoming_physical_sides() {

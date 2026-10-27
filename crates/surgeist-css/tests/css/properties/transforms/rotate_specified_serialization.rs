@@ -5,7 +5,15 @@
 //! angle with an axis, so full turns and zero axes keep their authored form.
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssCalculation, CssNumber, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::transform::{CssRotate, CssRotateAxis, CssRotateValues};
 
 type Limits = CssSerializationLimits;
 type Kind = SerializationFailure;

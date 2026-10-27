@@ -1,10 +1,10 @@
 use std::error::Error as _;
 
 use super::*;
-use crate::CssValueOrigin;
+use crate::component::CssValueOrigin;
 
 fn last_component(text: &str) -> CssComponentValue {
-    crate::component_values::parse_component_values(text)
+    crate::component::values::parse_component_values(text)
         .unwrap()
         .items()
         .last()
@@ -53,7 +53,7 @@ fn recovered<T: CssNumericRoot>(
     text: &str,
     serialized: &str,
 ) -> (CssCalculation<T>, CssValueOrigin) {
-    let components = crate::component_values::parse_component_values(text).unwrap();
+    let components = crate::component::values::parse_component_values(text).unwrap();
     let component = components
         .items()
         .iter()
@@ -126,9 +126,9 @@ fn recovered_original_closure_precedes_value_normalization_and_range_checks() {
 
 #[test]
 fn resolution_children_share_consumed_input_projection_and_output_budgets() {
-    use crate::CssSerializationLimits;
+    use crate::serialization::CssSerializationLimits;
     use CssSpecifiedValueSerializationErrorKind as Kind;
-    let component = crate::component_values::parse_component_values("-0dppx")
+    let component = crate::component::values::parse_component_values("-0dppx")
         .unwrap()
         .items()[0]
         .clone();

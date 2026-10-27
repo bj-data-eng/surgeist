@@ -5,7 +5,19 @@ use crate::css::support::color_property::color_property_value as wrapper;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
-use surgeist_css::*;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorInterpolation, CssColorInterpolationMethod, CssColorMix,
+    CssColorMixComponent, CssColorMixPercentage, CssColorMixWeight, CssColorProfileName,
+};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueLimits, CssComponentValues, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssPercentage,
+};
+use surgeist_css::property::{CssKnownProperty, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::{CssParser, CssParserContext};
 
 fn checked_components(values: CssComponentValues) -> CssDeclaration {
     let declaration = CssDeclaration::try_from_components(

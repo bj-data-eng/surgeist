@@ -4,10 +4,11 @@ use crate::css::support::isolated_stack;
 
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::{
-    CssCalculation, CssComponentValueError, CssComponentValueLimits, CssComponentValues,
-    CssLengthPercentage, CssNumber, CssParser,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueError, CssComponentValueLimits, CssComponentValues,
 };
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumber};
 
 #[derive(Default)]
 struct DebugSink {

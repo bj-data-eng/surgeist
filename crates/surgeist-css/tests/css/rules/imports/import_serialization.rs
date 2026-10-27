@@ -1,6 +1,9 @@
 //! Canonical imports preserve the authored clause/media interpretation.
 use crate::css::support::rules::ExpectedRejection;
-use surgeist_css::{CssErrorCode, CssParser, CssRule, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::diagnostic::CssErrorCode;
+use surgeist_css::rule::CssRule;
 
 #[test]
 fn canonical_imports_preserve_targets_clauses_and_symbolic_media() {

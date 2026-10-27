@@ -9,7 +9,32 @@ use descriptor_phases::*;
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use std::cmp::Ordering;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{
+    CssCalculation, CssInteger, CssLengthPercentage, CssNonNegative, CssNumeric, CssNumericLiteral,
+    CssPositive,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::{
+    CssCounterAdditiveSymbols, CssCounterAdditiveTuple, CssCounterStyleDescriptorRef,
+    CssCounterStyleFixedSystem, CssCounterStylePad, CssCounterStyleRange,
+    CssCounterStyleRangeBound, CssCounterStyleRangeInterval, CssCounterStyleRanges,
+    CssCounterStyleSystem, CssCounterSymbol,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{CssEasing, CssStepPosition, CssSteps};
+use surgeist_css::values::content::CssContentString;
+use surgeist_css::values::layout::{
+    CssColumnCount, CssGridFixedRepeatComponent, CssGridFixedRepeatContent, CssGridFixedSize,
+    CssGridGeneralTrackComponent, CssGridGeneralTrackList, CssGridIntegerFixedRepeat,
+    CssGridIntegerTrackRepeat, CssGridTrackBreadth, CssGridTrackList, CssGridTrackRepeatComponent,
+    CssGridTrackRepeatContent, CssGridTrackSize,
+};
 
 fn integer(text: &str) -> CssNumericLiteral<CssInteger> {
     CssNumericLiteral::<CssInteger>::try_from_component(

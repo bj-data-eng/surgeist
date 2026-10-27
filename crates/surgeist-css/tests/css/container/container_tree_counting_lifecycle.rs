@@ -2,7 +2,23 @@
 //! Values 5 attribute-substitution WD20241111 §9. The query-container, flat-tree
 //! and ultimate-originating-element evaluation rules remain downstream; these
 //! tests require the symbolic inputs and their authored provenance to survive.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationTreeCountingRef, CssCalculationType,
+    CssNumber, CssNumericDimension, CssTreeCountingFunction,
+};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::query::container::{
+    CssContainerFeatureQuery, CssContainerLeaf, CssContainerLengthRef, CssContainerPrelude,
+    CssContainerRatioRef, CssContainerValueDomain,
+};
+use surgeist_css::query::media::CssMediaRangeRef;
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssContainerRule, CssRule, CssSheet};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn container(sheet: &CssSheet) -> &CssContainerRule {
     let [CssRule::Container(rule)] = sheet.rules() else {

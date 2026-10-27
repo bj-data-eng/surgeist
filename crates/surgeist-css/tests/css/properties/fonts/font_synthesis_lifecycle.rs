@@ -11,7 +11,16 @@ use crate::css::support::known_property;
 use crate::css::support::named_property::assert_checked_value_rejected_at;
 use crate::css::support::named_property::longhand_contributions as longhands;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandContributions,
+    CssPropertyKindRef, CssPropertyTarget,
+};
 
 const MEMBERS: [&str; 4] = [
     "font-synthesis-weight",

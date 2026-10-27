@@ -13,7 +13,9 @@
 //! treats an ordinary rejection as "no match" while nesting and
 //! component-resource failures propagate from any operand.
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, is_resource_parse_error, unexpected_at};
+use crate::diagnostic::error::property::{
+    Error, ParseError, is_resource_parse_error, unexpected_at,
+};
 
 /// The reorderable combinator joining one operand table.
 #[derive(Clone, Copy)]
@@ -204,12 +206,12 @@ pub(super) fn parse_native_comma_list<'i, 't, T>(
     input: &mut cssparser::Parser<'i, 't>,
     mut item: impl FnMut(
         &mut cssparser::Parser<'i, '_>,
-    ) -> Result<T, cssparser::ParseError<'i, crate::error::CssError>>,
+    ) -> Result<T, cssparser::ParseError<'i, crate::diagnostic::CssError>>,
     trailing: impl FnOnce(
         &mut cssparser::Parser<'i, 't>,
         cssparser::SourceLocation,
-    ) -> cssparser::ParseError<'i, crate::error::CssError>,
-) -> Result<Vec<T>, cssparser::ParseError<'i, crate::error::CssError>> {
+    ) -> cssparser::ParseError<'i, crate::diagnostic::CssError>,
+) -> Result<Vec<T>, cssparser::ParseError<'i, crate::diagnostic::CssError>> {
     let mut values = Vec::with_capacity(1);
     loop {
         // The item starts directly after its separator.
@@ -239,11 +241,12 @@ pub(super) fn parse_native_comma_list<'i, 't, T>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::component::values::CssComponentValueErrorKind;
+    use crate::component::{CssComponentValueError, CssValueOrigin};
     use crate::syntax_consumption::{SyntaxInput, SyntaxInputLimits, normalize};
-    use crate::{CssComponentValueError, CssComponentValueErrorKind, CssValueOrigin};
 
     fn with_input<R>(css: &str, run: impl FnOnce(&mut Parser<'_, '_>) -> R) -> R {
-        let values = crate::component_values::parse_component_values(css).unwrap();
+        let values = crate::component::values::parse_component_values(css).unwrap();
         let document = normalize(
             SyntaxInput::CheckedComponents(values.items()),
             SyntaxInputLimits::default(),
@@ -260,7 +263,7 @@ mod tests {
     }
 
     fn resource<'i>(input: &Parser<'i, '_>) -> ParseError<'i, Error> {
-        crate::error::property::invalid_component_value(
+        crate::diagnostic::error::property::invalid_component_value(
             input.current_source_location(),
             CssComponentValueError::new(
                 CssComponentValueErrorKind::NestingLimit,

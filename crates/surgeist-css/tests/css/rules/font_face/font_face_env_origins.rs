@@ -2,14 +2,18 @@
 
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue as Authored, CssAuthoredFontFaceDescriptorValue,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Ordinary, CssFontFaceWidth,
-    CssFontWidth, CssParser, CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue;
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue as Authored;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue as Ordinary;
+use surgeist_css::values::font::{CssFontFaceWidth, CssFontWidth};
 
-fn pending(kind: Kind) -> surgeist_css::CssPendingFontFaceDescriptorValue {
+fn pending(kind: Kind) -> surgeist_css::rule::font_face::CssPendingFontFaceDescriptorValue {
     let value = Authored::try_from_components(
         kind,
         CssComponentValues::parse(&CssParser::default(), "env(selection, fallback)").unwrap(),

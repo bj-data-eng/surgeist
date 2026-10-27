@@ -3,11 +3,9 @@
 //! Checked syntax is shared by every branch. Only an influencing recipe reads
 //! facts or evaluates components. There is no recursive evaluator or source reparse.
 
-use super::Color;
 use super::channels::{self, Component, Domain};
 use super::component_value::{Action as ComponentAction, ComponentValue};
 use super::device::{ComputedCmyk, DeviceAction, DeviceResolution};
-use super::facts::{CssColorFactIdentity, CssColorFacts};
 use super::grammar::{
     FunctionRecipe, GrammarRecord, Interpolation, Leaf, MixRecord, ProfileSpace, RecipeKind, Site,
 };
@@ -20,13 +18,15 @@ use super::profile::{
 use super::profile_conversion::{
     ConversionAction, InputAction, ProfileConversionLookup, ProfileInputBuilder,
 };
-use super::protocol::{ColorProtocolError, CssColorBank, CssColorSlot, Data};
 use super::relative::Binding;
 use super::syntax_pass::ValidatedGrammar;
-use crate::{
-    ColorSpace as Space, CssRelativeColorEnvironment as Environment,
-    PredefinedColorSpace as Predefined,
-};
+use crate::color::CssRelativeColorEnvironment as Environment;
+use crate::color::controlled::protocol::{ColorProtocolError, Data};
+use crate::color::controlled::{CssColorBank, CssColorSlot};
+use crate::color::{CssColorFactIdentity, CssColorFacts};
+use surgeist_color::Color;
+use surgeist_color::ColorSpace as Space;
+use surgeist_color::PredefinedColorSpace as Predefined;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Error {
@@ -881,8 +881,10 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
     }
     /// Each compute is one fixed kernel/transition. Vector lengths supplied here
     /// are actual admitted observations of the same caller-owned banks.
-    pub(crate) fn additional_fact_read(&self) -> Option<super::bounded::CssColorFactRead> {
-        use super::bounded::CssColorFactRead as F;
+    pub(crate) fn additional_fact_read(
+        &self,
+    ) -> Option<crate::color::controlled::CssColorFactRead> {
+        use crate::color::controlled::CssColorFactRead as F;
         match &self.state {
             State::Profile {
                 cursor,
@@ -900,8 +902,8 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
             _ => None,
         }
     }
-    pub(crate) fn kernel(&self) -> super::CssColorKernel {
-        use super::CssColorKernel as K;
+    pub(crate) fn kernel(&self) -> crate::color::controlled::CssColorKernel {
+        use crate::color::controlled::CssColorKernel as K;
         match &self.state {
             State::Component(cursor) | State::CustomComponent { cursor, .. } => cursor.kernel(),
             State::Dispatch => match self.frame.map(|frame| (frame.recipe.function, frame.state)) {
@@ -1373,7 +1375,7 @@ impl<'owner, 'facts> Resolution<'owner, 'facts> {
                 let resolved = weights.summary.finish().map_err(Error::Interpolation)?;
                 let method = match frame.recipe.interpolation {
                     Some(Interpolation::Standard(method)) => method,
-                    None => crate::CssColorInterpolationMethod::try_new(Space::Oklab, None)
+                    None => crate::color::CssColorInterpolationMethod::try_new(Space::Oklab, None)
                         .map_err(|_| ColorProtocolError::WrongSlot)?,
                     _ => return Err(ColorProtocolError::WrongSlot.into()),
                 };
@@ -1493,14 +1495,14 @@ fn environment(recipe: FunctionRecipe) -> Result<Environment, ColorProtocolError
 
 #[cfg(test)]
 mod tests {
-    use super::super::facts::{
+    use super::super::syntax_pass::tests::fixture;
+    use super::*;
+    use crate::color::controlled::CssColorOperationOwner;
+    use crate::color::{
         CssColorProfileAvailability, CssColorProfileBinding, CssColorProfileConversion,
         CssColorProfileConversionRecord, CssColorPropertyFacts, CssColorSchemeFact,
         CssDeviceColorFact,
     };
-    use super::super::protocol::CssColorOperationOwner;
-    use super::super::syntax_pass::tests::fixture;
-    use super::*;
     fn resolve(input: &str, facts: &CssColorFacts<'_>) -> Result<Color, Error> {
         resolve_suspending(input, facts, None)
     }
@@ -1787,12 +1789,12 @@ mod tests {
     fn custom_forward_conversion_uses_parameter_count_and_qualified_input_before_output() {
         let id = CssColorFactIdentity::new(1, 2);
         let profile = CssColorFactIdentity::new(3, 4);
-        let name = crate::CssColorProfileName::try_new("--printer").unwrap();
+        let name = crate::color::CssColorProfileName::try_new("--printer").unwrap();
         let metadata = [CssColorProfileBinding::new(
             &name,
             profile,
             CssColorProfileAvailability::Loaded,
-            crate::CssColorProfileRenderingIntent::RelativeColorimetric,
+            crate::rule::color_profile::CssColorProfileRenderingIntent::RelativeColorimetric,
             3,
             &[],
         )];
@@ -1810,7 +1812,7 @@ mod tests {
             CssColorProfileConversionRecord::new(
                 profile,
                 &input,
-                crate::CssColorProfileRenderingIntent::RelativeColorimetric,
+                crate::rule::color_profile::CssColorProfileRenderingIntent::RelativeColorimetric,
                 Space::Predefined(Predefined::XyzD50),
                 expected,
             ),

@@ -6,16 +6,22 @@ use surgeist_color::{
     SerializationAction, SerializationFamily, SerializationReceipt, SerializationRequest,
     SerializationStep, Transformation,
 };
-use surgeist_css::{
-    CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssColorBank, CssColorError,
-    CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInput, CssColorInputKind,
-    CssColorOperationOwner, CssColorOrdinaryLimits, CssColorOrdinaryOutcome,
-    CssColorOrdinaryResource, CssColorPaletteEntry, CssColorParse, CssColorParseAction,
-    CssColorParseOutcome, CssColorParseStep, CssColorPropertyFacts, CssColorResolveError,
-    CssColorSchemeFact, CssColorSlot, CssColorStandardFailure, CssColorStandardFailureKind,
-    CssColorTransform, CssColorUnavailable, CssColorUnsupported, CssDeviceColorFact, CssImportance,
-    CssKnownProperty, CssKnownPropertyValueRef, CssParser, CssPropertyNameRef,
-    CssPropertyTextTarget, CssUsedColorCheckpoint, parse_used_color,
+use surgeist_css::CssParser;
+use surgeist_css::color::controlled::{
+    CssColorBank, CssColorOperationOwner, CssColorParse, CssColorParseAction, CssColorParseOutcome,
+    CssColorParseStep, CssColorSlot, CssColorTransform, CssUsedColorCheckpoint,
+};
+use surgeist_css::color::{
+    CssAuthoredColorOrdinaryLimits, CssAuthoredColorOutcome, CssColorError, CssColorFactIdentity,
+    CssColorFacts, CssColorGrammarRequest, CssColorInput, CssColorInputKind,
+    CssColorOrdinaryLimits, CssColorOrdinaryOutcome, CssColorOrdinaryResource,
+    CssColorPaletteEntry, CssColorPropertyFacts, CssColorResolveError, CssColorSchemeFact,
+    CssColorStandardFailure, CssColorStandardFailureKind, CssColorUnavailable, CssColorUnsupported,
+    CssDeviceColorFact, parse_used_color,
+};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTextTarget,
 };
 
 use super::{Observation, emitted, error_chain};
@@ -23,12 +29,12 @@ use super::{Observation, emitted, error_chain};
 const IDENTITY: CssColorFactIdentity = CssColorFactIdentity::new(7, 3);
 const PALETTE: &[CssColorPaletteEntry] = &[
     CssColorPaletteEntry::new(
-        surgeist_css::CssSystemColor::CanvasText,
+        surgeist_css::color::CssSystemColor::CanvasText,
         CssColorFactIdentity::new(8, 4),
         Color::from_srgba8([16, 32, 48, 255]),
     ),
     CssColorPaletteEntry::new(
-        surgeist_css::CssSystemColor::Canvas,
+        surgeist_css::color::CssSystemColor::Canvas,
         CssColorFactIdentity::new(8, 5),
         Color::from_srgba8([250, 251, 252, 255]),
     ),

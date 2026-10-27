@@ -2,7 +2,7 @@
 //! owning captures read one immutable snapshot, including every chained object.
 
 use crate::{model::State, *};
-use surgeist_css::CssRule as AuthoredRule;
+use surgeist_css::rule::CssRule as AuthoredRule;
 
 /// A read-only typed object and its owning immutable snapshot.
 ///

@@ -3,7 +3,21 @@
 //! Literal order checks remain intrinsic; symbolic comparisons are downstream.
 
 use crate::css::support::rules::sole_counter_style as parsed;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueLimits, CssComponentValues, CssValueOrigin};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::numeric::{CssCalculation, CssInteger, CssNumeric, CssNumericLiteral};
+use surgeist_css::rule::counter_style::{
+    CssCounterAdditiveSymbols, CssCounterAdditiveTuple, CssCounterStyleDescriptorKind,
+    CssCounterStyleDescriptorValue, CssCounterStyleDescriptorValueRef, CssCounterStyleDescriptors,
+    CssCounterStyleFixedSystem, CssCounterStylePad, CssCounterStyleRangeBound,
+    CssCounterStyleRangeInterval, CssCounterStyleSystem, CssCounterSymbol,
+};
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::content::CssContentString;
 
 fn calculation(text: &str) -> CssNumeric<CssInteger> {
     CssNumeric::<CssInteger>::try_from_calculation(

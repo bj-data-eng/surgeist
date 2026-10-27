@@ -1,7 +1,7 @@
-use surgeist_css::{
-    CssBlockContext, CssBlockFragment, CssErrorCode, CssPageBody, CssParser, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::rule::page::CssPageBody;
+use surgeist_css::rule::{CssBlockContext, CssBlockFragment, CssRule};
 
 fn closures(diagnostics: &[CssRecoveryDiagnostic], source: &str, expected: usize) {
     assert_eq!(diagnostics.len(), expected, "{source}: {diagnostics:?}");

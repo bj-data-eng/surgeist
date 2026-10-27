@@ -1,6 +1,11 @@
 //! Shared checked color-component fixtures and color recovery assertions.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColorComponent, CssColorNumberLiteral, CssColorPercentageLiteral};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssCalculation, CssNumber, CssPercentage};
+use surgeist_css::property::CssKnownProperty;
 
 /// `color: {value}` is dropped with one diagnostic while the following
 /// declaration survives, and strict validation rejects the attribute.

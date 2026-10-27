@@ -5,7 +5,16 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::normal_property_declaration as parsed;
-use surgeist_css::*;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::{CssIdent, CssUrl, CssUrlModifier};
+use surgeist_css::values::content::{
+    CssContentString, CssCounterStyleValue, CssCounterSymbolValue, CssListStylePosition,
+    CssListStyleTypeValue, CssListStyleValue, CssSymbolsStyleValue, CssSymbolsSystem,
+};
+use surgeist_css::values::image::{CssColorStopListItem, CssGradient, CssImage, CssImageValue};
 
 fn named(name: &str) -> CssCounterStyleValue {
     CssCounterStyleValue::try_named(CssIdent::try_new(name).unwrap()).unwrap()

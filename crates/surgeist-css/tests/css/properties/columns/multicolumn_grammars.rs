@@ -1,7 +1,16 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::property_admission::assert_component_rejected;
 use crate::css::support::value_assertions::positive_literal;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValueRef, CssValueTokenRef};
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::values::border::{CssLineStyle, CssLineWidth};
+use surgeist_css::values::box_model::{CssBoxSize, CssSizeValue};
+use surgeist_css::values::layout::{CssColumnCount, CssColumnFill, CssColumnSpan};
 
 #[test]
 fn multicolumn_properties_retain_typed_structure() {
@@ -185,20 +194,27 @@ fn multicolumn_calculations_remain_symbolic_and_checked_constructors_reject_lite
     ));
 
     assert!(
-        positive_literal(surgeist_css::CssNumericLiteral::<surgeist_css::CssInteger>::from_i32(0))
-            .is_none()
+        positive_literal(surgeist_css::numeric::CssNumericLiteral::<
+            surgeist_css::numeric::CssInteger,
+        >::from_i32(0))
+        .is_none()
     );
     assert!(
-        positive_literal(surgeist_css::CssNumericLiteral::<surgeist_css::CssInteger>::from_i32(-1))
-            .is_none()
+        positive_literal(surgeist_css::numeric::CssNumericLiteral::<
+            surgeist_css::numeric::CssInteger,
+        >::from_i32(-1))
+        .is_none()
     );
     for (css, kind) in [
         ("-1px", NumericFailure::OutOfRange),
         ("auto", NumericFailure::RootDomainMismatch),
     ] {
         assert_component_rejected(
-            surgeist_css::CssNumeric::<surgeist_css::CssLength, surgeist_css::CssNonNegative>::try_from_component,
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+            surgeist_css::numeric::CssNumeric::<
+                surgeist_css::numeric::CssLength,
+                surgeist_css::numeric::CssNonNegative,
+            >::try_from_component,
+            surgeist_css::component::CssComponentValue::try_token(css).unwrap(),
             kind,
         );
     }
@@ -331,7 +347,9 @@ fn multicolumn_mutations_drop_exact_declaration_and_retain_siblings() {
     }
 }
 
-fn ordinary(declaration: &surgeist_css::CssDeclaration) -> CssKnownPropertyValueRef<'_> {
+fn ordinary(
+    declaration: &surgeist_css::declaration::CssDeclaration,
+) -> CssKnownPropertyValueRef<'_> {
     declaration
         .known()
         .expect("known declaration")

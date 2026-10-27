@@ -13,7 +13,11 @@ use crate::css::support::color_components::{
 };
 use crate::css::support::parsed_color as parsed;
 use surgeist_color::PredefinedColorSpace;
-use surgeist_css::*;
+use surgeist_css::color::{
+    CssColor, CssColorComponent, CssColorHue, CssColorNumberLiteral, CssColorSyntax, CssHslColor,
+    CssHwbColor, CssLabColor, CssLchColor, CssPredefinedColor, CssRgbColor,
+};
+use surgeist_css::numeric::{CssAngle, CssAngleUnit, CssNumericLiteral};
 
 #[derive(Clone, Copy)]
 enum Family {

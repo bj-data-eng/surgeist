@@ -9,10 +9,24 @@
 //! Values, component origins, contribution ordering, and strict retry behavior
 //! below are asserted independently of serialization followed by reparsing.
 
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssDeclaration, CssKnownProperty as Property, CssParser,
-    CssPropertyTarget, *,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
 };
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{
+    CssCalculation, CssCalculationExpressionRef, CssCalculationProductOperator,
+    CssCalculationSumOperator, CssCalculationType, CssCalculationValueRef, CssLengthPercentage,
+    CssLengthUnit, CssNumeric,
+};
+use surgeist_css::property::CssKnownProperty as Property;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::{CssFlowTolerance, CssFlowToleranceRef};
 
 fn value(declaration: &CssDeclaration) -> &CssFlowTolerance {
     let Some(CssKnownPropertyValueRef::FlowTolerance(value)) =
@@ -179,7 +193,7 @@ fn parsed_and_constructed_payloads_match_independent_signed_expectations() {
     );
     assert_eq!(
         terms.term(1).unwrap().operator(),
-        Some(surgeist_css::CssCalculationSumOperator::Subtract)
+        Some(surgeist_css::numeric::CssCalculationSumOperator::Subtract)
     );
     assert!(
         matches!(terms.term(1).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Percentage(v)) if v.representation() == "3")
@@ -406,7 +420,7 @@ fn pending_reentry_preserves_original_and_replacement_origins_and_is_retryable()
                 );
                 assert_eq!(
                     terms.term(1).unwrap().operator(),
-                    Some(surgeist_css::CssCalculationSumOperator::Subtract)
+                    Some(surgeist_css::numeric::CssCalculationSumOperator::Subtract)
                 );
                 assert!(
                     matches!(terms.term(1).unwrap().expression(), CssCalculationExpressionRef::Value(CssCalculationValueRef::Percentage(v)) if v.representation() == "3")
@@ -541,12 +555,15 @@ fn canonical_specified_values_keep_context_dependent_operands_symbolic() {
 
 fn signed_length_percentage(
     css: &str,
-) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage> {
-    let components =
-        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
+) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLengthPercentage> {
+    let components = surgeist_css::component::CssComponentValues::parse(
+        &surgeist_css::CssParser::default(),
+        css,
+    )
+    .unwrap();
     if css.contains('(') {
-        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_calculation(
-            surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage>::try_from_calculation(
+            surgeist_css::numeric::CssCalculation::<surgeist_css::numeric::CssLengthPercentage>::try_from_components(
                 components,
                 Default::default(),
             )
@@ -554,18 +571,22 @@ fn signed_length_percentage(
         )
         .unwrap()
     } else {
-        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage>::try_from_component(
+            surgeist_css::component::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
     }
 }
 
-fn exact_literal(component: Option<&surgeist_css::CssComponentValue>, css: &str) -> bool {
-    use surgeist_css::{CssComponentValueRef as Component, CssValueTokenRef as Token};
-    let expected = surgeist_css::CssComponentValue::try_token(css).unwrap();
+fn exact_literal(
+    component: Option<&surgeist_css::component::CssComponentValue>,
+    css: &str,
+) -> bool {
+    use surgeist_css::component::CssComponentValueRef as Component;
+    use surgeist_css::component::CssValueTokenRef as Token;
+    let expected = surgeist_css::component::CssComponentValue::try_token(css).unwrap();
     match (
-        component.map(surgeist_css::CssComponentValue::view),
+        component.map(surgeist_css::component::CssComponentValue::view),
         expected.view(),
     ) {
         (

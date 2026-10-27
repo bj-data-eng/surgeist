@@ -2,7 +2,23 @@
 //! genuine-source contract, selected Syntax/Nesting/Cascade/Conditional sources,
 //! and existing authored/context/partition contracts.
 use crate::css::support::rules::assert_clean_and_valid as clean;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::query::supports::{
+    CssSupportsConditionName, CssSupportsTestBody, CssSupportsTestDeclaration, CssSupportsTestItem,
+};
+use surgeist_css::rule::{
+    CssBlockContext, CssBlockFragment, CssNamespaceName, CssNamespacePrefix, CssRule, CssRuleList,
+    CssStyleAncestor, CssStyleBlock, CssStyleRule, CssSupportsConditionRule,
+};
+use surgeist_css::selector::{
+    CssNamespaceConstraint, CssNamespaceContext, CssPseudoClass, CssSelector,
+    CssSelectorCombinator, CssStyleSelector,
+};
+use surgeist_css::source::CssParsedOrigin;
+use surgeist_css::{CssParseReport, CssParser, CssParserContext, CssParserMode};
 
 fn envelope<'a, T>(
     report: &'a CssParseReport<Option<CssBlockFragment<T>>>,

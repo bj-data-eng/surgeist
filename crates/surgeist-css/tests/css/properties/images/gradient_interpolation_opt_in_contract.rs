@@ -3,7 +3,13 @@
 //! https://www.w3.org/TR/2026/CRD-css-color-4-20260908/#interpolation-space
 //! This qualifies Images4 WD2025-09-30 §§3.5.2 and8: dropping explicit Oklab
 //! with legacy stop colors changes meaning despite the general default prose.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::image::CssImage;
 
 const FUNCTIONS: [&str; 5] = [
     "linear-gradient",

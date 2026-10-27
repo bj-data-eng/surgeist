@@ -1,6 +1,8 @@
 //! Selected Syntax 3, Variables 1 and Filter Effects 1 declaration admission.
 //! Expectations derive from the original input, independently of the corpus oracle.
-use surgeist_css::{CssDeclaration, CssErrorCode, CssParser, CssRecoveryAction};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
 
 #[test]
 fn raw_declaration_corpus_obeys_selected_grammar() {

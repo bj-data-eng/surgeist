@@ -9,7 +9,15 @@
 //! explicit case-flag API. New APIs need functional tests with implementation.
 //! Authored component serialization is lexical, not CSSOM canonical value text.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
 
 fn authored_value(declaration: &CssDeclaration) -> &str {
     let origin = declaration.parsed_value().unwrap();

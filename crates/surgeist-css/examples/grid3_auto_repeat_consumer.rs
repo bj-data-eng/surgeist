@@ -7,17 +7,25 @@
 //! The explicit borrowed return type below is a public consumer contract.
 //! The authored model is the sole public Grid payload.
 
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{
     CssCalculationExpressionRef, CssCalculationProductOperator, CssCalculationType,
-    CssCalculationValueRef, CssComponentValues, CssDeclaration, CssGridAutoFlowAxis,
-    CssGridAutoRepeat, CssGridAutoRepeatKind, CssGridAutoTrackComponent,
-    CssGridFixedRepeatComponent, CssGridTrackBreadthKind as BreadthKind, CssGridTrackList,
-    CssGridTrackRepeatComponent as Member, CssGridTrackRepeatContent, CssGridTrackSize,
-    CssImportance, CssKnownProperty as Property, CssKnownPropertyValueRef, CssParser,
-    CssPropertyNameRef, CssPropertyTarget,
+    CssCalculationValueRef,
+};
+use surgeist_css::property::CssKnownProperty as Property;
+use surgeist_css::property::{CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget};
+use surgeist_css::values::layout::CssGridTrackBreadthKind as BreadthKind;
+use surgeist_css::values::layout::CssGridTrackRepeatComponent as Member;
+use surgeist_css::values::layout::{
+    CssGridAutoFlowAxis, CssGridAutoRepeat, CssGridAutoRepeatKind, CssGridAutoTrackComponent,
+    CssGridFixedRepeatComponent, CssGridTrackList, CssGridTrackRepeatContent, CssGridTrackSize,
 };
 
-fn columns(declaration: &CssDeclaration) -> &surgeist_css::CssPropertyValue<CssGridTrackList> {
+fn columns(
+    declaration: &CssDeclaration,
+) -> &surgeist_css::property::CssPropertyValue<CssGridTrackList> {
     let Some(CssKnownPropertyValueRef::GridTemplateColumns(value)) =
         declaration.known().unwrap().property_value()
     else {
@@ -243,10 +251,11 @@ fn checked_components_preserve_general_body_values_and_origins() {
         retained_tokens.origin_at(retained_tokens.as_css().len()),
         original_tokens.origin_at(original_tokens.as_css().len())
     );
-    let surgeist_css::CssValueOrigin::Parsed(original) = components.items()[0].origin() else {
+    let surgeist_css::component::CssValueOrigin::Parsed(original) = components.items()[0].origin()
+    else {
         panic!("the supplied first token has parsed provenance");
     };
-    let surgeist_css::CssValueOrigin::Parsed(retained) =
+    let surgeist_css::component::CssValueOrigin::Parsed(retained) =
         declaration.value_components().items()[0].origin()
     else {
         panic!("checked construction retains the first token's provenance");

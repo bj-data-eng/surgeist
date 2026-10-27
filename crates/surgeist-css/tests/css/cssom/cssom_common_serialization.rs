@@ -3,7 +3,11 @@
 //! https://www.w3.org/TR/2021/WD-cssom-1-20210826/#common-serializing-idioms
 
 use crate::css::support::serialization_limits::LimitLadder;
-use surgeist_css::*;
+use surgeist_css::serialization::{
+    CssSerializationError, CssSerializationLimits, serialize_css_comma_separated_list,
+    serialize_css_identifier, serialize_css_string, serialize_css_whitespace_separated_list,
+};
+use surgeist_css::values::common::CssIdent;
 
 type TextSerializer = fn(&str, CssSerializationLimits) -> Result<String, CssSerializationError>;
 type ListSerializer = fn(&[&str], CssSerializationLimits) -> Result<String, CssSerializationError>;

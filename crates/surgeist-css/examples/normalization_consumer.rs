@@ -16,17 +16,29 @@
 //! or payload bytes. Normalization errors and rule contexts expose optional
 //! source positions; programmatic syntax must not invent authored coordinates.
 
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue, CssComponentValue, CssComponentValues, CssConditionKind,
-    CssContributionValueRef, CssContributions, CssCustomPropertyDeclaredValue,
-    CssCustomPropertyName, CssDeclaration, CssExpansion, CssFontFaceDescriptorKind,
-    CssFontFaceDescriptorValue, CssGlobalKeyword, CssImportance, CssKnownProperty as Property,
-    CssLonghandContributions, CssLonghandValueRef, CssMediaLeaf, CssMediaQuery,
-    CssNormalizationLimits, CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem,
-    CssNormalizedSheet, CssParser, CssPropertyNameRef, CssPropertyTarget, CssRecoveryAction,
-    CssRule, CssRuleContext, CssRuleContextKindRef, CssSelector, CssSelectorBinding,
-    CssSelectorCombinator, CssStyleRule, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{
+    CssCustomPropertyDeclaredValue, CssCustomPropertyName, CssDeclaration, CssGlobalKeyword,
+    CssImportance,
 };
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem,
+    CssNormalizedSheet, CssRuleContext, CssRuleContextKindRef, CssSelectorBinding,
+};
+use surgeist_css::property::CssKnownProperty as Property;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssLonghandContributions,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+};
+use surgeist_css::rule::{CssRule, CssStyleRule};
+use surgeist_css::selector::{CssSelector, CssSelectorCombinator};
 
 fn declaration_items(sheet: &CssNormalizedSheet) -> Vec<&CssNormalizedDeclaration> {
     sheet
@@ -649,11 +661,11 @@ fn ordered_terminal_payloads() {
     };
     assert_eq!(
         diagnostic.error().code(),
-        surgeist_css::CssErrorCode::UnknownAtRule
+        surgeist_css::diagnostic::CssErrorCode::UnknownAtRule
     );
     assert_eq!(
         diagnostic.action(),
-        surgeist_css::CssRecoveryAction::DropAtRule
+        surgeist_css::diagnostic::CssRecoveryAction::DropAtRule
     );
     let normalized = report.syntax().normalize(Default::default()).unwrap();
     let contexts = rules(&normalized);

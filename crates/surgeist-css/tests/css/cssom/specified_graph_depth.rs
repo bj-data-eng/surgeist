@@ -3,7 +3,14 @@
 //! depth is zero, so a chain of three nested rules needs `max_depth` 2.
 use CssGroupPreludeRef as Prelude;
 use CssRuleGraphInput as Input;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssSpecifiedDeclarationBlock;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::{CssRule, CssStyleAncestor};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::{
+    CssGroupPreludeRef, CssRuleGraphInput, CssRuleSerializationError, CssRuleSerializationLimits,
+};
 
 fn limits(max_depth: usize) -> CssRuleSerializationLimits {
     CssRuleSerializationLimits {

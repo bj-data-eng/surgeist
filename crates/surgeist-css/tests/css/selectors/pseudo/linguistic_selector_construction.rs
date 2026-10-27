@@ -1,10 +1,12 @@
 //! Selectors 4 (2026-01-22), sections 7.1–7.2: checked authored arguments.
 use crate::css::support::color_and_selector_fixtures::assert_strict_validation_rejects;
-use surgeist_css::{
-    CssDirectionality, CssEmptyLanguageRangeList, CssLanguageRange, CssLanguageRangeKind,
-    CssLanguageRangeList, CssNamespaceContext, CssParser, CssPseudoClass, CssSelector,
-    CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::selector::{
+    CssEmptyLanguageRangeList, CssLanguageRange, CssLanguageRangeKind, CssLanguageRangeList,
+    CssNamespaceContext, CssPseudoClass, CssSelector,
 };
+use surgeist_css::values::text::CssDirectionality;
 
 #[test]
 fn decoded_identifiers_escape_without_restricting_direction_or_language_matching() {
@@ -253,7 +255,7 @@ fn retained_linguistic_arguments_keep_the_original_eof_closure_contract() {
         for closure in report.diagnostics() {
             assert_eq!(
                 closure.action(),
-                surgeist_css::CssRecoveryAction::RetainWithImplicitClosure
+                surgeist_css::diagnostic::CssRecoveryAction::RetainWithImplicitClosure
             );
             assert_eq!(
                 closure.error().position().byte_offset().value(),
@@ -285,11 +287,11 @@ fn actual_bad_strings_reject_instead_of_claiming_implicit_retention() {
         };
         assert_eq!(
             diagnostic.error().code(),
-            surgeist_css::CssErrorCode::InvalidSelector
+            surgeist_css::diagnostic::CssErrorCode::InvalidSelector
         );
         assert_eq!(
             diagnostic.action(),
-            surgeist_css::CssRecoveryAction::RejectInput
+            surgeist_css::diagnostic::CssRecoveryAction::RejectInput
         );
     }
 }

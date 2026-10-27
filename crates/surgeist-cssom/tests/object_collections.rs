@@ -1,5 +1,7 @@
 //! Independently derived standard object results from the retained CSSOM edition.
-use surgeist_css::{CssParserContext, CssParserMode, CssSerializationLimits, CssValueOrigin};
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::{CssParserContext, CssParserMode};
 use surgeist_cssom::*;
 fn limits() -> CssSerializationLimits {
     CssSerializationLimits::default()
@@ -724,7 +726,7 @@ fn namespace_and_hierarchy_failures_keep_typed_list_membership_atomic() {
 
 #[test]
 fn terminal_reports_move_into_outcomes_on_success_and_failed_adoption() {
-    use surgeist_css::CssRecoveryAction;
+    use surgeist_css::diagnostic::CssRecoveryAction;
     let text = "a { invalid: ; color:red; }";
     for max_objects in [5, 100] {
         let mut owner = CssomStore::new(

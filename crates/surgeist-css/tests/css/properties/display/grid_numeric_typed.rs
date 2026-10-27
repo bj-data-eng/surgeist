@@ -1,14 +1,20 @@
 use crate::css::support::value_assertions::positive_literal;
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::{
     CssCalculation, CssCalculationExpressionRef, CssCalculationType, CssCalculationValueRef,
-    CssComponentValue, CssComponentValueRef, CssComponentValues, CssFlex, CssGridAutoRepeat,
-    CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridAutoTrackList,
+    CssFlex, CssLengthPercentage, CssNonNegative, CssNumeric, CssNumericDimension,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::layout::{
+    CssGridAutoRepeat, CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridAutoTrackList,
     CssGridFixedRepeatComponent, CssGridFixedRepeatContent, CssGridFixedSize,
     CssGridGeneralTrackComponent, CssGridGeneralTrackList, CssGridIntegerTrackRepeat,
     CssGridLineNames, CssGridTrackBreadth, CssGridTrackList, CssGridTrackRepeatComponent,
-    CssGridTrackRepeatContent, CssGridTrackSize, CssGridTrackSizeList, CssKnownPropertyValueRef,
-    CssLengthPercentage, CssNonNegative, CssNumeric, CssNumericDimension, CssParser,
-    CssSerializationLimits, CssValueOrigin, CssValueTokenRef,
+    CssGridTrackRepeatContent, CssGridTrackSize, CssGridTrackSizeList,
 };
 
 fn flex(text: &str) -> CssNumeric<CssFlex, CssNonNegative> {
@@ -232,10 +238,16 @@ fn checked_lists_reject_empty_tracks_and_repeat_cross_products() {
     )])
     .unwrap();
     let repeat = CssGridIntegerTrackRepeat::new(
-        surgeist_css::CssNumeric::<surgeist_css::CssInteger, surgeist_css::CssPositive>::try_from_literal(
-            positive_literal(surgeist_css::CssNumericLiteral::<surgeist_css::CssInteger>::from_i32(2))
-                .unwrap(),
-        ).unwrap(),
+        surgeist_css::numeric::CssNumeric::<
+            surgeist_css::numeric::CssInteger,
+            surgeist_css::numeric::CssPositive,
+        >::try_from_literal(
+            positive_literal(surgeist_css::numeric::CssNumericLiteral::<
+                surgeist_css::numeric::CssInteger,
+            >::from_i32(2))
+            .unwrap(),
+        )
+        .unwrap(),
         content.clone(),
     );
     let general = CssGridTrackList::general(

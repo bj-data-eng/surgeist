@@ -3,7 +3,11 @@
 //! contract independently define these expectations; geometry stays unresolved.
 
 use crate::css::support::serialization_limits::assert_node_limits as budget;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::values::common::CssBoxEdgeKeyword;
+use surgeist_css::values::effects::{CssClipPath, CssClipPathShape};
+use surgeist_css::values::shape::{CssBasicShape, CssFillRule, CssPathData, CssPathShape};
 
 #[test]
 fn decoded_grammar_errors_locate_the_first_failure_or_incomplete_end() {

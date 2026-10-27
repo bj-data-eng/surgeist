@@ -25,11 +25,14 @@ use super::{
     PropertyOrDescriptor, REGISTRY, SyntaxCount, UpstreamOutcome, ValidatedCase,
     corpus_namespace_context, load_neutral_csstree_inventory, resolve_case_registry,
 };
-use surgeist_css::{
-    CssAuthoredFontFaceDescriptorValue, CssDeclaration, CssImportance, CssMediaQuery,
-    CssMediaQueryList, CssParsedStyleSelectors, CssParser, CssPropertyNameRef,
-    CssPropertyTextTarget, CssRule, CssSelector, CssStyleBlock, CssStyleSelector,
-    CssStyleSelectorContext,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::property::{CssPropertyNameRef, CssPropertyTextTarget};
+use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue;
+use surgeist_css::rule::{CssRule, CssStyleBlock};
+use surgeist_css::selector::{
+    CssParsedStyleSelectors, CssSelector, CssStyleSelector, CssStyleSelectorContext,
 };
 
 /// Why a compared case may differ from its upstream canonical form.

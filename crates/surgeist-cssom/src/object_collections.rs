@@ -12,7 +12,8 @@
 //! ```
 use crate::object_operations::execute;
 use crate::*;
-use surgeist_css::{CssRecoveryDiagnostic, CssSerializationLimits};
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::serialization::CssSerializationLimits;
 
 /// Explicit constructor media input. Captured lists are copied through CSSOM text,
 /// including across owners; the constructed sheet receives a fresh MediaList.

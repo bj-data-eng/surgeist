@@ -1911,7 +1911,7 @@ impl HostedRuntime {
 mod constructor_settings_tests {
     use super::*;
     use crate::{DomElementTaskRuntimeLimits, DomSession, DomSessionLimits, DomStyleRuntimeLimits};
-    use surgeist_css::CssUtf16InputLimits;
+    use surgeist_css::source::CssUtf16InputLimits;
     use surgeist_dom::{DomHostedRecordLimits, DomLimits};
 
     #[test]

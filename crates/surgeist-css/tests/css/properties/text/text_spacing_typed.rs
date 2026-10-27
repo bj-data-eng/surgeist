@@ -5,7 +5,18 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::sole_longhand_contribution;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{
+    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValue,
+    CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::CssTextSpacingAdjustment;
 
 fn component(text: &str) -> CssComponentValue {
     let components = CssComponentValues::parse(&CssParser::default(), text).unwrap();

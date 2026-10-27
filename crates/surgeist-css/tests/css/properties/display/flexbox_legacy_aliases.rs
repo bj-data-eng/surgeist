@@ -3,7 +3,18 @@
 //! https://www.w3.org/TR/2025/CRD-css-flexbox-1-20251014/#webkit-aliases
 
 use crate::css::support::important_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::conformance::{
+    CssSupportStatus, conformance_exclusion, property_support_metadata,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyGrammar, CssPropertyTarget,
+};
 
 const CASES: &[(&str, &str, &str, CssKnownProperty)] = &[
     (

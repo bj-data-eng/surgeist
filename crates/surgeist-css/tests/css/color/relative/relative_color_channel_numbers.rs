@@ -5,7 +5,9 @@
 //! references as numbers. An explicit unit can give a complete expression an
 //! angle or percentage type; it does not give the channel reference that type.
 
-use surgeist_css::{CssErrorCode, CssKnownProperty, CssParser, CssRecoveryAction};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssKnownProperty;
 
 fn assert_accepted(color: &str) {
     let source = format!("color: {color}; opacity: 0.5");

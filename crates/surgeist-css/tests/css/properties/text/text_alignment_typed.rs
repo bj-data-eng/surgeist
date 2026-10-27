@@ -2,7 +2,19 @@
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValue,
+    CssLonghandValueRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::text::{
+    CssCharacterAlignment, CssTextAlign, CssTextAlignAllValue, CssTextAlignLastValue,
+    CssTextAlignPosition, CssTextAlignValue,
+};
 
 fn one(name: &str, value: &str) -> CssDeclaration {
     let source = format!("{name}:{value}");

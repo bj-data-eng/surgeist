@@ -1,5 +1,6 @@
 //! Shared selected descriptor root admission; nested matched blocks remain data.
-use crate::error::{CssError, basic};
+use crate::diagnostic::CssError;
+use crate::diagnostic::error::basic;
 use cssparser::{ParseError, Parser, Token};
 
 pub(super) fn validate_root<'i>(
@@ -23,7 +24,7 @@ pub(super) fn validate_root<'i>(
                 | Token::CloseParenthesis
                 | Token::CloseSquareBracket
         ) {
-            return Err(crate::error::invalid_descriptor_token_at(
+            return Err(crate::diagnostic::error::invalid_descriptor_token_at(
                 location,
                 owner,
                 descriptor,

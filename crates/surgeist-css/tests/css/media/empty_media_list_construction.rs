@@ -2,7 +2,9 @@
 //! must preserve the same authored domain as parsing; evaluation belongs to style.
 //! https://www.w3.org/TR/2026/CRD-mediaqueries-4-20260219/#mq-list
 
-use surgeist_css::{CssMediaQueryList, CssParser, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::CssRule;
 
 #[test]
 fn empty_media_list_construction_matches_valid_authored_rule() {

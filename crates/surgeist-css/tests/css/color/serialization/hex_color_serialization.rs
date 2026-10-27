@@ -3,7 +3,8 @@
 //! serialization retains the separate modern punctuation contract.
 
 use crate::css::support::parsed_color;
-use surgeist_css::{CssColor, CssHexColor, CssSerializationLimits};
+use surgeist_css::color::{CssColor, CssHexColor};
+use surgeist_css::serialization::CssSerializationLimits;
 
 #[test]
 fn parsed_opaque_hex_alpha_uses_rgb_with_an_implicit_alpha() {

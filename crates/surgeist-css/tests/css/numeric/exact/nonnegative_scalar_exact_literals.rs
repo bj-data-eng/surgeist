@@ -14,12 +14,16 @@
 //! https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#supported-filter-functions
 //! https://www.w3.org/TR/2023/WD-css-animations-1-20230302/#animation-iteration-count
 
-use surgeist_css::{
-    CssAnimationIterationCount, CssBorderImageRepeatKeyword, CssBorderImageSliceComponent,
-    CssBorderImageWidthComponent, CssDeclaration, CssErrorCode, CssFilter, CssFilterAmount,
-    CssFilterFunction, CssKnownProperty, CssKnownPropertyValueRef, CssParser, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule,
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::animation::CssAnimationIterationCount;
+use surgeist_css::values::border::{
+    CssBorderImageRepeatKeyword, CssBorderImageSliceComponent, CssBorderImageWidthComponent,
 };
+use surgeist_css::values::effects::{CssFilter, CssFilterAmount, CssFilterFunction};
 
 const AMOUNT_FUNCTIONS: [&str; 7] = [
     "brightness",

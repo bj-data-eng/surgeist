@@ -2,7 +2,7 @@
 use crate::css::support::isolated_stack;
 
 use crate::css::support::authored_syntax::checked_supports_condition as construct;
-use surgeist_css::CssConditionKind;
+use surgeist_css::query::CssConditionKind;
 
 #[test]
 fn supported_supports_depth_and_owned_child_lifetimes_fit_an_ordinary_caller_stack() {

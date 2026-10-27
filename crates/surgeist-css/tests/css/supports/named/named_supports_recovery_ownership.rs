@@ -2,10 +2,11 @@
 //! first summary. Historical parser diagnostics keep their original order.
 
 use crate::css::support::authored_syntax::assert_diagnostics;
-use surgeist_css::{
-    CssComponentValues, CssParser, CssRecoveryAction, CssRule, CssSupportsConditionRule,
-    CssSupportsTestBody, CssSupportsTestItem, CssValueOrigin,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::query::supports::{CssSupportsTestBody, CssSupportsTestItem};
+use surgeist_css::rule::{CssRule, CssSupportsConditionRule};
 
 fn definition(rules: &[CssRule]) -> &CssSupportsConditionRule {
     let [CssRule::SupportsCondition(rule)] = rules else {
@@ -103,8 +104,8 @@ fn own_missing_body_close_precedes_retained_declaration_value_closure_in_summary
     let report = CssParser::default().parse_sheet(source);
     // EOF closes both the value function and the definition body.
     let closure = (
-        surgeist_css::CssErrorCode::UnexpectedEnd,
-        surgeist_css::CssRecoveryAction::RetainWithImplicitClosure,
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd,
+        surgeist_css::diagnostic::CssRecoveryAction::RetainWithImplicitClosure,
         source.len(),
     );
     assert_diagnostics(report.diagnostics(), &[closure, closure]);

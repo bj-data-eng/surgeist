@@ -2,10 +2,14 @@
 //! universal selector. Nesting 1 sections 3.1/4 permit a following parent anchor.
 //! A single namespace bar is distinct from the two-bar column combinator.
 
-use surgeist_css::{
-    CssCompoundSelector, CssErrorCode, CssGrammarExpectation, CssNamespaceConstraint, CssParser,
-    CssProductionId, CssPseudoClass, CssRecoveryAction, CssRecoveryDiagnostic, CssRule,
-    CssSelector, CssTokenSummary,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssGrammarExpectation, CssProductionId, CssRecoveryAction, CssRecoveryDiagnostic,
+    CssTokenSummary,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssCompoundSelector, CssNamespaceConstraint, CssPseudoClass, CssSelector,
 };
 
 fn compound(selector: &CssSelector) -> &CssCompoundSelector {

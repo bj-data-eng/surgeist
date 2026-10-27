@@ -1,8 +1,8 @@
 //! CSS Will Change 1 §2 authored grammar.
 
 use super::property_input::Parser;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
-use crate::{
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::values::ui::{
     CssWillChange, CssWillChangeFeature, CssWillChangeFeatures, CssWillChangePropertyName,
 };
 

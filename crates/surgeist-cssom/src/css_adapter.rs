@@ -2,11 +2,25 @@
 use crate::parser_resources::check_resource_diagnostics;
 use crate::{model::State, *};
 use std::sync::atomic::Ordering;
-use surgeist_css::*;
-use surgeist_css::{
-    CssCounterStyleRule, CssCustomMediaRule, CssFontFaceRule, CssFontFeatureValuesRule,
-    CssKeyframesRule, CssPageRule, CssRule,
+use surgeist_css::component::CssComponentValueLimits;
+use surgeist_css::declaration::{
+    CssDeclaration, CssDeclarationBlockError, CssDeclarationList, CssSpecifiedDeclarationBlock,
 };
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::query::media::{CssCustomMediaBody, CssMediaQueryList};
+use surgeist_css::rule::CssSheet;
+use surgeist_css::rule::counter_style::CssCounterStyleRule;
+use surgeist_css::rule::font_face::CssFontFaceRule;
+use surgeist_css::rule::font_face::{CssFontFaceDescriptor, CssSpecifiedFontFaceDeclarationBlock};
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesRule;
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureValueIndex, CssFontFeatureValueKind, CssFontFeatureValueRef,
+    CssFontFeatureValuesItem,
+};
+use surgeist_css::rule::keyframes::CssKeyframesRule;
+use surgeist_css::rule::page::CssPageRule;
+use surgeist_css::rule::{CssCustomMediaRule, CssRule};
+use surgeist_css::{CssParser, CssParserContext};
 
 impl State {
     pub(crate) fn allocate(&mut self, limits: &CssomLimits) -> Result<u64, CssomError> {

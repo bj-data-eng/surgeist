@@ -12,10 +12,14 @@ use std::ops::Range;
 use crate::css::support::authored_syntax::assert_position_at as assert_position;
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::{
-    CssComponentValues, CssDeclarationList, CssErrorCode, CssKnownProperty, CssParser,
-    CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssTokenKind, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
 };
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
 
 struct ExpectedToken {
     property: Option<CssKnownProperty>,

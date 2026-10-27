@@ -7,7 +7,9 @@
 //! inputs must parse without diagnostics; `rejects` inputs must report the
 //! given root code first.
 
-use surgeist_css::{CssErrorCode, CssFeatureKind as K, CssSupportStatus};
+use surgeist_css::conformance::CssFeatureKind as K;
+use surgeist_css::conformance::CssSupportStatus;
+use surgeist_css::diagnostic::CssErrorCode;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Input {

@@ -7,7 +7,24 @@ use crate::css::support::checked_grammar_declaration as checked;
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::named_property::invalid_named_value_at as assert_invalid;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{CssSupportStatus, property_support_metadata};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{
+    CssCalculation, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssExpansionError, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::{CssAutoOr, CssBoxSideKind, CssFourSides, CssSidePair};
+use surgeist_css::values::layout::{
+    CssScrollSnapAlignment, CssScrollSnapAxis, CssScrollSnapStop, CssScrollSnapStrictness,
+    CssScrollSnapType,
+};
 
 fn assert_four_expansion(result: Result<CssExpansion, CssExpansionError>) {
     let CssExpansion::Contributions(values) = result.unwrap() else {

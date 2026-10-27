@@ -12,7 +12,38 @@ use crate::css::support::value_assertions::url_consumer_text as consumer_value;
 use crate::css::support::value_assertions::{
     assert_first_property_diagnostic, assert_property_rejected,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef,
+    CssPropertyTarget,
+};
+use surgeist_css::rule::color_profile::{
+    CssColorProfileDescriptorKind, CssColorProfileDescriptorValue,
+    CssColorProfileDescriptorValueRef,
+};
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDescriptorKind, CssCounterStyleDescriptorValue,
+};
+use surgeist_css::rule::font_face::{
+    CssAuthoredFontFaceDescriptorValue, CssFontFaceDescriptorKind, CssFontFaceDescriptorValue,
+    CssFontFaceSource, CssFontTechHint,
+};
+use surgeist_css::rule::{CssImportRule, CssImportTarget, CssRule};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::common::{
+    CssIdent, CssUrl, CssUrlFunction, CssUrlModifier, CssUrlModifierFunction,
+};
+use surgeist_css::values::image::CssImageValue;
 
 const REFERRER_POLICIES: [&str; 8] = [
     "no-referrer",

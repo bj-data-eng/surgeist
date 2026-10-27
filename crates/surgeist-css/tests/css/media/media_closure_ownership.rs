@@ -2,7 +2,10 @@
 //! Syntax 3 requires @media to have a block; EOF closure diagnostics may
 //! describe retained raw queries, import rules, and enclosing rule blocks.
 
-use surgeist_css::{CssErrorCode, CssMediaQueryList, CssParser, CssRecoveryAction, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::CssRule;
 
 #[test]
 fn discarded_media_rule_does_not_publish_tentative_query_closures() {
@@ -83,7 +86,7 @@ fn retained_import_and_raw_query_keep_query_closure_diagnostics() {
     };
     assert_eq!(
         statement.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         statement.action(),
@@ -107,7 +110,7 @@ fn retained_import_and_raw_query_keep_query_closure_diagnostics() {
     );
     assert_eq!(
         closure.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         closure.action(),
@@ -165,11 +168,11 @@ fn retained_import_keeps_valid_member_closure_after_invalid_neighbor() {
     };
     assert_eq!(
         invalid_member.error().code(),
-        surgeist_css::CssErrorCode::InvalidMediaQuery
+        surgeist_css::diagnostic::CssErrorCode::InvalidMediaQuery
     );
     assert_eq!(
         statement.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         statement.action(),
@@ -193,7 +196,7 @@ fn retained_import_keeps_valid_member_closure_after_invalid_neighbor() {
     );
     assert_eq!(
         closure.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         closure.action(),

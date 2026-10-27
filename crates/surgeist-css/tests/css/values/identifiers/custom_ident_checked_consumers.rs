@@ -3,7 +3,23 @@
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueTokenRef};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssNonNegative, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::{CssKeyframesIdent, CssKeyframesName};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{
+    CssAnimationName, CssAnimationNameList, CssTransition, CssTransitionList,
+    CssTransitionProperty, CssTransitionPropertyList, CssTransitionPropertyName,
+};
+use surgeist_css::values::common::{CssCustomIdent, CssIdent};
+use surgeist_css::values::layout::{
+    CssGridGeneralTrackComponent, CssGridGeneralTrackList, CssGridLineName, CssGridLineNames,
+    CssGridTrackBreadth, CssGridTrackList, CssGridTrackSize,
+};
 
 fn custom(value: &str) -> CssCustomIdent {
     CssCustomIdent::try_new(value).unwrap()

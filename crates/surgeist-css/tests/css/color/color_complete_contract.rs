@@ -10,7 +10,23 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::{
     check_named_components as checked_components, known_property as property,
 };
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{CssColor, CssColorComponent, CssParsedColorAlphaRef, CssSystemColor};
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssLonghandContributions, CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget, CssPropertyValueError,
+};
+use surgeist_css::query::supports::CssSupportsDeclaration;
+use surgeist_css::serialization::CssSerializationLimits;
 
 const COLOR_GOLDENS: &[(&str, &str)] = &[
     ("red", "red"),

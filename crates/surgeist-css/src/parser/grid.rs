@@ -1,21 +1,34 @@
 use super::property_input::Parser;
 use super::values::parse_length_percentage;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
 use cssparser::{Token, match_ignore_ascii_case};
 
 use super::values::{next_is_delim, parse_positive_integer_value};
-use crate::syntax::*;
-use crate::{
-    CssCalculation, CssComponentValueRef, CssFeatureId, CssFlex, CssGridTemplateAreas,
-    CssLengthPercentage, CssNonNegative, CssNumeric, CssValueTokenRef,
+use crate::component::{CssComponentValueRef, CssValueTokenRef};
+use crate::diagnostic::CssFeatureId;
+use crate::numeric::{CssCalculation, CssFlex, CssLengthPercentage, CssNonNegative, CssNumeric};
+use crate::numeric::{CssInteger, CssPositive};
+use crate::values::box_model::CssFlowTolerance;
+use crate::values::common::CssIdent;
+use crate::values::layout::CssGridTemplateAreas;
+use crate::values::layout::grid::adjacent_line_names;
+use crate::values::layout::{
+    CssGrid, CssGridAutoFlow, CssGridAutoFlowAxis, CssGridAutoFlowMode, CssGridAutoRepeat,
+    CssGridAutoRepeatKind, CssGridAutoTrackComponent, CssGridAutoTrackList,
+    CssGridFixedRepeatComponent, CssGridFixedRepeatContent, CssGridFixedSize,
+    CssGridGeneralTrackComponent, CssGridGeneralTrackList, CssGridIntegerFixedRepeat,
+    CssGridIntegerTrackRepeat, CssGridLineName, CssGridLineNames, CssGridNameRepeat,
+    CssGridSubgridComponent, CssGridTemplate, CssGridTemplateAreaTrack, CssGridTrackBreadth,
+    CssGridTrackList, CssGridTrackRepeatComponent, CssGridTrackRepeatContent, CssGridTrackSize,
+    CssGridTrackSizeList,
 };
 
 pub(super) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] =
     &[CssFeatureId::new("ext.value.grid-repeat")];
 
-pub(super) fn parse_flow_tolerance<'i, 't>(
+pub(crate) fn parse_flow_tolerance<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssFlowTolerance, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
     if let Ok(ident) = input.try_parse(Parser::expect_ident_cloned) {
@@ -30,16 +43,16 @@ pub(super) fn parse_flow_tolerance<'i, 't>(
     Ok(CssFlowTolerance::length_percentage(length))
 }
 
-pub(super) fn parse_grid_track_list<'i, 't>(
+pub(crate) fn parse_grid_track_list<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssGridTrackList, ParseError<'i, Error>> {
     parse_grid_track_list_with_mode(input, numeric, false)
 }
 
 fn parse_grid_track_list_with_mode<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     stop_at_slash: bool,
 ) -> std::result::Result<CssGridTrackList, ParseError<'i, Error>> {
     if input
@@ -89,7 +102,7 @@ fn parse_grid_track_list_with_mode<'i, 't>(
 
 fn parse_grid_subgrid<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     stop_at_slash: bool,
 ) -> Result<CssGridTrackList, ParseError<'i, Error>> {
     let mut components = Vec::new();
@@ -183,7 +196,7 @@ type RepeatSite<'i> = Option<super::property_input::Site<'i>>;
 
 fn parse_grid_track_component<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<(ParsedGridTrackComponent, RepeatSite<'i>), ParseError<'i, Error>> {
     let state = input.state();
     match input.next().map_err(basic)? {
@@ -219,7 +232,7 @@ pub(super) fn parse_grid_line_names<'i, 't>(
 
 fn parse_grid_repeat<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<(ParsedGridTrackComponent, RepeatSite<'i>), ParseError<'i, Error>> {
     enum Count {
         Integer(CssNumeric<CssInteger, CssPositive>),
@@ -249,7 +262,7 @@ fn parse_grid_repeat<'i, 't>(
 
 fn parse_integer_grid_repeat<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     count: CssNumeric<CssInteger, CssPositive>,
 ) -> std::result::Result<(ParsedGridTrackComponent, RepeatSite<'i>), ParseError<'i, Error>> {
     let mut track_components = Vec::new();
@@ -304,7 +317,7 @@ fn parse_integer_grid_repeat<'i, 't>(
 
 fn parse_auto_grid_repeat<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     kind: CssGridAutoRepeatKind,
 ) -> std::result::Result<ParsedGridTrackComponent, ParseError<'i, Error>> {
     let mut components = Vec::new();
@@ -341,7 +354,7 @@ fn parse_auto_grid_repeat<'i, 't>(
 
 fn parse_grid_track_size<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssGridTrackSize, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let state = input.state();
@@ -373,7 +386,7 @@ fn parse_grid_track_size<'i, 't>(
 
 fn parse_grid_inflexible_track_breadth<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssGridTrackBreadth, ParseError<'i, Error>> {
     let location = input.current_source_location();
     let breadth = parse_grid_track_breadth(input, numeric)?;
@@ -386,7 +399,7 @@ fn parse_grid_inflexible_track_breadth<'i, 't>(
 
 fn parse_grid_track_breadth<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssGridTrackBreadth, ParseError<'i, Error>> {
     let numeric_start = input.state();
     let location = input.current_source_location();
@@ -417,23 +430,23 @@ fn parse_grid_track_breadth<'i, 't>(
             "auto" => Ok(CssGridTrackBreadth::auto()),
             _ => Err(unexpected_at(location)),
         },
-        Token::Function(name) if crate::numeric::is_math_function(name) => {
+        Token::Function(name) if crate::numeric::expression::is_math_function(name) => {
             input.reset(&numeric_start);
             let component = grid_numeric_component(input, numeric)?;
-            let values = crate::numeric::CalculationComponents::single(component)
+            let values = crate::numeric::expression::CalculationComponents::single(component)
                 .map_err(|_| super::values::calculation_error(location))?;
             match numeric
                 .admit_grid_track_math(values)
                 .map_err(|error| grid_numeric_error(numeric, &error, location, root_site))?
             {
-                crate::numeric::GridTrackMath::Flex(expression) => {
+                crate::numeric::expression::GridTrackMath::Flex(expression) => {
                     let value = CssNumeric::<CssFlex, CssNonNegative>::from_parser_calculation(
                         CssCalculation::<CssFlex>::from_expression(expression),
                     )
                     .map_err(|error| grid_numeric_error(numeric, &error, location, root_site))?;
                     Ok(CssGridTrackBreadth::from_flex(value))
                 }
-                crate::numeric::GridTrackMath::LengthPercentage(expression) => {
+                crate::numeric::expression::GridTrackMath::LengthPercentage(expression) => {
                     let value =
                         CssNumeric::<CssLengthPercentage, CssNonNegative>::from_parser_calculation(
                             CssCalculation::<CssLengthPercentage>::from_expression(expression),
@@ -452,20 +465,23 @@ fn parse_grid_track_breadth<'i, 't>(
 
 fn grid_numeric_component<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
-) -> std::result::Result<std::borrow::Cow<'i, crate::CssComponentValue>, ParseError<'i, Error>> {
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+) -> std::result::Result<
+    std::borrow::Cow<'i, crate::component::CssComponentValue>,
+    ParseError<'i, Error>,
+> {
     input.skip_whitespace();
     let location = input.current_source_location();
     let offset = input.position();
     input
         .collect_component()
-        .map_err(crate::CssNumericConstructionError::component)
+        .map_err(crate::numeric::CssNumericConstructionError::component)
         .map_err(|error| grid_numeric_error(numeric, &error, location, offset))
 }
 
 fn grid_numeric_error<'i>(
-    numeric: &crate::numeric::NumericInputContext<'_>,
-    error: &crate::CssNumericConstructionError,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
+    error: &crate::numeric::CssNumericConstructionError,
     location: super::property_input::Site<'i>,
     offset: super::property_input::Site<'i>,
 ) -> ParseError<'i, Error> {
@@ -474,17 +490,20 @@ fn grid_numeric_error<'i>(
 
 fn parse_grid_length_percentage<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssNumeric<CssLengthPercentage, CssNonNegative>, ParseError<'i, Error>> {
     input.skip_whitespace();
     let location = input.current_source_location();
     let offset = input.position();
     let component = grid_numeric_component(input, numeric)?;
     if matches!(component.view(), CssComponentValueRef::Function(_)) {
-        let values = crate::numeric::CalculationComponents::single(component)
+        let values = crate::numeric::expression::CalculationComponents::single(component)
             .map_err(|_| super::values::calculation_error(location))?;
         let expression = numeric
-            .admit(values, crate::numeric::CalculationRoot::LengthPercentage)
+            .admit(
+                values,
+                crate::numeric::expression::CalculationRoot::LengthPercentage,
+            )
             .map_err(|error| grid_numeric_error(numeric, &error, location, offset))?;
         CssNumeric::<CssLengthPercentage, CssNonNegative>::from_parser_calculation(
             CssCalculation::<CssLengthPercentage>::from_expression(expression),
@@ -591,16 +610,16 @@ fn grid_fixed_size(size: &CssGridTrackSize) -> Option<CssGridFixedSize> {
     CssGridFixedSize::try_new(size.clone())
 }
 
-pub(super) fn parse_grid_auto_track_sizes<'i, 't>(
+pub(crate) fn parse_grid_auto_track_sizes<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssGridTrackSizeList, ParseError<'i, Error>> {
     parse_grid_auto_track_sizes_with_mode(input, numeric, false)
 }
 
 fn parse_grid_auto_track_sizes_with_mode<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     stop_at_slash: bool,
 ) -> std::result::Result<CssGridTrackSizeList, ParseError<'i, Error>> {
     let mut sizes = Vec::new();
@@ -613,7 +632,7 @@ fn parse_grid_auto_track_sizes_with_mode<'i, 't>(
     Ok(CssGridTrackSizeList::try_new(sizes).expect("nonempty implicit tracks"))
 }
 
-pub(super) fn parse_grid_template_areas<'i, 't>(
+pub(crate) fn parse_grid_template_areas<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssGridTemplateAreas, ParseError<'i, Error>> {
     let keyword_location = input.current_source_location();
@@ -629,16 +648,16 @@ pub(super) fn parse_grid_template_areas<'i, 't>(
         let location = input.current_source_location();
         let row = input.expect_string_cloned().map_err(basic)?;
         rows.push(
-            crate::grid_template_areas::parse_decoded_row(row.as_ref())
+            crate::values::layout::grid_template_areas::parse_decoded_row(row.as_ref())
                 .map_err(|_| unexpected_at(location))?,
         );
     }
     CssGridTemplateAreas::try_rows(rows).map_err(|_| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_grid_template<'i, 't>(
+pub(crate) fn parse_grid_template<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssGridTemplate, ParseError<'i, Error>> {
     if input
         .try_parse(|input| {
@@ -672,14 +691,14 @@ fn next_is_grid_area_row(input: &mut Parser<'_, '_>) -> bool {
 
 fn parse_grid_area_template<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> Result<CssGridTemplate, ParseError<'i, Error>> {
     let mut rows = Vec::new();
     while !input.is_exhausted() && !next_is_delim(input, '/') {
         let before = parse_optional_grid_line_names(input)?;
         let location = input.current_source_location();
         let text = input.expect_string_cloned().map_err(basic)?;
-        let area = crate::grid_template_areas::parse_decoded_row(text.as_ref())
+        let area = crate::values::layout::grid_template_areas::parse_decoded_row(text.as_ref())
             .map_err(|_| unexpected_at(location))?;
         let state = input.state();
         let omitted = input.is_exhausted()
@@ -727,7 +746,7 @@ fn parse_grid_area_template<'i, 't>(
         .map_err(|_| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_grid_auto_flow<'i, 't>(
+pub(crate) fn parse_grid_auto_flow<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssGridAutoFlow, ParseError<'i, Error>> {
     if input
@@ -764,9 +783,9 @@ pub(super) fn parse_grid_auto_flow_axis<'i, 't>(
     }
 }
 
-pub(super) fn parse_grid<'i, 't>(
+pub(crate) fn parse_grid<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
 ) -> std::result::Result<CssGrid, ParseError<'i, Error>> {
     if input
         .try_parse(|input| {
@@ -839,7 +858,7 @@ fn parse_grid_auto_flow_prefix<'i, 't>(
 
 fn parse_optional_grid_auto_tracks<'i, 't>(
     input: &mut Parser<'i, 't>,
-    numeric: &crate::numeric::NumericInputContext<'_>,
+    numeric: &crate::numeric::expression::NumericInputContext<'_>,
     stop_at_slash: bool,
 ) -> std::result::Result<Option<CssGridTrackSizeList>, ParseError<'i, Error>> {
     if input.is_exhausted() || (stop_at_slash && next_is_delim(input, '/')) {

@@ -3,10 +3,12 @@
 //! every depth, including bounded structural replay.
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-stylesheet-contents
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-block-contents
-use surgeist_css::{
-    CssErrorCode, CssParser, CssRecoveryAction, CssRecoveryDiagnostic, CssRule, CssSelector,
-    CssSheet, CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
 };
+use surgeist_css::rule::{CssRule, CssSheet};
+use surgeist_css::selector::CssSelector;
 
 fn assert_style(rule: &CssRule, source: &str, class: &str, value: &str) {
     let CssRule::Style(style) = rule else {

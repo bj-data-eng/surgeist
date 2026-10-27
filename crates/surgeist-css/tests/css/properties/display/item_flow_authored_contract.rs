@@ -21,8 +21,25 @@ use crate::css::support::property_admission::implicit_closing_origin as implicit
 use crate::css::support::{
     authored_checked_declaration as checked, authored_parsed_declaration as parsed,
 };
-use surgeist_css::CssKnownProperty as P;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::property::CssKnownProperty as P;
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssLonghandContribution, CssLonghandContributions, CssLonghandValueRef, CssPropertyGrammar,
+    CssPropertyKindRef, CssPropertyNameRef, CssPropertyTarget, CssPropertyTextTarget,
+    CssPropertyValueError,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::box_model::CssFlowTolerance;
+use surgeist_css::values::layout::{CssFlexDirection, CssFlexWrap};
 
 const FLOW: &str = "item-flow";
 const TOLERANCE: &str = "flow-tolerance";

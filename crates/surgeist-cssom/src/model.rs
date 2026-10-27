@@ -1,8 +1,49 @@
 use crate::shared_table::SharedTable;
 use crate::*;
 use std::{fmt, sync::Arc};
-use surgeist_css::*;
-use surgeist_css::{CssFontFaceDescriptors, CssMarginRule, CssRule};
+use surgeist_css::CssParserContext;
+use surgeist_css::component::{CssComponentValueError, CssValueOrigin};
+use surgeist_css::declaration::{
+    CssDeclarationBlockError, CssDeclarationList, CssSpecifiedDeclarationBlock,
+};
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::property::{CssExpansionError, CssPropertyMetadataError};
+use surgeist_css::query::container::CssContainerPrelude;
+use surgeist_css::query::media::{CssCustomMediaName, CssMediaQueryList};
+use surgeist_css::query::supports::{
+    CssSupportsConditionName, CssSupportsConstructionError, CssSupportsLeaf, CssSupportsTestBody,
+    CssSupportsTestChild,
+};
+use surgeist_css::query::{CssCondition, CssWhenLeaf};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDefinitionStatus, CssCounterStyleDescriptorValue, CssCounterStyleDescriptors,
+};
+use surgeist_css::rule::font_face::CssFontFaceDescriptors;
+use surgeist_css::rule::font_face::{
+    CssFontFaceDeclarationBlockError, CssFontFaceFamily, CssSpecifiedFontFaceDeclarationBlock,
+};
+use surgeist_css::rule::font_feature_values::{
+    CssFontFeatureDisplayOccurrence, CssFontFeatureValue, CssFontFeatureValueDefinition,
+    CssFontFeatureValueKind,
+};
+use surgeist_css::rule::keyframes::{
+    CssKeyframeBlock, CssKeyframeDeclarationList, CssKeyframeRuleViewError,
+    CssKeyframeSelectorComparisonError, CssKeyframeSelectorList, CssKeyframesName,
+};
+use surgeist_css::rule::page::CssMarginRule;
+use surgeist_css::rule::page::{
+    CssMarginBox, CssMarginDeclarationBlock, CssPageBlockError, CssPageDeclarationBlock,
+    CssPageProjectionError, CssPageSelectorList, CssSpecifiedPageDeclarationBlock,
+};
+use surgeist_css::rule::{
+    CssImportLayer, CssImportSupports, CssImportTarget, CssLayerName, CssSheet,
+};
+use surgeist_css::selector::{CssNamespaceContext, CssScopeSelectorList, CssStyleSelectorList};
+use surgeist_css::serialization::{
+    CssRuleSerializationError, CssSerializationError, CssSerializationLimits,
+};
+use surgeist_css::source::{CssParseSource, CssParsedOrigin};
 
 /// Real product quotas, including retained detached objects. These bound admitted
 /// work/state, not allocator overhead or process RSS. Source backing uses actual

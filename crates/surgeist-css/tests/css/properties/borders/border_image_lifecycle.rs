@@ -6,7 +6,28 @@
 
 use crate::css::support::property_admission::property_value_facts;
 use crate::css::support::property_admission::{assert_checked_rejected, assert_invalid_value};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssNonNegative, CssNumber, CssNumeric};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssLonghandValueRef, CssPropertyKindRef,
+    CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::rule::CssRule;
+use surgeist_css::values::border::{
+    CssBorderImage, CssBorderImageOutset, CssBorderImageOutsetComponent,
+    CssBorderImageRepeatKeyword, CssBorderImageSlice, CssBorderImageSliceComponent,
+    CssBorderImageWidth, CssBorderImageWidthComponent,
+};
+use surgeist_css::values::image::CssImageValue;
 
 const MEMBERS: [CssKnownProperty; 5] = [
     CssKnownProperty::BorderImageSource,

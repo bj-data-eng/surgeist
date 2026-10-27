@@ -1,9 +1,11 @@
 //! Exact CSS `<length>` and nonnegative `<length-percentage>` contracts.
 
-use surgeist_css::{
-    CssCalculation, CssComponentValue, CssComponentValues, CssLength, CssLengthPercentage,
-    CssNonNegative, CssNumeric, CssParser, CssSerializationLimits, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::numeric::{
+    CssCalculation, CssLength, CssLengthPercentage, CssNonNegative, CssNumeric,
 };
+use surgeist_css::serialization::CssSerializationLimits;
 
 fn component(text: &str) -> CssComponentValue {
     let values =

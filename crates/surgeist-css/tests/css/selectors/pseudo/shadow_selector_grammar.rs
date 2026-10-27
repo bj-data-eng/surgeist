@@ -11,9 +11,12 @@ use crate::css::support::color_and_selector_fixtures::assert_strict_validation_r
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_selector_rejected as assert_rejected,
 };
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNormalizedItem, CssParsedStyleSelectors, CssParser,
-    CssPseudoClass, CssRecoveryAction, CssSelector, CssSelectorBinding, CssStyleSelectorContext,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{CssNormalizedItem, CssSelectorBinding};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssPseudoClass, CssSelector,
+    CssStyleSelectorContext,
 };
 
 fn assert_clean(source: &str) {

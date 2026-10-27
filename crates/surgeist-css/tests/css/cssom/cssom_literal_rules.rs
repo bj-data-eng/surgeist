@@ -4,11 +4,14 @@ use crate::css::support::serialization_limits::LimitFailure;
 use crate::css::support::serialization_limits::LimitLadder;
 use crate::css::support::value_assertions::clean_rule as rule;
 use std::error::Error;
-use surgeist_css::{
-    CssDeclarationBlockError, CssImportance, CssKnownProperty, CssNamespaceContext, CssParser,
-    CssParserContext, CssParserMode, CssRecoveryAction, CssRule, CssRuleCssomFormat,
-    CssRuleSerializationError, CssSelector, CssSerializationLimits as Limits,
-};
+use surgeist_css::declaration::{CssDeclarationBlockError, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssNamespaceContext, CssSelector};
+use surgeist_css::serialization::CssSerializationLimits as Limits;
+use surgeist_css::serialization::{CssRuleCssomFormat, CssRuleSerializationError};
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 fn exact(source: &str, expected: &str) {
     let report = CssParser::default().parse_sheet(source);
@@ -474,7 +477,7 @@ fn selected_keyframes_wrapper_keytext_and_normal_blocks_use_shared_inverse() {
 
 fn pending(
     error: &CssRuleSerializationError,
-    original: &surgeist_css::CssDeclaration,
+    original: &surgeist_css::declaration::CssDeclaration,
     ordinal: usize,
 ) {
     assert!(
@@ -904,14 +907,17 @@ fn universal_case(
 
 fn universal_default_namespaces() -> CssNamespaceContext {
     CssNamespaceContext::from_bindings([
-        (None, surgeist_css::CssNamespaceName::new("urn:default")),
         (
-            Some(surgeist_css::CssNamespacePrefix::try_new("n").unwrap()),
-            surgeist_css::CssNamespaceName::new("urn:default"),
+            None,
+            surgeist_css::rule::CssNamespaceName::new("urn:default"),
         ),
         (
-            Some(surgeist_css::CssNamespacePrefix::try_new("svg").unwrap()),
-            surgeist_css::CssNamespaceName::new("urn:svg"),
+            Some(surgeist_css::rule::CssNamespacePrefix::try_new("n").unwrap()),
+            surgeist_css::rule::CssNamespaceName::new("urn:default"),
+        ),
+        (
+            Some(surgeist_css::rule::CssNamespacePrefix::try_new("svg").unwrap()),
+            surgeist_css::rule::CssNamespaceName::new("urn:svg"),
         ),
     ])
 }
@@ -947,14 +953,20 @@ fn literal_universal_omission_keeps_real_class_id_attribute_members_and_pe_tail(
     let CssRule::Style(style) = &value else {
         panic!("style")
     };
-    let [surgeist_css::CssStyleSelector::Selector(surgeist_css::CssSelector::Compound(compound))] =
-        style.selectors().selectors()
+    let [
+        surgeist_css::selector::CssStyleSelector::Selector(
+            surgeist_css::selector::CssSelector::Compound(compound),
+        ),
+    ] = style.selectors().selectors()
     else {
         panic!("retained explicit universal")
     };
     let name = compound.type_selector().unwrap().clone();
     assert_eq!(name.local_name(), None);
-    assert_eq!(name.namespace(), &surgeist_css::CssNamespaceConstraint::Any);
+    assert_eq!(
+        name.namespace(),
+        &surgeist_css::selector::CssNamespaceConstraint::Any
+    );
     assert_eq!(
         value.serialize_cssom(Default::default()).unwrap(),
         ".card { }"
@@ -1146,11 +1158,14 @@ fn literal_universal_omission_protects_actual_nesting_and_scoped_anchor_payloads
     let CssRule::Scope(scope) = &value else {
         panic!("scope")
     };
-    let [surgeist_css::CssRule::Style(style)] = scope.rules().rules() else {
+    let [surgeist_css::rule::CssRule::Style(style)] = scope.rules().rules() else {
         panic!("scoped style")
     };
-    let [surgeist_css::CssStyleSelector::Selector(surgeist_css::CssSelector::Compound(compound))] =
-        style.selectors().selectors()
+    let [
+        surgeist_css::selector::CssStyleSelector::Selector(
+            surgeist_css::selector::CssSelector::Compound(compound),
+        ),
+    ] = style.selectors().selectors()
     else {
         panic!("scope anchor compound")
     };
@@ -1161,7 +1176,7 @@ fn literal_universal_omission_protects_actual_nesting_and_scoped_anchor_payloads
         value.serialize_specified(Default::default()).unwrap(),
         "@scope { *&.card { } }"
     );
-    let selector = surgeist_css::CssSelector::Compound(compound.clone());
+    let selector = surgeist_css::selector::CssSelector::Compound(compound.clone());
     assert_eq!(
         selector.serialize_specified(Default::default()).unwrap(),
         "*&.card"

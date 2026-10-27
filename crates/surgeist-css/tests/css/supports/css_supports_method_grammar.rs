@@ -1,6 +1,11 @@
 //! Conditional Rules 3 method overload grammar, distinct from rule grammar.
 use crate::css::support::authored_syntax::supports_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::query::supports::{CssSupportsDeclaration, CssSupportsLeaf};
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 fn original(origin: &CssValueOrigin, text: &str) {
     let CssValueOrigin::Parsed(origin) = origin else {

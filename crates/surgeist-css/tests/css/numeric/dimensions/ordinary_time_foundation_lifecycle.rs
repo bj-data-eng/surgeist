@@ -7,7 +7,20 @@
 //! origins remain observable. These existing-API tests do not require a time
 //! serializer.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::numeric::{CssCalculation, CssTime};
+use surgeist_css::property::{
+    CssExpansion, CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::values::animation::{
+    CssAnimationComponents, CssAnimationIterationCount, CssAnimationList, CssDelayList,
+    CssDurationList, CssEasing, CssTransitionList,
+};
 
 const TIME_PROPERTIES: [CssKnownProperty; 6] = [
     CssKnownProperty::TransitionDuration,
@@ -775,7 +788,24 @@ mod construction {
     use crate::css::support::failure_classes::numeric_failure;
     use crate::css::support::failure_classes::serialization_failure;
     use std::error::Error as _;
-    use surgeist_css::*;
+    use surgeist_css::CssParser;
+    use surgeist_css::component::{
+        CssComponentValueRef, CssComponentValues, CssNumericTokenKind, CssSerializedOrigin,
+        CssValueOrigin,
+    };
+    use surgeist_css::declaration::{CssDeclaration, CssImportance};
+    use surgeist_css::diagnostic::CssErrorCode;
+    use surgeist_css::numeric::{
+        CssCalculation, CssNonNegative, CssNumeric, CssNumericLiteral, CssTime, CssTimeUnit,
+    };
+    use surgeist_css::property::{
+        CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+    };
+    use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+    use surgeist_css::values::animation::{
+        CssAnimation, CssAnimationComponents, CssAnimationList, CssDelayList, CssDurationList,
+        CssTransition, CssTransitionList,
+    };
 
     fn literal(number: &str, unit: CssTimeUnit) -> CssNumericLiteral<CssTime> {
         CssNumericLiteral::<CssTime>::try_new(number, unit).unwrap()

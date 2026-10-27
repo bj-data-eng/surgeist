@@ -1,9 +1,12 @@
-use surgeist_css::{
-    CssConditionKind, CssErrorCode, CssImportLayer, CssImportTarget, CssMediaLeaf, CssMediaQuery,
-    CssParser, CssRecoveryAction, CssRule, CssSerializedOrigin, CssSupportsLeaf, CssValueOrigin,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::{CssImportLayer, CssImportTarget, CssRule};
 
-fn import_rule(source: &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet> {
+fn import_rule(source: &str) -> surgeist_css::CssParseReport<surgeist_css::rule::CssSheet> {
     let report = CssParser::default().parse_sheet(source);
     assert!(
         report

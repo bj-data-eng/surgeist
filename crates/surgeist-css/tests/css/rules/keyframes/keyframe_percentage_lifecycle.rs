@@ -10,7 +10,15 @@ use crate::css::support::failure_classes::numeric_failure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::clean_sheet as sheet;
 use crate::css::support::rules::sole_keyframes as keyframes;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValueRef, CssComponentValues, CssValueOrigin};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::numeric::{CssCalculation, CssCalculationType, CssNumeric, CssPercentage};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::keyframes::{CssKeyframePercent, CssKeyframeSelector, CssKeyframesString};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::animation::{CssAnimationName, CssAnimationNameList};
+use surgeist_css::values::effects::CssOpacityValue;
 
 fn calculation(source: &str) -> CssCalculation<CssPercentage> {
     CssCalculation::<CssPercentage>::try_from_components(

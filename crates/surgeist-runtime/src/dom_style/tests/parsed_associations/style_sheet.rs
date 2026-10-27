@@ -3,7 +3,9 @@ use super::super::meta::cancel;
 use super::super::*;
 use super::consumption::{envelope, report};
 use super::style_decision::{empty_policy, installed, observe, request_ready};
-use surgeist_css::{CssMediaQueryList, CssParser, CssUtf16Resource};
+use surgeist_css::CssParser;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::source::CssUtf16Resource;
 use surgeist_dom::*;
 
 pub(super) fn ready(

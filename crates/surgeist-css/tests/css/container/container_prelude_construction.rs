@@ -3,12 +3,15 @@
 //! https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#container-rule
 use crate::css::support::failure_classes::ComponentFailure;
 use crate::css::support::failure_classes::component_failure;
-use surgeist_css::{
+use surgeist_css::CssParser;
+use surgeist_css::component::{
     CssComponentValue, CssComponentValueLimits, CssComponentValueRef, CssComponentValues,
-    CssConditionKind, CssContainerLeaf, CssContainerName, CssContainerPrelude, CssNormalizedItem,
-    CssParser, CssRule, CssRuleContextKindRef, CssSerializedOrigin, CssValueOrigin,
-    CssValueTokenRef,
+    CssSerializedOrigin, CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::container::{CssContainerLeaf, CssContainerName, CssContainerPrelude};
+use surgeist_css::rule::CssRule;
 
 fn construct(source: &str) -> CssContainerPrelude {
     CssContainerPrelude::try_from_components(

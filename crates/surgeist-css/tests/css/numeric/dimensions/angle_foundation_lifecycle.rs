@@ -11,7 +11,24 @@ use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::retained_checked_declaration as checked;
 use crate::css::support::value_assertions::filter_value as filter;
 use crate::css::support::value_assertions::validated_declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{CssAngle, CssCalculation};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::effects::CssFilter;
+use surgeist_css::values::image::{
+    CssGradient, CssImageOrientation, CssImageValue, CssLinearGradientDirection,
+};
+use surgeist_css::values::transform::CssTransform;
 
 fn transform(source: &CssDeclaration) -> &CssTransform {
     let CssKnownPropertyValueRef::Transform(value) =
@@ -833,7 +850,24 @@ mod checked_construction {
     use crate::css::support::failure_classes::NumericFailure;
     use crate::css::support::failure_classes::serialization_failure;
     use std::error::Error as _;
-    use surgeist_css::*;
+    use surgeist_css::component::{
+        CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin,
+        CssValueTokenRef,
+    };
+    use surgeist_css::numeric::{
+        CssAngle, CssAngleOrZero, CssAngleUnit, CssCalculation, CssCalculationType, CssNumeric,
+        CssNumericLiteral, CssZeroLiteral,
+    };
+    use surgeist_css::property::CssKnownPropertyValueRef;
+
+    use surgeist_css::values::effects::{
+        CssFilter, CssFilterFunction, CssFilterFunctionList, CssFilterHueRotate,
+    };
+
+    use surgeist_css::CssParser;
+
+    use surgeist_css::serialization::CssSerializationLimits;
+    use surgeist_css::values::transform::CssTransformFunction;
 
     fn component(text: &str) -> CssComponentValue {
         let values = CssComponentValues::parse(&CssParser::default(), text).unwrap();

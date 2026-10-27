@@ -6,7 +6,15 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types
 
 use crate::css::support::rules::sole_keyframes as only_keyframes;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{
+    CssDeclarationContextRef, CssErrorCode, CssRecoveryAction, CssTokenKind,
+};
+use surgeist_css::normalize::{CssNormalizedItem, CssRuleContextKindRef};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::keyframes::{CssKeyframePercent, CssKeyframeSelector, CssKeyframesName};
+use surgeist_css::values::animation::CssAnimationName;
 
 fn assert_canonical(source: &str, expected: &str) {
     let report = CssParser::default().parse_sheet(source);

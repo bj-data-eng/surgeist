@@ -4,14 +4,20 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::named_property::assert_programmatic_rejection;
 use crate::css::support::named_property::normal_grammar_components;
-use surgeist_css::{
-    CssCalculation, CssComponentValue, CssComponentValueRef, CssComponentValues,
-    CssContributionValueRef, CssContributions, CssExpansion, CssFontSize, CssFontValue,
-    CssGlobalKeyword, CssImportance, CssInitialValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssLengthPercentage, CssLonghandValueRef, CssNonNegative, CssNumeric,
-    CssParser, CssPropertyKindRef, CssRecoveryAction, CssSerializationLimits, CssSerializedOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
     CssValueOrigin, CssValueTokenRef,
 };
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssCalculation, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::{CssFontSize, CssFontValue};
 
 type SizeLengthPercentage = CssNumeric<CssLengthPercentage, CssNonNegative>;
 

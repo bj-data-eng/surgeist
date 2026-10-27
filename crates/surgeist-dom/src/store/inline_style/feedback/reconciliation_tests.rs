@@ -1,7 +1,10 @@
 //! Real producer terminal transitions and authentic current-state recovery.
 use super::*;
 use crate::*;
-use surgeist_css::*;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::CssPropertyGrammar;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::source::CssSourceSnapshot;
 use surgeist_cssom::*;
 
 fn flag() -> AtomicBool {

@@ -66,7 +66,7 @@ impl CssomPreparedCommit<'_> {
     /// The metadata view retains the exclusive Store loan:
     /// ```compile_fail,E0502
     /// use surgeist_cssom::*;
-    /// use surgeist_css::CssSheet;
+    /// use surgeist_css::rule::CssSheet;
     /// let mut store = CssomStore::new(Default::default(), Default::default()).unwrap();
     /// let mut batch = store.batch(CssomEditGuard::from_snapshot(&store.snapshot())).unwrap();
     /// let inputs = CssomSheetInputs::constructed(

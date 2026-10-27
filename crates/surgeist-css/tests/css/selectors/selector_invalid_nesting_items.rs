@@ -5,10 +5,13 @@
 use crate::css::support::color_and_selector_fixtures::{
     assert_selector_input_rejected, assert_strict_validation_rejects,
 };
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssParsedStyleSelectors, CssParser, CssPseudoClass,
-    CssPseudoSelectorListItem, CssRecoveryAction, CssRelativeSelectorList, CssRule, CssSelector,
-    CssSelectorCombinator, CssStyleSelector, CssStyleSelectorContext, CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{
+    CssNamespaceContext, CssParsedStyleSelectors, CssPseudoClass, CssPseudoSelectorListItem,
+    CssRelativeSelectorList, CssSelector, CssSelectorCombinator, CssStyleSelector,
+    CssStyleSelectorContext,
 };
 
 fn retained(source: &str, literal: &str) {

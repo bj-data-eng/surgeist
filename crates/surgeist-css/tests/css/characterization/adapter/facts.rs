@@ -4,7 +4,33 @@
 
 use std::error::Error as StdError;
 
-use surgeist_css::*;
+use surgeist_css::color::{CssColorConstructionError, CssColorError, CssColorResolveError};
+use surgeist_css::component::{CssComponentValueError, CssSerializedOrigin, CssValueOrigin};
+use surgeist_css::declaration::CssDeclarationBlockError;
+use surgeist_css::diagnostic::CssError;
+use surgeist_css::normalize::CssNormalizationError;
+use surgeist_css::numeric::CssNumericConstructionError;
+use surgeist_css::property::{CssExpansionError, CssPropertyValueError};
+use surgeist_css::query::CssConditionConstructionError;
+use surgeist_css::query::container::CssContainerConstructionError;
+use surgeist_css::query::media::CssMediaConstructionError;
+use surgeist_css::query::supports::CssSupportsConstructionError;
+use surgeist_css::rule::CssRuleConstructionError;
+use surgeist_css::rule::color_profile::CssColorProfileValueError;
+use surgeist_css::rule::counter_style::CssCounterStyleValueError;
+use surgeist_css::rule::font_face::CssFontFaceValueError;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValuesError;
+use surgeist_css::rule::font_palette_values::CssFontPaletteValuesError;
+use surgeist_css::rule::keyframes::{
+    CssKeyframeSelectorComparisonError, CssKeyframeSelectorComparisonStage,
+};
+use surgeist_css::rule::page::CssPageBlockError;
+use surgeist_css::selector::CssSelectorConstructionError;
+use surgeist_css::serialization::{CssRuleSerializationError, CssSerializationError};
+use surgeist_css::source::{CssParsedOrigin, CssSourcePosition};
+use surgeist_css::values::image::CssImageConstructionError;
+use surgeist_css::values::shape::CssShapeConstructionError;
+use surgeist_css::values::text::CssTextConstructionError;
 
 use super::report::{code_name, component_error_kind, kind_facts};
 use crate::css::support::failure_classes::{

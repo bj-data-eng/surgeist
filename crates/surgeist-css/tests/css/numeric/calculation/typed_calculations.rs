@@ -4,7 +4,28 @@ use crate::css::support::failure_classes::NumericFailure as Kind;
 use crate::css::support::failure_classes::numeric_failure;
 use crate::css::support::math_depth::MathDepthBoundary;
 use crate::css::support::value_assertions::assert_numeric_kind;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColorComponent, CssColorHue, CssRelativeColorChannel, CssRelativeColorExpressionValue,
+    CssRelativeColorResultDomain,
+};
+use surgeist_css::component::CssComponentValues;
+use surgeist_css::numeric::{
+    CssAngle, CssAngleUnit, CssCalculation, CssCalculationExpressionRef,
+    CssCalculationProductOperator, CssCalculationType, CssCalculationValueRef, CssFrequency,
+    CssFrequencyUnit, CssInteger, CssLength, CssLengthPercentage, CssLengthUnit, CssNumber,
+    CssPercentage, CssTime, CssTimeUnit,
+};
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::values::box_model::{
+    CssAspectRatioValue, CssBoxSize, CssFlowToleranceRef, CssSizeValue, CssZIndexValue,
+};
+use surgeist_css::values::effects::{
+    CssFilter, CssFilterAmount, CssFilterFunction, CssOpacityValue,
+};
+use surgeist_css::values::font::CssFontSize;
+use surgeist_css::values::layout::{CssFlexBasisRef, CssFlexValue};
+use surgeist_css::values::text::CssLineHeight;
 
 #[test]
 fn core_font_calculations_preserve_number_and_length_percentage_domains() {
@@ -761,7 +782,7 @@ fn calculation_body(
 
 #[test]
 fn exact_construction_preserves_mixed_origins_and_canonical_operator_mapping() {
-    use surgeist_css::{CssComponentValue, CssComponentValues, CssValueOrigin};
+    use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
     let children = CssComponentValues::parse(&CssParser::default(), "1px + 2px").unwrap();
     let original = children.items()[0].origin().clone();
     let operator = children.items()[2].origin().clone();
@@ -795,13 +816,13 @@ fn exact_construction_preserves_mixed_origins_and_canonical_operator_mapping() {
     let serialized = calculation.serialize_tokens(Default::default()).unwrap();
     assert_eq!(serialized.as_css(), "calc(1px + 2px)");
     assert!(
-        matches!(serialized.origin_at(9), Some(surgeist_css::CssSerializedOrigin::Token(origin)) if origin == &operator)
+        matches!(serialized.origin_at(9), Some(surgeist_css::component::CssSerializedOrigin::Token(origin)) if origin == &operator)
     );
 }
 
 #[test]
 fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_distinct() {
-    use surgeist_css::{CssCalculation, CssNumericConstant, CssResolution};
+    use surgeist_css::numeric::{CssCalculation, CssNumericConstant, CssResolution};
     let integer = CssCalculation::<CssInteger>::try_from_components(
         CssComponentValues::parse(
             &CssParser::default(),
@@ -879,7 +900,7 @@ fn exact_public_roots_keep_long_numbers_special_values_and_integer_requirements_
 
 #[test]
 fn checked_numeric_construction_reports_resource_substitution_and_recovery_failures() {
-    use surgeist_css::CssComponentValueLimits;
+    use surgeist_css::component::CssComponentValueLimits;
     let components = CssComponentValues::parse(&CssParser::default(), "calc(1*2)").unwrap();
     for limits in [
         CssComponentValueLimits::try_new(0, 4, 11).unwrap(),

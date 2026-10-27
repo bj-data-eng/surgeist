@@ -2,9 +2,11 @@
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#pseudo-element-syntax
 //! https://www.w3.org/TR/2026/WD-selectors-4-20260122/#invalid
 //! https://www.w3.org/TR/2025/WD-css-pseudo-4-20250627/
-use surgeist_css::{
-    CssNamespaceContext, CssNamespaceName, CssNamespacePrefix, CssParser, CssPseudoElement,
-    CssPseudoElementSegment, CssRecoveryAction, CssSelector,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::rule::{CssNamespaceName, CssNamespacePrefix};
+use surgeist_css::selector::{
+    CssNamespaceContext, CssPseudoElement, CssPseudoElementSegment, CssSelector,
 };
 
 #[test]

@@ -2,7 +2,13 @@
 //! ordinary 2 MiB thread stack while preserving source order and provenance.
 
 use crate::css::support::authored_syntax::normalized_declarations as declarations;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedDeclaration,
+    CssRuleContextKindRef,
+};
+use surgeist_css::property::CssKnownProperty;
+use surgeist_css::selector::CssSelector;
 
 const INNER_GROUPS: usize = 252;
 

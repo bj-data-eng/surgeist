@@ -1,10 +1,12 @@
 //! Cascade 5 optional clauses compose with MQ4/MQ5 general-enclosed grammar.
 //! The adopted profile prefers present clauses only among complete derivations.
 //! Sources: pinned Cascade 5 #at-import/#layer-names and MQ5 #mq-syntax.
-use surgeist_css::{
-    CssConditionKind, CssErrorCode, CssImportLayer, CssImportRule, CssImportTarget, CssMediaLeaf,
-    CssMediaQuery, CssMediaType, CssParser, CssRecoveryAction, CssRule, CssSupportsLeaf,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::media::{CssMediaLeaf, CssMediaQuery, CssMediaType};
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::{CssImportLayer, CssImportRule, CssImportTarget, CssRule};
 
 fn source(tail: &str) -> String {
     format!("@import url(test) {tail}; .after {{ color: red; }}")
@@ -239,7 +241,7 @@ fn failed_clause_probes_do_not_duplicate_retained_eof_closures() {
         };
         assert_eq!(
             statement.error().code(),
-            surgeist_css::CssErrorCode::UnexpectedEnd
+            surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
         );
         assert_eq!(
             statement.action(),
@@ -263,7 +265,7 @@ fn failed_clause_probes_do_not_duplicate_retained_eof_closures() {
         );
         assert_eq!(
             closure.error().code(),
-            surgeist_css::CssErrorCode::UnexpectedEnd
+            surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
         );
         assert_eq!(
             closure.action(),
@@ -308,7 +310,9 @@ fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation()
     assert!(matches!(
         color.kind(),
         CssConditionKind::Leaf(CssMediaLeaf::Feature(
-            surgeist_css::CssMediaFeatureQuery::Boolean(surgeist_css::CssMediaFeatureKind::Color)
+            surgeist_css::query::media::CssMediaFeatureQuery::Boolean(
+                surgeist_css::query::media::CssMediaFeatureKind::Color
+            )
         ))
     ));
     let [statement, closure] = report.diagnostics() else {
@@ -316,7 +320,7 @@ fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation()
     };
     assert_eq!(
         statement.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         statement.action(),
@@ -340,7 +344,7 @@ fn eof_closures_do_not_prefer_a_grammatically_incomplete_prefix_interpretation()
     );
     assert_eq!(
         closure.error().code(),
-        surgeist_css::CssErrorCode::UnexpectedEnd
+        surgeist_css::diagnostic::CssErrorCode::UnexpectedEnd
     );
     assert_eq!(
         closure.action(),
@@ -381,7 +385,7 @@ fn lexical_errors_remain_terminal_across_optional_clause_probes() {
         let Some(error) = diagnostic.error().component_error() else {
             panic!("original typed component error");
         };
-        let surgeist_css::CssValueOrigin::Parsed(origin) = error.origin() else {
+        let surgeist_css::component::CssValueOrigin::Parsed(origin) = error.origin() else {
             panic!("original parsed origin");
         };
         assert_eq!(origin.span().start(), diagnostic.error().position());

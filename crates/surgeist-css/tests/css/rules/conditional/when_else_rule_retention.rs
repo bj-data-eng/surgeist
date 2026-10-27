@@ -8,10 +8,13 @@
 use crate::css::support::rules::declaration_text;
 use crate::css::support::rules::normalized_declarations as declarations;
 use crate::css::support::rules::rule_at;
-use surgeist_css::{
-    CssErrorCode, CssNormalizedDeclaration, CssNormalizedSheet, CssParser, CssRecoveryAction,
-    CssRule, CssRuleContextKindRef, CssSelector, CssSelectorBinding, CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::normalize::{
+    CssNormalizedDeclaration, CssNormalizedSheet, CssRuleContextKindRef, CssSelectorBinding,
 };
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssSelector;
 
 fn assert_declarations<'a>(
     source: &str,

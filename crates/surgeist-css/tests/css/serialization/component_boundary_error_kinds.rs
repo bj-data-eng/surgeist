@@ -7,7 +7,9 @@
 //! their trailing whitespace, so their boundary case is pinned privately in
 //! `src/pending_serialization.rs`.
 
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::query::supports::CssSupportsTestBody;
+use surgeist_css::serialization::CssSerializationLimits;
 
 #[test]
 fn named_supports_body_reports_an_unserializable_trailing_reverse_solidus() {

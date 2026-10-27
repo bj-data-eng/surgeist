@@ -12,11 +12,15 @@
 //! https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-qualified-rule
 //! https://www.w3.org/TR/2026/WD-css-nesting-1-20260122/#syntax
 use crate::css::support::rules::page_pseudo;
-use surgeist_css::{
-    CssComponentValue, CssComponentValueRef, CssErrorCode, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssMarginValue, CssPagePseudo, CssParser, CssRecoveryAction, CssRule,
-    CssSelector, CssValueTokenRef,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValueRef, CssValueTokenRef};
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::page::CssPagePseudo;
+use surgeist_css::selector::CssSelector;
+use surgeist_css::values::box_model::CssMarginValue;
 
 fn assert_tag(rule: &CssRule, expected: &str) {
     let CssRule::Style(style) = rule else {

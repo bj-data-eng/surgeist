@@ -14,7 +14,30 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::component_failure;
 use crate::css::support::failure_classes::numeric_failure;
 use crate::css::support::failure_classes::serialization_failure;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueError, CssComponentValueRef, CssComponentValues,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance, CssSpecifiedDeclarationBlock};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryDiagnostic, CssTokenSummary};
+use surgeist_css::numeric::{
+    CssCalculation, CssInteger, CssLength, CssNumber, CssNumeric, CssNumericConstructionError,
+    CssNumericLiteral, CssNumericRoot, CssPositive, CssRange,
+};
+use surgeist_css::property::{
+    CssContributions, CssExpansionError, CssKnownProperty, CssKnownPropertyValueRef,
+    CssPropertyNameRef, CssPropertyValueError,
+};
+use surgeist_css::query::media::CssMediaQuery;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::{
+    CssRuleSerializationError, CssSerializationError, CssSerializationLimits,
+};
+use surgeist_css::values::common::CssUrl;
+use surgeist_css::values::effects::CssFilter;
+use surgeist_css::values::image::CssImageValue;
 
 /// The specified serialization of one ordinary literal, which the unrestricted
 /// range always admits.

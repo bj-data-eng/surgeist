@@ -2,9 +2,9 @@
 use crate::object_operations::execute;
 use crate::*;
 use std::vec::IntoIter;
-use surgeist_css::{
-    CssCounterStyleDescriptorKind, CssFontFeatureValueKind, CssSerializationLimits,
-};
+use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind;
+use surgeist_css::rule::font_feature_values::CssFontFeatureValueKind;
+use surgeist_css::serialization::CssSerializationLimits;
 
 /// Ordered keys owned by one immutable map observation.
 pub type CssFontFeatureValuesKeys = IntoIter<String>;

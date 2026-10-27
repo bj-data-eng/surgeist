@@ -1,4 +1,16 @@
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssNumericTokenKind,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::numeric::CssLengthUnit;
+use surgeist_css::query::CssQueryLength;
+use surgeist_css::rule::font_face::{
+    CssFontFaceUrlSource, CssFontFormat, CssFontFormatHint, CssFontFormatString, CssFontTechHint,
+};
+use surgeist_css::rule::{CssImportString, CssImportUrl};
+use surgeist_css::values::common::{CssIdent, CssUrl, CssUrlFunction, CssUrlModifier};
+use surgeist_css::values::layout::{CssGridLineName, CssGridLineNames};
 
 #[test]
 fn decoded_empty_and_whitespace_targets_keep_their_authored_roles_and_url_forms() {

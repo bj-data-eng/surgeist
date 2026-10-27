@@ -1,12 +1,19 @@
 //! Supplemental public contracts for source-only property values. Expectations
 //! follow the supplied grammar, explicit importance and original source coordinates.
-use surgeist_css::{
-    CssComponentValues, CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance,
-    CssKnownProperty, CssKnownPropertyValueRef, CssParser, CssPropertyGrammar, CssPropertyNameRef,
-    CssPropertyTarget, CssPropertyTextTarget, CssRecoveryAction, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{
+    CssCustomPropertyName, CssDeclaration, CssGlobalKeyword, CssImportance,
+};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyGrammar, CssPropertyNameRef,
+    CssPropertyTarget, CssPropertyTextTarget,
 };
 
-fn width(source: &str) -> surgeist_css::CssParseReport<Option<surgeist_css::CssDeclaration>> {
+fn width(
+    source: &str,
+) -> surgeist_css::CssParseReport<Option<surgeist_css::declaration::CssDeclaration>> {
     CssParser::default().parse_property_value(
         source,
         CssPropertyTextTarget::Property(CssPropertyNameRef::Known(CssKnownProperty::Width)),

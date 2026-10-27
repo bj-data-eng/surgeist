@@ -4,13 +4,20 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::rules::invalid_descriptor;
 use crate::css::support::rules::ordinary_font_face_descriptor;
-use surgeist_css::{
-    CssAbsoluteFontWeight as Absolute, CssAuthoredFontFaceDescriptorValue as Authored,
-    CssAuthoredFontFaceDescriptorValue, CssComponentValue, CssComponentValues,
-    CssFontFaceDescriptorKind as Kind, CssFontFaceDescriptorValue as Ordinary, CssFontFaceWeight,
-    CssFontWeightRange, CssNumber, CssNumeric, CssParser, CssRecoveryAction, CssRule,
-    CssSerializationLimits, CssSerializedOrigin, CssValueOrigin,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
 };
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::numeric::{CssNumber, CssNumeric};
+use surgeist_css::rule::CssRule;
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue;
+use surgeist_css::rule::font_face::CssAuthoredFontFaceDescriptorValue as Authored;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorKind as Kind;
+use surgeist_css::rule::font_face::CssFontFaceDescriptorValue as Ordinary;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::font::CssAbsoluteFontWeight as Absolute;
+use surgeist_css::values::font::{CssFontFaceWeight, CssFontWeightRange};
 
 fn ordinary(text: &str) -> CssFontFaceWeight {
     let Ordinary::FontWeight(value) = ordinary_font_face_descriptor(text, Kind::FontWeight) else {

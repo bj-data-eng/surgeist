@@ -3,10 +3,13 @@
 use crate::css::support::authored_syntax::{
     assert_diagnostics, assert_strict_rejection, offset_of,
 };
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNormalizationLimits, CssNormalizationResource,
-    CssNormalizedItem, CssParser, CssRecoveryAction, CssRule, CssRuleContextKindRef, CssStyleBlock,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem, CssRuleContextKindRef,
 };
+use surgeist_css::rule::{CssRule, CssStyleBlock};
+use surgeist_css::selector::CssNamespaceContext;
 
 #[test]
 fn invalid_outer_definitions_drop_without_promoting_their_test_bodies() {
@@ -154,7 +157,7 @@ fn descriptor_and_keyframe_only_blocks_do_not_admit_named_definitions_or_style_t
             panic!("{source:?}: {report:?}")
         };
         crate::css::support::rules::ExpectedRejection::new(
-            surgeist_css::CssErrorCode::InvalidAtRulePlacement,
+            surgeist_css::diagnostic::CssErrorCode::InvalidAtRulePlacement,
         )
         .in_rule("supports-condition")
         .assert_first(&report);

@@ -2,7 +2,8 @@
 
 use std::sync::atomic::AtomicBool;
 
-use surgeist_css::{CssCustomIdent, CssViewTransitionIdent};
+use surgeist_css::values::common::CssCustomIdent;
+use surgeist_css::values::view_transition::CssViewTransitionIdent;
 use surgeist_cssom::{
     CssomContext, CssomEditGuard, CssomInputRole, CssomInputVersion, CssomLimits, CssomSheetInputs,
     CssomStore,

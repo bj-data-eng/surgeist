@@ -7,10 +7,13 @@
 //! the name, after the colon(s), not the cursor after consuming the name.
 //! Rule and forgiving-member recovery units retain their full original spans.
 
-use surgeist_css::{
-    CssErrorCode, CssParser, CssPseudoClass, CssPseudoSelectorListItem, CssRecoveryAction,
-    CssRecoveryDiagnostic, CssRule, CssSelector, CssSourcePosition, CssTokenKind,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{
+    CssErrorCode, CssRecoveryAction, CssRecoveryDiagnostic, CssTokenKind,
 };
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssPseudoClass, CssPseudoSelectorListItem, CssSelector};
+use surgeist_css::source::CssSourcePosition;
 
 fn assert_position(actual: CssSourcePosition, expected: (usize, u32, u32)) {
     assert_eq!(

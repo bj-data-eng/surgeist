@@ -1,15 +1,20 @@
 use crate::css::support::failure_classes::NumericFailure;
 use crate::css::support::math_depth::MathDepthBoundary;
 use crate::css::support::property_admission::{assert_component_rejected, assert_numeric_rejected};
-use surgeist_css::{
-    CssAnimationDirection, CssAnimationFillMode, CssAnimationIterationCount,
-    CssAnimationIterationCountList, CssAnimationName, CssAnimationPlayState,
-    CssCalculationExpressionRef, CssCalculationType, CssDelayList, CssDurationList, CssEasing,
-    CssEasingKeyword, CssErrorCode, CssKnownProperty, CssKnownPropertyValueRef, CssNonNegative,
-    CssNumeric, CssRecoveryAction, CssSourcePosition, CssStepPosition, CssTime, CssTimeUnit,
-    CssTokenKind, CssTransitionProperty,
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction, CssTokenKind};
+use surgeist_css::numeric::CssNumericLiteral;
+use surgeist_css::numeric::{
+    CssCalculationExpressionRef, CssCalculationType, CssNonNegative, CssNumeric, CssTime,
+    CssTimeUnit,
 };
-use surgeist_css::{CssNumericLiteral, CssParser};
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::source::CssSourcePosition;
+use surgeist_css::values::animation::{
+    CssAnimationDirection, CssAnimationFillMode, CssAnimationIterationCount,
+    CssAnimationIterationCountList, CssAnimationName, CssAnimationPlayState, CssDelayList,
+    CssDurationList, CssEasing, CssEasingKeyword, CssStepPosition, CssTransitionProperty,
+};
 
 fn for_each_permutation(
     components: &mut [&'static str],
@@ -36,7 +41,7 @@ fn assert_ascii_position(position: CssSourcePosition, byte_offset: usize) {
 
 fn assert_retained_color_sibling(
     source: &str,
-    report: &surgeist_css::CssParseReport<surgeist_css::CssDeclarationList>,
+    report: &surgeist_css::CssParseReport<surgeist_css::declaration::CssDeclarationList>,
 ) {
     let [declaration] = report.syntax().as_slice() else {
         panic!("{source}: valid color sibling must be retained exactly once");
@@ -175,13 +180,19 @@ fn duration_and_delay_literals_enforce_distinct_exact_sign_domains() {
 fn iteration_values_check_literals_and_keep_infinite_and_calculation_branches() {
     for text in ["-0.25", "-1e-999"] {
         assert_component_rejected(
-            surgeist_css::CssNumeric::<surgeist_css::CssNumber, surgeist_css::CssNonNegative>::try_from_component,
-            surgeist_css::CssComponentValue::try_number(text).unwrap(),
+            surgeist_css::numeric::CssNumeric::<
+                surgeist_css::numeric::CssNumber,
+                surgeist_css::numeric::CssNonNegative,
+            >::try_from_component,
+            surgeist_css::component::CssComponentValue::try_number(text).unwrap(),
             NumericFailure::OutOfRange,
         );
     }
-    let number = surgeist_css::CssNumeric::<surgeist_css::CssNumber, surgeist_css::CssNonNegative>::try_from_component(
-        surgeist_css::CssComponentValue::try_number("2.5").unwrap(),
+    let number = surgeist_css::numeric::CssNumeric::<
+        surgeist_css::numeric::CssNumber,
+        surgeist_css::numeric::CssNonNegative,
+    >::try_from_component(
+        surgeist_css::component::CssComponentValue::try_number("2.5").unwrap()
     )
     .unwrap();
     assert_eq!(
@@ -804,7 +815,7 @@ fn repeated_timing_failures_and_depth_255_256_257_have_exact_recovery_behavior()
             assert!(
                 detail
                     .component_error()
-                    .is_some_and(surgeist_css::CssComponentValueError::is_nesting_limit),
+                    .is_some_and(surgeist_css::component::CssComponentValueError::is_nesting_limit),
                 "depth 257 must expose the typed nesting-limit cause"
             );
         },

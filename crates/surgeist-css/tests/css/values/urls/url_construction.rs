@@ -2,11 +2,12 @@
 //! `<url>` forms, including empty targets and ordered quoted-form modifiers.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#urls
 
-use surgeist_css::{
-    CssFontFaceSource, CssFontFaceUrlSource, CssImportTarget, CssImportUrl,
-    CssKnownPropertyValueRef, CssParser, CssRecoveryAction, CssRule, CssUrl, CssUrlFunction,
-    CssUrlModifier,
-};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::CssKnownPropertyValueRef;
+use surgeist_css::rule::font_face::{CssFontFaceSource, CssFontFaceUrlSource};
+use surgeist_css::rule::{CssImportTarget, CssImportUrl, CssRule};
+use surgeist_css::values::common::{CssUrl, CssUrlFunction, CssUrlModifier};
 
 fn background_url(value: &str) -> CssUrl {
     let report = CssParser::default().parse_block_contents(format!("background-image: {value}"));
@@ -19,7 +20,7 @@ fn background_url(value: &str) -> CssUrl {
     else {
         panic!("typed image")
     };
-    let [surgeist_css::CssImageValue::Url(url)] = image.value().images() else {
+    let [surgeist_css::values::image::CssImageValue::Url(url)] = image.value().images() else {
         panic!("one URL image")
     };
     url.clone()
@@ -40,7 +41,7 @@ fn checked_constructors_preserve_function_identity_and_decoded_empty_targets() {
             url
         );
 
-        let url_import = CssImportUrl::new(surgeist_css::CssUrl::new(target));
+        let url_import = CssImportUrl::new(surgeist_css::values::common::CssUrl::new(target));
         let import = CssImportUrl::new(src.clone());
         assert_eq!(url_import.url().function(), CssUrlFunction::Url);
         assert_eq!(url_import.as_str(), target);
@@ -48,8 +49,11 @@ fn checked_constructors_preserve_function_identity_and_decoded_empty_targets() {
         assert_eq!(import.as_str(), target);
         assert_ne!(url_import, import);
 
-        let url_font =
-            CssFontFaceUrlSource::new(surgeist_css::CssUrl::new(target), None, Vec::new());
+        let url_font = CssFontFaceUrlSource::new(
+            surgeist_css::values::common::CssUrl::new(target),
+            None,
+            Vec::new(),
+        );
         let font = CssFontFaceUrlSource::new(src.clone(), None, Vec::new());
         assert_eq!(url_font.url().function(), CssUrlFunction::Url);
         assert_eq!(url_font.url().as_str(), target);

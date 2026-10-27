@@ -6,9 +6,9 @@
 //! their internal order stays free.
 use super::combinators::{Combinator, Operand, Tail, group_operand, keyword, parse_group};
 use super::property_input::Parser;
-use crate::CssFontFeatureValueName;
-use crate::error::property::{Error, ParseError, basic, unexpected_at};
-use crate::font_variant::*;
+use crate::diagnostic::error::property::{Error, ParseError, basic, unexpected_at};
+use crate::rule::font_feature_values::CssFontFeatureValueName;
+use crate::values::font::font_variant::*;
 use cssparser::Token;
 
 const LIGATURES: [[(&str, CssFontVariantLigatureState); 2]; 4] = [
@@ -299,19 +299,19 @@ fn keyword_or_normal<'i, T: Copy>(
         .ok_or_else(|| invalid_font_variant_keyword(location, ident))
 }
 
-pub(super) fn parse_font_variant_caps<'i, 't>(
+pub(crate) fn parse_font_variant_caps<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantCaps, ParseError<'i, Error>> {
     keyword_or_normal(input, CssFontVariantCaps::Normal, &CAPS)
 }
 
-pub(super) fn parse_font_variant_position<'i, 't>(
+pub(crate) fn parse_font_variant_position<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantPosition, ParseError<'i, Error>> {
     keyword_or_normal(input, CssFontVariantPosition::Normal, &POSITIONS)
 }
 
-pub(super) fn parse_font_variant_emoji<'i, 't>(
+pub(crate) fn parse_font_variant_emoji<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantEmoji, ParseError<'i, Error>> {
     keyword_or_normal(input, CssFontVariantEmoji::Normal, &EMOJI)
@@ -323,7 +323,7 @@ fn next_is_keyword<'i>(input: &mut Parser<'i, '_>, keyword: &str) -> bool {
         .is_ok()
 }
 
-pub(super) fn parse_font_variant_ligatures<'i, 't>(
+pub(crate) fn parse_font_variant_ligatures<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantLigatures, ParseError<'i, Error>> {
     if next_is_keyword(input, "normal") {
@@ -346,7 +346,7 @@ pub(super) fn parse_font_variant_ligatures<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_font_variant_numeric<'i, 't>(
+pub(crate) fn parse_font_variant_numeric<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantNumeric, ParseError<'i, Error>> {
     if next_is_keyword(input, "normal") {
@@ -366,7 +366,7 @@ pub(super) fn parse_font_variant_numeric<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_font_variant_east_asian<'i, 't>(
+pub(crate) fn parse_font_variant_east_asian<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantEastAsian, ParseError<'i, Error>> {
     if next_is_keyword(input, "normal") {
@@ -386,7 +386,7 @@ pub(super) fn parse_font_variant_east_asian<'i, 't>(
         .ok_or_else(|| unexpected_at(input.current_source_location()))
 }
 
-pub(super) fn parse_font_variant_alternates<'i, 't>(
+pub(crate) fn parse_font_variant_alternates<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantAlternates, ParseError<'i, Error>> {
     if next_is_keyword(input, "normal") {
@@ -408,7 +408,7 @@ pub(super) fn parse_font_variant_alternates<'i, 't>(
 
 /// `normal | none | [ <ligatures> || <caps> || <alternates> || <numeric> ||
 /// <east-asian> || <position> || <emoji> ]`, each bracketed group whole.
-pub(super) fn parse_font_variant<'i, 't>(
+pub(crate) fn parse_font_variant<'i, 't>(
     input: &mut Parser<'i, 't>,
 ) -> std::result::Result<CssFontVariantValue, ParseError<'i, Error>> {
     if next_is_keyword(input, "normal") {

@@ -8,7 +8,7 @@
 
 use crate::css::support::color_components::{assert_recovered, component};
 use crate::css::support::parsed_color;
-use surgeist_css::{CssColor, CssColorComponent, CssColorSyntax, CssHexColor, CssRgbColor};
+use surgeist_css::color::{CssColor, CssColorComponent, CssColorSyntax, CssHexColor, CssRgbColor};
 
 fn assert_component(value: &CssColorComponent, expected: &str) {
     match value {

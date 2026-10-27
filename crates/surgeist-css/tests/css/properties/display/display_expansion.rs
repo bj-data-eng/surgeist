@@ -1,7 +1,18 @@
 //! Display 3 longhand transport through shared expansion and normalization.
 use crate::css::support::property_admission::assert_invalid_value;
 use crate::css::support::sole_declaration as declaration;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedDeclaration, CssNormalizedItem,
+    CssNormalizedSheet, CssRuleContextKindRef,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef,
+};
 
 #[test]
 fn display_pending_reentry_is_complete_atomic_and_preserves_both_origins() {

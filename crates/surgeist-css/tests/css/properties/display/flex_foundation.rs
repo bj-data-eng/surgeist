@@ -11,7 +11,16 @@ use crate::css::support::selected_grammar as grammar;
 fn declaration(value: &str) -> CssDeclaration {
     crate::css::support::important_declaration("flex", value)
 }
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandContribution, CssPropertyKindRef, CssPropertyTarget,
+    CssPropertyValueError,
+};
 
 const MEMBERS: [&str; 3] = ["flex-grow", "flex-shrink", "flex-basis"];
 

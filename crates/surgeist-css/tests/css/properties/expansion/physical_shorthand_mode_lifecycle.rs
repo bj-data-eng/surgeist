@@ -9,7 +9,23 @@ use crate::css::support::checked_grammar_declaration as checked;
 use crate::css::support::important_declaration as declaration;
 use crate::css::support::named_property::longhand_contributions as terminals;
 use crate::css::support::selected_grammar as grammar;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssLength, CssLengthPercentage, CssNonNegative, CssNumeric};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssInitialValueRef,
+    CssKnownPropertyValueRef, CssLonghandContributions, CssLonghandValue, CssLonghandValueRef,
+    CssPropertyKindRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::{CssSerializationError, CssSerializationLimits};
+use surgeist_css::values::common::CssAutoOr;
 
 struct Family {
     name: &'static str,

@@ -9,7 +9,8 @@ use crate::{
     NodeOperand,
 };
 use std::sync::Arc;
-use surgeist_css::{CssParserContext, CssUtf16InputError, CssUtf16InputLimits};
+use surgeist_css::CssParserContext;
+use surgeist_css::source::{CssUtf16InputError, CssUtf16InputLimits};
 use surgeist_cssom::{
     CssStyleProperties, CssomCapture, CssomDeclarationRequestLimits, CssomDeclarationSupport,
     CssomError, CssomInputRole, CssomInputVersion, CssomLimits, CssomStyleAttributeError,
@@ -441,7 +442,7 @@ pub enum DomInlineStyleOutcome {
         /// Original committed publication.
         publication: surgeist_cssom::CssomPublication,
         /// Original diagnostics, including their retained source provenance.
-        diagnostics: Vec<surgeist_css::CssRecoveryDiagnostic>,
+        diagnostics: Vec<surgeist_css::diagnostic::CssRecoveryDiagnostic>,
         /// Actual affine effects.
         effects: Vec<surgeist_cssom::CssomOwnerEffect>,
     },

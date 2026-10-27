@@ -5,7 +5,28 @@ use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::value_assertions::assert_component_rejected;
 use crate::css::support::{contextual_checked_declaration as checked, known_property as property};
-use surgeist_css::*;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValues, CssSerializedOrigin, CssValueOrigin,
+};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::normalize::{
+    CssNormalizationLimits, CssNormalizationResource, CssNormalizedItem,
+};
+use surgeist_css::numeric::{CssLength, CssLengthPercentage, CssNumeric};
+use surgeist_css::property::{
+    CssContributions, CssExpansion, CssKnownProperty, CssKnownPropertyValueRef,
+    CssLonghandContribution, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+    CssPropertyTextTarget,
+};
+use surgeist_css::query::supports::{CssSupportsDeclaration, CssSupportsLeaf};
+use surgeist_css::query::{CssCondition, CssConditionKind};
+use surgeist_css::rule::{CssRule, CssStyleBlock};
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::border::CssLineWidth;
+use surgeist_css::values::box_model::CssMarginValue;
+use surgeist_css::values::common::CssBoxSideKind;
+use surgeist_css::{CssParser, CssParserContext, CssParserMode};
 
 const STANDARDS: CssParserContext = CssParserContext::new(CssParserMode::Standards);
 const QUIRKS: CssParserContext = CssParserContext::new(CssParserMode::Quirks);

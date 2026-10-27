@@ -1,9 +1,17 @@
-use surgeist_css::{
-    CssAnimationName, CssConditionKind, CssContentValue, CssContentValueItem, CssErrorCode,
-    CssFontFamilyNameKind, CssGlobalKeyword, CssImageValue, CssKnownDeclaredValueRef,
-    CssKnownPropertyValueRef, CssNthPattern, CssParser, CssPseudoClass, CssRecoveryAction, CssRule,
-    CssSelector, CssSupportStatus, CssSupportsLeaf, CssUrlModifier, feature_metadata,
-};
+use surgeist_css::CssParser;
+use surgeist_css::conformance::{CssSupportStatus, feature_metadata};
+use surgeist_css::declaration::CssGlobalKeyword;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::property::{CssKnownDeclaredValueRef, CssKnownPropertyValueRef};
+use surgeist_css::query::CssConditionKind;
+use surgeist_css::query::supports::CssSupportsLeaf;
+use surgeist_css::rule::CssRule;
+use surgeist_css::selector::{CssNthPattern, CssPseudoClass, CssSelector};
+use surgeist_css::values::animation::CssAnimationName;
+use surgeist_css::values::common::CssUrlModifier;
+use surgeist_css::values::content::{CssContentValue, CssContentValueItem};
+use surgeist_css::values::font::CssFontFamilyNameKind;
+use surgeist_css::values::image::CssImageValue;
 
 #[test]
 fn shared_value_grammars_are_typed_with_feature_provenance() {

@@ -85,7 +85,7 @@ pub enum ParseStop {
     ColorProcessing(HtmlColorProcessingError),
     /// A finite CSS property owner refused its actual reached resource.
     CssPropertyLimit {
-        resource: surgeist_css::CssUtf16Resource,
+        resource: surgeist_css::source::CssUtf16Resource,
     },
     /// A CSS-owned allocation failed; its private layout is not fabricated here.
     CssPropertyAllocationFailed,
@@ -97,9 +97,9 @@ pub enum ParseStop {
 /// binding remains separately owned by ParseControl.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlColorProcessingError {
-    Unavailable(surgeist_css::CssColorUnavailable),
-    Unsupported(surgeist_css::CssColorUnsupported),
-    Facts(surgeist_css::CssColorFactDefect),
+    Unavailable(surgeist_css::color::CssColorUnavailable),
+    Unsupported(surgeist_css::color::CssColorUnsupported),
+    Facts(surgeist_css::color::CssColorFactDefect),
 }
 impl std::fmt::Display for HtmlColorProcessingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -117,7 +117,7 @@ impl HtmlColorProcessingError {
     /// The source operation's error, unchanged in kind. The adapter's UTF-16
     /// input admits every unit, so a malformed-input report has no
     /// processing kind; the caller records it as an adapter invariant.
-    pub(crate) fn from_source(error: surgeist_css::CssColorError) -> Option<Self> {
+    pub(crate) fn from_source(error: surgeist_css::color::CssColorError) -> Option<Self> {
         if let Some(fact) = error.unavailable() {
             return Some(Self::Unavailable(fact));
         }
@@ -334,7 +334,7 @@ impl ParseControl {
     }
     pub(crate) fn stop_color_processing(
         &mut self,
-        reason: surgeist_css::CssColorError,
+        reason: surgeist_css::color::CssColorError,
     ) -> ParseStop {
         let Some(error) = HtmlColorProcessingError::from_source(reason) else {
             return self.fail_invariant(Invariant::InputCursorState);
@@ -5041,22 +5041,22 @@ mod tests {
     }
     /// The colour operation error CSS itself reports for `input` when every
     /// colour fact is absent.
-    fn css_color_error(input: &[u8]) -> surgeist_css::CssColorError {
-        let facts = surgeist_css::CssColorFacts::new(
-            surgeist_css::CssColorFactIdentity::new(7, 3),
-            surgeist_css::CssColorPropertyFacts::Unavailable,
-            surgeist_css::CssColorSchemeFact::Unavailable,
+    fn css_color_error(input: &[u8]) -> surgeist_css::color::CssColorError {
+        let facts = surgeist_css::color::CssColorFacts::new(
+            surgeist_css::color::CssColorFactIdentity::new(7, 3),
+            surgeist_css::color::CssColorPropertyFacts::Unavailable,
+            surgeist_css::color::CssColorSchemeFact::Unavailable,
             &[],
             &[],
             &[],
-            surgeist_css::CssDeviceColorFact::Unknown,
+            surgeist_css::color::CssDeviceColorFact::Unknown,
         );
-        surgeist_css::parse_used_color(
-            surgeist_css::CssColorInput::Utf8(input),
-            surgeist_css::CssColorGrammarRequest::WholeColor,
+        surgeist_css::color::parse_used_color(
+            surgeist_css::color::CssColorInput::Utf8(input),
+            surgeist_css::color::CssColorGrammarRequest::WholeColor,
             &facts,
             facts.identity(),
-            surgeist_css::CssColorOrdinaryLimits {
+            surgeist_css::color::CssColorOrdinaryLimits {
                 input_units: 1024,
                 algorithm_records: 16_384,
                 arithmetic_records: 4096,
@@ -5073,7 +5073,7 @@ mod tests {
         let mut owner = control();
         let source = HtmlSource::utf16(crate::DocumentString::from("<input type=color value=red>"));
         owner.admit_source(&source).unwrap();
-        let unavailable = surgeist_css::CssColorUnavailable::CurrentColor;
+        let unavailable = surgeist_css::color::CssColorUnavailable::CurrentColor;
         let stop = owner.stop_color_processing(css_color_error(b"currentcolor"));
         assert_eq!(
             stop,

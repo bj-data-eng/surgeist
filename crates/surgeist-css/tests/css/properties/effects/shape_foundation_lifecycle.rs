@@ -13,9 +13,34 @@ use crate::css::support::failure_classes::SerializationFailure as K;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_matches_diagnostic;
 use crate::css::support::property_admission::validated_sole_declaration;
-use surgeist_css::{
-    CssComponentValue, CssComponentValues, CssDeclaration, CssParser, CssPropertyTarget,
-    CssSerializationLimits as L, *,
+use surgeist_css::CssParser;
+use surgeist_css::component::{
+    CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,
+    CssValueOrigin, CssValueTokenRef,
+};
+use surgeist_css::declaration::{CssDeclaration, CssGlobalKeyword, CssImportance};
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::normalize::CssNormalizedItem;
+use surgeist_css::numeric::{
+    CssAngle, CssCalculation, CssLengthPercentage, CssNumeric, CssNumericLiteral,
+};
+use surgeist_css::property::{
+    CssContributionValueRef, CssContributions, CssExpansion, CssKnownProperty,
+    CssKnownPropertyValueRef, CssLonghandValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits as L;
+use surgeist_css::values::common::CssBoxEdgeKeyword;
+use surgeist_css::values::effects::{CssClipPath, CssClipPathShape};
+use surgeist_css::values::position::{
+    CssCartesianPosition, CssHorizontalPosition, CssHorizontalPositionKeyword, CssPosition,
+    CssPositionRef, CssVerticalPosition, CssVerticalPositionKeyword,
+};
+use surgeist_css::values::shape::{
+    CssBasicShape, CssFillRule, CssShapeAbsoluteControlPoint, CssShapeAbsoluteControlPointRef,
+    CssShapeArc, CssShapeArcRadii, CssShapeArcSize, CssShapeArcSweep, CssShapeCommand,
+    CssShapeCommandList, CssShapeControlAnchor, CssShapeCoordinatePair, CssShapeCurve,
+    CssShapeCurveRef, CssShapeEndpoint, CssShapeFunction, CssShapeHorizontalLine,
+    CssShapeRelativeControlPoint, CssShapeSmooth, CssShapeSmoothRef, CssShapeVerticalLine,
 };
 
 fn clip(source: &CssDeclaration) -> &CssClipPath {

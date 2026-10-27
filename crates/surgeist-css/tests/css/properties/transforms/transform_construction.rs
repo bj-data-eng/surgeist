@@ -1,5 +1,17 @@
 //! Public authored transform construction and checked operand domains.
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValue, CssComponentValues};
+use surgeist_css::numeric::{
+    CssAngle, CssAngleOrZero, CssAngleUnit, CssCalculation, CssFiniteNumber, CssLength,
+    CssLengthPercentage, CssNonNegative, CssNumber, CssNumeric, CssNumericLiteral, CssPercentage,
+    CssZeroLiteral,
+};
+use surgeist_css::values::transform::{
+    CssTransform, CssTransformFunction, CssTransformFunctionKind, CssTransformFunctionList,
+    CssTransformMatrix, CssTransformMatrix3d, CssTransformPerspective, CssTransformRotate3d,
+    CssTransformScale, CssTransformScale3d, CssTransformScaleComponent, CssTransformSkew,
+    CssTransformTranslate, CssTransformTranslate3d,
+};
 
 fn number(value: &str) -> CssNumeric<CssNumber> {
     checked_number(value)
@@ -297,25 +309,28 @@ fn perspective_and_function_list_preserve_none_order_and_nonempty_invariant() {
 }
 
 fn exact_dimension(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
     expected_unit: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Dimension { number, unit })) if number.representation() == representation && unit == expected_unit)
 }
 fn exact_percentage(
-    component: Option<&surgeist_css::CssComponentValue>,
+    component: Option<&surgeist_css::component::CssComponentValue>,
     representation: &str,
 ) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Percentage(number))) if number.representation() == representation)
 }
 
-fn signed_length(css: &str) -> surgeist_css::CssNumeric<surgeist_css::CssLength> {
-    let components =
-        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
+fn signed_length(css: &str) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLength> {
+    let components = surgeist_css::component::CssComponentValues::parse(
+        &surgeist_css::CssParser::default(),
+        css,
+    )
+    .unwrap();
     if css.contains('(') {
-        surgeist_css::CssNumeric::<surgeist_css::CssLength>::try_from_calculation(
-            surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLength>::try_from_calculation(
+            surgeist_css::numeric::CssCalculation::<surgeist_css::numeric::CssLength>::try_from_components(
                 components,
                 Default::default(),
             )
@@ -323,38 +338,50 @@ fn signed_length(css: &str) -> surgeist_css::CssNumeric<surgeist_css::CssLength>
         )
         .unwrap()
     } else {
-        surgeist_css::CssNumeric::<surgeist_css::CssLength>::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLength>::try_from_component(
+            surgeist_css::component::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
     }
 }
 fn nonnegative_length(
     css: &str,
-) -> surgeist_css::CssNumeric<surgeist_css::CssLength, surgeist_css::CssNonNegative> {
-    let components =
-        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
+) -> surgeist_css::numeric::CssNumeric<
+    surgeist_css::numeric::CssLength,
+    surgeist_css::numeric::CssNonNegative,
+> {
+    let components = surgeist_css::component::CssComponentValues::parse(
+        &surgeist_css::CssParser::default(),
+        css,
+    )
+    .unwrap();
     if css.contains('(') {
-        surgeist_css::CssNumeric::<surgeist_css::CssLength, surgeist_css::CssNonNegative>::try_from_calculation(
-            surgeist_css::CssCalculation::<surgeist_css::CssLength>::try_from_components(components, Default::default())
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLength, surgeist_css::numeric::CssNonNegative>::try_from_calculation(
+            surgeist_css::numeric::CssCalculation::<surgeist_css::numeric::CssLength>::try_from_components(components, Default::default())
                 .unwrap(),
         )
         .unwrap()
     } else {
-        surgeist_css::CssNumeric::<surgeist_css::CssLength, surgeist_css::CssNonNegative>::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        surgeist_css::numeric::CssNumeric::<
+            surgeist_css::numeric::CssLength,
+            surgeist_css::numeric::CssNonNegative,
+        >::try_from_component(
+            surgeist_css::component::CssComponentValue::try_token(css).unwrap()
         )
         .unwrap()
     }
 }
 fn signed_length_percentage(
     css: &str,
-) -> surgeist_css::CssNumeric<surgeist_css::CssLengthPercentage> {
-    let components =
-        surgeist_css::CssComponentValues::parse(&surgeist_css::CssParser::default(), css).unwrap();
+) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssLengthPercentage> {
+    let components = surgeist_css::component::CssComponentValues::parse(
+        &surgeist_css::CssParser::default(),
+        css,
+    )
+    .unwrap();
     if css.contains('(') {
-        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_calculation(
-            surgeist_css::CssCalculation::<surgeist_css::CssLengthPercentage>::try_from_components(
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage>::try_from_calculation(
+            surgeist_css::numeric::CssCalculation::<surgeist_css::numeric::CssLengthPercentage>::try_from_components(
                 components,
                 Default::default(),
             )
@@ -362,19 +389,24 @@ fn signed_length_percentage(
         )
         .unwrap()
     } else {
-        surgeist_css::CssNumeric::<surgeist_css::CssLengthPercentage>::try_from_component(
-            surgeist_css::CssComponentValue::try_token(css).unwrap(),
+        surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssLengthPercentage>::try_from_component(
+            surgeist_css::component::CssComponentValue::try_token(css).unwrap(),
         )
         .unwrap()
     }
 }
 
-fn exact_number(component: Option<&surgeist_css::CssComponentValue>, representation: &str) -> bool {
-    matches!(component.map(surgeist_css::CssComponentValue::view), Some(surgeist_css::CssComponentValueRef::Token(surgeist_css::CssValueTokenRef::Number(number))) if number.representation() == representation)
+fn exact_number(
+    component: Option<&surgeist_css::component::CssComponentValue>,
+    representation: &str,
+) -> bool {
+    matches!(component.map(surgeist_css::component::CssComponentValue::view), Some(surgeist_css::component::CssComponentValueRef::Token(surgeist_css::component::CssValueTokenRef::Number(number))) if number.representation() == representation)
 }
-fn checked_number(representation: &str) -> surgeist_css::CssNumeric<surgeist_css::CssNumber> {
-    surgeist_css::CssNumeric::<surgeist_css::CssNumber>::try_from_component(
-        surgeist_css::CssComponentValue::try_number(representation).unwrap(),
+fn checked_number(
+    representation: &str,
+) -> surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssNumber> {
+    surgeist_css::numeric::CssNumeric::<surgeist_css::numeric::CssNumber>::try_from_component(
+        surgeist_css::component::CssComponentValue::try_number(representation).unwrap(),
     )
     .unwrap()
 }

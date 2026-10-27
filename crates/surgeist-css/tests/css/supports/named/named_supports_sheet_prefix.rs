@@ -3,10 +3,11 @@
 //! reopen imports after a namespace or imports/namespaces after a body rule.
 //! https://drafts.csswg.org/css-conditional-5/#supports-condition-rule
 
-use surgeist_css::{
-    CssErrorCode, CssNamespaceContext, CssNamespacePrefix, CssParser, CssRecoveryAction, CssRule,
-    CssSheet, CssValueOrigin,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::{CssNamespacePrefix, CssRule, CssSheet};
+use surgeist_css::selector::CssNamespaceContext;
 
 fn clean_rules(source: &str) -> Vec<CssRule> {
     let report = CssParser::default().parse_sheet(source);

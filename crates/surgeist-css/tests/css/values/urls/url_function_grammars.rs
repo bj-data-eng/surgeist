@@ -3,12 +3,17 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#urls
 
 use crate::css::support::value_assertions::assert_first_diagnostic;
-use surgeist_css::{
-    CssClipPath, CssContentValue, CssContentValueItem, CssCursor, CssCursorImageSource,
-    CssCursorKeyword, CssFilter, CssFilterFunction, CssFontFaceSource, CssFontFormatHint,
-    CssFontTechHint, CssImageValue, CssImportTarget, CssImportance, CssKnownProperty,
-    CssKnownPropertyValueRef, CssParser, CssRecoveryAction, CssRule, CssUrlModifier,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::CssRecoveryAction;
+use surgeist_css::property::{CssKnownProperty, CssKnownPropertyValueRef};
+use surgeist_css::rule::font_face::{CssFontFaceSource, CssFontFormatHint, CssFontTechHint};
+use surgeist_css::rule::{CssImportTarget, CssRule};
+use surgeist_css::values::common::CssUrlModifier;
+use surgeist_css::values::content::{CssContentValue, CssContentValueItem};
+use surgeist_css::values::effects::{CssClipPath, CssFilter, CssFilterFunction};
+use surgeist_css::values::image::CssImageValue;
+use surgeist_css::values::ui::{CssCursor, CssCursorImageSource, CssCursorKeyword};
 
 fn assert_url_payload(value: CssKnownPropertyValueRef<'_>, expected: &str) {
     match value {
@@ -141,7 +146,7 @@ fn quoted_url_controls_remain_clean_in_ordinary_import_and_font_paths() {
     assert_eq!(font.url().as_str(), "font.woff2");
     assert_eq!(
         font.format()
-            .and_then(surgeist_css::CssFontFormat::recognized_format),
+            .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
         Some(CssFontFormatHint::Woff2)
     );
 }
@@ -272,7 +277,7 @@ fn font_face_accepts_src_url_sources_with_ordered_hints() {
     assert_eq!(
         first
             .format()
-            .and_then(surgeist_css::CssFontFormat::recognized_format),
+            .and_then(surgeist_css::rule::font_face::CssFontFormat::recognized_format),
         Some(CssFontFormatHint::Woff2)
     );
     assert_eq!(second.url().as_str(), "second.woff2");
@@ -294,7 +299,7 @@ fn namespace_keeps_literal_uri_grammar_without_src_function() {
     assert_first_diagnostic(
         rejected.diagnostics(),
         "@namespace svg src(\"urn:svg\"); .after { color: red; }",
-        surgeist_css::CssErrorCode::InvalidAtRulePrelude,
+        surgeist_css::diagnostic::CssErrorCode::InvalidAtRulePrelude,
         "src(",
     );
     assert!(matches!(rejected.syntax().rules(), [CssRule::Style(_)]));

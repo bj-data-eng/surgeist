@@ -1,13 +1,19 @@
 use crate::css::support::color_property::color_property_value;
 use crate::css::support::math_depth::MathDepthBoundary;
 use surgeist_color::{ColorSpace, HueInterpolation, PredefinedColorSpace};
-use surgeist_css::{
-    CssColorComponent, CssColorHue, CssColorSyntax, CssKnownDeclaredValueRef, CssKnownProperty,
-    CssKnownPropertyValueRef, CssOpacityValue, CssParser, CssRelativeColorEnvironment,
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssColorComponent, CssColorHue, CssColorSyntax, CssRelativeColorEnvironment,
     CssRelativeColorFunction, CssSystemColor,
 };
+use surgeist_css::property::{
+    CssKnownDeclaredValueRef, CssKnownProperty, CssKnownPropertyValueRef,
+};
+use surgeist_css::values::effects::CssOpacityValue;
 
-fn color_value(source: &str) -> surgeist_css::CssPropertyValue<surgeist_css::CssColor> {
+fn color_value(
+    source: &str,
+) -> surgeist_css::property::CssPropertyValue<surgeist_css::color::CssColor> {
     let report = CssParser::default().parse_block_contents(source);
     assert!(report.is_clean(), "{source}: {:?}", report.diagnostics());
     color_property_value(&report.syntax()[0]).clone()
@@ -370,10 +376,11 @@ fn relative_color_channels_reject_foreign_names_dimensions_and_malformed_grammar
 
 #[test]
 fn relative_color_math_preserves_exact_values_without_float_range_evaluation() {
-    use surgeist_css::{
-        CssCalculationExpressionRef as Expr, CssCalculationProductOperator,
-        CssCalculationSumOperator, CssCalculationType, CssRelativeColorExpressionValue,
-        CssValueOrigin,
+    use surgeist_css::color::CssRelativeColorExpressionValue;
+    use surgeist_css::component::CssValueOrigin;
+    use surgeist_css::numeric::CssCalculationExpressionRef as Expr;
+    use surgeist_css::numeric::{
+        CssCalculationProductOperator, CssCalculationSumOperator, CssCalculationType,
     };
 
     for (math, expected, product) in [

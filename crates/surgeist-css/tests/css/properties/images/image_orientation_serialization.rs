@@ -6,7 +6,15 @@
 use crate::css::support::failure_classes::SerializationFailure as Kind;
 use crate::css::support::failure_classes::serialization_failure;
 use CssSerializationLimits as Limits;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::component::{CssComponentValues, CssValueOrigin};
+use surgeist_css::declaration::{CssDeclaration, CssImportance};
+use surgeist_css::numeric::{CssAngle, CssAngleUnit, CssNumeric, CssNumericLiteral};
+use surgeist_css::property::{
+    CssKnownProperty, CssKnownPropertyValueRef, CssPropertyNameRef, CssPropertyTarget,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::image::CssImageOrientation;
 
 fn angle(coefficient: &str, unit: CssAngleUnit) -> CssNumeric<CssAngle> {
     CssNumeric::<CssAngle>::try_from_literal(

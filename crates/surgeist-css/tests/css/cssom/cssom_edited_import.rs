@@ -7,11 +7,15 @@ use crate::css::support::failure_classes::SerializationFailure as Resource;
 use crate::css::support::serialization_limits::LimitFailure;
 use crate::css::support::{graph_cssom, graph_specified};
 use std::error::Error;
-use surgeist_css::{
-    CssGroupPreludeRef as Prelude, CssImportRule, CssImportRuleView as ImportView,
-    CssMediaQueryList, CssParser, CssRule, CssRuleGraphInput as Input, CssSerializationError,
-    CssSerializationLimits as Limits, CssValueOrigin,
-};
+use surgeist_css::CssParser;
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::CssImportRuleView as ImportView;
+use surgeist_css::rule::{CssImportRule, CssRule};
+use surgeist_css::serialization::CssGroupPreludeRef as Prelude;
+use surgeist_css::serialization::CssRuleGraphInput as Input;
+use surgeist_css::serialization::CssSerializationError;
+use surgeist_css::serialization::CssSerializationLimits as Limits;
 
 fn import(source: &str) -> CssImportRule {
     let report = CssParser::default().parse_sheet(source);

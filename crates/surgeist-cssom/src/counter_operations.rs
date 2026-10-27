@@ -1,7 +1,14 @@
 //! CounterStyle partial reads and checked literal descriptor transitions.
 use crate::parser_resources::check_resource_diagnostics;
 use crate::{declaration::*, declaration_budget::DeclarationBudget, *};
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::CssRecoveryDiagnostic;
+use surgeist_css::rule::counter_style::{
+    CssCounterStyleDefinitionStatus, CssCounterStyleDescriptorCollection,
+    CssCounterStyleDescriptorEntry, CssCounterStyleDescriptorKind, CssCounterStyleDescriptorValue,
+    CssCounterStyleName,
+};
+use surgeist_css::serialization::{CssSerializationLimits, serialize_css_identifier};
 
 impl CssomBlock {
     fn counter_entry_count(&self) -> Result<usize, CssomError> {

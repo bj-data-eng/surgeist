@@ -2,11 +2,15 @@
 //! Byte costs come from CSS's public storage authority, not a copied formula.
 
 use std::sync::Arc;
-use surgeist_css::{
-    CssDeclarationList, CssMediaQueryList, CssMediaRule as AuthoredMediaRule, CssNamespaceContext,
-    CssParseReport, CssParser, CssParserContext, CssRule as AuthoredRule, CssSheet,
-    CssUtf16InputLimits, CssValueOrigin,
-};
+use surgeist_css::component::CssValueOrigin;
+use surgeist_css::declaration::CssDeclarationList;
+use surgeist_css::query::media::CssMediaQueryList;
+use surgeist_css::rule::CssMediaRule as AuthoredMediaRule;
+use surgeist_css::rule::CssRule as AuthoredRule;
+use surgeist_css::rule::CssSheet;
+use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::source::CssUtf16InputLimits;
+use surgeist_css::{CssParseReport, CssParser, CssParserContext};
 use surgeist_cssom::*;
 
 fn parsed(original: Arc<Vec<u16>>) -> CssParseReport<CssSheet> {

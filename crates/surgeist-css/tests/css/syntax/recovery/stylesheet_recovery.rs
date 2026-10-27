@@ -1,13 +1,17 @@
-use surgeist_css::{CssErrorCode, CssParser, CssRecoveryAction, CssRule};
+use surgeist_css::CssParser;
+use surgeist_css::diagnostic::{CssErrorCode, CssRecoveryAction};
+use surgeist_css::rule::CssRule;
 
-fn style_rule_names(report: &surgeist_css::CssParseReport<surgeist_css::CssSheet>) -> Vec<&str> {
+fn style_rule_names(
+    report: &surgeist_css::CssParseReport<surgeist_css::rule::CssSheet>,
+) -> Vec<&str> {
     report
         .syntax()
         .rules()
         .iter()
         .filter_map(|rule| match rule {
             CssRule::Style(rule) => match rule.selectors().selectors()[0].selector() {
-                surgeist_css::CssSelector::Class(name) => Some(name.as_str()),
+                surgeist_css::selector::CssSelector::Class(name) => Some(name.as_str()),
                 _ => None,
             },
             _ => None,
@@ -17,7 +21,7 @@ fn style_rule_names(report: &surgeist_css::CssParseReport<surgeist_css::CssSheet
 
 fn assert_drop(
     source: &str,
-    diagnostic: &surgeist_css::CssRecoveryDiagnostic,
+    diagnostic: &surgeist_css::diagnostic::CssRecoveryDiagnostic,
     code: CssErrorCode,
     action: CssRecoveryAction,
     span: &str,
@@ -37,10 +41,10 @@ fn assert_drop(
 
 fn assert_root_token_drop(
     source: &str,
-    diagnostic: &surgeist_css::CssRecoveryDiagnostic,
+    diagnostic: &surgeist_css::diagnostic::CssRecoveryDiagnostic,
     start: usize,
     authored: &str,
-    kind: surgeist_css::CssTokenKind,
+    kind: surgeist_css::diagnostic::CssTokenKind,
 ) {
     assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);
     assert_eq!(diagnostic.action(), CssRecoveryAction::DropQualifiedRule);
@@ -65,7 +69,7 @@ fn assert_root_token_drop(
     assert_eq!(encountered.authored(), authored);
 }
 
-fn assert_charset_drop(source: &str, diagnostic: &surgeist_css::CssRecoveryDiagnostic) {
+fn assert_charset_drop(source: &str, diagnostic: &surgeist_css::diagnostic::CssRecoveryDiagnostic) {
     assert_drop(
         source,
         diagnostic,
@@ -89,7 +93,7 @@ fn assert_charset_drop(source: &str, diagnostic: &surgeist_css::CssRecoveryDiagn
 #[test]
 fn stylesheet_recovery_front_door_has_report_signature() {
     fn require_signature(
-        _: fn(&CssParser, &str) -> surgeist_css::CssParseReport<surgeist_css::CssSheet>,
+        _: fn(&CssParser, &str) -> surgeist_css::CssParseReport<surgeist_css::rule::CssSheet>,
     ) {
     }
 
@@ -139,7 +143,7 @@ fn stylesheet_recovery_root_semicolon_prefix_consumes_following_qualified_unit()
         &report.diagnostics()[0],
         0,
         ";",
-        surgeist_css::CssTokenKind::Semicolon,
+        surgeist_css::diagnostic::CssTokenKind::Semicolon,
     );
     assert_eq!(
         surgeist_css::CssParser::default()
@@ -163,7 +167,7 @@ fn stylesheet_recovery_root_semicolon_preserves_only_preceding_rule() {
         &report.diagnostics()[0],
         stray,
         ";",
-        surgeist_css::CssTokenKind::Semicolon,
+        surgeist_css::diagnostic::CssTokenKind::Semicolon,
     );
     assert_eq!(
         surgeist_css::CssParser::default()
@@ -186,7 +190,7 @@ fn stylesheet_recovery_unmatched_root_closing_brace_prefix_consumes_following_qu
         &report.diagnostics()[0],
         0,
         "}",
-        surgeist_css::CssTokenKind::CloseCurlyBracket,
+        surgeist_css::diagnostic::CssTokenKind::CloseCurlyBracket,
     );
     assert_eq!(
         surgeist_css::CssParser::default()
@@ -210,7 +214,7 @@ fn stylesheet_recovery_unmatched_root_closing_brace_preserves_only_preceding_rul
         &report.diagnostics()[0],
         stray,
         "}",
-        surgeist_css::CssTokenKind::CloseCurlyBracket,
+        surgeist_css::diagnostic::CssTokenKind::CloseCurlyBracket,
     );
     assert_eq!(
         surgeist_css::CssParser::default()
@@ -233,7 +237,7 @@ fn stylesheet_recovery_root_semicolon_keeps_following_charset_in_qualified_prelu
         &report.diagnostics()[0],
         0,
         ";",
-        surgeist_css::CssTokenKind::Semicolon,
+        surgeist_css::diagnostic::CssTokenKind::Semicolon,
     );
     assert_eq!(
         surgeist_css::CssParser::default()
@@ -256,7 +260,7 @@ fn stylesheet_recovery_unmatched_root_closing_brace_keeps_following_charset_in_q
         &report.diagnostics()[0],
         0,
         "}",
-        surgeist_css::CssTokenKind::CloseCurlyBracket,
+        surgeist_css::diagnostic::CssTokenKind::CloseCurlyBracket,
     );
     assert_eq!(
         surgeist_css::CssParser::default()

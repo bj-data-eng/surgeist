@@ -5,7 +5,15 @@
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
 use crate::css::support::property_admission::assert_checked_value_rejected;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssDeclaration;
+use surgeist_css::normalize::{CssNormalizationLimits, CssNormalizationResource};
+use surgeist_css::property::{
+    CssInitialValueRef, CssKnownProperty, CssKnownPropertyValueRef, CssLonghandValueRef,
+    CssPropertyKindRef,
+};
+use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::values::layout::{CssGridAutoFlow, CssGridAutoFlowAxis, CssGridAutoFlowMode};
 
 fn parsed(value: &str) -> CssDeclaration {
     let source = format!("grid-auto-flow: {value}");

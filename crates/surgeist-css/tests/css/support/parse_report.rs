@@ -1,6 +1,7 @@
 //! Assertions that a parse report is clean, shared by report-driven tests.
 
-use surgeist_css::{CssError, CssParseReport};
+use surgeist_css::CssParseReport;
+use surgeist_css::diagnostic::CssError;
 
 pub trait CssParseReportTestExt<T> {
     fn expect(self, message: &str) -> T;
@@ -59,7 +60,7 @@ pub fn assert_contents_refused<T: std::fmt::Debug>(
         diagnostic
             .error()
             .component_error()
-            .is_some_and(surgeist_css::CssComponentValueError::is_resource_limit),
+            .is_some_and(surgeist_css::component::CssComponentValueError::is_resource_limit),
         "{context}: {diagnostic:?}"
     );
     assert_eq!(

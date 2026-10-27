@@ -2,12 +2,13 @@ use crate::css::support::parse_report as common;
 
 use common::CssParseReportTestExt;
 
-use surgeist_css::{
-    CssDeclarationContextRef, CssErrorCode, CssImportance, CssParser, CssPropertyNameRef, CssRule,
-    CssTokenKind,
-};
+use surgeist_css::CssParser;
+use surgeist_css::declaration::CssImportance;
+use surgeist_css::diagnostic::{CssDeclarationContextRef, CssErrorCode, CssTokenKind};
+use surgeist_css::property::CssPropertyNameRef;
+use surgeist_css::rule::CssRule;
 
-fn style_declarations(source: &str) -> surgeist_css::CssDeclarationList {
+fn style_declarations(source: &str) -> surgeist_css::declaration::CssDeclarationList {
     let sheet = CssParser::default()
         .parse_sheet(source)
         .expect("stylesheet must parse");
@@ -117,7 +118,8 @@ fn declaration_importance_keyframes_use_distinct_unimportant_declarations() {
     let [CssRule::Keyframes(rule)] = sheet.rules() else {
         panic!("expected keyframes");
     };
-    let declarations: &surgeist_css::CssKeyframeDeclarationList = rule.blocks()[0].declarations();
+    let declarations: &surgeist_css::rule::keyframes::CssKeyframeDeclarationList =
+        rule.blocks()[0].declarations();
     assert_eq!(declarations.as_slice().len(), 1);
     assert_eq!(declarations.iter().count(), 1);
     assert!(!declarations.is_empty());
@@ -196,7 +198,7 @@ fn declaration_importance_font_face_occurrences_retain_positions_and_reject_anno
     );
     assert_eq!(
         descriptors
-            .effective(surgeist_css::CssFontFaceDescriptorKind::FontFamily)
+            .effective(surgeist_css::rule::font_face::CssFontFaceDescriptorKind::FontFamily)
             .unwrap()
             .position()
             .unwrap()
@@ -206,7 +208,7 @@ fn declaration_importance_font_face_occurrences_retain_positions_and_reject_anno
     );
     assert_eq!(
         descriptors
-            .effective(surgeist_css::CssFontFaceDescriptorKind::Src)
+            .effective(surgeist_css::rule::font_face::CssFontFaceDescriptorKind::Src)
             .unwrap()
             .position()
             .unwrap()
@@ -216,7 +218,7 @@ fn declaration_importance_font_face_occurrences_retain_positions_and_reject_anno
     );
     assert_eq!(
         descriptors
-            .effective(surgeist_css::CssFontFaceDescriptorKind::FontDisplay)
+            .effective(surgeist_css::rule::font_face::CssFontFaceDescriptorKind::FontDisplay)
             .expect("font-display")
             .position()
             .unwrap()

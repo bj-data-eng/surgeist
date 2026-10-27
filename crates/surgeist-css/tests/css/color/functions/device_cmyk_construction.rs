@@ -2,7 +2,22 @@
 //! Color 5 WD20260908 §6 owns grammar/ink identity; the shared structural
 //! ceiling counts every function, including numeric, color and image ancestors.
 use crate::css::support::declaration_color;
-use surgeist_css::*;
+use surgeist_css::CssParser;
+use surgeist_css::color::{
+    CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssAlphaColor, CssColor,
+    CssColorComponent, CssColorConstructionError, CssColorMix, CssColorMixComponent,
+    CssColorNumberLiteral, CssColorPercentageLiteral, CssColorSyntax, CssContrastColor,
+    CssDeviceCmykColor, CssLightDarkColor, CssNamedColor, CssRelativeColor,
+    CssRelativeColorEnvironment, CssRelativeColorExpression, CssRelativeColorFunction,
+    CssRelativeColorResultDomain,
+};
+use surgeist_css::component::{CssComponentValue, CssComponentValues, CssValueOrigin};
+use surgeist_css::conformance::{CssFeatureKind, CssSupportStatus, feature_metadata};
+use surgeist_css::numeric::{CssCalculation, CssCalculationType, CssNumber, CssPercentage};
+use surgeist_css::values::image::{
+    CssColorStopList, CssColorStopListItem, CssGradient, CssGradientColorStop, CssImageValue,
+    CssLightDarkImage, CssLinearGradient,
+};
 
 fn number(text: &str, programmatic: bool) -> CssColorComponent {
     let component = if programmatic {
