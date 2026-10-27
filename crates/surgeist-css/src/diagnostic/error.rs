@@ -1845,6 +1845,20 @@ pub(crate) fn unexpected_end_at<'i>(
     )
 }
 
+/// Whether `unit` holds a `<{-token>`. A `{` byte alone is not one: an escaped
+/// `\{` is part of an ident (Syntax 3 (2026 CRD) §4.3.7), and a string,
+/// comment or URL can hold the byte too.
+fn contains_curly_block(unit: &str) -> bool {
+    let mut offset = 0;
+    while let Some((_, end, token)) = crate::tokenization::next_source_token(unit, offset) {
+        if matches!(token, Token::CurlyBracketBlock) {
+            return true;
+        }
+        offset = end;
+    }
+    false
+}
+
 pub(crate) fn from_rule_parse_error(
     source: &str,
     failed_unit: &str,
@@ -1854,8 +1868,15 @@ pub(crate) fn from_rule_parse_error(
     let unit = failed_unit.trim_start();
     // The adopted conditional grammar owns its prelude and terminal component
     // failures. Only a valid prelude's basic missing-body failure is contextualized.
-    // Use decoded token identity so escaped at-keywords keep the same ownership.
-    if let Some((_, _, Token::AtKeyword(name))) = crate::tokenization::next_source_token(unit, 0)
+    // The decoded at-keyword is the unit's name, so escaped at-keywords keep the
+    // same ownership, and an escape such as `\{` belongs to the name (Syntax 3
+    // (2026 CRD) §4.3.7) where a text split would end it.
+    let first = crate::tokenization::next_source_token(unit, 0);
+    let at_keyword = match &first {
+        Some((_, _, Token::AtKeyword(name))) => Some(name.as_ref()),
+        _ => None,
+    };
+    if let Some(name) = at_keyword
         && (name.eq_ignore_ascii_case("when") || name.eq_ignore_ascii_case("else"))
     {
         if matches!(
@@ -1865,20 +1886,19 @@ pub(crate) fn from_rule_parse_error(
                 | ErrorKind::InvalidAtRuleBody(_)
         ) {
             error.kind = ErrorKind::InvalidAtRuleBody(CssAtRuleSyntaxError {
-                name: CssAtRuleName::new(name.as_ref()),
-                production: production_for_at_rule(&name),
+                name: CssAtRuleName::new(name),
+                production: production_for_at_rule(name),
                 expectation: CssGrammarExpectation::new("a block body for this at-rule"),
                 encountered: None,
             });
         }
         return error;
     }
-    if let Some(after_at) = unit.strip_prefix('@') {
-        let name_end = after_at
-            .find(|character: char| !character.is_alphanumeric() && character != '-')
-            .unwrap_or(after_at.len());
-        let name = &after_at[..name_end];
-        if unit.trim_end().ends_with(';') && at_rule_requires_block(name) {
+    if unit.starts_with('@') {
+        if let Some(name) = at_keyword
+            && unit.trim_end().ends_with(';')
+            && at_rule_requires_block(name)
+        {
             error.kind = ErrorKind::InvalidAtRuleBody(CssAtRuleSyntaxError {
                 name: CssAtRuleName::new(name),
                 production: production_for_at_rule(name),
@@ -1886,7 +1906,7 @@ pub(crate) fn from_rule_parse_error(
                 encountered: None,
             });
         }
-    } else if !unit.contains('{')
+    } else if !contains_curly_block(unit)
         && matches!(
             error.kind,
             ErrorKind::UnexpectedEnd(_) | ErrorKind::UnexpectedToken(_)

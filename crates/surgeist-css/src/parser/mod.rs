@@ -834,18 +834,40 @@ pub(crate) fn at_final_comma(input: &mut Parser<'_, '_>) -> bool {
     ends
 }
 
+/// Whether the token that ends at `position` is a `<{-token>`.
+///
+/// A `{` byte ends other tokens too: Syntax 3 (2026 CRD) §4.3.7 consumes an
+/// escaped `\{` into an ident. Only a token walk from a token boundary at or
+/// before the unit start tells them apart, because cssparser keeps its
+/// pending-block flag private.
+/// <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#consume-escaped-code-point>
+fn ends_with_curly_block_token(source: &str, unit_start: usize, position: usize) -> bool {
+    if position == 0 || source.as_bytes().get(position - 1) != Some(&b'{') {
+        return false;
+    }
+    let mut offset = unit_start;
+    while let Some((_, end, token)) = recovery::next_source_token(source, offset) {
+        if end >= position {
+            return end == position && matches!(token, Token::CurlyBracketBlock);
+        }
+        offset = end;
+    }
+    false
+}
+
+/// Consumes the block a failed unit left pending, so the unit and its
+/// recovery span cover it; `unit_start` is a token boundary at or before the
+/// unit. Returns whether a block was pending, and a resource error found in it.
 pub(crate) fn consume_failed_rule_block<'i, 't>(
     source: &'i str,
     input: &mut Parser<'i, 't>,
-    failed: bool,
+    unit_start: usize,
     recovery: &RecoveryState,
     enclosing_production: &'static str,
 ) -> (bool, Option<ParseError<'i, CssError>>) {
     let position = input.position().byte_index();
-    let failed_at_block = failed
-        && position > 0
-        && position < source.len()
-        && source.as_bytes().get(position - 1) == Some(&b'{');
+    let failed_at_block =
+        position < source.len() && ends_with_curly_block_token(source, unit_start, position);
     if failed_at_block {
         let nesting_error = recovery.check_failed_rule_block(source, input, enclosing_production);
         let _: std::result::Result<(), ParseError<'_, ()>> = input.parse_nested_block(|nested| {
