@@ -1261,3 +1261,93 @@ fn actual_registered_text_is_valid_physical_but_not_named_origin_authority_f32()
 fn actual_registered_text_is_valid_physical_but_not_named_origin_authority_f64() {
     actual_text_unknown::<f64>();
 }
+
+fn inline_block_default_last<S: l::LayoutScalar>() {
+    let mode = l::WritingMode::HorizontalTb;
+    let direction = l::Direction::Ltr;
+    let context = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic);
+    let mut host = Host::<S>::new(root(mode, direction, context));
+    assert_eq!(
+        host.push(
+            Some(0),
+            l::LayoutInputOf::box_input(atomic(mode, direction, 30.0, (0.0, 0.0)))
+        ),
+        1
+    );
+    let mut outer = atomic(mode, direction, 0.0, (0.0, 0.0));
+    outer.size.height = l::PreferredSizeOf::AUTO;
+    outer.inline_baseline_context = context;
+    assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(outer)), 2);
+    let mut first = atomic(mode, direction, 10.0, (0.0, 0.0));
+    first.size.width = px(10.0);
+    first.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
+        t::BidiLevel::try_new(0).unwrap(),
+        l::InlineBreakOpportunity::Mandatory,
+    ));
+    assert_eq!(host.push(Some(2), l::LayoutInputOf::box_input(first)), 3);
+    let mut last = atomic(mode, direction, 20.0, (0.0, 0.0));
+    last.size.width = px(10.0);
+    assert_eq!(host.push(Some(2), l::LayoutInputOf::box_input(last)), 4);
+    let batch = host.compute(mode, &[]).unwrap();
+
+    // Qualify actual distinct child facts before the outer default-selection
+    // assertion. Mandatory-after-box carries authentic NamedAlpha10/0; the
+    // second real20/0 line dominates it, producing extent30 and last30.
+    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        assert_eq!(node(entries, 2).size, l::Size::new(n(20.0), n(30.0)));
+        assert_eq!(node(entries, 3).location, l::Point::ZERO);
+        assert_eq!(node(entries, 3).size, l::Size::new(n(10.0), n(10.0)));
+        assert_eq!(node(entries, 4).location, l::Point::new(S::ZERO, n(10.0)));
+        assert_eq!(node(entries, 4).size, l::Size::new(n(10.0), n(20.0)));
+        let facts = node(entries, 2)
+            .named_baselines
+            .get(l::BaselineName::Alphabetic);
+        for (fact, expected) in [(facts.first(), 10.0), (facts.last(), 30.0)] {
+            match fact {
+                l::BaselineFactOf::Available(coordinate) => {
+                    assert_eq!(coordinate.axis(), l::PhysicalAxis::Vertical);
+                    assert_eq!(coordinate.offset(), n(expected));
+                }
+                other => panic!("actual two-line child must provide named facts, got {other:?}"),
+            }
+        }
+    }
+    // CSS Inline3 4.2.1 initial auto prefers the last baseline of an
+    // InlineBlock. Peer30 and actual wrapper-last30 share one30-unit line.
+    assert_eq!(
+        node(batch.unrounded_entries(), 0).size,
+        l::Size::new(n(100.0), n(30.0)),
+        "InlineBlock default must select its actual last named baseline"
+    );
+    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        assert_eq!(node(entries, 2).location, l::Point::new(n(20.0), S::ZERO));
+        assert_eq!(node(entries, 1).location, l::Point::ZERO);
+        assert_eq!(node(entries, 1).size, l::Size::new(n(20.0), n(30.0)));
+        assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(30.0)));
+        named(
+            node(entries, 0).named_baselines,
+            l::BaselineName::Alphabetic,
+            l::PhysicalAxis::Vertical,
+            30.0,
+        );
+        assert_eq!(entries.len(), 5);
+        for (id, source) in [(0, 0), (1, 0), (2, 1), (3, 0), (4, 1)] {
+            assert_eq!(node(entries, id).source_index, l::SourceIndex::new(source));
+        }
+        for id in [1, 3, 4] {
+            absent(node(entries, id).named_baselines);
+        }
+    }
+    assert!(batch.placed_text().is_empty());
+    assert!(batch.final_inline_fragments().is_empty());
+}
+
+#[test]
+fn inline_block_default_auto_uses_last_named_baseline_f32() {
+    inline_block_default_last::<f32>();
+}
+
+#[test]
+fn inline_block_default_auto_uses_last_named_baseline_f64() {
+    inline_block_default_last::<f64>();
+}
