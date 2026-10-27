@@ -176,6 +176,7 @@ fn lane<S: LayoutScalar>() {
             clear: Clear::None,
             block_start: S::ZERO,
             size: packet.output.size,
+            named_baselines: packet.output.named_baselines,
             content_size: packet.output.content_size,
             border: Edges::ZERO,
             padding: Edges::ZERO,

@@ -611,6 +611,7 @@ where
                 |length, basis| resolve_length_or_zero(length, basis),
             )
             .transpose_with_node(tree, child)?;
+        let named_demand = named_atomic_demand(&child_style, constants.inline_baseline_context);
         let mut child_request = ComputeInputOf::<S>::for_child(
             input.run_mode().for_child(),
             SizingMode::InherentSize,
@@ -623,7 +624,8 @@ where
                 AvailableOf::<S>::MAX_CONTENT,
             )),
         )
-        .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars());
+        .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
+        .with_named_baseline_demand(named_demand);
         let packet = if !child_style.float.is_none() && text_binding.is_some() {
             // Use the ordinary block owner's complete float child request. The
             // paragraph capture changes encounter scheduling, not child sizing.
@@ -676,7 +678,8 @@ where
             .with_block_indent_context(crate::text_indent::BlockIndentContext {
                 inherited: constants.text_indent,
                 first_formatted: indent_state.first_formatted() && constants.first_formatted,
-            });
+            })
+            .with_named_baseline_demand(named_demand);
             Some(tree.probe_float_child(child, child_request)?)
         } else {
             None
@@ -708,6 +711,7 @@ where
                 clear: child_style.clear,
                 block_start: cursor_block,
                 size: output.size,
+                named_baselines: output.named_baselines,
                 content_size: output.content_size,
                 border: child_border,
                 padding: child_padding,
@@ -1657,6 +1661,24 @@ struct AtomicInlineContext {
     baseline: crate::InlineBaselineContext,
 }
 
+fn named_atomic_demand<S: LayoutScalar>(
+    child: &BlockChildProjection<'_, S>,
+    context: crate::InlineBaselineContext,
+) -> crate::output::NamedBaselineDemand {
+    match context {
+        crate::InlineBaselineContext::Named(name)
+            if child.vertical_align == VerticalAlign::Baseline && child.float.is_none() =>
+        {
+            crate::output::NamedBaselineDemand::for_source(
+                name,
+                child.baseline_source,
+                child.display,
+            )
+        }
+        _ => crate::output::NamedBaselineDemand::None,
+    }
+}
+
 fn atomic_inline_box_participant<S: LayoutScalar, M>(
     source_index: usize,
     child_style: BlockChildProjection<'_, S>,
@@ -1698,18 +1720,9 @@ fn atomic_inline_box_participant<S: LayoutScalar, M>(
                 })
         })
         .flatten();
-    if let crate::InlineBaselineContext::Named(name) = context
-        && child_style.vertical_align == VerticalAlign::Baseline
+    if let Some((name, fact)) =
+        named_atomic_demand(&child_style, context).selected_fact(output.named_baselines)
     {
-        let pair = output.named_baselines.get(name);
-        let fact = if child_style
-            .baseline_source
-            .prefers_last(child_style.display)
-        {
-            pair.last()
-        } else {
-            pair.first()
-        };
         let synthesized = matches!(fact, crate::BaselineFactOf::Absent);
         let physical = match fact {
             crate::BaselineFactOf::Unknown => {

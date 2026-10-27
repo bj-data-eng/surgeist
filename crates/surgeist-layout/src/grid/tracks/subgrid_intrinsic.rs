@@ -278,7 +278,8 @@ where
         flow.physical_size(parent),
         args.input.containing_layout_context(),
         flow.physical_size(available),
-    ))
+    )
+    .with_named_baseline_demand(args.input.named_baseline_demand()))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -452,6 +453,7 @@ fn intrinsic_subgrid_child_input<S: LayoutScalar>(
         input.containing_layout_context(),
         available,
     )
+    .with_named_baseline_demand(input.named_baseline_demand())
 }
 
 fn intrinsic_subgrid_border_box_extent<S: LayoutScalar>(

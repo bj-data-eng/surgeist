@@ -2018,23 +2018,29 @@ fn packet_computed_alpha<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     child: u32,
 ) {
-    // Check every receipt actually published, without requiring a particular
-    // cache/probe strategy. The real root-producer control independently
-    // establishes Alpha10 even if a future valid optimization omits storage.
+    // Undemanded size queries may leave facts Unknown. Any actual Available
+    // fact still names this genuine10-high Alpha line; Absent would be false.
+    // Performed packet geometry and Alpha10 are asserted independently below.
     for row in batch
         .cache_store_entries()
         .iter()
         .filter(|row| row.node() == child)
     {
-        // Flex also owns intrinsic ContentSize requests that intentionally
-        // ignore authored inline20. Cache rows need not have the performed
-        // packet's20x10 border size; the actual10-high line still owns Alpha10.
-        named(
-            row.output().named_baselines,
-            l::BaselineName::Alphabetic,
-            l::PhysicalAxis::Vertical,
-            10.0,
-        );
+        let pair = row
+            .output()
+            .named_baselines
+            .get(l::BaselineName::Alphabetic);
+        for fact in [pair.first(), pair.last()] {
+            match fact {
+                l::BaselineFactOf::Unknown => {}
+                l::BaselineFactOf::Available(_) => {
+                    source_fact(fact, l::PhysicalAxis::Vertical, 10.0)
+                }
+                l::BaselineFactOf::Absent => {
+                    panic!("actual Alpha line is not absent; request={:?}", row.input())
+                }
+            }
+        }
     }
 }
 
@@ -2438,4 +2444,320 @@ fn captured_text_float_packet_retains_actual_child_named_baselines_f32() {
 #[test]
 fn captured_text_float_packet_retains_actual_child_named_baselines_f64() {
     packet_text_float::<f64>();
+}
+
+#[derive(Clone, Copy, Debug)]
+enum DemandContent {
+    ZeroForced,
+    Decorated,
+    UnsupportedGrid,
+}
+fn sizing_demand_host<S: l::LayoutScalar>(
+    context: l::InlineBaselineContext,
+    content: DemandContent,
+) -> Host<S> {
+    let mode = l::WritingMode::HorizontalTb;
+    let alpha = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic);
+    let mut outer = root(mode, l::Direction::Ltr, l::InlineBaselineContext::Physical);
+    outer.display = l::Display::Flex;
+    outer.align_items = Some(l::AlignItems::Start);
+    let mut host = Host::<S>::new(outer);
+    let mut line = source_block(l::BaselineName::Alphabetic, None);
+    line.inline_baseline_context = context;
+    line.size.width = px(40.0);
+    assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(line)), 1);
+    assert_eq!(
+        host.push(
+            Some(1),
+            l::LayoutInputOf::box_input(atomic(mode, l::Direction::Ltr, 20.0, (0.0, 0.0)))
+        ),
+        2
+    );
+    let mut wrapper = atomic(mode, l::Direction::Ltr, 20.0, (0.0, 0.0));
+    wrapper.inline_baseline_context = alpha;
+    assert_eq!(host.push(Some(1), l::LayoutInputOf::box_input(wrapper)), 3);
+    let metrics = l::InlineMetricsOf::try_new(alpha, S::ZERO, S::ZERO).unwrap();
+    match content {
+        DemandContent::ZeroForced => {
+            host.push(
+                Some(3),
+                l::LayoutInputOf::line_break(l::LineBreakInputOf::new().with_metrics(metrics)),
+            );
+        }
+        DemandContent::Decorated => {
+            // A real ordinary Block export separates the atomic consumer from
+            // this zero-height line, so demand must propagate through it.
+            assert_eq!(
+                host.push(
+                    Some(3),
+                    l::LayoutInputOf::box_input(source_block(
+                        l::BaselineName::Alphabetic,
+                        Some(0.0)
+                    ))
+                ),
+                4
+            );
+            host.push(
+                Some(4),
+                l::LayoutInputOf::inline_boundary(l::InlineBoundaryInputOf::new(
+                    l::InlineBoundaryKind::Start,
+                    metrics,
+                    l::InlineBoundaryEdgeOf::try_new(n(1.0), S::ZERO).unwrap(),
+                )),
+            );
+            host.push(
+                Some(4),
+                l::LayoutInputOf::inline_boundary(l::InlineBoundaryInputOf::new(
+                    l::InlineBoundaryKind::End,
+                    metrics,
+                    l::InlineBoundaryEdgeOf::ZERO,
+                )),
+            );
+        }
+        DemandContent::UnsupportedGrid => {
+            host.push(
+                Some(3),
+                l::LayoutInputOf::box_input(l::NodeInputOf {
+                    display: l::Display::Grid,
+                    size: l::Size::new(px(10.0), px(10.0)),
+                    ..l::NodeInputOf::default()
+                }),
+            );
+        }
+    }
+    host
+}
+fn sizing_demand_facts<S: l::LayoutScalar>(
+    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    named_context: bool,
+    content: DemandContent,
+) {
+    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        named(
+            node(entries, 3).named_baselines,
+            l::BaselineName::Alphabetic,
+            l::PhysicalAxis::Vertical,
+            0.0,
+        );
+        assert_eq!(node(entries, 3).size, l::Size::new(n(20.0), n(20.0)));
+        assert_eq!(node(entries, 4).location, l::Point::ZERO);
+        assert_eq!(
+            entries.len(),
+            if matches!(content, DemandContent::Decorated) {
+                7
+            } else {
+                5
+            }
+        );
+        for (id, source) in [(0, 0), (1, 0), (2, 0), (3, 1), (4, 0)] {
+            assert_eq!(node(entries, id).source_index, l::SourceIndex::new(source));
+        }
+        if matches!(content, DemandContent::Decorated) {
+            assert_eq!(node(entries, 4).size, l::Size::new(n(20.0), S::ZERO));
+            named(
+                node(entries, 4).named_baselines,
+                l::BaselineName::Alphabetic,
+                l::PhysicalAxis::Vertical,
+                0.0,
+            );
+            assert_eq!(node(entries, 5).source_index, l::SourceIndex::new(0));
+            assert_eq!(node(entries, 5).location, l::Point::ZERO);
+            assert_eq!(node(entries, 5).size, l::Size::new(n(1.0), S::ZERO));
+            assert_eq!(node(entries, 6).source_index, l::SourceIndex::new(1));
+            assert_eq!(node(entries, 6).location, l::Point::new(n(1.0), S::ZERO));
+            assert_eq!(node(entries, 6).size, l::Size::ZERO);
+        } else {
+            assert_eq!(node(entries, 4).size, l::Size::ZERO);
+        }
+        if named_context {
+            // Peer contributes before20/after0. Actual WAlpha0 in its20-high
+            // border contributes before0/after20: one40-high named line.
+            assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(40.0)));
+            assert_eq!(node(entries, 1).location, l::Point::ZERO);
+            assert_eq!(node(entries, 1).size, l::Size::new(n(40.0), n(40.0)));
+            assert_eq!(node(entries, 2).location, l::Point::ZERO);
+            assert_eq!(node(entries, 2).size, l::Size::new(n(20.0), n(20.0)));
+            assert_eq!(node(entries, 3).location, l::Point::new(n(20.0), n(20.0)));
+            named(
+                node(entries, 1).named_baselines,
+                l::BaselineName::Alphabetic,
+                l::PhysicalAxis::Vertical,
+                20.0,
+            );
+        }
+    }
+    // Knowledge is phase-local. Unknown is truthful for unobserved size-only
+    // fields; a genuine Available must retain Alpha0. Absent is never true here.
+    for row in batch.cache_store_entries().iter().filter(|row| {
+        row.node() == 3 || matches!(content, DemandContent::Decorated) && row.node() == 4
+    }) {
+        let pair = row
+            .output()
+            .named_baselines
+            .get(l::BaselineName::Alphabetic);
+        for fact in [pair.first(), pair.last()] {
+            match fact {
+                l::BaselineFactOf::Unknown => {}
+                l::BaselineFactOf::Available(_) => {
+                    source_fact(fact, l::PhysicalAxis::Vertical, 0.0)
+                }
+                l::BaselineFactOf::Absent => panic!(
+                    "real zero/decorated Alpha line is not absent; request={:?}",
+                    row.input()
+                ),
+            }
+        }
+    }
+    assert!(batch.placed_text().is_empty());
+    assert!(batch.final_inline_fragments().is_empty());
+}
+fn sizing_unknown_keys<S: l::LayoutScalar>(
+    host: &Host<S>,
+    batch: &l::CompletedLayoutBatchOf<u32, S>,
+) -> Vec<(l::ComputeInputOf<S>, l::CacheKeyContext)> {
+    batch
+        .cache_store_entries()
+        .iter()
+        .filter(|row| row.node() == 3)
+        .filter_map(|row| {
+            let output = host.published.caches[3].get_with_context(row.input(), row.context())?;
+            (output
+                .named_baselines
+                .get(l::BaselineName::Alphabetic)
+                .last()
+                == l::BaselineFactOf::Unknown)
+                .then_some((*row.input(), row.context()))
+        })
+        .fold(Vec::new(), |mut keys, key| {
+            if !keys.contains(&key) {
+                keys.push(key);
+            }
+            keys
+        })
+}
+fn sizing_demand_cache<S: l::LayoutScalar>() {
+    let mode = l::WritingMode::HorizontalTb;
+    let physical = l::InlineBaselineContext::Physical;
+    let alpha = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic);
+    for content in [DemandContent::ZeroForced, DemandContent::Decorated] {
+        for starts_named in [false, true] {
+            let first_context = if starts_named { alpha } else { physical };
+            let mut host = sizing_demand_host::<S>(first_context, content);
+            let first = host
+                .compute(mode, &[])
+                .unwrap_or_else(|error| panic!("{content:?} {first_context:?}: {error:?}"));
+            sizing_demand_facts(&first, starts_named, content);
+            let first_semantics = semantic(&first);
+            first.apply_to(&mut host).unwrap();
+            let warm = host.compute(mode, &[]).unwrap();
+            assert_eq!(semantic(&warm), first_semantics);
+            assert_eq!(warm.final_entries(), first.final_entries());
+            sizing_demand_facts(&warm, starts_named, content);
+            warm.apply_to(&mut host).unwrap();
+            let mut unknown_keys = if starts_named {
+                Vec::new()
+            } else {
+                sizing_unknown_keys(&host, &first)
+            };
+            for named_context in [!starts_named, starts_named] {
+                let context = if named_context { alpha } else { physical };
+                // Only this actual consumer's name changes. W and its real
+                // zero/decoration producer, declared size and source stay intact.
+                host.change(1, |input| input.inline_baseline_context = context);
+                let changed = host
+                    .compute(mode, &[1])
+                    .unwrap_or_else(|error| panic!("{content:?} {context:?}: {error:?}"));
+                sizing_demand_facts(&changed, named_context, content);
+                let fresh = sizing_demand_host::<S>(context, content)
+                    .compute(mode, &[])
+                    .unwrap();
+                assert_eq!(semantic(&changed), semantic(&fresh));
+                assert_eq!(changed.final_entries(), fresh.final_entries());
+                if named_context {
+                    // Actual semantic contrast diagnostics, not a forced count
+                    // or private-demand/run-mode Debug parser. Extra genuine
+                    // knowledge on an undemanded query is allowed.
+                    let mut available_keys = Vec::new();
+                    let mut current_unknown_keys = Vec::new();
+                    for row in changed
+                        .cache_store_entries()
+                        .iter()
+                        .filter(|row| row.node() == 3)
+                    {
+                        let key = (*row.input(), row.context());
+                        let pair = row
+                            .output()
+                            .named_baselines
+                            .get(l::BaselineName::Alphabetic);
+                        let keys = if matches!(pair.last(), l::BaselineFactOf::Available(_)) {
+                            &mut available_keys
+                        } else {
+                            &mut current_unknown_keys
+                        };
+                        if !keys.contains(&key) {
+                            keys.push(key);
+                        }
+                    }
+                    eprintln!(
+                        "named sizing contrast scalar={} profile={content:?} starts_named={starts_named} retained_undemanded_unknown_keys={} new_available_keys={} new_unknown_keys={}",
+                        std::any::type_name::<S>(),
+                        unknown_keys.len(),
+                        available_keys.len(),
+                        current_unknown_keys.len()
+                    );
+                    // Only actual Available receipts are relevant here;
+                    // unrelated additional undemanded Unknown rows are allowed.
+                    for key in &available_keys {
+                        assert!(
+                            !unknown_keys.contains(key),
+                            "named-demand receipt must not alias an actually warmed size-only Unknown key"
+                        );
+                    }
+                }
+                let changed_semantics = semantic(&changed);
+                changed.apply_to(&mut host).unwrap();
+                let repeated = host.compute(mode, &[]).unwrap();
+                assert_eq!(semantic(&repeated), changed_semantics);
+                assert_eq!(repeated.final_entries(), changed.final_entries());
+                sizing_demand_facts(&repeated, named_context, content);
+                repeated.apply_to(&mut host).unwrap();
+                if !named_context {
+                    unknown_keys = sizing_unknown_keys(&host, &changed);
+                }
+                assert_eq!(semantic(&first), first_semantics);
+                assert_eq!(semantic(&changed), changed_semantics);
+            }
+        }
+    }
+    // A genuine unsupported descendant stays Unknown at the actual consumer;
+    // warming an undemanded operation must not turn it into known absence.
+    let mut unsupported = sizing_demand_host::<S>(physical, DemandContent::UnsupportedGrid);
+    let accepted = unsupported.compute(mode, &[]).unwrap();
+    for entries in [accepted.unrounded_entries(), accepted.final_entries()] {
+        let pair = node(entries, 3)
+            .named_baselines
+            .get(l::BaselineName::Alphabetic);
+        assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
+        assert_eq!(pair.last(), l::BaselineFactOf::Unknown);
+    }
+    let accepted_semantics = semantic(&accepted);
+    accepted.apply_to(&mut unsupported).unwrap();
+    let counts = (unsupported.prepares.get(), unsupported.commits);
+    unsupported.change(1, |input| input.inline_baseline_context = alpha);
+    missing(unsupported.compute(mode, &[1]));
+    missing(sizing_demand_host::<S>(alpha, DemandContent::UnsupportedGrid).compute(mode, &[]));
+    assert_eq!((unsupported.prepares.get(), unsupported.commits), counts);
+    assert_eq!(
+        semantic(unsupported.published.batch.as_ref().unwrap()),
+        accepted_semantics
+    );
+    assert_eq!(semantic(&accepted), accepted_semantics);
+}
+#[test]
+fn real_named_sizing_consumer_separates_warm_undemanded_cache_f32() {
+    sizing_demand_cache::<f32>();
+}
+#[test]
+fn real_named_sizing_consumer_separates_warm_undemanded_cache_f64() {
+    sizing_demand_cache::<f64>();
 }

@@ -9,7 +9,9 @@ use super::sizing::{
 };
 use super::*;
 
-pub(super) fn normal_flow_children_can_establish_baseline<'input, Tree, M>(
+/// Raw baseline or float work needed even by an otherwise definite size query.
+/// This does not establish named absence or discharge a named-fact demand.
+pub(super) fn normal_flow_children_need_physical_sizing_work<'input, Tree, M>(
     tree: &Tree,
     children: &[<Tree as Traverse>::Node],
 ) -> bool
@@ -30,14 +32,11 @@ where
                 return input.metrics().line_extent() > Tree::Scalar::ZERO;
             }
         };
-        if style.display == crate::Display::None
-            || style.common.position == Position::Absolute
-            || style.float != Float::None
-        {
+        if style.display == crate::Display::None || style.common.position == Position::Absolute {
             return false;
         }
-
-        style.display.is_inline_level()
+        !style.float.is_none()
+            || style.display.is_inline_level()
             || style.display.inner_display() == crate::Display::Block
             || tree.child_count(child) > 0 && style.display.inner_display() == crate::Display::Flex
     })
@@ -549,7 +548,12 @@ where
             )),
         )
         .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
-        .with_block_indent_context(child_indent_context);
+        .with_block_indent_context(child_indent_context)
+        .with_named_baseline_demand(if child_style.float.is_none() {
+            input.named_baseline_demand().for_following(named_baselines)
+        } else {
+            crate::output::NamedBaselineDemand::None
+        });
         let avoids_float_exclusions = block_child_avoids_float_exclusions(&child_style);
         let inherits_float_exclusions = (input.run_mode().is_perform_layout()
             || sizes_float_context)
@@ -739,7 +743,8 @@ where
                     band_available,
                 )
                 .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
-                .with_block_indent_context(child_indent_context);
+                .with_block_indent_context(child_indent_context)
+                .with_named_baseline_demand(child_input.named_baseline_demand());
             }
 
             output = tree.compute_child(child, child_input)?;
@@ -769,6 +774,7 @@ where
                 clear: child_style.clear,
                 block_start: cursor_block,
                 size: output.size,
+                named_baselines: output.named_baselines,
                 content_size: output.content_size,
                 border: child_border,
                 padding: child_padding,

@@ -100,6 +100,69 @@ pub(crate) enum RequestedAxis {
     Both,
 }
 
+/// One actual consumer's resolved source set, independent of child context.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NamedBaselineSet {
+    First,
+    Last,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NamedBaselineDemand {
+    None,
+    Fact {
+        name: crate::BaselineName,
+        set: NamedBaselineSet,
+    },
+}
+
+impl NamedBaselineDemand {
+    pub(crate) fn for_source(
+        name: crate::BaselineName,
+        source: crate::BaselineSource,
+        display: crate::Display,
+    ) -> Self {
+        Self::Fact {
+            name,
+            set: if source.prefers_last(display) {
+                NamedBaselineSet::Last
+            } else {
+                NamedBaselineSet::First
+            },
+        }
+    }
+
+    pub(crate) fn selected_fact<S: LayoutScalar>(
+        self,
+        facts: NamedBaselinesOf<S>,
+    ) -> Option<(crate::BaselineName, BaselineFactOf<S>)> {
+        match self {
+            Self::None => None,
+            Self::Fact { name, set } => {
+                let pair = facts.get(name);
+                Some((
+                    name,
+                    match set {
+                        NamedBaselineSet::First => pair.first(),
+                        NamedBaselineSet::Last => pair.last(),
+                    },
+                ))
+            }
+        }
+    }
+
+    /// The first non-absent contributor is already the exporting owner's barrier.
+    pub(crate) fn for_following<S: LayoutScalar>(self, facts: NamedBaselinesOf<S>) -> Self {
+        match self {
+            Self::Fact {
+                name,
+                set: NamedBaselineSet::First,
+            } if !matches!(facts.get(name).first(), BaselineFactOf::Absent) => Self::None,
+            other => other,
+        }
+    }
+}
+
 /// Direct and recursive compute state.
 ///
 /// Direct leaf callers construct this state with `leaf_layout` or
@@ -113,6 +176,7 @@ pub struct ComputeInputOf<S: LayoutScalar = DefaultScalar> {
     parent: Size<Option<S>>,
     containing_layout_context: ContainingLayoutContext,
     available: Size<AvailableOf<S>>,
+    named_baseline_demand: NamedBaselineDemand,
     block_indent_context: Option<crate::text_indent::BlockIndentContext<S>>,
     // Settlement owned by the node being computed.
     settled_auto_scrollbars: SettledAutoScrollbarState,
@@ -141,6 +205,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             parent: validate_optional_size(parent)?,
             containing_layout_context,
             available: validate_root_available_size(available)?,
+            named_baseline_demand: NamedBaselineDemand::None,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
@@ -165,6 +230,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             parent: validate_optional_size(parent)?,
             containing_layout_context,
             available: validate_root_available_size(available)?,
+            named_baseline_demand: NamedBaselineDemand::None,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
@@ -235,6 +301,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             parent,
             containing_layout_context,
             available,
+            named_baseline_demand: NamedBaselineDemand::None,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
@@ -267,6 +334,15 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
         &self,
     ) -> Option<crate::text_indent::BlockIndentContext<S>> {
         self.block_indent_context
+    }
+
+    pub(crate) const fn named_baseline_demand(&self) -> NamedBaselineDemand {
+        self.named_baseline_demand
+    }
+
+    pub(crate) const fn with_named_baseline_demand(mut self, demand: NamedBaselineDemand) -> Self {
+        self.named_baseline_demand = demand;
+        self
     }
 
     pub(crate) const fn with_block_indent_context(

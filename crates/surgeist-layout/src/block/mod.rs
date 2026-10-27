@@ -9,7 +9,7 @@ use super::inline::{
 use super::value::{ResolvedLengthAutoOf, UnresolvedLengthReason};
 use super::{
     AvailableOf, BaselinesOf, BoxSizing, Clear, CollapsibleMarginOf, Compute, ComputeInputOf,
-    ComputeOutputOf, ComputedOverflow, ContainingLayoutContext, Direction, Edges, Float,
+    ComputeOutputOf, ComputedOverflow, ContainingLayoutContext, Direction, Edges,
     InlineBoundaryInputOf, InlineFragmentOutputOf, LayoutErrorKindOf, LayoutErrorOf,
     LayoutErrorSiteOf, LayoutInvalidInputOf, LayoutOperation, LayoutResultOf, LayoutScalar,
     LengthAutoOf, LineBreakInputOf, NodeOutputOf, Overflow, ParentFormattingContext,
@@ -55,7 +55,7 @@ use sizing::{
 #[cfg(test)]
 pub(crate) use in_flow::resolve_logical_in_flow_margin;
 use in_flow::{
-    InFlowPassContext, layout_in_flow_children, normal_flow_children_can_establish_baseline,
+    InFlowPassContext, layout_in_flow_children, normal_flow_children_need_physical_sizing_work,
 };
 
 #[cfg(test)]
@@ -219,11 +219,12 @@ where
         && inherited.is_none()
         && !semantic_work
         && !observe_formatted
+        && input.named_baseline_demand() == crate::output::NamedBaselineDemand::None
         && let Size {
             width: Some(width),
             height: Some(height),
         } = constants.node_outer_size
-        && !normal_flow_children_can_establish_baseline(tree, &children)
+        && !normal_flow_children_need_physical_sizing_work(tree, &children)
     {
         return Ok(BlockResult {
             output: ComputeOutputOf::<S>::from_outer_size(Size::new(width, height))
@@ -232,13 +233,12 @@ where
                     &style,
                     &constants,
                     Size::new(width, height),
-                    crate::NamedBaselinesOf::absent(),
+                    crate::NamedBaselinesOf::unknown(),
                 )?),
             used: input,
             floats: None,
         });
     }
-
     let logical_inner_size = constants.logical_node_inner_size();
     let sizes_float_context = float_context::sizes_float_context(
         float_role,

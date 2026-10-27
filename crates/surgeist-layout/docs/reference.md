@@ -138,6 +138,15 @@ font-design measurements require a real placed-origin adapter before they can
 satisfy a named box request. A horizontal design-zero coordinate cannot stand
 in for a possibly nonzero font-defined alphabetic baseline. Physical Text
 composition remains available through its existing contract.
+A Flex/Grid container can remain named-Unknown while its child's independently
+qualified facts remain available in that child's packet. Positioning and floating
+likewise preserve child-owned facts. Published cache outputs retain the same
+distinction between Unknown and Absent, including size-only computations.
+A sizing query may leave unneeded named facts Unknown even when a performed
+layout derives them. An actual named alignment consumer requests its needed
+name and first/last set before child computation; that demand is part of cache
+identity. It does not change the child's own alignment context or grant an
+unsupported producer named authority.
 After a Top/Bottom atomic forces a break, a real named receiver can refuse its
 unqualified carried strut even when that box has usable named facts.
 [Receiver-time atomic qualification](https://github.com/bj-data-eng/surgeist/issues/1490)

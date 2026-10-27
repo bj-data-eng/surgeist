@@ -20,6 +20,8 @@ pub(super) struct PendingFloat<Node, S: LayoutScalar> {
     pub(super) clear: Clear,
     pub(super) block_start: S,
     pub(super) size: Size<S>,
+    /// Actual child-local facts for publication, independent of placement.
+    pub(super) named_baselines: crate::NamedBaselinesOf<S>,
     pub(super) content_size: Size<S>,
     pub(super) border: Edges<S>,
     pub(super) padding: Edges<S>,
@@ -1184,6 +1186,7 @@ where
                 source_index: crate::SourceIndex::new(float.source_index),
                 location,
                 size: float.size,
+                named_baselines: float.named_baselines,
                 content_size: float.content_size,
                 border: float.border,
                 padding: float.padding,
