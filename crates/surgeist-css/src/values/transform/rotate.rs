@@ -120,8 +120,8 @@ impl CssRotateValues {
 }
 
 use crate::component::{CssComponentValueRef, CssValueTokenRef};
+use crate::numeric::CssNumericLiteral;
 use crate::numeric::projection::DeferredNumericProjection;
-use crate::numeric::{CssAngleUnit, CssNumericLiteral};
 use crate::serialization::CssSerializationError;
 use crate::serialization::exact_decimal::LexicalDecimal;
 use crate::serialization::specified_rule_serialization::SpecifiedRuleWriter;
@@ -385,24 +385,6 @@ impl<'a> PreparedAngle<'a> {
             .map(Self::Calculation)
         }
     }
-    fn is_identity(&self) -> bool {
-        match self {
-            Self::Zero => true,
-            Self::Literal(literal) => {
-                let decimal = LexicalDecimal::new(literal.numeric().representation());
-                match literal.unit() {
-                    CssAngleUnit::Degrees => decimal.is_angle_full_turn(360),
-                    CssAngleUnit::Gradians => decimal.is_angle_full_turn(400),
-                    CssAngleUnit::Turns => decimal.is_angle_full_turn(1),
-                    CssAngleUnit::Radians => decimal.is_zero(),
-                }
-            }
-            Self::Calculation(value) => value
-                .outcome()
-                .scalar_value
-                .is_some_and(|value| value.is_finite() && value % 360.0 == 0.0),
-        }
-    }
     fn append(self, writer: &mut SpecifiedRuleWriter, negate: bool) -> SerializationResult<()> {
         match self {
             Self::Zero => writer.append("0"),
@@ -439,9 +421,11 @@ impl<'a> PreparedAngle<'a> {
 
 impl crate::values::transform::CssTransformRotate3d {
     /// The rotation owner prepares all operands once and emits mandatory function
-    /// arguments. Parallel reduction shares the individual rotation's policy;
-    /// this function alone retains its identity replacement. General vectors
-    /// retain the documented six-place capability guard.
+    /// arguments. Axis reduction shares the individual rotation's policy: a zero
+    /// axis and a full-turn angle keep their authored form: Transforms 1 §4.1
+    /// serializes a function as its individual grammar, and Transforms 2 §12.2
+    /// only makes an unnormalizable direction vector not apply the rotation.
+    /// General vectors retain the documented six-place capability guard.
     pub(crate) fn append_rotation_arguments_to_rule_writer(
         &self,
         writer: &mut SpecifiedRuleWriter,
@@ -452,14 +436,7 @@ impl crate::values::transform::CssTransformRotate3d {
             PreparedNumber::new(self.z(), &mut writer.context)?,
         ]);
         let angle = PreparedAngle::from_transform_angle(self.angle(), &mut writer.context)?;
-        let axis = axis.reduce();
-        if matches!(axis, PreparedAxis::Zero(_)) || angle.is_identity() {
-            // Three replacement axis components and one identity angle.
-            writer.context.charge_projection(4)?;
-            return writer.append("0, 0, 1, 0deg");
-        }
-        match axis {
-            PreparedAxis::Zero(_) => unreachable!("identity emitted above"),
+        match axis.reduce() {
             PreparedAxis::Parallel { keyword, negate } => {
                 writer.context.charge_projection(3)?;
                 writer.append(match keyword {
@@ -469,7 +446,7 @@ impl crate::values::transform::CssTransformRotate3d {
                 })?;
                 angle.append(writer, negate)
             }
-            PreparedAxis::Vector(vector) => {
+            PreparedAxis::Zero(vector) | PreparedAxis::Vector(vector) => {
                 for number in vector {
                     number.append(writer)?;
                     writer.append(", ")?;
@@ -484,6 +461,7 @@ impl crate::values::transform::CssTransformRotate3d {
 mod serialization_tests {
     use super::*;
     use crate::component::{CssComponentValue, CssComponentValues};
+    use crate::numeric::CssAngleUnit;
     use crate::serialization::specified_rule_serialization::SpecifiedProvider as _;
     type Limits = crate::serialization::CssSerializationLimits;
     type Kind = CssSpecifiedValueSerializationErrorKind;

@@ -534,7 +534,7 @@ mod tests {
             value.append_to_rule_writer(writer)
         });
         let value = transform("rotate3d(0, 0, 0, 30deg)");
-        shared("rotate3d(0, 0, 1, 0deg)", 6, 10, |writer| {
+        shared("rotate3d(0, 0, 0, 30deg)", 6, 6, |writer| {
             value.append_to_rule_writer(writer)
         });
         let value = transform("rotate3d(-2, 0, 0, 30deg)");
