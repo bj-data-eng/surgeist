@@ -221,6 +221,130 @@ impl Binary64Projection {
     }
 }
 
+/// An authored coefficient together with the unit it was authored in. Its
+/// canonical binary64 value is `unit.apply(coefficient)`.
+///
+/// Arithmetic on coefficients that share a unit, or whose units have an exact
+/// rational ratio, is carried out on the coefficients themselves and projected
+/// to the canonical unit once. The correctly rounded canonical values of
+/// different multiples of one unit are not exact multiples of each other, so
+/// arithmetic after projection can turn `rem(10mm, 1mm)` into a nonzero
+/// remainder (#1433).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct SourceValue {
+    pub(crate) coefficient: f64,
+    pub(crate) unit: Binary64Projection,
+}
+
+impl SourceValue {
+    /// The coefficient's canonical binary64 value.
+    pub(crate) fn canonical(self) -> f64 {
+        self.unit.apply(self.coefficient)
+    }
+
+    pub(crate) fn negated(self) -> Self {
+        Self {
+            coefficient: -self.coefficient,
+            unit: self.unit,
+        }
+    }
+
+    /// Replaces the coefficient while keeping the unit.
+    pub(crate) fn with_coefficient(self, coefficient: f64) -> Self {
+        Self {
+            coefficient,
+            unit: self.unit,
+        }
+    }
+}
+
+/// Expresses every value in one common unit, when that is exact.
+///
+/// Values 4 fixes each unit as a rational multiple `n/d` of its canonical unit
+/// (`1pt` is 4/3 px, `1mm` is 480/127 px). The common unit is the coarsest one
+/// of which every operand unit is a whole multiple: `gcd(n)/lcm(d)` canonical
+/// units. Each coefficient scales by its integer multiplier, so `px` and `pt`
+/// combine in thirds of a pixel with multipliers 3 and 4, and `cm` and `mm`
+/// combine in `mm` with multipliers 10 and 1. Operands that already share a
+/// unit are returned unchanged.
+///
+/// Returns the common unit with each coefficient in it. Returns `None` when a
+/// unit has no exact ratio (radians), the dimensions differ, a multiplier or
+/// the unit itself exceeds the exact-integer range of binary64, or a scaled
+/// coefficient is not exactly representable or leaves binary64. Callers then
+/// keep arithmetic on canonical values.
+pub(crate) fn common_unit(values: &[SourceValue]) -> Option<(Binary64Projection, Vec<f64>)> {
+    let first = values.first()?.unit;
+    if values.iter().all(|value| value.unit == first) {
+        return Some((
+            first,
+            values.iter().map(|value| value.coefficient).collect(),
+        ));
+    }
+    const EXACT: u128 = 1 << 53;
+    let mut factors = Vec::with_capacity(values.len());
+    for value in values {
+        let UnitRatio::Exact(factor) = value.unit.ratio else {
+            return None;
+        };
+        if value.unit.canonical != first.canonical {
+            return None;
+        }
+        factors.push((u128::from(factor.numerator), u128::from(factor.denominator)));
+    }
+    let numerator = factors.iter().fold(0, |acc, &(n, _)| gcd(acc, n));
+    let mut denominator = 1u128;
+    for &(_, d) in &factors {
+        denominator = denominator.checked_mul(d / gcd(denominator, d))?;
+        if denominator >= EXACT {
+            return None;
+        }
+    }
+    if numerator == 0 || numerator >= EXACT {
+        return None;
+    }
+    let mut converted = Vec::with_capacity(values.len());
+    for (value, &(n, d)) in values.iter().zip(&factors) {
+        // One of this unit is (n/d) / (numerator/denominator) common units,
+        // a whole number because numerator divides n and d divides denominator.
+        let multiplier = (n / numerator) * (denominator / d);
+        if multiplier >= EXACT {
+            return None;
+        }
+        converted.push(scale_exactly(value.coefficient, multiplier as f64)?);
+    }
+    let unit = Binary64Projection {
+        canonical: first.canonical,
+        ratio: UnitRatio::Exact(ExactFactor {
+            numerator: u64::try_from(numerator).ok()?,
+            denominator: u64::try_from(denominator).ok()?,
+        }),
+    };
+    Some((unit, converted))
+}
+
+/// `coefficient * multiplier`, when that product is exactly representable.
+/// The fused multiply-add of the rounded product's negation is the product's
+/// rounding error, which is zero exactly when the product is exact.
+fn scale_exactly(coefficient: f64, multiplier: f64) -> Option<f64> {
+    if multiplier == 1.0 {
+        return coefficient.is_finite().then_some(coefficient);
+    }
+    let product = coefficient * multiplier;
+    // Error terms below the smallest subnormal would vanish, so refuse values
+    // too small for the check to be conclusive.
+    let conclusive = product == 0.0 || product.abs() >= 1e-270;
+    (product.is_finite() && conclusive && coefficient.mul_add(multiplier, -product) == 0.0)
+        .then_some(product)
+}
+
+const fn gcd(mut a: u128, mut b: u128) -> u128 {
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    a
+}
+
 /// The binary64 projection of an intrinsically convertible unit.
 pub(crate) fn binary64_projection(unit: CssNumericUnit) -> Option<Binary64Projection> {
     let canonical = canonical_suffix(unit.dimension())?;
@@ -342,5 +466,105 @@ mod tests {
             decimal_shift(CssNumericUnit::Length(CssLengthUnit::Cm)),
             None
         );
+    }
+
+    fn source(coefficient: f64, unit: CssNumericUnit) -> SourceValue {
+        SourceValue {
+            coefficient,
+            unit: binary64_projection(unit).expect("intrinsic unit"),
+        }
+    }
+    fn length(coefficient: f64, unit: CssLengthUnit) -> SourceValue {
+        source(coefficient, CssNumericUnit::Length(unit))
+    }
+
+    #[test]
+    fn common_unit_of_one_shared_unit_is_that_unit_unchanged() {
+        let values = [
+            length(0.1, CssLengthUnit::Mm),
+            length(7.0, CssLengthUnit::Mm),
+        ];
+        let (unit, coefficients) = common_unit(&values).unwrap();
+        assert_eq!(unit, values[0].unit);
+        assert_eq!(coefficients, [0.1, 7.0]);
+        assert_eq!(common_unit(&[]), None);
+    }
+
+    #[test]
+    fn common_unit_scales_by_integer_multipliers_of_the_gcd_over_lcm_unit() {
+        use CssLengthUnit::*;
+        // 1pt = 4/3px: thirds of a pixel, multipliers 3 (px) and 4 (pt).
+        let (unit, coefficients) = common_unit(&[length(5.0, Px), length(2.0, Pt)]).unwrap();
+        assert_eq!(
+            unit.ratio,
+            UnitRatio::Exact(ExactFactor {
+                numerator: 1,
+                denominator: 3
+            })
+        );
+        assert_eq!(coefficients, [15.0, 8.0]);
+        // 1cm = 10mm: the finer unit itself, so mm equals the registry's mm.
+        let (unit, coefficients) = common_unit(&[length(2.0, Cm), length(3.0, Mm)]).unwrap();
+        assert_eq!(unit, length(1.0, Mm).unit);
+        assert_eq!(coefficients, [20.0, 3.0]);
+        // px (1) and cm (4800/127) share 1/127px.
+        let (unit, coefficients) = common_unit(&[length(1.0, Px), length(1.0, Cm)]).unwrap();
+        assert_eq!(
+            unit.ratio,
+            UnitRatio::Exact(ExactFactor {
+                numerator: 1,
+                denominator: 127
+            })
+        );
+        assert_eq!(coefficients, [127.0, 4800.0]);
+        // Three units: gcd(1, 16, 4) over lcm(1, 1, 3).
+        let (unit, coefficients) =
+            common_unit(&[length(1.0, Px), length(1.0, Pc), length(1.0, Pt)]).unwrap();
+        assert_eq!(
+            unit.ratio,
+            UnitRatio::Exact(ExactFactor {
+                numerator: 1,
+                denominator: 3
+            })
+        );
+        assert_eq!(coefficients, [3.0, 48.0, 4.0]);
+        // Time and resolution use the same exact ratios.
+        let (_, coefficients) = common_unit(&[
+            source(1.0, CssNumericUnit::Time(CssTimeUnit::Seconds)),
+            source(2.0, CssNumericUnit::Time(CssTimeUnit::Milliseconds)),
+        ])
+        .unwrap();
+        assert_eq!(coefficients, [1000.0, 2.0]);
+    }
+
+    #[test]
+    fn common_unit_is_unavailable_without_an_exact_conversion() {
+        use CssLengthUnit::*;
+        // Radians convert only to themselves.
+        let radian = source(1.0, CssNumericUnit::Angle(CssAngleUnit::Radians));
+        let degree = source(1.0, CssNumericUnit::Angle(CssAngleUnit::Degrees));
+        assert_eq!(common_unit(&[radian, degree]), None);
+        assert!(common_unit(&[radian, radian]).is_some());
+        // Different dimensions never combine.
+        let time = source(1.0, CssNumericUnit::Time(CssTimeUnit::Seconds));
+        assert_eq!(common_unit(&[length(1.0, Px), time]), None);
+        // 0.1 * 3 is not exactly representable, so no exact scaling exists.
+        assert_eq!(common_unit(&[length(0.1, Px), length(1.0, Pt)]), None);
+        // A scaled coefficient beyond binary64.
+        assert_eq!(common_unit(&[length(1e308, Px), length(1.0, Pt)]), None);
+        // A subnormal-scale coefficient cannot be checked conclusively.
+        assert_eq!(common_unit(&[length(1e-310, Px), length(1.0, Pt)]), None);
+        // Zero scales exactly.
+        let (_, coefficients) = common_unit(&[length(0.0, Px), length(1.0, Pt)]).unwrap();
+        assert_eq!(coefficients, [0.0, 4.0]);
+    }
+
+    #[test]
+    fn scaling_is_exact_only_when_the_product_needs_no_rounding() {
+        assert_eq!(scale_exactly(2.5, 4.0), Some(10.0));
+        assert_eq!(scale_exactly(0.1, 1.0), Some(0.1));
+        assert_eq!(scale_exactly(0.1, 3.0), None);
+        assert_eq!(scale_exactly((1u64 << 52) as f64 + 1.0, 3.0), None);
+        assert_eq!(scale_exactly(f64::MAX, 2.0), None);
     }
 }

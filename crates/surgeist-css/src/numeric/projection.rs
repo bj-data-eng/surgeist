@@ -1,6 +1,7 @@
 //! Bounded specified-value projection; the authored graph is never rewritten.
 
 use super::CssMathFunction as Function;
+use super::units::SourceValue;
 use super::{CssNumericDimension, CssNumericType, CssRoundingStrategy};
 use crate::component::{CssComponentValueRef, CssValueTokenRef};
 use crate::numeric::expression::{CssCalculationExpression, NodeKind};
@@ -167,6 +168,11 @@ struct Node {
     // dimension need not have a standalone CSS scalar spelling to participate
     // in a surrounding product or inverse. None means external context remains.
     resolved_magnitude: Option<f64>,
+    // A scalar whose canonical value is exactly `exact.canonical()` and whose
+    // authored coefficient and unit are still known (#1433). Only specified
+    // output projection records it, and only for finite values it can project
+    // without the shared range rule intervening.
+    exact: Option<SourceValue>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -239,8 +245,161 @@ impl Projection<'_> {
             kind,
             ty,
             resolved_magnitude,
+            exact: None,
         });
         Ok(id)
+    }
+    /// Records the source coefficient of a scalar node just created from it.
+    /// Refused unless the scalar is exactly that coefficient's canonical value.
+    fn set_exact(&mut self, id: Id, exact: Option<SourceValue>) -> Id {
+        if self.mode == ProjectionMode::SpecifiedOutput
+            && let Some(exact) = exact
+            && exact.coefficient.is_finite()
+            && exact.canonical().is_finite()
+            && let Some(scalar) = self.scalar(id)
+            && scalar.value.to_bits() == exact.canonical().to_bits()
+        {
+            self.arena[id].exact = Some(exact);
+        }
+        id
+    }
+    fn exact(&self, id: Id) -> Option<SourceValue> {
+        self.scalar(id)?;
+        self.arena[id].exact
+    }
+    /// Adds two exact terms in their authored units. Unavailable when either
+    /// term lacks a source, when the canonical sum would overflow (the shared
+    /// range rule then owns the result), or when the units have no exact ratio.
+    fn exact_sum(
+        accumulated: Option<SourceValue>,
+        term: Option<SourceValue>,
+        canonical_accumulated: f64,
+        canonical_term: f64,
+    ) -> Option<SourceValue> {
+        let (accumulated, term) = (accumulated?, term?);
+        if !(canonical_accumulated + canonical_term).is_finite() {
+            return None;
+        }
+        let (unit, coefficients) = super::units::common_unit(&[accumulated, term])?;
+        let sum = SourceValue {
+            coefficient: coefficients[0] + coefficients[1],
+            unit,
+        };
+        (sum.coefficient.is_finite() && sum.canonical().is_finite()).then_some(sum)
+    }
+    /// Evaluates a product of exact factors left to right on authored
+    /// coefficients: scalar Number factors multiply, and dividing one exact
+    /// dimension by another of the same dimension gives a Number. Returns the
+    /// canonical value and, for a dimension, its source. Unavailable unless at
+    /// least one factor is exact and every step stays finite.
+    fn exact_product(&self, factors: &[Id]) -> Option<(f64, Option<SourceValue>)> {
+        enum Accumulator {
+            Empty,
+            Number(f64),
+            Dimension(SourceValue),
+        }
+        let mut accumulator = Accumulator::Empty;
+        let mut exact_factor = false;
+        for &factor in factors {
+            let (id, divide) = match self.arena[factor].kind {
+                Kind::Invert(id) => (id, true),
+                _ => (factor, false),
+            };
+            let scalar = self.scalar(id)?;
+            let number = scalar.unit == Unit::Number && !divide;
+            accumulator = match (accumulator, number, self.exact(id), divide) {
+                (Accumulator::Empty, true, _, _) => Accumulator::Number(scalar.value),
+                (Accumulator::Number(left), true, _, _) => Accumulator::Number(left * scalar.value),
+                (Accumulator::Dimension(left), true, _, _) => {
+                    Accumulator::Dimension(left.with_coefficient(left.coefficient * scalar.value))
+                }
+                (Accumulator::Empty, false, Some(source), false) => {
+                    exact_factor = true;
+                    Accumulator::Dimension(source)
+                }
+                (Accumulator::Number(left), false, Some(source), false) => {
+                    exact_factor = true;
+                    Accumulator::Dimension(source.with_coefficient(left * source.coefficient))
+                }
+                (Accumulator::Dimension(left), false, Some(divisor), true) => {
+                    exact_factor = true;
+                    let (_, coefficients) = super::units::common_unit(&[left, divisor])?;
+                    let (dividend, divisor) = (coefficients[0], coefficients[1]);
+                    if divisor == 0.0 {
+                        return None;
+                    }
+                    Accumulator::Number(dividend / divisor)
+                }
+                _ => return None,
+            };
+            // Every intermediate must itself be a supported value, so the
+            // shared range rule never has to convert one.
+            let supported = match accumulator {
+                Accumulator::Empty => true,
+                Accumulator::Number(value) => value.is_finite(),
+                Accumulator::Dimension(source) => {
+                    source.coefficient.is_finite() && source.canonical().is_finite()
+                }
+            };
+            if !supported {
+                return None;
+            }
+        }
+        if !exact_factor {
+            return None;
+        }
+        match accumulator {
+            Accumulator::Empty => None,
+            Accumulator::Number(value) => value.is_finite().then_some((value, None)),
+            Accumulator::Dimension(source) => {
+                let value = source.canonical();
+                (source.coefficient.is_finite() && value.is_finite())
+                    .then_some((value, Some(source)))
+            }
+        }
+    }
+    /// Evaluates a unit-homogeneous function on authored coefficients, after
+    /// converting every operand exactly to a common unit. Unavailable when an
+    /// operand lacks a source, a conversion is inexact, or any value leaves
+    /// binary64, so that the canonical evaluation keeps NaN, infinity and the
+    /// shared range rule.
+    fn exact_function(
+        &self,
+        function: Function,
+        args: &[Option<Id>],
+        strategy: Option<CssRoundingStrategy>,
+    ) -> Option<(f64, SourceValue)> {
+        if !matches!(
+            function,
+            Function::Mod
+                | Function::Rem
+                | Function::Round
+                | Function::Abs
+                | Function::Min
+                | Function::Max
+                | Function::Clamp
+        ) {
+            return None;
+        }
+        let mut sources = Vec::with_capacity(args.len());
+        for id in args.iter().flatten() {
+            sources.push(self.exact(*id)?);
+        }
+        let (unit, coefficients) = super::units::common_unit(&sources)?;
+        let mut coefficients = coefficients.into_iter();
+        let converted: Vec<Option<Scalar>> = args
+            .iter()
+            .map(|id| {
+                id.map(|id| Scalar {
+                    value: coefficients.next().expect("one coefficient per argument"),
+                    unit: self.scalar(id).expect("exact scalar argument").unit.clone(),
+                })
+            })
+            .collect();
+        let coefficient = math::evaluate(function, &converted, strategy);
+        let source = SourceValue { coefficient, unit };
+        (coefficient.is_finite() && source.canonical().is_finite())
+            .then(|| (source.canonical(), source))
     }
     // An exceptional numeric subset poisons the operation even when another
     // term still requires external context. No contextual magnitude is guessed.
@@ -326,7 +485,9 @@ impl Projection<'_> {
     }
     fn negate(&mut self, id: Id) -> Result<Id> {
         if let Some(scalar) = self.scalar(id).cloned() {
-            return self.value(-scalar.value, scalar.unit, self.arena[id].ty);
+            let exact = self.exact(id).map(SourceValue::negated);
+            let negated = self.value(-scalar.value, scalar.unit, self.arena[id].ty)?;
+            return Ok(self.set_exact(negated, exact));
         }
         if let Kind::Negate(child) = self.arena[id].kind {
             return Ok(child);
@@ -386,7 +547,9 @@ impl Projection<'_> {
         let mut pending = ids;
         pending.reverse();
         let mut other = Vec::new();
-        let mut scalars: BTreeMap<Unit, (f64, usize)> = BTreeMap::new();
+        // Each same-dimension set also keeps its sum in the authored units
+        // while every term still has an exact source (#1433).
+        let mut scalars: BTreeMap<Unit, (f64, usize, Option<SourceValue>)> = BTreeMap::new();
         let mut position = 0;
         // Visit flattened children in source order, including binary64 sums.
         while let Some(id) = pending.pop() {
@@ -398,24 +561,33 @@ impl Projection<'_> {
                 };
                 pending.extend(children.into_iter().rev());
             } else if let Some(scalar) = self.scalar(id) {
+                let exact = self.exact(id);
                 scalars
                     .entry(scalar.unit.clone())
-                    .and_modify(|(value, _)| *value = self.step(*value, scalar.value, false, ty))
-                    .or_insert((scalar.value, position));
+                    .and_modify(|(value, _, source)| {
+                        let previous = *value;
+                        *value = self.step(previous, scalar.value, false, ty);
+                        *source = Self::exact_sum(*source, exact, previous, scalar.value);
+                        if let Some(source) = source {
+                            *value = source.canonical();
+                        }
+                    })
+                    .or_insert((scalar.value, position, exact));
                 position += 1;
             } else {
                 other.push((position, id));
                 position += 1;
             }
         }
-        if ty.simple() && scalars.values().any(|(value, _)| value.is_nan()) {
+        if ty.simple() && scalars.values().any(|(value, _, _)| value.is_nan()) {
             return self.value(f64::NAN, self.unit_for_type(ty), ty);
         }
         let mut combined = Vec::new();
-        for (unit, (value, position)) in scalars {
+        for (unit, (value, position, exact)) in scalars {
             // Each same-unit set creates one replacement after source-order
             // accumulation; every step already applied the range rule.
-            combined.push((position, self.value(value, unit, ty)?));
+            let id = self.value(value, unit, ty)?;
+            combined.push((position, self.set_exact(id, exact)));
         }
         combined.extend(other);
         if self.mode == ProjectionMode::KeyframeMatching {
@@ -527,7 +699,20 @@ impl Projection<'_> {
             None
         };
         if let Some((value, result_type)) = resolved {
-            return self.value(value, self.unit_for_type(result_type), result_type);
+            // Exact factors multiply and divide as authored coefficients, so
+            // `3cm / 3cm` is exactly one rather than a binary64 reciprocal
+            // product of two canonical values (#1433).
+            let exact = if self.mode == ProjectionMode::SpecifiedOutput {
+                self.exact_product(&other)
+            } else {
+                None
+            };
+            let id = self.value(
+                exact.map_or(value, |(value, _)| value),
+                self.unit_for_type(result_type),
+                result_type,
+            )?;
+            return Ok(self.set_exact(id, exact.and_then(|(_, source)| source)));
         }
         if let Some((_, coefficient, _, position)) = number
             && other.len() == 2
@@ -608,7 +793,17 @@ impl Projection<'_> {
                         .flatten()
                         .all(|&id| self.magnitude_comparable(id))
             {
-                let output = math::evaluate(function, &values, strategy);
+                // Unit-homogeneous functions of exact operands evaluate on the
+                // authored coefficients (#1433); any other result is canonical.
+                let exact = if resolved && self.mode == ProjectionMode::SpecifiedOutput {
+                    self.exact_function(function, &args, strategy)
+                } else {
+                    None
+                };
+                let output = exact.map_or_else(
+                    || math::evaluate(function, &values, strategy),
+                    |(output, _)| output,
+                );
                 let output = self.closest(
                     output,
                     values.iter().flatten().all(|value| value.value.is_finite())
@@ -626,7 +821,8 @@ impl Projection<'_> {
                         .unit
                         .clone()
                 };
-                return self.value(output, unit, ty);
+                let id = self.value(output, unit, ty)?;
+                return Ok(self.set_exact(id, exact.map(|(_, source)| source)));
             }
         }
         if self.mode == ProjectionMode::KeyframeMatching
@@ -1178,6 +1374,13 @@ fn prepare_specified_scaled_with_mode<'a>(
                             projection_scale.map_or(coefficient, |scale| scale.apply(coefficient))
                         };
                         let id = projection.value(value, unit, node.ty)?;
+                        // The authored coefficient stays available to exact
+                        // same-dimension arithmetic (#1433).
+                        let exact = projection_scale.map(|unit| SourceValue {
+                            coefficient: lexical_value(number.representation()),
+                            unit,
+                        });
+                        let id = projection.set_exact(id, exact);
                         results.push(id);
                         continue;
                     }
@@ -2858,5 +3061,224 @@ mod scaled_capture_tests {
         assert!(outcome.context_dependent);
         assert_eq!(outcome.scalar_value, None);
         assert_eq!(value, before);
+    }
+}
+
+#[cfg(test)]
+mod exact_arithmetic_tests {
+    use super::*;
+    use crate::numeric::{
+        CssAngle, CssAngleUnit, CssCalculation, CssLength, CssLengthUnit, CssNumber, CssNumericUnit,
+    };
+
+    fn projection(context: &mut SpecifiedSerializationContext) -> Projection<'_> {
+        Projection {
+            mode: ProjectionMode::SpecifiedOutput,
+            arena: Vec::new(),
+            context,
+        }
+    }
+
+    fn length_type() -> CssNumericType {
+        CssNumericType::dimension(CssNumericDimension::Length)
+    }
+
+    /// A length leaf as specified projection creates it from `coefficient unit`.
+    fn length(p: &mut Projection<'_>, coefficient: f64, unit: CssLengthUnit) -> Id {
+        let scale = crate::numeric::units::binary64_projection(CssNumericUnit::Length(unit))
+            .expect("absolute unit");
+        let id = p
+            .value(
+                scale.apply(coefficient),
+                Unit::Canonical("px"),
+                length_type(),
+            )
+            .unwrap();
+        p.set_exact(
+            id,
+            Some(SourceValue {
+                coefficient,
+                unit: scale,
+            }),
+        )
+    }
+
+    fn number(p: &mut Projection<'_>, value: f64) -> Id {
+        p.value(value, Unit::Number, CssNumericType::NUMBER)
+            .unwrap()
+    }
+
+    fn inverse(p: &mut Projection<'_>, id: Id) -> Id {
+        // A dimension's inverse keeps the child scalar, as the walk creates it.
+        p.add(Kind::Invert(id), CssNumericType::NUMBER).unwrap()
+    }
+
+    fn source(id: Id, p: &Projection<'_>) -> SourceValue {
+        p.exact(id).expect("exact source")
+    }
+
+    #[test]
+    fn exact_sum_adds_authored_coefficients_in_the_common_unit() {
+        let mut context = SpecifiedSerializationContext::new(Limits::default());
+        let mut p = projection(&mut context);
+        let px = length(&mut p, 1.0, CssLengthUnit::Px);
+        let pt = length(&mut p, 3.0, CssLengthUnit::Pt);
+        let (px, pt) = (source(px, &p), source(pt, &p));
+        // 1px + 3pt = 5px, as 3 + 12 thirds of a pixel.
+        let sum = Projection::exact_sum(Some(px), Some(pt), px.canonical(), pt.canonical())
+            .expect("exact sum");
+        assert_eq!(sum.coefficient, 15.0);
+        assert_eq!(sum.canonical(), 5.0);
+        // Same-unit coefficients add without scaling.
+        let mm = source(length(&mut p, 0.5, CssLengthUnit::Mm), &p);
+        let sum = Projection::exact_sum(Some(mm), Some(mm), mm.canonical(), mm.canonical())
+            .expect("same-unit sum");
+        assert_eq!((sum.coefficient, sum.unit), (1.0, mm.unit));
+    }
+
+    #[test]
+    fn exact_sum_is_unavailable_without_both_sources_or_when_a_value_leaves_binary64() {
+        let mut context = SpecifiedSerializationContext::new(Limits::default());
+        let mut p = projection(&mut context);
+        let px = source(length(&mut p, 1.0, CssLengthUnit::Px), &p);
+        assert_eq!(Projection::exact_sum(Some(px), None, 1.0, 1.0), None);
+        assert_eq!(Projection::exact_sum(None, Some(px), 1.0, 1.0), None);
+        // The canonical sum overflows, so the shared range rule owns the result.
+        let huge = source(length(&mut p, 1e308, CssLengthUnit::Px), &p);
+        assert_eq!(
+            Projection::exact_sum(Some(huge), Some(huge), huge.canonical(), huge.canonical()),
+            None
+        );
+        // A coefficient overflows although the canonical sum would not.
+        let unit =
+            crate::numeric::units::binary64_projection(CssNumericUnit::Length(CssLengthUnit::Q))
+                .unwrap();
+        let q = SourceValue {
+            coefficient: 1.7e308,
+            unit,
+        };
+        assert!(q.canonical().is_finite());
+        assert_eq!(
+            Projection::exact_sum(Some(q), Some(q), q.canonical(), q.canonical()),
+            None
+        );
+        // Radians convert only to themselves.
+        let radian = crate::numeric::units::binary64_projection(CssNumericUnit::Angle(
+            CssAngleUnit::Radians,
+        ))
+        .unwrap();
+        let degree = crate::numeric::units::binary64_projection(CssNumericUnit::Angle(
+            CssAngleUnit::Degrees,
+        ))
+        .unwrap();
+        let (rad, deg) = (
+            SourceValue {
+                coefficient: 1.0,
+                unit: radian,
+            },
+            SourceValue {
+                coefficient: 1.0,
+                unit: degree,
+            },
+        );
+        assert_eq!(Projection::exact_sum(Some(rad), Some(deg), 1.0, 1.0), None);
+        assert!(Projection::exact_sum(Some(rad), Some(rad), 1.0, 1.0).is_some());
+    }
+
+    #[test]
+    fn exact_product_divides_one_dimension_by_another_of_the_same_dimension() {
+        let mut context = SpecifiedSerializationContext::new(Limits::default());
+        let mut p = projection(&mut context);
+        let cm = length(&mut p, 3.0, CssLengthUnit::Cm);
+        let mm = length(&mut p, 30.0, CssLengthUnit::Mm);
+        let divisor = inverse(&mut p, mm);
+        assert_eq!(p.exact_product(&[cm, divisor]), Some((1.0, None)));
+        // A Number factor scales the coefficient and keeps the source.
+        let two = number(&mut p, 2.0);
+        let (value, exact) = p.exact_product(&[two, cm]).expect("scaled dimension");
+        assert_eq!(exact.map(|exact| exact.coefficient), Some(6.0));
+        assert_eq!(value, exact.unwrap().canonical());
+        // A dimension divided by a dimension, then scaled by a dimension again.
+        let px = length(&mut p, 1.0, CssLengthUnit::Px);
+        let (value, exact) = p
+            .exact_product(&[cm, divisor, px])
+            .expect("restored dimension");
+        assert_eq!(
+            (value, exact.map(|exact| exact.coefficient)),
+            (1.0, Some(1.0))
+        );
+    }
+
+    #[test]
+    fn exact_product_falls_back_for_division_by_zero_context_overflow_and_compounds() {
+        let mut context = SpecifiedSerializationContext::new(Limits::default());
+        let mut p = projection(&mut context);
+        let mm = length(&mut p, 1.0, CssLengthUnit::Mm);
+        let zero = length(&mut p, 0.0, CssLengthUnit::Mm);
+        let by_zero = inverse(&mut p, zero);
+        assert_eq!(p.exact_product(&[mm, by_zero]), None);
+        // Only Number factors: no exact operand, so the canonical path runs.
+        let (two, three) = (number(&mut p, 2.0), number(&mut p, 3.0));
+        assert_eq!(p.exact_product(&[two, three]), None);
+        // A context-dependent unit has no source.
+        let em = p
+            .value(1.0, Unit::Context("em".into()), length_type())
+            .unwrap();
+        assert_eq!(p.exact_product(&[em, two]), None);
+        // Two dimensions multiply to a compound dimension.
+        let px = length(&mut p, 1.0, CssLengthUnit::Px);
+        assert_eq!(p.exact_product(&[mm, px]), None);
+        // An intermediate coefficient overflows.
+        let huge = length(&mut p, 1e308, CssLengthUnit::Px);
+        let ten = number(&mut p, 10.0);
+        assert_eq!(p.exact_product(&[huge, ten]), None);
+        // The coefficient is finite but its canonical value is not.
+        let large = length(&mut p, 1e306, CssLengthUnit::In);
+        let hundred = number(&mut p, 100.0);
+        assert!(source(large, &p).canonical().is_finite());
+        assert_eq!(p.exact_product(&[large, hundred]), None);
+    }
+
+    #[test]
+    fn keyframe_matching_never_records_a_source() {
+        let mut context = SpecifiedSerializationContext::new(Limits::default());
+        let mut p = projection(&mut context);
+        p.mode = ProjectionMode::KeyframeMatching;
+        let id = length(&mut p, 1.0, CssLengthUnit::Mm);
+        assert_eq!(p.exact(id), None);
+    }
+
+    fn calc_number(source: &str) -> String {
+        let components = crate::component::values::parse_component_values(source).unwrap();
+        let value =
+            CssCalculation::<CssNumber>::try_from_components(components, Default::default())
+                .unwrap();
+        project_specified(&value.expression, Limits::default()).unwrap()
+    }
+    fn calc_length(source: &str) -> String {
+        let components = crate::component::values::parse_component_values(source).unwrap();
+        let value =
+            CssCalculation::<CssLength>::try_from_components(components, Default::default())
+                .unwrap();
+        project_specified(&value.expression, Limits::default()).unwrap()
+    }
+    fn calc_angle(source: &str) -> String {
+        let components = crate::component::values::parse_component_values(source).unwrap();
+        let value = CssCalculation::<CssAngle>::try_from_components(components, Default::default())
+            .unwrap();
+        project_specified(&value.expression, Limits::default()).unwrap()
+    }
+
+    #[test]
+    fn unavailable_exactness_keeps_binary64_arithmetic_on_canonical_values() {
+        // Radians have no rational ratio: 1rad is 57.29577951308232deg.
+        assert_eq!(calc_angle("calc(rem(1rad, 1deg))"), "calc(0.29578deg)");
+        // A context-dependent unit stays symbolic.
+        assert_eq!(calc_length("calc(rem(10em, 3em))"), "rem(10em, 3em)");
+        // Division and remainder by zero keep their defined outcomes.
+        assert_eq!(calc_number("calc(1mm / 0mm)"), "calc(infinity)");
+        assert_eq!(calc_length("calc(rem(1mm, 0mm))"), "calc(NaN * 1px)");
+        // Inexactly scalable coefficients (0.1 * 3 is not exact) use canonical values.
+        assert_eq!(calc_length("calc(rem(0.1px, 1pt))"), "calc(0.1px)");
     }
 }

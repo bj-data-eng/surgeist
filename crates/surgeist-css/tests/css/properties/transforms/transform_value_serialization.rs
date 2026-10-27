@@ -310,7 +310,17 @@ fn transform_origin_reuses_physical_axes_and_retains_optional_z_and_provenance()
 }
 
 #[test]
-fn rotate3d_reuses_directed_parallel_and_identity_policy_with_derived_costs() {
+fn rotate3d_reuses_directed_parallel_policy_and_keeps_authored_zero_axes_and_full_turns() {
+    // Transforms 1 §4.1 (CR 2019-02-14) governs function serialization: each
+    // function as its individual grammar, omitting components only "when
+    // possible without changing the meaning". All rotate3d() arguments are
+    // mandatory, and Transforms 2 (pinned WD 2021-11-09) §12.2 says a direction
+    // vector that cannot be normalized "will cause the rotation to not be
+    // applied": the authored function is kept and only its effect is null. No
+    // clause of either module or the CSSOM serialization rules folds a function
+    // to another form, so a zero axis and a full-turn angle serialize as
+    // authored, as the `rotate` property does (#1298). Canonical spelling means
+    // comma separators and the angle's authored unit.
     for (source, expected, input, projection) in [
         ("rotate3d(2, 0, 0, 30deg)", "rotate3d(1, 0, 0, 30deg)", 6, 9),
         (
@@ -331,26 +341,45 @@ fn rotate3d_reuses_directed_parallel_and_identity_policy_with_derived_costs() {
             6,
             9,
         ),
-        ("rotate3d(0, 0, 0, 30deg)", "rotate3d(0, 0, 1, 0deg)", 6, 10),
+        // An unnormalizable all-zero axis stays authored, with any angle.
+        ("rotate3d(0, 0, 0, 30deg)", "rotate3d(0, 0, 0, 30deg)", 6, 6),
+        ("rotate3d(0, 0, 0, 0deg)", "rotate3d(0, 0, 0, 0deg)", 6, 6),
+        ("rotate3d(0, -0, 0, 0)", "rotate3d(0, 0, 0, 0)", 6, 6),
+        // Full turns keep their authored unit and sign.
         (
             "rotate3d(1, 2, 3, 360deg)",
-            "rotate3d(0, 0, 1, 0deg)",
+            "rotate3d(1, 2, 3, 360deg)",
             6,
-            10,
+            6,
         ),
         (
             "rotate3d(1, 2, 3, 400grad)",
-            "rotate3d(0, 0, 1, 0deg)",
+            "rotate3d(1, 2, 3, 400grad)",
+            6,
+            6,
+        ),
+        (
+            "rotate3d(1, 2, 3, -1turn)",
+            "rotate3d(1, 2, 3, -1turn)",
+            6,
+            6,
+        ),
+        ("rotate3d(1, 2, 3, 0)", "rotate3d(1, 2, 3, 0)", 6, 6),
+        ("rotate3d(1, 2, 3, 0deg)", "rotate3d(1, 2, 3, 0deg)", 6, 6),
+        // Directed parallel reduction still inverts the angle of a negative
+        // vector and keeps the full turn.
+        (
+            "rotate3d(-2, 0, 0, 720deg)",
+            "rotate3d(1, 0, 0, -720deg)",
             6,
             10,
         ),
         (
-            "rotate3d(1, 2, 3, -1turn)",
-            "rotate3d(0, 0, 1, 0deg)",
+            "rotate3d(0, 0, 3, 400grad)",
+            "rotate3d(0, 0, 1, 400grad)",
             6,
-            10,
+            9,
         ),
-        ("rotate3d(1, 2, 3, 0)", "rotate3d(0, 0, 1, 0deg)", 6, 10),
     ] {
         let value = parsed!(&format!("transform:{source}"), Transform);
         let before = value.clone();
@@ -400,7 +429,7 @@ fn rotate3d_general_vectors_approximate_survivors_and_fail_on_component_loss_ato
 }
 
 #[test]
-fn rotate3d_calculations_share_projection_and_identity_bypasses_discarded_axis_formatting() {
+fn rotate3d_calculations_share_projection_and_keep_calculated_full_turns() {
     check!(
         parsed!(
             "transform:rotate3d(calc(1 + 1), 0, 0, calc(15deg + 15deg))",
@@ -410,20 +439,63 @@ fn rotate3d_calculations_share_projection_and_identity_bypasses_discarded_axis_f
         13,
         "rotate3d(1, 0, 0, calc(30deg))"
     );
+    // A calculated full turn keeps the calculation wrapper and its projected
+    // degrees (Values 4 calc serialization), as `rotate: calc(720deg)` does.
     check!(
         parsed!(
             "transform:rotate3d(1, 2, 3, calc(180deg + 180deg))",
             Transform
         ),
         9,
-        12,
-        "rotate3d(0, 0, 1, 0deg)"
+        8,
+        "rotate3d(1, 2, 3, calc(360deg))"
     );
     check!(
-        parsed!("transform:rotate3d(.00000001, 1, 0, 0deg)", Transform),
-        6,
-        10,
-        "rotate3d(0, 0, 1, 0deg)"
+        parsed!(
+            "transform:rotate3d(0, 0, 0, calc(180deg + 180deg))",
+            Transform
+        ),
+        9,
+        8,
+        "rotate3d(0, 0, 0, calc(360deg))"
+    );
+    check!(
+        parsed!(
+            "transform:rotate3d(1, 2, 3, calc(1turn + 360deg))",
+            Transform
+        ),
+        9,
+        8,
+        "rotate3d(1, 2, 3, calc(720deg))"
+    );
+}
+
+#[test]
+fn rotate3d_zero_angle_no_longer_hides_an_unrepresentable_axis_component() {
+    // With the angle kept as authored there is no replacement to bypass the
+    // axis: a proved nonzero component that rounds to zero is the same
+    // representability failure the `rotate` property reports.
+    let value = parsed!("transform:rotate3d(.00000001, 1, 0, 0deg)", Transform);
+    let before = value.clone();
+    assert!(
+        value
+            .serialize_specified(Default::default())
+            .unwrap_err()
+            .is_unrepresentable_value()
+    );
+    assert_eq!(value, before);
+    let property = declaration("rotate:.00000001 1 0 0deg");
+    let CssKnownPropertyValueRef::Rotate(property) =
+        property.known().unwrap().property_value().unwrap()
+    else {
+        panic!("expected rotate property")
+    };
+    assert!(
+        property
+            .value()
+            .serialize_specified(Default::default())
+            .unwrap_err()
+            .is_unrepresentable_value()
     );
 }
 

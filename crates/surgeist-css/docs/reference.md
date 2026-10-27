@@ -986,13 +986,58 @@ is the correctly rounded binary64 value of its exact canonical magnitude. Equal
 absolute lengths in different units therefore project identically, so
 `calc(round(down, 1cm / 10mm, 1))` emits `calc(1)`, `calc(sign(10mm - 1cm))`
 emits `calc(0)` and `mod(1cm, 10mm)` emits `calc(0px)`. Radians use `180/π`.
-Arithmetic after projection remains binary64. Correctly rounded canonical
-values of different multiples of one unit are not always exact multiples of
-each other, so some same-unit remainders are inexact: `rem(10mm, 1mm)`,
-`rem(3mm, 1mm)` and `rem(1cm, 1mm)` emit `calc(3.779528px)` rather than
-`calc(0px)`, and division multiplies by a binary64 reciprocal, so
-`calc(round(down, 3cm / 3cm, 1))` emits `calc(0)`. Exact evaluation of these
-operators is tracked separately.
+
+Correctly rounded canonical values of different multiples of one unit are not
+always exact multiples of each other, so arithmetic after projection would turn
+`rem(10mm, 1mm)` into a nonzero remainder
+([#1433](https://github.com/bj-data-eng/surgeist/issues/1433)). Specified
+output therefore keeps each absolute dimension leaf's authored coefficient and
+unit alongside its canonical value, and evaluates on the coefficients while
+every operand still has one:
+
+- Sums accumulate in source order in a common unit, so `sign(3mm - 1mm - 2mm)`,
+  `sign(1in - 1pc - 5pc)` and `sign(4px - 3pt)` are exactly zero.
+- A product multiplies Number factors into a coefficient, and dividing one
+  dimension by another of its dimension divides their coefficients in a common
+  unit, so `round(down, 3cm / 3cm, 1)` and `round(down, 1in / 1pt, 1)` emit
+  `calc(1)` and `calc(72)`. Values 4's calculation tree represents `a / b` as a
+  Product with an Invert node ([§10.10](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-internal));
+  the specification leaves the numerical evaluation order to the implementation,
+  and dividing the coefficients is the deliberate exact evaluation that #1433
+  asks for.
+- `mod()`, `rem()` and `round()` evaluate on the coefficients in a common unit,
+  so `rem(10mm, 1mm)`, `rem(1cm, 1mm)` and `round(up, 96px, 1pt)` emit
+  `calc(0px)`, `calc(0px)` and `calc(96px)`. `abs()`, `min()`, `max()` and
+  `clamp()` return one of their operands, so their value is unchanged, but the
+  result keeps the operand's authored unit; otherwise a following remainder,
+  such as `rem(min(10mm, 20mm), 1mm)`, would again see only the rounded
+  canonical value.
+
+Operands that share a unit are combined as authored. Operands in different
+units combine in the coarsest unit of which each is a whole multiple, found from
+the registry's exact rational ratios (`n/d` canonical units per unit) as
+`gcd(n)/lcm(d)` canonical units, with an integer multiplier per operand. `px`
+and `pt` (4/3) therefore combine in thirds of a pixel with multipliers 3 and 4,
+`cm` and `mm` in millimetres with multipliers 10 and 1, and `px` and `cm`
+(4800/127) in 127ths of a pixel. The results are exact rational arithmetic
+whenever every scaled coefficient is exactly representable in binary64:
+integer coefficients, and decimals with a short binary expansion such as `0.5`,
+qualify as long as the scaled value stays an exact binary64 value.
+
+The exact path never replaces the shared range rule below, and it does not
+guarantee more than that. It applies only when every authored coefficient,
+scaled coefficient, intermediate and result, and its canonical value, is
+finite, and when the units have an exact ratio (lengths, time, frequency,
+resolution and the non-radian angles; a radian converts only to itself). A
+scaled coefficient that would need rounding, such as `0.1px` against `1pt`, or
+one beyond the exact-integer range of binary64, makes the whole operation keep
+binary64 arithmetic on canonical values, as do overflowing, infinite and NaN
+outcomes, operands with a context-dependent unit, every other function and
+keyframe selector matching. Decimal coefficients are binary64 approximations of
+their authored text, so same-unit arithmetic on them is as exact as binary64
+allows and makes no decimal claim: `0.1mm + 0.2mm` projects the binary64 sum of
+`0.1` and `0.2` once. Dividing by a plain Number still multiplies by its binary64
+reciprocal.
 
 [#1297](https://github.com/bj-data-eng/surgeist/issues/1297) revises the
 [#735](https://github.com/bj-data-eng/surgeist/issues/735) precision and phase
@@ -2750,11 +2795,24 @@ unchanged, matching WPT `css/css-transforms/parsing/rotate-parsing-valid.html`.
 Calculated angles use the [calculation output policy](#calculated-number-output),
 so the property agrees with the `transform: rotate()` function path.
 Identity classification for rendering or interpolation belongs to the
-downstream computed and used-value owner. This revision covers the `rotate`
-property only: the `rotate3d()` function path still replaces a zero or whole-turn angle
-(literal, or a calculation whose projected degrees are a multiple of 360)
-or an unnormalizable zero axis with `0, 0, 1, 0deg`, pending a separate
-decision. Both paths share axis classification, so an operation-free calculated
+downstream computed and used-value owner. The `transform: rotate3d()` function
+path follows the same decision
+([#1416](https://github.com/bj-data-eng/surgeist/issues/1416)). The governing
+function clause is
+[Transforms 1 §4.1](https://www.w3.org/TR/2019/CR-css-transforms-1-20190214/#serialization-of-transform-functions):
+serialize each function as its individual grammar, in grammar order, omitting
+components only "when possible without changing the meaning". All four
+`rotate3d()` arguments are mandatory in its grammar, and neither that clause,
+Transforms 2 nor the CSSOM serialization rules replaces a function with another
+form, so a zero or whole-turn angle (literal or calculated, in its authored unit)
+and an unnormalizable zero axis keep their authored form. (Calculated angles keep
+their `calc()` wrapper under the crate's calculation output policy.)
+`rotate3d(0, 0, 0, 30deg)`, `rotate3d(1, 2, 3, 400grad)` and
+`rotate3d(1, 2, 3, calc(180deg + 180deg))` emit
+`rotate3d(0, 0, 0, 30deg)`, `rotate3d(1, 2, 3, 400grad)` and
+`rotate3d(1, 2, 3, calc(360deg))`. As for the property, a proved nonzero axis
+component that rounds to zero returns `UnrepresentableValue` even when the angle
+is zero. Both paths share axis classification, so an operation-free calculated
 axis leaf is classified from its exact coefficient (#1297):
 `rotate3d(calc(1e-400), 0, 0, 30deg)` emits `rotate3d(1, 0, 0, 30deg)` and
 `rotate3d(calc(5e-7), 1, 0, 30deg)` emits `rotate3d(calc(0.000001), 1, 0, 30deg)`.
@@ -2777,8 +2835,10 @@ All authored numeric children are checked once before choosing output.
 
 The rotation costs one input and projection node; an explicit axis adds one of
 each. Each ordinary vector/angle literal adds one of each, while calculation
-children use their existing projection costs. Identity replacement and ordinary
-angle inversion each add one projection node. Calculation inversion uses the
+children use their existing projection costs. The `rotate3d()` function adds
+three projection nodes for a reduced parallel axis; a general or zero axis adds
+none beyond its operands. Ordinary
+angle inversion adds one projection node. Calculation inversion uses the
 existing numeric negation cost. Omitted implicit axes add no synthetic input,
 and punctuation costs bytes only. Deferred projection keeps the existing bounded
 numeric work and formats surviving operands through the same cumulative context.
