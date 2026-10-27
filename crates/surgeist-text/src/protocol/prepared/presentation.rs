@@ -593,6 +593,7 @@ pub(super) fn select(
         infos: output.infos,
         levels: output.levels,
         graphemes,
+        line_units: crate::engine::analysis::line_units::LineBreakUnits::new(&projection)?,
         base_level: analysis.base_level,
         box_levels: analysis.box_levels.clone(),
         control_levels: analysis.control_levels.clone(),

@@ -26,6 +26,12 @@ preserves required Thai/Lao missing-capability opportunities under KeepAll as an
 explicit precedence policy, distinguishes supported empty analysis and Manual,
 and records ordinary permission ownership and source limits for #65.
 
+The [Khmer line-unit determination](text-khmer-line-units--determination-20261027.md)
+adds the Khmer restriction of Unicode 18 revision 49's resolved GB9c change above
+retained Unicode 17 EGCs for automatic line breaking. It records exact report and
+property-source identities, shared unit ownership and unchanged editing/provider
+editions; it is not a global Unicode upgrade or dictionary import.
+
 ## Small-kana and word-break precedence
 
 The [small-kana determination](text-small-kana-precedence--determination-20261025.md)
