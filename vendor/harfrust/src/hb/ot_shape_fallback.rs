@@ -1,6 +1,6 @@
 use read_fonts::types::GlyphId;
 
-use super::buffer::{hb_buffer_t, GlyphPosition};
+use super::buffer::hb_buffer_t;
 use super::face::hb_glyph_extents_t;
 use super::ot_shape_plan::hb_ot_shape_plan_t;
 use super::unicode::*;
@@ -113,8 +113,8 @@ fn zero_mark_advances(
     {
         if info.general_category() == GeneralCategory::NON_SPACING_MARK {
             if adjust_offsets_when_zeroing {
-                pos.x_offset -= pos.x_advance;
-                pos.y_offset -= pos.y_advance;
+                pos.x_offset = buffer.position_math.sub(pos.x_offset, pos.x_advance);
+                pos.y_offset = buffer.position_math.sub(pos.y_offset, pos.y_advance);
             }
             pos.x_advance = 0;
             pos.y_advance = 0;
@@ -123,67 +123,52 @@ fn zero_mark_advances(
 }
 
 fn position_mark(
-    _: &hb_ot_shape_plan_t,
+    _plan: &hb_ot_shape_plan_t,
     face: &hb_font_t,
     direction: Direction,
     glyph: GlyphId,
-    pos: &mut GlyphPosition,
     base_extents: &mut hb_glyph_extents_t,
     combining_class: u8,
-) {
+    math: &mut super::vertical_position::PositionMath,
+) -> Option<(i32, i32)> {
     let mut mark_extents = hb_glyph_extents_t::default();
     if !face.glyph_extents(glyph, &mut mark_extents) {
-        return;
+        return None;
     }
-
+    // These are raw design operands, including every integer quotient. Only
+    // the resulting mark offset is encoded by the caller, exactly once.
     let y_gap = face.units_per_em as i32 / 16;
-    pos.x_offset = 0;
-    pos.y_offset = 0;
-
-    // We don't position LEFT and RIGHT marks.
-
-    // X positioning
-    match combining_class {
+    let x_offset = match combining_class {
         combining_class::DoubleBelow | combining_class::DoubleAbove
             if direction.is_horizontal() =>
         {
-            pos.x_offset += base_extents.x_bearing
-                + if direction.is_forward() {
+            let edge = math.add(
+                base_extents.x_bearing,
+                if direction.is_forward() {
                     base_extents.width
                 } else {
                     0
-                }
-                - mark_extents.width / 2
-                - mark_extents.x_bearing;
+                },
+            );
+            let center = math.sub(edge, mark_extents.width / 2);
+            math.sub(center, mark_extents.x_bearing)
         }
-
         combining_class::AttachedBelowLeft
         | combining_class::BelowLeft
-        | combining_class::AboveLeft => {
-            // Left align.
-            pos.x_offset += base_extents.x_bearing - mark_extents.x_bearing;
-        }
-
+        | combining_class::AboveLeft => math.sub(base_extents.x_bearing, mark_extents.x_bearing),
         combining_class::AttachedAboveRight
         | combining_class::BelowRight
         | combining_class::AboveRight => {
-            // Right align.
-            pos.x_offset += base_extents.x_bearing + base_extents.width
-                - mark_extents.width
-                - mark_extents.x_bearing;
+            let edge = math.add(base_extents.x_bearing, base_extents.width);
+            let edge = math.sub(edge, mark_extents.width);
+            math.sub(edge, mark_extents.x_bearing)
         }
-
-        combining_class::AttachedBelow
-        | combining_class::AttachedAbove
-        | combining_class::Below
-        | combining_class::Above
-        | _ => {
-            // Center align.
-            pos.x_offset += base_extents.x_bearing + (base_extents.width - mark_extents.width) / 2
-                - mark_extents.x_bearing;
+        _ => {
+            let difference = math.sub(base_extents.width, mark_extents.width);
+            let center = math.add(base_extents.x_bearing, difference / 2);
+            math.sub(center, mark_extents.x_bearing)
         }
-    }
-
+    };
     let is_attached = matches!(
         combining_class,
         combining_class::AttachedBelowLeft
@@ -191,8 +176,7 @@ fn position_mark(
             | combining_class::AttachedAbove
             | combining_class::AttachedAboveRight
     );
-
-    // Y positioning.
+    let mut y_offset = 0;
     match combining_class {
         combining_class::DoubleBelow
         | combining_class::BelowLeft
@@ -201,21 +185,16 @@ fn position_mark(
         | combining_class::AttachedBelowLeft
         | combining_class::AttachedBelow => {
             if !is_attached {
-                // Add gap.
-                base_extents.height -= y_gap;
+                base_extents.height = math.sub(base_extents.height, y_gap);
             }
-
-            pos.y_offset = base_extents.y_bearing + base_extents.height - mark_extents.y_bearing;
-
-            // Never shift up "below" marks.
-            if (y_gap > 0) == (pos.y_offset > 0) {
-                base_extents.height -= pos.y_offset;
-                pos.y_offset = 0;
+            let edge = math.add(base_extents.y_bearing, base_extents.height);
+            y_offset = math.sub(edge, mark_extents.y_bearing);
+            if (y_gap > 0) == (y_offset > 0) {
+                base_extents.height = math.sub(base_extents.height, y_offset);
+                y_offset = 0;
             }
-
-            base_extents.height += mark_extents.height;
+            base_extents.height = math.add(base_extents.height, mark_extents.height);
         }
-
         combining_class::DoubleAbove
         | combining_class::AboveLeft
         | combining_class::Above
@@ -223,27 +202,23 @@ fn position_mark(
         | combining_class::AttachedAbove
         | combining_class::AttachedAboveRight => {
             if !is_attached {
-                // Add gap.
-                base_extents.y_bearing += y_gap;
-                base_extents.height -= y_gap;
+                base_extents.y_bearing = math.add(base_extents.y_bearing, y_gap);
+                base_extents.height = math.sub(base_extents.height, y_gap);
             }
-
-            pos.y_offset = base_extents.y_bearing - (mark_extents.y_bearing + mark_extents.height);
-
-            // Don't shift down "above" marks too much.
-            if (y_gap > 0) != (pos.y_offset > 0) {
-                let correction = -pos.y_offset / 2;
-                base_extents.y_bearing += correction;
-                base_extents.height -= correction;
-                pos.y_offset += correction;
+            let edge = math.add(mark_extents.y_bearing, mark_extents.height);
+            y_offset = math.sub(base_extents.y_bearing, edge);
+            if (y_gap > 0) != (y_offset > 0) {
+                let correction = math.neg(y_offset) / 2;
+                base_extents.y_bearing = math.add(base_extents.y_bearing, correction);
+                base_extents.height = math.sub(base_extents.height, correction);
+                y_offset = math.add(y_offset, correction);
             }
-
-            base_extents.y_bearing -= mark_extents.height;
-            base_extents.height += mark_extents.height;
+            base_extents.y_bearing = math.sub(base_extents.y_bearing, mark_extents.height);
+            base_extents.height = math.add(base_extents.height, mark_extents.height);
         }
-
         _ => {}
     }
+    Some((x_offset, y_offset))
 }
 
 fn position_around_base(
@@ -267,7 +242,9 @@ fn position_around_base(
         return;
     }
 
-    base_extents.y_bearing += base_pos.y_offset;
+    let mut math = buffer.position_math;
+    let baseline_offset = math.raw(base_pos.y_offset);
+    base_extents.y_bearing = math.add(base_extents.y_bearing, baseline_offset);
     base_extents.x_bearing = 0;
 
     // Use horizontal advance for horizontal positioning.
@@ -281,8 +258,8 @@ fn position_around_base(
     let mut x_offset = 0;
     let mut y_offset = 0;
     if buffer.direction.is_forward() {
-        x_offset -= base_pos.x_advance;
-        y_offset -= base_pos.y_advance;
+        x_offset = math.sub(x_offset, base_pos.x_advance);
+        y_offset = math.sub(y_offset, base_pos.y_advance);
     }
 
     let mut last_lig_component: i32 = -1;
@@ -320,13 +297,14 @@ fn position_around_base(
                         };
                     }
 
-                    component_extents.x_bearing += (if horizontal_dir == Direction::LeftToRight {
+                    let component = if horizontal_dir == Direction::LeftToRight {
                         this_lig_component
                     } else {
                         num_lig_components - 1 - this_lig_component
-                    } * component_extents.width)
-                        / num_lig_components;
-
+                    };
+                    let numerator = math.mul(component, component_extents.width);
+                    component_extents.x_bearing =
+                        math.add(component_extents.x_bearing, numerator / num_lig_components);
                     component_extents.width /= num_lig_components;
                 }
             }
@@ -337,30 +315,37 @@ fn position_around_base(
                 cluster_extents = component_extents;
             }
 
-            position_mark(
+            if let Some((raw_x, raw_y)) = position_mark(
                 plan,
                 face,
                 buffer.direction,
                 info.as_glyph(),
-                pos,
                 &mut cluster_extents,
                 this_combining_class,
-            );
+                &mut math,
+            ) {
+                pos.x_offset = math.encode(raw_x);
+                pos.y_offset = math.encode(raw_y);
+            }
 
             pos.x_advance = 0;
             pos.y_advance = 0;
-            pos.x_offset += x_offset;
-            pos.y_offset += y_offset;
+            pos.x_offset = math.add(pos.x_offset, x_offset);
+            pos.y_offset = math.add(pos.y_offset, y_offset);
         } else {
             if buffer.direction.is_forward() {
-                x_offset -= pos.x_advance;
-                y_offset -= pos.y_advance;
+                x_offset = math.sub(x_offset, pos.x_advance);
+                y_offset = math.sub(y_offset, pos.y_advance);
             } else {
-                x_offset += pos.x_advance;
-                y_offset += pos.y_advance;
+                x_offset = math.add(x_offset, pos.x_advance);
+                y_offset = math.add(y_offset, pos.y_advance);
             }
         }
+        if math.failure.is_some() {
+            break;
+        }
     }
+    buffer.position_math = math;
 }
 
 fn position_cluster_impl(
@@ -386,6 +371,9 @@ fn position_cluster_impl(
             }
 
             position_around_base(plan, face, buffer, i, j, adjust_offsets_when_zeroing);
+            if buffer.position_math.failure.is_some() {
+                return;
+            }
             i = j - 1;
         }
         i += 1;
@@ -414,6 +402,7 @@ pub fn position_marks(
     buffer: &mut hb_buffer_t,
     adjust_offsets_when_zeroing: bool,
 ) {
+    buffer.position_math.stage = super::vertical_position::VerticalPositionStage::Fallback;
     buffer.assert_gsubgpos_vars();
 
     let mut start = 0;
@@ -424,6 +413,9 @@ pub fn position_marks(
             && !buffer.info[i].is_default_ignorable()
         {
             position_cluster(plan, face, buffer, start, i, adjust_offsets_when_zeroing);
+            if buffer.position_math.failure.is_some() {
+                return;
+            }
             start = i;
         }
     }
@@ -439,82 +431,72 @@ pub fn _hb_ot_shape_fallback_spaces(
     _: &hb_ot_shape_plan_t,
     face: &hb_font_t,
     buffer: &mut hb_buffer_t,
-) {
+    mut metrics: Option<&mut super::vertical_position::MetricSource<'_>>,
+) -> bool {
     use super::unicode::hb_unicode_funcs_t as t;
-
-    let len = buffer.len;
+    buffer.position_math.stage = super::vertical_position::VerticalPositionStage::Fallback;
     let horizontal = buffer.direction.is_horizontal();
-    for (info, pos) in buffer.info[..len].iter().zip(&mut buffer.pos[..len]) {
-        if info.is_unicode_space() && !info.ligated() {
-            let space_type = info.unicode_space_fallback_type();
-            match space_type {
-                t::SPACE_EM
-                | t::SPACE_EM_2
-                | t::SPACE_EM_3
-                | t::SPACE_EM_4
-                | t::SPACE_EM_5
-                | t::SPACE_EM_6
-                | t::SPACE_EM_16 => {
-                    let length =
-                        (face.units_per_em as i32 + (space_type as i32) / 2) / space_type as i32;
-                    if horizontal {
-                        pos.x_advance = length;
-                    } else {
-                        pos.y_advance = -length;
-                    }
+    for index in 0..buffer.len {
+        let info = &buffer.info[index];
+        if !info.is_unicode_space() || info.ligated() {
+            continue;
+        }
+        let space_type = info.unicode_space_fallback_type();
+        match space_type {
+            t::SPACE_EM
+            | t::SPACE_EM_2
+            | t::SPACE_EM_3
+            | t::SPACE_EM_4
+            | t::SPACE_EM_5
+            | t::SPACE_EM_6
+            | t::SPACE_EM_16 => {
+                let raw = (face.units_per_em as i32 + (space_type as i32) / 2) / space_type as i32;
+                let length = buffer.position_math.encode(raw);
+                if horizontal {
+                    buffer.pos[index].x_advance = length;
+                } else {
+                    buffer.pos[index].y_advance = buffer.position_math.neg(length);
                 }
-
-                t::SPACE_4_EM_18 => {
-                    let length = ((face.units_per_em as i64) * 4 / 18) as i32;
-                    if horizontal {
-                        pos.x_advance = length;
-                    } else {
-                        pos.y_advance = -length;
-                    }
-                }
-
-                t::SPACE_FIGURE => {
-                    for u in '0'..='9' {
-                        if let Some(glyph) = face.get_nominal_glyph(u as u32) {
-                            if horizontal {
-                                pos.x_advance = face.glyph_h_advance(glyph);
-                            } else {
-                                pos.y_advance = face.glyph_v_advance(glyph);
-                            }
-                            break;
-                        }
-                    }
-                }
-
-                t::SPACE_PUNCTUATION => {
-                    let punct = face
-                        .get_nominal_glyph('.' as u32)
-                        .or_else(|| face.get_nominal_glyph(',' as u32));
-
-                    if let Some(glyph) = punct {
-                        if horizontal {
-                            pos.x_advance = face.glyph_h_advance(glyph);
-                        } else {
-                            pos.y_advance = face.glyph_v_advance(glyph);
-                        }
-                    }
-                }
-
-                t::SPACE_NARROW => {
-                    // Half-space?
-                    // Unicode doc https://unicode.org/charts/PDF/U2000.pdf says ~1/4 or 1/5 of EM.
-                    // However, in my testing, many fonts have their regular space being about that
-                    // size. To me, a percentage of the space width makes more sense. Half is as
-                    // good as any.
-                    if horizontal {
-                        pos.x_advance /= 2;
-                    } else {
-                        pos.y_advance /= 2;
-                    }
-                }
-
-                _ => {}
             }
+            t::SPACE_4_EM_18 => {
+                let raw = ((face.units_per_em as i64) * 4 / 18) as i32;
+                let length = buffer.position_math.encode(raw);
+                if horizontal {
+                    buffer.pos[index].x_advance = length;
+                } else {
+                    buffer.pos[index].y_advance = buffer.position_math.neg(length);
+                }
+            }
+            t::SPACE_FIGURE | t::SPACE_PUNCTUATION => {
+                let glyph = if space_type == t::SPACE_FIGURE {
+                    ('0'..='9').find_map(|c| face.get_nominal_glyph(c as u32))
+                } else {
+                    face.get_nominal_glyph('.' as u32)
+                        .or_else(|| face.get_nominal_glyph(',' as u32))
+                };
+                if let Some(glyph) = glyph {
+                    if horizontal {
+                        buffer.pos[index].x_advance = face.glyph_h_advance(glyph);
+                    } else if let Some(source) = metrics.as_deref_mut() {
+                        let Some((advance, _, _)) = source.get(buffer, glyph.to_u32()) else {
+                            return false;
+                        };
+                        buffer.pos[index].y_advance = advance;
+                    } else {
+                        buffer.pos[index].y_advance = face.glyph_v_advance(glyph);
+                    }
+                }
+            }
+            t::SPACE_NARROW => {
+                let pos = &mut buffer.pos[index];
+                if horizontal {
+                    pos.x_advance /= 2;
+                } else {
+                    pos.y_advance = buffer.position_math.divide_raw(pos.y_advance, 2);
+                }
+            }
+            _ => {}
         }
     }
+    buffer.position_math.failure.is_none()
 }

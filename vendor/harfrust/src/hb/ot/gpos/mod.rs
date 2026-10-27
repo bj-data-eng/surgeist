@@ -19,6 +19,7 @@ fn apply_value(
     mut offset: usize,
     format: ValueFormat,
 ) -> Option<bool> {
+    let math = &mut ctx.buffer.position_math;
     let pos = &mut ctx.buffer.pos[idx];
     let is_horizontal = ctx.buffer.direction.is_horizontal();
     let mut worked = false;
@@ -27,25 +28,29 @@ fn apply_value(
             let value = data.read_at::<i16>(offset).ok()? as i32;
             worked |= value != 0;
             offset += 2;
-            value
+            math.encode(value)
         }};
     }
     if format.contains(ValueFormat::X_PLACEMENT) {
-        pos.x_offset += read_value!();
+        let value = read_value!();
+        pos.x_offset = math.add(pos.x_offset, value);
     }
     if format.contains(ValueFormat::Y_PLACEMENT) {
-        pos.y_offset += read_value!();
+        let value = read_value!();
+        pos.y_offset = math.add(pos.y_offset, value);
     }
     if format.contains(ValueFormat::X_ADVANCE) {
         if is_horizontal {
-            pos.x_advance += read_value!();
+            let value = read_value!();
+            pos.x_advance = math.add(pos.x_advance, value);
         } else {
             offset += 2;
         }
     }
     if format.contains(ValueFormat::Y_ADVANCE) {
         if !is_horizontal {
-            pos.y_advance -= read_value!();
+            let value = read_value!();
+            pos.y_advance = math.sub(pos.y_advance, value);
         } else {
             offset += 2;
         }
@@ -75,25 +80,29 @@ fn apply_value(
                         worked |= value != 0;
                     }
                 }
-                value
+                math.encode(value)
             }};
         }
         if format.contains(ValueFormat::X_PLACEMENT_DEVICE) {
-            pos.x_offset += read_delta!();
+            let value = read_delta!();
+            pos.x_offset = math.add(pos.x_offset, value);
         }
         if format.contains(ValueFormat::Y_PLACEMENT_DEVICE) {
-            pos.y_offset += read_delta!();
+            let value = read_delta!();
+            pos.y_offset = math.add(pos.y_offset, value);
         }
         if format.contains(ValueFormat::X_ADVANCE_DEVICE) {
             if is_horizontal {
-                pos.x_advance += read_delta!();
+                let value = read_delta!();
+                pos.x_advance = math.add(pos.x_advance, value);
             } else {
                 offset += 2;
             }
         }
         if format.contains(ValueFormat::Y_ADVANCE_DEVICE) {
             if !is_horizontal {
-                pos.y_advance -= read_delta!();
+                let value = read_delta!();
+                pos.y_advance = math.sub(pos.y_advance, value);
             } else {
                 offset += 2;
             }

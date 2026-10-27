@@ -271,3 +271,49 @@ qualification, using the retained licensed Ahem source through the existing
 relative include. They author bounded cmap/hmtx/GSUB/morx tables in safe Rust;
 private action proxies do not replace the complete Shaper witnesses. No new
 font copy or package is introduced.
+
+## Supplied vertical nominal positioning
+
+The repository-owned `src/hb/vertical_position.rs` exposes
+`Shaper::shape_vertical_with_metrics`: an invocation-local TopToBottom OpenType
+operation with a fallible supplier for actual post-substitution nominal glyph
+metrics. It does not choose fonts, validate a caller's metric policy, admit Text
+paragraph orientation, or replace metrics after positioning. The supplier must
+use the configured face and instance. Queries include actual figure/punctuation
+fallback-space lenders; unrelated glyphs are not scanned. Glyph zero is valid.
+
+The new `VerticalGlyphBuffer` is a separate unit domain. Internal positions count
+half design units; immutable views decode them exactly to f64 design units.
+Nominal advance and vertical origin are integral, while horizontal origin retains
+its doubled numerator. GPOS values and anchors enter that same domain before
+mark/cursive assignment and real attachment propagation. Ordinary public
+GlyphPosition layout, design-unit output and buffer vector storage are unchanged.
+A small invocation state on the existing buffer owns coordinate units and the
+first range-failure stage; clear resets it with the actual input lifecycle.
+The new result never exposes its inner ordinary GlyphBuffer.
+
+Raw integer font and heuristic operands remain distinct from encoded translated
+state. Fallback mark centering, gap/correction and ligature-component quotients
+are evaluated in their existing raw design domain and only their actual result
+is encoded; UPEM and narrow-space quotients retain their integer rounding. Real
+mark/zero-width and attachment owners retain authority over assignments. Range
+checks cover the new domain's nominal encoding, GPOS, attachment and fallback
+arithmetic; they do not saturate or publish a plausible successful partial result.
+
+Errors distinguish actual plan/input context, original supplier error and queried
+glyph, coordinate range with its owning stage, and the first genuine existing
+shaping refusal. A prior resource/custody refusal prevents supplier invocation.
+Supplier/range failure stops further algorithmic continuation before receipt
+completion; no provider fallback replaces a failed supplied fact. Existing
+completion guards, default-ignorable/original-joining custody, work/growth charges
+and ordinary shaping paths remain owned by the original mechanisms.
+
+Only the actual selected native morx/kerx/kern/trak plan paths are unsupported by
+this new coordinate domain. Dormant AAT tables do not refuse an OpenType-selected
+plan, and no plan is changed to evade its selected path. The handwritten common
+positioning owners under `src/hb/{face,buffer,ot_shape,ot_shape_fallback,ot_layout,
+ot_layout_gsubgpos,ot_layout_gpos_table}.rs` and `src/hb/ot/{mod,gpos/*}.rs`
+contain the corresponding integration. The adjacent repository-owned
+`vertical_position_tests.rs` and `vertical_position_fixture.rs` qualify real font
+metrics, substitutions, positioning, status and lifecycle. No generated machine,
+Unicode source, dependency, upstream archive or version is changed.

@@ -277,7 +277,11 @@ impl<'a> OtTables<'a> {
         }
     }
 
-    pub(super) fn resolve_anchor(&self, anchor: &AnchorTable) -> (i32, i32) {
+    pub(super) fn resolve_anchor(
+        &self,
+        anchor: &AnchorTable,
+        math: &mut super::vertical_position::PositionMath,
+    ) -> (i32, i32) {
         let mut x = anchor.x_coordinate() as i32;
         let mut y = anchor.y_coordinate() as i32;
         if let Some(vs) = self.var_store.as_ref() {
@@ -293,10 +297,10 @@ impl<'a> OtTables<'a> {
                     .unwrap_or_default(),
                 _ => 0,
             };
-            x += delta(anchor.x_device());
-            y += delta(anchor.y_device());
+            x = math.add(x, delta(anchor.x_device()));
+            y = math.add(y, delta(anchor.y_device()));
         }
-        (x, y)
+        (math.encode(x), math.encode(y))
     }
 }
 
