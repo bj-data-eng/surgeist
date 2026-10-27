@@ -1,7 +1,8 @@
 //! Selection-local endpoint incidence, consumed context and numeric authority.
 use super::paragraph::{ParagraphControlKind, SemanticAnchor, SemanticAnchorItem};
 use super::prepared::{
-    PresentationUnitKind, RetainedAssignment, SelectedPresentation, presentation::Attachment,
+    ParticipantData, PresentationUnitKind, RetainedAssignment, SelectedPresentation,
+    presentation::Attachment,
 };
 use super::{PreparedControl, PreparedText, ProtocolError, ProtocolHandleKind, protocol_error};
 use crate::{
@@ -174,6 +175,36 @@ pub(crate) fn original_seed(
             })
         })
         .ok_or_else(|| protocol_error(ProtocolError::InvalidWordPortion))?;
+    if let Attachment::After {
+        participant,
+        atom: None,
+    } = domain.attachment
+        && let ParticipantData::Atomic(atomic) = prepared.tables.participants[participant]
+    {
+        // Prepared participants and original logical events are distinct index
+        // spaces. This actual occurrence, not an adjacent scalar or equal source
+        // offset, supplies the atomic's zero-width joining seed and barrier.
+        let occurrence = prepared.tables.atomics[atomic].occurrence;
+        let event = prepared
+            .analyzed
+            .logical
+            .events
+            .iter()
+            .position(|event| {
+                matches!(event.kind, Event::Anchor(SemanticAnchor {
+                    item: SemanticAnchorItem::Atomic(actual),
+                    ..
+                }) if actual == occurrence)
+            })
+            .ok_or_else(|| protocol_error(ProtocolError::InvalidWordPortion))?;
+        let atom = prepared.analyzed.logical.events[event].atom;
+        return Ok(Seed {
+            atoms: atom..atom,
+            before: event,
+            after: event + 1,
+            preceding: false,
+        });
+    }
     let (participant, atom, preceding) = match domain.attachment {
         Attachment::Before { participant, atom } => (participant, atom, true),
         Attachment::After { participant, atom } => (participant, atom, false),

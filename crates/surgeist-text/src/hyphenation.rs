@@ -103,7 +103,6 @@ pub enum HyphenationError {
     MissingPrimaryFont,
     InvalidContinuation,
     MissingReceivingBidiAuthority,
-    UnsupportedReceivingRole,
     UnsupportedIndicationSeparator,
     UnsupportedIndicationComposition,
     UncapturedIndicationFontQuery,
@@ -117,7 +116,6 @@ pub(crate) fn error(reason: HyphenationError) -> Error {
             | HyphenationError::ResourceLengthOverflow => ErrorCode::LayoutFailed,
             HyphenationError::MissingPrimaryFont => ErrorCode::NoUsableFontFace,
             HyphenationError::MissingReceivingBidiAuthority
-            | HyphenationError::UnsupportedReceivingRole
             | HyphenationError::UnsupportedIndicationSeparator
             | HyphenationError::UnsupportedIndicationComposition
             | HyphenationError::UncapturedIndicationFontQuery => ErrorCode::UnsupportedFeature,

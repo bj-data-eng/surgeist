@@ -50,6 +50,15 @@ impl Attachment {
             Some(ParticipantData::Control(i)) if atom.is_none() => {
                 Ok(analyzed.analysis.control_levels[tables.controls[*i].occurrence])
             }
+            Some(ParticipantData::Atomic(i))
+                if atom.is_none()
+                    && matches!(self, Self::After { .. })
+                    && analyzed.processed.source().boxes()[tables.atomics[*i].occurrence]
+                        .kind()
+                        == crate::InlineBoxKind::InFlow =>
+            {
+                Ok(analyzed.analysis.box_levels[tables.atomics[*i].occurrence])
+            }
             _ => Err(composition_error()),
         }
     }
@@ -456,11 +465,6 @@ pub(super) fn select(
                 || matches!(unit.kind, PresentationUnitKind::Control { .. }) && unit.bidi_class.is_some()
         }).ok_or_else(|| crate::hyphenation::error(crate::HyphenationError::MissingReceivingBidiAuthority))?;
         let receiver = &output.output.units[receiver_index];
-        if matches!(receiver.kind, PresentationUnitKind::Atomic { .. }) {
-            return Err(crate::hyphenation::error(
-                crate::HyphenationError::UnsupportedReceivingRole,
-            ));
-        }
         let outer = receiver.line_level;
         let participant = start.participant
             + receiver
