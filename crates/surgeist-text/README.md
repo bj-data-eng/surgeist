@@ -86,6 +86,11 @@ variation data refuses even at default/inactive coordinates. Actual run instance
 retain canonical coordinates, executable x-shear and the selected translated-outline
 bold displacement; line metrics and advances receive no bold-spacing adjustment.
 
+Static TrueType instances also expose [nominal vertical glyph metrics](docs/reference.md#nominal-vertical-glyph-metrics)
+with component provenance, native table references and explicit missing-table
+synthesis. These observations preserve the separate vertical paragraph capability
+gates.
+
 Instances and run views expose [named font-baseline measurements](docs/reference.md#named-font-baseline-measurements)
 with retained font/script identity and unhinted horizontal-Y or vertical-X
 coordinates. Alphabetic and central availability are independent. These metrics

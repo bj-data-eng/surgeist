@@ -120,6 +120,20 @@ pub enum ErrorDetail {
         /// Structural, capability, provider or storage refusal.
         reason: super::FontOutlineError,
     },
+    /// Nominal glyph request is outside the retained face inventory.
+    FontGlyphRange {
+        /// Requested glyph.
+        glyph: u32,
+        /// Actual glyph count.
+        count: u32,
+    },
+    /// Vertical metrics for an actual variable face are not qualified.
+    UnsupportedVerticalGlyphVariation {
+        /// Requested glyph.
+        glyph: u32,
+        /// Actual variation axis count, including default coordinates.
+        axis_count: usize,
+    },
     /// The actual shaping invocation returned incomplete output.
     ShapingRefused {
         reason: ShapingRefusalReason,
@@ -387,7 +401,7 @@ pub enum NumericRequirement {
     UnitInterval,
 }
 
-/// Tables used by glyph-free same-instance metrics.
+/// Tables consumed by same-instance font metrics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FontMetricTable {
     /// `head`.
@@ -398,6 +412,20 @@ pub enum FontMetricTable {
     Os2,
     /// `MVAR`.
     Mvar,
+    /// `maxp`.
+    Maxp,
+    /// `hmtx`.
+    Hmtx,
+    /// `vhea`.
+    Vhea,
+    /// `vmtx`.
+    Vmtx,
+    /// `loca`.
+    Loca,
+    /// `glyf` nominal header reference.
+    Glyf,
+    /// `VVAR`.
+    Vvar,
     /// `BASE` named design baselines.
     Base,
 }
@@ -406,6 +434,18 @@ pub enum FontMetricTable {
 pub enum FontMetricTableError {
     /// Required table is absent.
     Missing,
+    /// A present member lacks its required companion.
+    MissingCompanion {
+        /// Required absent table.
+        required: FontMetricTable,
+    },
+    /// Long metric count is outside the glyph inventory.
+    LongMetricCount {
+        /// Declared long metric count.
+        count: u16,
+        /// Actual glyph count.
+        glyph_count: u32,
+    },
     /// Multiple directory entries claim the table.
     Duplicate,
     /// Recorded range is inaccessible.
@@ -553,6 +593,14 @@ pub enum FontMetricField {
     StrikeoutThickness,
     /// Named font-design baseline coordinate.
     BaselineCoordinate,
+    /// Nominal horizontal advance.
+    HorizontalAdvance,
+    /// Nonnegative vertical advance magnitude.
+    VerticalAdvance,
+    /// Vertical origin relative to horizontal design origin, positive right.
+    VerticalOriginX,
+    /// Vertical origin relative to horizontal design origin, positive up.
+    VerticalOriginY,
     /// Exact CSS-facing midpoint in one design reference.
     BaselineMidpoint,
     /// Vertical ideographic em-box origin, required to be zero.

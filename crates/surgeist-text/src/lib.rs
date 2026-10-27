@@ -54,8 +54,8 @@ pub use font::{
     EffectiveFontInstance, FontBaseline, FontBaselineAbsence, FontBaselineAxis,
     FontBaselineMeasurement, FontBaselineOutcome, FontBaselineProvenance, FontBaselineScript,
     FontBaselineUnavailable, FontBaselineUnavailableReason, FontBaselineValue, FontData, FontFace,
-    FontMetrics, FontOutlineCapability, FontOutlineError, FontSynthesis, GlyphOutlineGeometry,
-    StrikeoutMetrics,
+    FontLineMetricSource, FontMetrics, FontOutlineCapability, FontOutlineError, FontSynthesis,
+    GlyphOutlineGeometry, StrikeoutMetrics, VerticalGlyphMetricProvenance, VerticalGlyphMetrics,
 };
 pub use geometry::{Point, Rect, Size};
 pub use id::Id;

@@ -29,6 +29,7 @@ mod scope_incidence_locality;
 mod separators;
 mod shared_unit_endpoints;
 mod tab_stops;
+mod vertical_metrics_orientation;
 mod wbr;
 mod whitespace_edges;
 mod width;

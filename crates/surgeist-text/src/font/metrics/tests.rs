@@ -351,6 +351,13 @@ fn used_table_refusals_are_precise_without_claiming_earlier_registration_as_metr
             Table::Os2 => *b"OS/2",
             Table::Mvar => *b"MVAR",
             Table::Base => *b"BASE",
+            Table::Maxp => *b"maxp",
+            Table::Hmtx => *b"hmtx",
+            Table::Vhea => *b"vhea",
+            Table::Vmtx => *b"vmtx",
+            Table::Loca => *b"loca",
+            Table::Glyf => *b"glyf",
+            Table::Vvar => *b"VVAR",
         };
         let base = if which == Table::Mvar {
             replace_tables(AHEM, vec![(*b"MVAR", vec![0])])

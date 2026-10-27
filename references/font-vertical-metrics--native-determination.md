@@ -27,9 +27,10 @@ of a Central or alphabetic baseline.
 
 Each component retains its provenance. A synthesized component identifies its
 actual selected horizontal metric source. Text's existing
-[horizontal metric owner](../crates/surgeist-text/src/font/metrics.rs) selects
-those metrics once; this operation must not independently reinterpret OS/2 or
-hhea selection. An unavailable required component cannot become a guessed value.
+[horizontal metric owner](../crates/surgeist-text/src/font/metrics.rs) owns
+selection; this operation consumes its resolution without independently
+reinterpreting OS/2 or hhea. An unavailable required component cannot become a
+guessed value.
 
 ## Static TrueType profile
 
@@ -49,6 +50,9 @@ versions, metric counts, lengths and glyph reference. Repetition of the last
 long advance is legitimate; required trailing bearings still exist. Qualified
 composite glyph bounds are real references. An actually empty glyf record has
 yMax zero; an unavailable or malformed reference is not an empty glyph.
+The [OpenType glyph header](https://learn.microsoft.com/en-us/typography/opentype/spec/glyf#glyph-headers)
+uses negative contour counts for composites; -1 is recommended. Another negative
+count does not make the stored header malformed.
 
 Exactly one vertical table is an inconsistent pair and errors. Malformed
 consumed data cannot invoke synthesis. TrueType VORG is irrelevant and is
