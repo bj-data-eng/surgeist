@@ -10,6 +10,10 @@ struct BodyProof {
     entry_source: usize,
     entry_block: f64,
     advances: Vec<f64>,
+    capacities: Vec<f64>,
+    sources: Vec<Vec<usize>>,
+    terminal: surgeist_text::LineEnd,
+    terminal_cursor: (usize, usize, bool),
     fixed: BodyScore,
     candidate: BodyScore,
     admission: BodyAdmission,
@@ -21,6 +25,7 @@ struct GroupProof {
     auto_count: usize,
     auto_advances: Vec<f64>,
     phase_advances: Vec<f64>,
+    phase_capacities: Vec<f64>,
     selected_advances: Vec<f64>,
     outgoing_block: f64,
     tail: bool,
@@ -43,6 +48,16 @@ fn advances<S: LayoutScalar>(basis: &GroupBasis<S>) -> Vec<f64> {
         .collect()
 }
 
+fn capacities<S: LayoutScalar>(basis: &GroupBasis<S>) -> Vec<f64> {
+    basis
+        .group
+        .lines
+        .iter()
+        .filter(|line| numeric_is_formatted(line))
+        .map(|line| (line.band.inline_end - line.band.inline_start).to_f64() - line.indent.to_f64())
+        .collect()
+}
+
 pub(super) fn observe_trial<S: LayoutScalar>(
     entry: NumericGroupEntry<S>,
     fixed: BodyScore,
@@ -51,11 +66,37 @@ pub(super) fn observe_trial<S: LayoutScalar>(
     // Called only on complete actual fitter trials with authenticated count,
     // terminal/control/source and optional measurement domain. Observe the
     // actual fixed guard owner; do not synthesize score/program tuples.
+    let terminal = trial.value.group.lines.last().unwrap();
     BODY.with(|proofs| {
         proofs.borrow_mut().push(BodyProof {
             entry_source: entry.state.cursor.source,
             entry_block: entry.state.block_cursor.to_f64(),
             advances: advances(&trial.value),
+            capacities: capacities(&trial.value),
+            sources: trial
+                .value
+                .group
+                .lines
+                .iter()
+                .filter(|line| numeric_is_formatted(line))
+                .map(|line| {
+                    line.units
+                        .iter()
+                        .filter_map(|unit| match unit.participant {
+                            MixedInlineParticipantOf::Atomic { item, .. } => {
+                                Some(item.source_index)
+                            }
+                            _ => None,
+                        })
+                        .collect()
+                })
+                .collect(),
+            terminal: terminal.ending,
+            terminal_cursor: (
+                terminal.next_cursor.source,
+                terminal.next_cursor.descriptor,
+                terminal.next_cursor.edge_consumed,
+            ),
             fixed,
             candidate: trial.score,
             admission: trial.score.admission(fixed),
@@ -70,6 +111,7 @@ pub(super) fn observe_group<S: LayoutScalar>(group: &PrettyGroupProgram<S>) {
             auto_count: group.reference.count,
             auto_advances: advances(&group.ordinary),
             phase_advances: advances(&group.phase),
+            phase_capacities: capacities(&group.phase),
             selected_advances: advances(&group.selected),
             outgoing_block: group.selected.group.outgoing.block_cursor.to_f64(),
             tail: group.tail_goal.is_some(),
@@ -192,6 +234,199 @@ fn actual_body_trials_use_one_fixed_reference_instead_of_ratcheting_terminal_gua
                 .all(|trial| trial.entry_source == 0 && trial.entry_block == 0.0)
         );
         assert_eq!(groups(&repaired), [vec![0], vec![1, 2, 3], vec![4]]);
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+fn fullness_veto_rectangle<S: LayoutScalar>() -> TriangleTree<S> {
+    let mut tree = TriangleTree::new(crate::TextWrapStyle::Pretty, false);
+    tree.inner.insert_children(0, [1, 2, 3, 4, 5, 6]);
+    tree.inner.insert_input(
+        1,
+        LayoutInputOf::box_input(NodeInputOf {
+            display: crate::Display::Block,
+            float: crate::Float::Left,
+            size: Size::new(
+                PreferredSizeOf::value(crate::LengthPercentageOf::px(S::from_f64(20.0)).unwrap()),
+                PreferredSizeOf::value(crate::LengthPercentageOf::px(S::from_f64(50.0)).unwrap()),
+            ),
+            ..NodeInputOf::default()
+        }),
+    );
+    for (id, width, height) in [
+        (2, 40.0, 30.0),
+        (3, 20.0, 30.0),
+        (4, 10.0, 10.0),
+        (5, 10.0, 10.0),
+        (6, 50.0, 10.0),
+    ] {
+        tree.inner.insert_input(
+            id,
+            LayoutInputOf::box_input(NodeInputOf {
+                display: crate::Display::InlineBlock,
+                direction: Direction::Ltr,
+                vertical_align: VerticalAlign::Baseline,
+                atomic_inline_participation: Some(AtomicInlineParticipation::new(
+                    BidiLevel::try_new(0).unwrap(),
+                    InlineBreakOpportunity::Allowed,
+                )),
+                size: Size::new(
+                    PreferredSizeOf::value(
+                        crate::LengthPercentageOf::px(S::from_f64(width)).unwrap(),
+                    ),
+                    PreferredSizeOf::value(
+                        crate::LengthPercentageOf::px(S::from_f64(height)).unwrap(),
+                    ),
+                ),
+                ..NodeInputOf::default()
+            }),
+        );
+    }
+    tree
+}
+
+#[test]
+fn real_fitter_trials_independently_veto_fixed_terminal_advance_fullness_and_pair_regressions() {
+    fn lane<S: LayoutScalar>() {
+        for case in 0..3 {
+            clear_proofs();
+            match case {
+                0 => {
+                    // Actual Auto100/100/10 first undergoes eligible Tail to
+                    // 100/50/60. Body goal1 can genuinely revisit100/100/10.
+                    let mut request = input::<S>(
+                        &[100.0, 50.0, 50.0, 10.0],
+                        &[],
+                        Direction::Ltr,
+                        crate::TextWrapStyle::Pretty,
+                    );
+                    request.available_inline_extent = AvailableOf::definite(S::from_f64(100.0));
+                    run(request);
+                }
+                1 => {
+                    // Genuine rectangle height50: the alternative places its
+                    // same50-unit last atom below the float in an80-unit span.
+                    fullness_veto_rectangle::<S>().compute().unwrap();
+                }
+                2 => {
+                    // Auto60/30/50/50 has no Tail phase. Goal11/16 visits the
+                    // same-count50/40/40/60 candidate before Body admission.
+                    run(input::<S>(
+                        &[50.0, 10.0, 30.0, 40.0, 10.0, 30.0, 10.0, 10.0],
+                        &[],
+                        Direction::Ltr,
+                        crate::TextWrapStyle::Pretty,
+                    ));
+                }
+                _ => unreachable!(),
+            }
+            let group = GROUPS.with(|proofs| proofs.borrow()[0].clone());
+            let proofs = BODY.with(|proofs| proofs.borrow().clone());
+            let (
+                expected,
+                candidate_capacities,
+                phase,
+                phase_capacities,
+                sources,
+                end,
+                reason,
+                reference_q,
+                candidate_q,
+            ) = match case {
+                0 => (
+                    vec![100.0, 100.0, 10.0],
+                    vec![100.0; 3],
+                    vec![100.0, 50.0, 60.0],
+                    vec![100.0; 3],
+                    vec![vec![0], vec![1, 2], vec![3]],
+                    4,
+                    BodyAdmission::TerminalAdvanceRegression,
+                    1.0 / 8.0,
+                    0.0,
+                ),
+                1 => (
+                    vec![40.0, 40.0, 50.0],
+                    vec![60.0, 60.0, 80.0],
+                    vec![60.0, 20.0, 50.0],
+                    vec![60.0; 3],
+                    vec![vec![1], vec![2, 3, 4], vec![5]],
+                    5,
+                    BodyAdmission::TerminalFullnessRegression,
+                    2.0 / 9.0,
+                    1.0 / 9.0,
+                ),
+                2 => (
+                    vec![50.0, 40.0, 40.0, 60.0],
+                    vec![60.0; 4],
+                    vec![60.0, 30.0, 50.0, 50.0],
+                    vec![60.0; 4],
+                    vec![vec![0], vec![1, 2], vec![3], vec![4, 5, 6, 7]],
+                    8,
+                    BodyAdmission::PairRegression,
+                    5.0 / 54.0,
+                    1.0 / 12.0,
+                ),
+                _ => unreachable!(),
+            };
+            let trial = proofs
+                .iter()
+                .find(|trial| trial.advances == expected)
+                .expect("the complete legitimate candidate must actually reach Body admission");
+            assert_eq!(group.phase_advances, phase);
+            assert_eq!(group.phase_capacities, phase_capacities);
+            assert_eq!(group.tail, case == 0);
+            assert_eq!(group.auto_count, expected.len());
+            assert_eq!(trial.fixed, group.guards.unwrap());
+            assert_eq!(trial.entry_source, 0);
+            assert_eq!(trial.entry_block, 0.0);
+            assert_eq!(trial.terminal, surgeist_text::LineEnd::Paragraph);
+            assert_eq!(trial.terminal_cursor, (end, end, false));
+            assert_eq!(trial.sources, sources);
+            assert_eq!(trial.capacities, candidate_capacities);
+            assert_eq!(trial.advances.len(), group.auto_count);
+            for (advance, capacity) in trial
+                .advances
+                .iter()
+                .zip(&trial.capacities)
+                .chain(group.phase_advances.iter().zip(&group.phase_capacities))
+            {
+                assert!(capacity.is_finite() && *capacity > 0.0);
+                assert!(advance.is_finite() && *advance >= 0.0 && advance <= capacity);
+            }
+            // Q is the real owner's score from the complete authenticated
+            // trial, compared to its ACTUAL fixed post-Tail phase record.
+            assert!(trial.candidate.mean() < trial.fixed.mean());
+            assert!((trial.fixed.mean() - reference_q).abs() <= 4.0 * f64::EPSILON);
+            assert!((trial.candidate.mean() - candidate_q).abs() <= 4.0 * f64::EPSILON);
+            let last = expected.len() - 1;
+            let reference_tail = phase[last] / phase_capacities[last];
+            let candidate_tail = expected[last] / candidate_capacities[last];
+            if case > 0 {
+                assert!(
+                    expected[last] >= phase[last],
+                    "earlier advance guard passes"
+                );
+            }
+            if case == 2 {
+                assert!(
+                    candidate_tail >= reference_tail,
+                    "earlier fullness guard passes"
+                );
+                assert!(
+                    (expected[last - 1] / candidate_capacities[last - 1]).min(candidate_tail)
+                        < (phase[last - 1] / phase_capacities[last - 1]).min(reference_tail)
+                );
+            }
+            if case == 1 {
+                assert!(candidate_tail < reference_tail);
+                assert!(
+                    (expected[last - 1] / candidate_capacities[last - 1]).min(candidate_tail)
+                        >= (phase[last - 1] / phase_capacities[last - 1]).min(reference_tail)
+                );
+            }
+            assert_eq!(trial.admission, reason);
+        }
     }
     lane::<f32>();
     lane::<f64>();
