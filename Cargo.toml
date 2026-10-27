@@ -17,6 +17,7 @@ path = "src/lib.rs"
 surgeist-color = { path = "crates/surgeist-color", version = "=0.1.0" }
 surgeist-animation = { path = "crates/surgeist-animation", version = "=0.1.0" }
 surgeist-css = { path = "crates/surgeist-css", version = "=0.1.0" }
+surgeist-css-parser = { path = "crates/surgeist-css-parser", version = "=0.1.0" }
 surgeist-cssom = { path = "crates/surgeist-cssom", version = "=0.1.0" }
 surgeist-dialog = { path = "crates/surgeist-dialog", version = "=0.1.0" }
 surgeist-dom = { path = "crates/surgeist-dom", version = "=0.1.0" }
@@ -55,6 +56,7 @@ members = [
     "crates/surgeist-animation",
     "crates/surgeist-color",
     "crates/surgeist-css",
+    "crates/surgeist-css-parser",
     "crates/surgeist-cssom",
     "crates/surgeist-dialog",
     "crates/surgeist-dom",

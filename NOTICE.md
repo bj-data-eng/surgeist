@@ -502,6 +502,7 @@ transitive binary-release inventory.
 | surgeist-animation | [NOTICE.md](crates/surgeist-animation/NOTICE.md) |
 | surgeist-color | [NOTICE.md](crates/surgeist-color/NOTICE.md) |
 | surgeist-css | [NOTICE.md](crates/surgeist-css/NOTICE.md) |
+| surgeist-css-parser | [MIT License](LICENSE); authored in this repository |
 | surgeist-cssom | [MIT License](LICENSE); authored in this repository |
 | surgeist-dialog | [LICENSE](crates/surgeist-dialog/LICENSE); no separate notice |
 | surgeist-dom | [MIT License](LICENSE); authored in this repository |

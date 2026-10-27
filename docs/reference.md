@@ -37,6 +37,7 @@ listed below through their public front doors. It also exposes
 | `app`, `runtime` | [surgeist-runtime](../crates/surgeist-runtime/src/lib.rs) |
 | `color` | [surgeist-color](../crates/surgeist-color/src/lib.rs) |
 | `css` | [surgeist-css](../crates/surgeist-css/src/lib.rs) |
+| `css_parser` | [surgeist-css-parser](../crates/surgeist-css-parser/src/lib.rs) |
 | `cssom` | [surgeist-cssom](../crates/surgeist-cssom/src/lib.rs) |
 | `dialog` | [surgeist-dialog](../crates/surgeist-dialog/src/lib.rs) |
 | `dom` | [surgeist-dom](../crates/surgeist-dom/src/lib.rs) |

@@ -20,7 +20,12 @@ symbolic values remain unresolved until that owner has the required context.
 ### Language Values, Authored State And Live Identity
 
 [CSS](../crates/surgeist-css/README.md) owns authored syntax, recovery and
-source/fact-qualified resolution. [Color](../crates/surgeist-color/README.md)
+source/fact-qualified resolution. [CSS parser](../crates/surgeist-css-parser/README.md)
+owns CSS Syntax 3 tokenization and parsing, without giving syntax a CSS
+meaning; CSS is to build its language interpretation on it. Unlike the
+[HTML parser](../crates/surgeist-html-parser/README.md), which sits above the HTML
+values it constructs, the CSS parser sits below every CSS grammar and
+depends on no Surgeist crate. [Color](../crates/surgeist-color/README.md)
 owns numerical color operations. [CSSOM](../crates/surgeist-cssom/README.md)
 adapts CSS into live authored declarations, rules, stylesheets and MediaLists,
 with stable identities, immutable snapshots and atomic edits.

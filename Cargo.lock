@@ -3684,6 +3684,7 @@ dependencies = [
  "surgeist-animation",
  "surgeist-color",
  "surgeist-css",
+ "surgeist-css-parser",
  "surgeist-cssom",
  "surgeist-dialog",
  "surgeist-dom",
@@ -3727,6 +3728,10 @@ dependencies = [
  "surgeist-fuzz",
  "unicode-segmentation",
 ]
+
+[[package]]
+name = "surgeist-css-parser"
+version = "0.1.0"
 
 [[package]]
 name = "surgeist-cssom"
