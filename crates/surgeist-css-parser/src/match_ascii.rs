@@ -73,7 +73,10 @@ macro_rules! match_ignore_ascii_case {
             )+ )*
         }
         let input: &str = $input;
-        let mut buffer = [0u8; const {
+        // A plain block, not a `const` block: an inline constant sizing an
+        // array inside a closure of a generic function is rejected as one that
+        // may depend on the enclosing generics (`const_evaluatable_unchecked`).
+        let mut buffer = [0u8; {
             let lengths: &[usize] = &[ $( $( $literal.len(), )+ )* ];
             let mut longest = 0;
             let mut index = 0;

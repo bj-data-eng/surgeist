@@ -329,3 +329,48 @@ fn the_expansion_is_usable_where_an_expression_is_expected() {
     let sum = 1 + match_ignore_ascii_case! { "TWO", "two" => 2, _ => 0 } * 10;
     assert_eq!(sum, 21);
 }
+
+// The lint is denied on the items below so that a regression fails to build:
+// the invocation must stay valid inside a closure of a generic function, where
+// a constant that may depend on the enclosing generics cannot size an array.
+#[deny(const_evaluatable_unchecked)]
+fn in_a_closure_of_a_function_generic_over_a_lifetime<'i>(
+    ident: &'i str,
+    other: &'i str,
+) -> &'i str {
+    let known = |name: &str| {
+        match_ignore_ascii_case! { name,
+            "alpha" | "beta" => true,
+            _ => false,
+        }
+    };
+    if known(ident) { ident } else { other }
+}
+
+#[deny(const_evaluatable_unchecked)]
+fn in_a_closure_of_a_function_generic_over_a_type<T: AsRef<str>>(ident: T) -> u32 {
+    let lookup = || {
+        match_ignore_ascii_case! { ident.as_ref(),
+            "alpha" => 1,
+            _ => 0,
+        }
+    };
+    lookup()
+}
+
+#[test]
+fn the_expansion_is_usable_in_a_closure_of_a_generic_function() {
+    assert_eq!(
+        in_a_closure_of_a_function_generic_over_a_lifetime("BETA", "none"),
+        "BETA"
+    );
+    assert_eq!(
+        in_a_closure_of_a_function_generic_over_a_lifetime("delta", "none"),
+        "none"
+    );
+    assert_eq!(
+        in_a_closure_of_a_function_generic_over_a_type(String::from("ALPHA")),
+        1
+    );
+    assert_eq!(in_a_closure_of_a_function_generic_over_a_type("beta"), 0);
+}
