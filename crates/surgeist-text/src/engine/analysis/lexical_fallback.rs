@@ -200,3 +200,7 @@ mod tests {
         assert_eq!(qualified_unit(&projection, 0..2), None);
     }
 }
+
+#[cfg(test)]
+#[path = "lexical_fallback/khmer_tests.rs"]
+mod khmer_tests;

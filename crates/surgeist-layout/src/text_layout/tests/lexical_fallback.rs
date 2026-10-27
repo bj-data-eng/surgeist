@@ -1,15 +1,44 @@
-//! Missing Thai/Lao lexical capability supplies ordinary TLU-pair fallback.
+//! Missing Thai/Lao/Khmer lexical capability supplies ordinary TLU-pair fallback.
 //! The adopted determination preserves this fallback under Normal and KeepAll.
 //!
-//! Ahem has no Thai/Lao cmap coverage. These tests deliberately qualify actual
+//! Ahem has no coverage for these source letters. These tests qualify actual
 //! .notdef glyph 0 geometry, not script glyph coverage: its hmtx advance is
 //! 1000 design units at 1000 UPEM, hence 10px in the actual 10px instance.
 //! Unicode source/TLU semantics remain independent of the missing glyph display.
+//! Khmer numeric cases use only separate KA/KHA letters, not stacked units.
 use super::*;
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
-const SCRIPTS: [(&str, &str); 2] = [("กก", "th"), ("ກກ", "lo")];
+const SCRIPTS: [(&str, &str); 4] = [
+    ("กก", "th"),
+    ("ກກ", "lo"),
+    ("\u{1780}\u{1781}", "km"),
+    ("\u{1780}\u{1781}", "und"),
+];
+
+fn qualify_notdef_design_metrics(bytes: &[u8]) {
+    // Read the fixed retained font's real SFNT records independently of the
+    // shaper result. Glyph0 uses the first hmtx long metric, not a cmap guess.
+    let table = |tag: &[u8; 4]| {
+        let count = usize::from(u16::from_be_bytes(bytes[4..6].try_into().unwrap()));
+        let record = bytes[12..12 + count * 16]
+            .chunks_exact(16)
+            .find(|record| &record[..4] == tag)
+            .unwrap();
+        let offset = u32::from_be_bytes(record[8..12].try_into().unwrap()) as usize;
+        let length = u32::from_be_bytes(record[12..16].try_into().unwrap()) as usize;
+        &bytes[offset..offset + length]
+    };
+    assert_eq!(
+        u16::from_be_bytes(table(b"head")[18..20].try_into().unwrap()),
+        1000
+    );
+    assert_eq!(
+        u16::from_be_bytes(table(b"hmtx")[..2].try_into().unwrap()),
+        1000
+    );
+}
 
 #[derive(Clone, Debug, PartialEq)]
 enum Termination {
@@ -165,6 +194,7 @@ fn facts<S: LayoutScalar>(
                 let face = run.face();
                 assert_eq!(face.bytes(), AHEM);
                 assert_eq!(face.index(), 0);
+                qualify_notdef_design_metrics(face.bytes());
                 let instance = run.effective_instance().unwrap();
                 assert_eq!(instance.font_size(), 10.0);
                 assert_eq!(instance.axis_count(), 0);
@@ -179,6 +209,9 @@ fn facts<S: LayoutScalar>(
                 }
             }
             assert_eq!(line.feedback().advance, raw);
+            assert_eq!(line.feedback().baseline, 8.0);
+            assert_eq!(line.feedback().line_height, 10.0);
+            assert_eq!(placed_line.baseline(), 8.0 + index as f64 * 10.0);
             let placed_raw: f64 = placed
                 .inline_metric_facts()
                 .runs()
@@ -206,6 +239,17 @@ fn facts<S: LayoutScalar>(
         })
         .collect();
     assert_eq!(glyph_count, source.chars().filter(|ch| *ch != '\n').count());
+    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        let root = entries
+            .iter()
+            .find(|entry| entry.node() == 0)
+            .unwrap()
+            .output();
+        assert_eq!(
+            root.size.height,
+            S::from_f64(placed.lines().len() as f64 * 10.0)
+        );
+    }
     result
 }
 
@@ -250,7 +294,7 @@ fn missing_lexical_capability_uses_ordinary_letter_pair_cuts_in_native_layout() 
                 line(1, 2, 10.0, text::PreparedBreakKind::ParagraphEnd),
             ],
         );
-        8
+        16
     ];
     assert_eq!(actual, (expected.clone(), expected));
 }
@@ -295,7 +339,7 @@ fn missing_lexical_fallback_reduces_min_content_without_changing_max_content() {
             vec![line(0, 2, 20.0, text::PreparedBreakKind::ParagraphEnd)],
         ),
     ];
-    let expected = (0..8).flat_map(|_| pair.clone()).collect::<Vec<_>>();
+    let expected = (0..16).flat_map(|_| pair.clone()).collect::<Vec<_>>();
     assert_eq!(actual, (expected.clone(), expected));
 }
 
@@ -312,8 +356,23 @@ fn real_notdef_metrics_remain_usable_with_ancestor_nowrap_and_independent_forced
                         facts(&actual, &p, source),
                         [line(0, 2, 20.0, text::PreparedBreakKind::ParagraphEnd)]
                     );
+                    for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
+                        let intrinsic = compute::<S>(&p, available, rtl);
+                        assert_eq!(
+                            facts(&intrinsic, &p, source),
+                            [line(0, 2, 20.0, text::PreparedBreakKind::ParagraphEnd)]
+                        );
+                        let root = intrinsic
+                            .unrounded_entries()
+                            .iter()
+                            .find(|entry| entry.node() == 0)
+                            .unwrap()
+                            .output();
+                        assert_eq!(root.size.width, S::from_f64(20.0));
+                    }
                     let first = source.chars().next().unwrap();
-                    let source = format!("{first}\n{first}");
+                    let last = source.chars().last().unwrap();
+                    let source = format!("{first}\n{last}");
                     let p = paragraph(&source, locale, word, Wrap::None, rtl);
                     let actual = compute::<S>(&p, AvailableOf::definite(S::from_f64(10.0)), rtl);
                     assert!(allowed(&p).is_empty());
@@ -332,9 +391,48 @@ fn real_notdef_metrics_remain_usable_with_ancestor_nowrap_and_independent_forced
     lane::<f64>();
 }
 
-const WJ_RUN: &str = "กก\u{2060}AA";
+#[test]
+fn khmer_manual_keeps_the_real_twenty_pixel_word_in_finite_and_intrinsic_layout() {
+    fn lane<S: LayoutScalar>() {
+        let source = "\u{1780}\u{1781}";
+        for locale in ["km", "und"] {
+            for rtl in [false, true] {
+                let p = paragraph(source, locale, text::WordBreak::Manual, Wrap::Word, rtl);
+                assert!(allowed(&p).is_empty());
+                for available in [
+                    AvailableOf::definite(S::from_f64(10.0)),
+                    AvailableOf::MIN_CONTENT,
+                    AvailableOf::MAX_CONTENT,
+                ] {
+                    let actual = compute::<S>(&p, available, rtl);
+                    assert_eq!(
+                        facts(&actual, &p, source),
+                        [line(0, 2, 20.0, text::PreparedBreakKind::ParagraphEnd)]
+                    );
+                    if !matches!(available, AvailableOf::Definite(_)) {
+                        let root = actual
+                            .unrounded_entries()
+                            .iter()
+                            .find(|entry| entry.node() == 0)
+                            .unwrap()
+                            .output();
+                        assert_eq!(root.size.width, S::from_f64(20.0));
+                    }
+                }
+            }
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
 
-/// Mixed missing Thai/real Latin glyphs. Any formatting controls have no
+const WJ_RUNS: [(&str, &str); 3] = [
+    ("กก\u{2060}AA", "th"),
+    ("\u{1780}\u{1781}\u{2060}AA", "km"),
+    ("\u{1780}\u{1781}\u{2060}AA", "und"),
+];
+
+/// Mixed missing SA/real Latin glyphs. Any formatting controls have no
 /// positive advance, but their glyph count and glyph ID are unspecified.
 fn mixed_sa_latin_facts<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
@@ -384,6 +482,7 @@ fn mixed_sa_latin_facts<S: LayoutScalar>(
                 let face = run.face();
                 assert_eq!(face.bytes(), AHEM);
                 assert_eq!(face.index(), 0);
+                qualify_notdef_design_metrics(face.bytes());
                 let instance = run.effective_instance().unwrap();
                 assert_eq!(instance.font_size(), 10.0);
                 assert_eq!(instance.axis_count(), 0);
@@ -426,7 +525,7 @@ fn mixed_sa_latin_facts<S: LayoutScalar>(
         })
         .collect();
     positive.sort_by_key(|glyph| glyph.0.start);
-    // Actual Ahem metadata: Thai is missing glyph0; A maps to glyph35. Both
+    // Actual Ahem metadata: SA letters use glyph0; A maps to glyph35. Both
     // advances are1000 design units at1000 UPEM, hence10px in this instance.
     assert_eq!(
         positive,
@@ -446,11 +545,13 @@ fn sa_provider_run_end_before_word_joiner_cannot_split_the_native_fitting_line()
     // ZW SP* permission exists here. Genuine lexical fallback1 is unaffected.
     fn lane<S: LayoutScalar>() -> Vec<(Vec<usize>, Vec<LineFact>)> {
         let mut observed = Vec::new();
-        for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
-            for rtl in [false, true] {
-                let p = paragraph(WJ_RUN, "th", word, Wrap::Word, rtl);
-                let actual = compute::<S>(&p, AvailableOf::definite(S::from_f64(20.0)), rtl);
-                observed.push((allowed(&p), mixed_sa_latin_facts(&actual, &p, WJ_RUN, 3)));
+        for (source, locale) in WJ_RUNS {
+            for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
+                for rtl in [false, true] {
+                    let p = paragraph(source, locale, word, Wrap::Word, rtl);
+                    let actual = compute::<S>(&p, AvailableOf::definite(S::from_f64(20.0)), rtl);
+                    observed.push((allowed(&p), mixed_sa_latin_facts(&actual, &p, source, 3)));
+                }
             }
         }
         observed
@@ -464,7 +565,7 @@ fn sa_provider_run_end_before_word_joiner_cannot_split_the_native_fitting_line()
                 line(1, 5, 30.0, text::PreparedBreakKind::ParagraphEnd),
             ],
         );
-        4
+        12
     ];
     assert_eq!(actual, (expected.clone(), expected));
 }
@@ -473,21 +574,23 @@ fn sa_provider_run_end_before_word_joiner_cannot_split_the_native_fitting_line()
 fn word_joiner_at_sa_provider_run_end_keeps_the_thirty_pixel_min_content_piece() {
     fn lane<S: LayoutScalar>() -> Vec<(f64, Vec<LineFact>)> {
         let mut observed = Vec::new();
-        for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
-            for rtl in [false, true] {
-                let p = paragraph(WJ_RUN, "th", word, Wrap::Word, rtl);
-                for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
-                    let actual = compute::<S>(&p, available, rtl);
-                    let width = actual
-                        .unrounded_entries()
-                        .iter()
-                        .find(|entry| entry.node() == 0)
-                        .unwrap()
-                        .output()
-                        .size
-                        .width
-                        .to_f64();
-                    observed.push((width, mixed_sa_latin_facts(&actual, &p, WJ_RUN, 3)));
+        for (source, locale) in WJ_RUNS {
+            for word in [text::WordBreak::Normal, text::WordBreak::KeepAll] {
+                for rtl in [false, true] {
+                    let p = paragraph(source, locale, word, Wrap::Word, rtl);
+                    for available in [AvailableOf::MIN_CONTENT, AvailableOf::MAX_CONTENT] {
+                        let actual = compute::<S>(&p, available, rtl);
+                        let width = actual
+                            .unrounded_entries()
+                            .iter()
+                            .find(|entry| entry.node() == 0)
+                            .unwrap()
+                            .output()
+                            .size
+                            .width
+                            .to_f64();
+                        observed.push((width, mixed_sa_latin_facts(&actual, &p, source, 3)));
+                    }
                 }
             }
         }
@@ -507,7 +610,7 @@ fn word_joiner_at_sa_provider_run_end_keeps_the_thirty_pixel_min_content_piece()
             vec![line(0, 5, 40.0, text::PreparedBreakKind::ParagraphEnd)],
         ),
     ];
-    let expected = (0..4).flat_map(|_| pair.clone()).collect::<Vec<_>>();
+    let expected = (0..12).flat_map(|_| pair.clone()).collect::<Vec<_>>();
     assert_eq!(actual, (expected.clone(), expected));
 }
 
