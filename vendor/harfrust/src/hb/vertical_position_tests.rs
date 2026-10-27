@@ -330,16 +330,17 @@ fn no_gpos_mark_fallback_retains_raw_centering_and_gap_quotients() {
     font::with_font(true, true, None, None, &[], |font| {
         assert!(font.font.gpos().is_err());
         let old = ordinary(font, "A\u{300}", Direction::TopToBottom, &[]);
-        // Width(1001−100)/2 truncates450; UPEM1000/16 is62. With base
-        // origin−900 and ink top800, above-mark correction is38/2=19.
+        // Width(1001−100)/2 truncates450, then each actual base X origin
+        // translates it into the vertical pen. UPEM1000/16 is62. With base
+        // originY−900 and ink top800, above-mark correction is38/2=19.
         assert_eq!(
             old_positions(&old),
-            [(0, -1200, -500, -900), (0, 0, 450, 1181)]
+            [(0, -1200, -500, -900), (0, 0, -50, 1181)]
         );
         let result = vertical(font, "A\u{300}", &[]);
         assert_eq!(
             positions(&result),
-            [(0.0, -1200.0, -500.5, -900.0), (0.0, 0.0, 450.0, 1181.0)]
+            [(0.0, -1200.0, -500.5, -900.0), (0.0, 0.0, -50.5, 1181.0)]
         );
     });
 }
