@@ -237,3 +237,5 @@ fn horizontal_next_line_refuses_an_ambiguous_real_control_only_target() {
     assert_eq!(reason(&error), &ambiguity);
     assert_eq!(layout.source().text().code_units(), [65, 66]);
 }
+
+mod guards;
