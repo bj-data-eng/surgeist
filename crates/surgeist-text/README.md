@@ -71,7 +71,9 @@ and does not enter plaintext. LogicalAfter continuations pair exact selected
 choices across lines. BothSides emits the same chosen text once on each side of
 one ending, with the same exact continuation identity. Before and After use their
 own authenticated local bidi attachments and fresh joint shaping without changing
-original paragraph resolution. Local order or retained font-query evidence that
+original paragraph resolution. A real in-flow atomic can receive an incoming
+indication through its own directional authority and supplied allocation while
+remaining a shaping barrier. Local order or retained font-query evidence that
 cannot support the combined presentation returns a precise refusal. Independently
 chosen strings for each side and a language-convention table are not provided.
 

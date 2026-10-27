@@ -97,6 +97,12 @@ pub(super) struct Observations {
 }
 
 impl Observations {
+    pub(super) fn role(&mut self, used: &RoleUse) {
+        self.roles.push(used.clone());
+    }
+    pub(super) fn box_use(&mut self, used: &super::super::boxes::BoxTrialUse) {
+        self.boxes.push(used.clone());
+    }
     pub(super) fn record(&mut self, lines: &[FittedLine]) {
         // Repeated authentic observations are harmless. Global membership
         // scans would make unrelated earlier groups part of every local trial.
@@ -257,6 +263,7 @@ where
                 max_formatted: Some(reference.basis.count),
                 goal: goal.map(LineQualityGoal::Balance),
                 goal_after: 0,
+                goal_before: None,
                 opportunity_start: reference.window.start,
                 opportunity_end: reference.window.end,
             },
@@ -317,6 +324,7 @@ where
         max_formatted: None,
         goal: None,
         goal_after: 0,
+        goal_before: None,
         opportunity_start: 0,
         opportunity_end: runner.opportunities.len(),
     };
@@ -626,11 +634,41 @@ mod tests {
             }
         });
     }
+
+    #[test]
+    fn pretty_actual_group_work_does_not_replay_unrelated_prefixes_per_goal() {
+        let mut groups = vec!["AAA BB C".to_owned(); 8];
+        groups.push("A ".repeat(80) + "A");
+        groups.extend(vec!["AAA BB C".to_owned(); 8]);
+        let (paragraph, lines) = fit_groups(&groups, crate::TextWrapStyle::Pretty);
+        assert!(
+            lines
+                .iter()
+                .all(|line| line.finalized.prepared_text() == paragraph.prepared)
+        );
+        assert!(
+            lines
+                .iter()
+                .all(|line| matches!(line.program.as_deref(), Some(SelectionProgram::Pretty(_))))
+        );
+        GROUP_WORK.with_borrow(|work| {
+            assert_eq!(work.len(), 17);
+            let final_window = *work.keys().max_by_key(|window| window.0).unwrap();
+            for (index, (&window, actual)) in work.iter().enumerate() {
+                // Ordinary reference, <=18 Body targets, restore/winner and
+                // final validation. Only the last group also has <=17 Tail goals.
+                let bound = if window == final_window { 43 } else { 23 };
+                assert!(actual.runs <= bound);
+                let count = if index == 8 { 27 } else { 2 };
+                assert!(actual.opportunities <= bound * (count + 1) * 2 * (window.1 - window.0));
+            }
+        });
+    }
 }
 
 #[cfg(test)]
 #[path = "fit_balance_completion_tests.rs"]
-mod completion_tests;
+pub(super) mod completion_tests;
 
 #[cfg(test)]
 #[path = "fit_balance_context_tests.rs"]

@@ -116,7 +116,41 @@ nonformatted completion and metric-only receipts do not become scored lines.
 The same scope priorities, conditional authority, float/height feedback and
 terminal constraints apply before quality. These choices implement the
 [pinned Text 4 bias](../../../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#valdef-text-wrap-style-avoid-short-last-line)
-through an explicit native policy. Pretty is not exposed.
+through an explicit native policy.
+
+`Pretty` processes hard groups in source order. At each actual entry it establishes
+an ordinary result, applies the same Tail preference when the group's final
+formatted occurrence genuinely ends Paragraph, then attempts body improvement.
+Body preserves this entry's ordinary formatted count and terminal occurrence;
+it can change the group's interior cuts. Earlier selected groups stay fixed.
+Changed line heights can change the next group's entry and ordinary count, so
+Pretty does not promise the original whole-Auto line count.
+
+For at least two formatted lines, body quality is the mean of
+`(1 - natural_advance / usable_capacity)^2` over all but the final formatted line.
+Each candidate must lower that mean without decreasing terminal natural advance,
+terminal fullness or minimum final-pair fullness relative to the fixed post-Tail
+reference. Equal body scores retain the incumbent. Tail can worsen body quality;
+Body starts from that result and does not undo it merely to recover Auto's score.
+The finite natural-measurement domain above also applies to Body. Real zero-size
+atomics count; nonformatted receipts do not become scored lines. Body can improve
+Forced-ended groups, while Tail remains Paragraph-only. The deterministic search
+has no ten-line eligibility cap and promises local improvement in actual context,
+not a global optimum. These objectives and their ordering are explicit Surgeist
+policy under [Text 4 Pretty](../../../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#valdef-text-wrap-style-pretty).
+
+A mandatory terminal constraint can require revisiting a provisional earlier
+group, as with `hyphenate-limit-last: Always` and a trailing Forced followed by a
+nonformatted Paragraph receipt. If the streamed optional program cannot close
+that constraint, Pretty discards the entire unpublished attempt and runs the
+ordinary whole-sequence solver once from the same invocation entry. This loses
+the attempt's quality improvements while retaining Pretty request identity,
+all constraints, observed dependencies and consumed work. Candidate-only
+ineligibility retains its valid phase incumbent. Provider, resource, cancellation,
+dependency and replay errors retain their existing failure semantics; they do
+not authorize successful fallback. Ordinary failure remains failure. A changed
+dependency frame uses normal invalidation/convergence, never a restart from
+previously optimized output.
 
 #### Numeric inline baseline references
 

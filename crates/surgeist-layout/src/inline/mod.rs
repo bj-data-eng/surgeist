@@ -9,7 +9,7 @@ use crate::geometry::FlowAxes;
 #[cfg(test)]
 use crate::geometry::{LogicalPointOf, LogicalSizeOf};
 use crate::inline_wrapping::balance::{BalanceGoal, NaturalResidual};
-use crate::inline_wrapping::tail::{LineQualityGoal, LineQualityKey};
+use crate::inline_wrapping::quality::{LineQualityGoal, LineQualityKey};
 #[cfg(test)]
 use std::cell::Cell;
 use std::ops::Range;
@@ -1384,6 +1384,9 @@ impl<S: LayoutScalar> NumericCandidatePreference<S> {
             LineQualityGoal::Tail(_) => {
                 crate::inline_wrapping::NumericWrappingError::InvalidTailBasis
             }
+            LineQualityGoal::Body(_) => {
+                crate::inline_wrapping::NumericWrappingError::InvalidPrettyBasis
+            }
         };
         let key = match receipt.capacity {
             Some(capacity) => goal
@@ -1398,6 +1401,7 @@ impl<S: LayoutScalar> NumericCandidatePreference<S> {
                 // A nonformatted completion has no optional quality measure;
                 // it still retains its genuine ordinary completion semantics.
                 LineQualityGoal::Tail(_) => LineQualityKey::Tail(None),
+                LineQualityGoal::Body(_) => LineQualityKey::Body(None),
             },
         };
         Ok(Self::Quality { receipt, key })
@@ -2090,6 +2094,7 @@ impl<S: LayoutScalar> NumericSequence<S> {
 struct NumericWalkControl {
     goal: Option<LineQualityGoal>,
     goal_start: usize,
+    goal_end: Option<usize>,
     observe_frontier: Option<usize>,
     stop_at_group: bool,
     max_formatted: Option<usize>,
@@ -2099,6 +2104,7 @@ impl NumericWalkControl {
         Self {
             goal: None,
             goal_start: 0,
+            goal_end: None,
             observe_frontier: None,
             stop_at_group: false,
             max_formatted: None,
@@ -2108,6 +2114,7 @@ impl NumericWalkControl {
         Self {
             goal,
             goal_start: 0,
+            goal_end: None,
             observe_frontier: None,
             stop_at_group: true,
             max_formatted,
@@ -2192,9 +2199,10 @@ where
                 float_edge_phase,
             });
         }
-        let goal = control
-            .goal
-            .filter(|_| formatted_count >= control.goal_start);
+        let goal = control.goal.filter(|_| {
+            formatted_count >= control.goal_start
+                && control.goal_end.is_none_or(|end| formatted_count < end)
+        });
         let line_indent = input.indent.at(indent_state);
         let next_boundary_descriptor = line_boundaries
             .peek()
@@ -2948,11 +2956,16 @@ where
         crate::TextWrapStyle::Balance => {
             matches!(input.available_inline_extent, AvailableOf::Definite(_))
         }
-        crate::TextWrapStyle::AvoidShortLastLine => false,
+        crate::TextWrapStyle::AvoidShortLastLine | crate::TextWrapStyle::Pretty => false,
     };
     let repair_tail = input.text_wrap_style == crate::TextWrapStyle::AvoidShortLastLine
         && matches!(input.available_inline_extent, AvailableOf::Definite(_));
-    let mut sequence = NumericSequence::new(&input, observe_formatted || balance || repair_tail);
+    let pretty = input.text_wrap_style == crate::TextWrapStyle::Pretty
+        && matches!(input.available_inline_extent, AvailableOf::Definite(_));
+    let mut sequence = NumericSequence::new(
+        &input,
+        observe_formatted || balance || repair_tail || pretty,
+    );
     let receiver_source = std::cell::RefCell::new(receiver_source);
     let request = NumericWalkInput {
         input: &input,
@@ -2972,6 +2985,15 @@ where
     } else if repair_tail {
         let boundaries = line_boundaries.collect::<Vec<_>>();
         tail::repair_numeric_tail(
+            request,
+            &boundaries,
+            &mut sequence,
+            &mut band_source,
+            &mut clear_source,
+        )?;
+    } else if pretty {
+        let boundaries = line_boundaries.collect::<Vec<_>>();
+        pretty::layout_pretty_sequence(
             request,
             &boundaries,
             &mut sequence,
@@ -3680,6 +3702,7 @@ mod balance_tests;
 mod bidi_order_tests;
 #[cfg(test)]
 mod phantom_completion_tests;
+mod pretty;
 mod tail;
 
 fn participant_has_named_baseline<S: LayoutScalar>(

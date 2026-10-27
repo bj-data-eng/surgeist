@@ -15,12 +15,39 @@ fn fit_terminal(paragraph: &PreparedParagraph, style: crate::TextWrapStyle) -> V
     fit_with_terminal_context(paragraph, style, 60.0, TailContext::Unrestricted)
 }
 
-fn fit_with_terminal_context(
+pub(in super::super) fn fit_with_terminal_context(
     paragraph: &PreparedParagraph,
     style: crate::TextWrapStyle,
     available: f64,
     tail: TailContext,
 ) -> Vec<FittedLine> {
+    fit_with_allocation(paragraph, style, available, tail, |_, _, _, struts| {
+        Ok(LineAllocations {
+            line_box_struts: struts.to_vec(),
+            atomics: vec![],
+            controls: vec![],
+            line_strut: None,
+        })
+    })
+    .unwrap_or_else(|error| match error {
+        FitError::Text(error) => panic!("actual Text preparation/finalization failed: {error:?}"),
+        FitError::Wrapping(error) => panic!("actual wrapping input failed: {error:?}"),
+        other => panic!("owning fit failed: {:?}", std::mem::discriminant(&other)),
+    })
+}
+
+pub(in super::super) fn fit_with_allocation(
+    paragraph: &PreparedParagraph,
+    style: crate::TextWrapStyle,
+    available: f64,
+    tail: TailContext,
+    allocate: impl FnMut(
+        &FinalizedLine,
+        Band,
+        f64,
+        &[surgeist_text::LineBoxStrut],
+    ) -> Result<LineAllocations, FitError>,
+) -> Result<Vec<FittedLine>, FitError> {
     super::super::fit(
         FitInput {
             groups: crate::group_alignment::Snapshot::default(),
@@ -62,14 +89,7 @@ fn fit_with_terminal_context(
                 .minimum
                 .map_or(position.proposed, |minimum| position.proposed.max(minimum)))
         },
-        |_, _, _, struts| {
-            Ok(LineAllocations {
-                line_box_struts: struts.to_vec(),
-                atomics: vec![],
-                controls: vec![],
-                line_strut: None,
-            })
-        },
+        allocate,
         |_, _| Ok(None),
         EncounterCallbacks {
             replay: |_: &FinalizedLine, _: EncounterReplay| Ok(Vec::new()),
@@ -78,11 +98,6 @@ fn fit_with_terminal_context(
             checkpoint_group: || {},
         },
     )
-    .unwrap_or_else(|error| match error {
-        FitError::Text(error) => panic!("actual Text preparation/finalization failed: {error:?}"),
-        FitError::Wrapping(error) => panic!("actual wrapping input failed: {error:?}"),
-        other => panic!("owning fit failed: {:?}", std::mem::discriminant(&other)),
-    })
 }
 
 fn terminal_pair(paragraph: &PreparedParagraph, length: usize) -> [text::PreparedOpportunity; 2] {

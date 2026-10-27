@@ -990,7 +990,9 @@ where
             !float_events.is_empty() && matches!(available, AvailableOf::MaxContent);
         let quality_replay = matches!(
             constants.wrap_style,
-            crate::TextWrapStyle::Balance | crate::TextWrapStyle::AvoidShortLastLine
+            crate::TextWrapStyle::Balance
+                | crate::TextWrapStyle::AvoidShortLastLine
+                | crate::TextWrapStyle::Pretty
         ) && matches!(available, AvailableOf::Definite(_));
         let encounters = std::cell::RefCell::new(super::float_text::Encounters::new(
             float_events,
@@ -1173,7 +1175,9 @@ where
         }
         let observe_formatted = matches!(
             constants.wrap_style,
-            crate::TextWrapStyle::Balance | crate::TextWrapStyle::AvoidShortLastLine
+            crate::TextWrapStyle::Balance
+                | crate::TextWrapStyle::AvoidShortLastLine
+                | crate::TextWrapStyle::Pretty
         ) && matches!(available_inline_extent, AvailableOf::Definite(_))
             || tree
                 .text_computation()
@@ -2010,6 +2014,11 @@ pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(
         crate::text_layout::fit::FitError::InvalidTailBasis => {
             LayoutErrorKindOf::InternalInvariant(
                 crate::LayoutInternalInvariant::InvalidInlineTailSelection,
+            )
+        }
+        crate::text_layout::fit::FitError::InvalidPrettyBasis => {
+            LayoutErrorKindOf::InternalInvariant(
+                crate::LayoutInternalInvariant::InvalidInlinePrettySelection,
             )
         }
         crate::text_layout::fit::FitError::MissingBlockTail => {

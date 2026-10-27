@@ -46,6 +46,7 @@ fn check<S: LayoutScalar>(
     text: &str,
     policy: HyphenateLimitLast,
     expected: &[(Range, f64, LineEnd)],
+    wrap_style: TextWrapStyle,
 ) {
     let p = &paragraph.prepared;
     assert_eq!(
@@ -96,6 +97,7 @@ fn check<S: LayoutScalar>(
             NodeInputOf {
                 display: Display::Block,
                 hyphenate_limit_last: policy,
+                text_wrap_style: wrap_style,
                 size: Size::new(
                     PreferredSizeOf::px(S::from_f64(100.0)),
                     PreferredSizeOf::AUTO,
@@ -114,7 +116,12 @@ fn check<S: LayoutScalar>(
         },
     )
     .unwrap();
-    let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap();
+    let batch = compute_layout_with_flow(&capture, 0, request(100.0)).unwrap_or_else(|error| {
+        panic!(
+            "{} {wrap_style:?} source={text:?} policy={policy:?} expected={expected:?}: {error:?}",
+            std::any::type_name::<S>()
+        );
+    });
     let layout = batch.placed_text()[0].layout();
     assert_eq!(
         layout.source().text().code_units(),
@@ -207,6 +214,7 @@ fn check_case<S: LayoutScalar>(
     y_spacing: f64,
     ordinary: &[(Range, f64, LineEnd)],
     protected: &[(Range, f64, LineEnd)],
+    wrap_style: TextWrapStyle,
 ) {
     let paragraph = paragraph(text, y_spacing);
     // The same immutable preparation is consumed before, during and after tail
@@ -226,12 +234,22 @@ fn check_case<S: LayoutScalar>(
             } else {
                 ordinary
             },
+            wrap_style,
         );
     }
 }
 
 #[test]
 fn last_tail_preserves_empty_geometry_and_distinguishes_forced_segments_and_nonpositive_content() {
+    check_forced_and_signed_matrix(TextWrapStyle::Auto);
+}
+
+#[test]
+fn pretty_last_tail_preserves_empty_forced_and_signed_content_with_real_hyphenation_custody() {
+    check_forced_and_signed_matrix(TextWrapStyle::Pretty);
+}
+
+fn check_forced_and_signed_matrix(wrap_style: TextWrapStyle) {
     for (text, ordinary, protected) in [
         (
             "XXXX associate",
@@ -273,8 +291,21 @@ fn last_tail_preserves_empty_geometry_and_distinguishes_forced_segments_and_nonp
             ],
         ),
     ] {
-        check_case::<f32>(text, 0.0, &ordinary, &protected);
-        check_case::<f64>(text, 0.0, &ordinary, &protected);
+        // Only the genuine Paragraph-ending ordinary row can enter Tail.
+        // Auto's100/50 has a valid earlier Before cut: XXXX40+SPACE10+as20
+        // +indication A10 =80, followed by sociate70. Both fullness and
+        // natural last advance improve, unlike the Forced-ending rows below.
+        let pretty_paragraph = [
+            (Range::new(0, 7), 80.0, LineEnd::Soft),
+            (Range::new(7, 14), 70.0, LineEnd::Paragraph),
+        ];
+        let ordinary = if wrap_style == TextWrapStyle::Pretty && text == "XXXX associate" {
+            &pretty_paragraph[..]
+        } else {
+            &ordinary[..]
+        };
+        check_case::<f32>(text, 0.0, ordinary, &protected, wrap_style);
+        check_case::<f64>(text, 0.0, ordinary, &protected, wrap_style);
     }
     for spacing in [0.0, -10.0, -15.0] {
         // Retained Y is real content at advance10/0/−5; its Forced predecessor
@@ -284,8 +315,20 @@ fn last_tail_preserves_empty_geometry_and_distinguishes_forced_segments_and_nonp
             (Range::new(9, 15), 50.0, LineEnd::Forced),
             (Range::new(15, 16), 10.0 + spacing, LineEnd::Paragraph),
         ];
-        check_case::<f32>("XXXX associate\nY", spacing, &unchanged, &unchanged);
-        check_case::<f64>("XXXX associate\nY", spacing, &unchanged, &unchanged);
+        check_case::<f32>(
+            "XXXX associate\nY",
+            spacing,
+            &unchanged,
+            &unchanged,
+            wrap_style,
+        );
+        check_case::<f64>(
+            "XXXX associate\nY",
+            spacing,
+            &unchanged,
+            &unchanged,
+            wrap_style,
+        );
     }
 }
 

@@ -180,7 +180,7 @@ struct GroupCheckpoint<Node, S: LayoutScalar> {
     earlier_float_top: Option<S>,
 }
 
-/// Balance-only work index and undo log. Ranks filter work, never decide seam
+/// Quality selection work index and undo log. Ranks filter work, never decide seam
 /// ownership: all equal-boundary and deferred earlier events remain candidates.
 struct EncounterJournal<Node, S: LayoutScalar> {
     remaining: BTreeSet<(usize, usize)>,
@@ -245,7 +245,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         }
     }
     /// Roll back the entire unpublished branch to this run's incoming ledger.
-    /// Finite complete-tail search and Balance retain the actual snapshot.
+    /// Finite complete-tail search and group-quality selection retain the snapshot.
     pub fn restart_sequence(&mut self) {
         let Some(incoming) = &self.incoming else {
             self.reset_candidate();

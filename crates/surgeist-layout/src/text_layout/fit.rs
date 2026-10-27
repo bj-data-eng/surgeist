@@ -6,11 +6,13 @@ use super::boxes::{
 use super::formatted::FormattedTailSnapshot;
 pub(crate) use super::roles::{RoleBasis, RoleUse};
 use crate::inline_wrapping::balance::{BalanceGoal, NaturalResidual};
-use crate::inline_wrapping::tail::{LineQualityGoal, LineQualityKey};
+use crate::inline_wrapping::quality::{LineQualityGoal, LineQualityKey};
 use crate::{TextAlign, TextAlignLast, TextJustification};
 
 #[path = "fit_balance.rs"]
 mod balance;
+#[path = "fit_pretty.rs"]
+mod pretty;
 #[path = "fit_tail.rs"]
 mod tail;
 
@@ -18,6 +20,7 @@ mod tail;
 pub(crate) enum SelectionProgram {
     Balance(balance::BalanceBasis),
     Tail(tail::TailBasis),
+    Pretty(pretty::PrettyBasis),
 }
 use surgeist_text::{
     Alignment, AtomicAllocation, ConditionalDisposition, ConditionalPurpose, ConditionalStage,
@@ -252,6 +255,7 @@ pub(crate) enum FitError {
     Wrapping(crate::inline_wrapping::WrappingScopeError),
     FeedbackCycle,
     InvalidTailBasis,
+    InvalidPrettyBasis,
     SpacingBudget { available: f64, advance: f64 },
     NonFinite(f64),
     Numeric(f64, crate::LayoutTextNumericError),
@@ -942,6 +946,7 @@ struct EndpointChoice {
 struct CandidateEnvironment<B, C, A, R, X> {
     roles: Vec<RoleUse>,
     box_uses: Vec<super::boxes::BoxTrialUse>,
+    observed: Option<balance::Observations>,
     band: B,
     canonical: C,
     allocate: A,
@@ -1212,6 +1217,9 @@ where
                     deferred_from: position.deferred_from.clone(),
                     placed_start,
                 };
+                if let Some(observed) = &mut self.observed {
+                    observed.role(&used);
+                }
                 if !self.roles.contains(&used) {
                     self.roles.push(used);
                 }
@@ -1226,6 +1234,9 @@ where
                     encounters: encounters.clone(),
                     placed_start,
                 };
+                if let Some(observed) = &mut self.observed {
+                    observed.box_use(&used);
+                }
                 if !self.box_uses.contains(&used) {
                     self.box_uses.push(used);
                 }
@@ -1744,6 +1755,7 @@ pub(crate) fn fit(
     let environment = CandidateEnvironment {
         roles: Vec::new(),
         box_uses: Vec::new(),
+        observed: None,
         band: band_source,
         canonical: canonical_block,
         allocate,
@@ -1782,10 +1794,16 @@ pub(crate) fn fit(
         {
             return tail::fit(&mut runner, entry, checkpoint_group);
         }
+        crate::TextWrapStyle::Pretty
+            if matches!(runner.input.available, Available::Definite(_)) =>
+        {
+            return runner.pretty(entry, checkpoint_group);
+        }
         crate::TextWrapStyle::Auto
         | crate::TextWrapStyle::Stable
         | crate::TextWrapStyle::Balance
-        | crate::TextWrapStyle::AvoidShortLastLine => {}
+        | crate::TextWrapStyle::AvoidShortLastLine
+        | crate::TextWrapStyle::Pretty => {}
     }
     let mut result = Vec::new();
     let scope = SequenceScope {
@@ -1794,12 +1812,13 @@ pub(crate) fn fit(
         max_formatted: None,
         goal: None,
         goal_after: 0,
+        goal_before: None,
         opportunity_start: 0,
         opportunity_end: runner.opportunities.len(),
     };
     match runner.run(&entry, scope, &mut result)? {
         SequenceOutcome::Complete(_) => Ok(result),
-        SequenceOutcome::Inadmissible => Err(FitError::FeedbackCycle),
+        SequenceOutcome::Inadmissible(_) => Err(FitError::FeedbackCycle),
     }
 }
 
@@ -1829,13 +1848,26 @@ struct SequenceScope {
     max_formatted: Option<usize>,
     goal: Option<LineQualityGoal>,
     goal_after: usize,
+    goal_before: Option<usize>,
     opportunity_start: usize,
     opportunity_end: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ScopeExhaustion {
+    NoAdmissibleCandidate,
+    TerminalConstraint,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SequenceRejection {
+    CountExceeded,
+    ScopeExhausted(ScopeExhaustion),
+}
+
 enum SequenceOutcome {
     Complete(SequenceEntry),
-    Inadmissible,
+    Inadmissible(SequenceRejection),
 }
 
 struct SequenceRunner<'a, B, C, A, R, X, Accept, Clear> {
@@ -1884,6 +1916,7 @@ where
             .wrapping
             .filter(|_| matches!(input.available, Available::Definite(_)));
         let mut visited: Vec<Vec<CandidateKey>> = Vec::new();
+        let mut terminal_constraint_rejected = false;
         'sequence: loop {
             environment.roles.clear();
             environment.box_uses.clear();
@@ -1902,7 +1935,10 @@ where
             let mut current_boundary = entry.boundary.clone();
             let mut formatted_count = 0;
             while !completed_end {
-                let goal = scope.goal.filter(|_| formatted_count >= scope.goal_after);
+                let goal = scope.goal.filter(|_| {
+                    formatted_count >= scope.goal_after
+                        && scope.goal_before.is_none_or(|end| formatted_count < end)
+                });
                 let start_boundary = current_boundary.clone();
                 let rejected_choices: &[CandidateKey] = if constrained {
                     if visited.len() <= result.len() - entry.prefix_len {
@@ -2093,7 +2129,15 @@ where
                             continue 'sequence;
                         }
                         return if scope.stop_at_forced {
-                            Ok(SequenceOutcome::Inadmissible)
+                            Ok(SequenceOutcome::Inadmissible(
+                                SequenceRejection::ScopeExhausted(
+                                    if terminal_constraint_rejected {
+                                        ScopeExhaustion::TerminalConstraint
+                                    } else {
+                                        ScopeExhaustion::NoAdmissibleCandidate
+                                    },
+                                ),
+                            ))
                         } else {
                             Err(FitError::FeedbackCycle)
                         };
@@ -2268,7 +2312,15 @@ where
                                     continue 'sequence;
                                 }
                                 return if scope.stop_at_forced {
-                                    Ok(SequenceOutcome::Inadmissible)
+                                    Ok(SequenceOutcome::Inadmissible(
+                                        SequenceRejection::ScopeExhausted(
+                                            if terminal_constraint_rejected {
+                                                ScopeExhaustion::TerminalConstraint
+                                            } else {
+                                                ScopeExhaustion::NoAdmissibleCandidate
+                                            },
+                                        ),
+                                    ))
                                 } else {
                                     Err(FitError::FeedbackCycle)
                                 };
@@ -2415,7 +2467,9 @@ where
                         formatted_count += 1;
                     }
                     if scope.max_formatted.is_some_and(|max| formatted_count > max) {
-                        return Ok(SequenceOutcome::Inadmissible);
+                        return Ok(SequenceOutcome::Inadmissible(
+                            SequenceRejection::CountExceeded,
+                        ));
                     }
                     break;
                 }
@@ -2447,10 +2501,17 @@ where
                     .alternative
                     .is_some()
             {
+                terminal_constraint_rejected = true;
                 // Reject the completed suffix, then visit the next actual choice at
                 // its deepest decision. Exhausted descendants backtrack above.
                 if result.len() <= entry.prefix_len {
-                    return Ok(SequenceOutcome::Inadmissible);
+                    return Ok(SequenceOutcome::Inadmissible(
+                        SequenceRejection::ScopeExhausted(if terminal_constraint_rejected {
+                            ScopeExhaustion::TerminalConstraint
+                        } else {
+                            ScopeExhaustion::NoAdmissibleCandidate
+                        }),
+                    ));
                 }
                 let index = result.len() - 1;
                 let depth = index - entry.prefix_len;

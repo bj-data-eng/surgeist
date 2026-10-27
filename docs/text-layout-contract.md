@@ -1497,8 +1497,10 @@ genuine formatting character merely to find visible content. Receiving direction
 and geometric attachment do not transfer the indication's established style,
 font, language convention or DOM ownership. A nonempty After indication without
 authenticated receiving continuation authority returns
-`HyphenationError::MissingReceivingBidiAuthority`; an atomic receiver retains
-`UnsupportedReceivingRole`. Paragraph direction, adjacent fallback fonts and
+`HyphenationError::MissingReceivingBidiAuthority`. A genuine in-flow atomic
+receiver supplies its own analyzed original occurrence and receiving-line L1
+authority; retain its actual allocation and shaping barrier without donating a
+scalar to the indication. Paragraph direction, adjacent fallback fonts and
 equal-offset anchors cannot substitute. Empty indications retain their
 continuation/selected-ending obligation identity without visible insertion.
 
@@ -1508,8 +1510,9 @@ logical mixed-event sequence. Preserve every genuine prefix control in captured
 order: Start, indication, receiver in that case, at both zero and positive Start
 widths. Nested starts/ends and empty metadata retain that order; edge magnitude
 changes the barrier, not attachment identity. Authenticate the actual participant
-and scalar, including a genuine formatting control or deleted original with
-directional authority, rather than searching for the first visible glyph.
+and original scalar or nonscalar occurrence, including a genuine formatting
+control, deleted original or in-flow atomic with directional authority, rather
+than searching for the first visible glyph.
 
 Insert the local indication domain at the receiver's full authenticated outer
 level; its internal base still uses that level's parity, and each control retains

@@ -75,7 +75,10 @@
 //! [`TextAlignLast`] select line alignment. [`TextWrapStyle`] selects ordinary
 //! or balanced breaks; [`TextWrapStyle::Stable`] retains ordinary line-local
 //! quality selection. [`TextWrapStyle::AvoidShortLastLine`] attempts bounded
-//! final-pair repair in a genuinely Paragraph-ending group. These choices do not
+//! final-pair repair in a genuinely Paragraph-ending group. [`TextWrapStyle::Pretty`]
+//! composes that repair with bounded body-line improvement at each actual group
+//! entry. See the [native quality policy](../docs/reference.md#node-input).
+//! These choices do not
 //! change the real containing geometry
 //! or wrapping permission. [`TextJustification::Spaces`] permits
 //! explicit expansion of actual retained U+0020 slots during justification;
