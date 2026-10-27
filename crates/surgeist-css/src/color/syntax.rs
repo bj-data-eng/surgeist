@@ -731,10 +731,10 @@ impl CssNamedColor {
     /// Returns `None` when `name` is not a named color keyword.
     pub fn try_new(name: impl Into<String>) -> Option<Self> {
         let name = name.into();
-        let (red, green, blue) = cssparser::color::parse_named_color(&name).ok()?;
+        let rgb = surgeist_color::named::lookup(&name)?;
         Some(Self {
             name: name.to_ascii_lowercase(),
-            rgb: [red, green, blue],
+            rgb,
         })
     }
 

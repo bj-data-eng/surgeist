@@ -507,9 +507,9 @@ established upstream erratum. The normative capture retains its original text.
 
 HTML's §2.3.6 legacy-color algorithm uses the 148 opaque named-color entries
 from the retained [CSS Color 4 publication of 8 September 2026](css-color-4--CRD-css-color-4-20260908--bada647312a7.md#named-colors).
-The existing external `cssparser` 0.37.0 named-color helper supplies that exact
-name/RGB domain; HTML owns its surrounding legacy recovery steps. This selects
-the bounded external fact table, without adding CSS color grammar validation or
+The `surgeist_color::named` table, written from that publication, supplies that
+exact name/RGB domain; HTML owns its surrounding legacy recovery steps. This
+selects the bounded fact table, without adding CSS color grammar validation or
 changing the color-input state's separate CSS ownership.
 
 ### Srcset density conversion overflow

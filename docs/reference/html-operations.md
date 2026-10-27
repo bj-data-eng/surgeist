@@ -243,8 +243,8 @@ allocation-failure guarantee. The parser contribution owns those controls.
 §2.3.6 recovery over exact raw values. Results are opaque sRGB channels and
 serialize as lowercase `#rrggbb`. The pinned edition defines no simple-color
 author grammar; the report therefore distinguishes this recovery from author
-conformance and the color-input state’s external CSS grammar. The existing
-external cssparser package supplies only the standard named-color lookup,
+conformance and the color-input state’s external CSS grammar. The
+`surgeist_color::named` table supplies only the standard named-color lookup,
 without a dependency on surgeist-css or invocation of CSS tokenization.
 See the [dependency notice](../../crates/surgeist-html/NOTICE.md) and [source selection](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline).
 

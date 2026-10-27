@@ -81,10 +81,31 @@ responsibility. The consumer owns its output buffer and atomic publication.
 Ordinary `serialize` services this same continuation with explicit action,
 digit and output limits and fallible allocation.
 
+## Named colors
+
+`named::NAMES` is the table of the 148 opaque named colors of CSS Color 4
+section 6.1, and `named::lookup` finds one by name, ASCII case-insensitively,
+without allocating. `transparent` and the system colors are not in it.
+
+```rust
+use surgeist_color::named;
+
+assert_eq!(named::lookup("RebeccaPurple"), Some([102, 51, 153]));
+assert_eq!(named::lookup("transparent"), None);
+```
+
+The table is a fixed fact of the selected Color 4 edition, not numerical color
+logic, and it lives here so that HTML's legacy color recovery and CSS's
+named-color keywords read one source: this crate is dependency-free, so neither
+consumer needs the other or an external package for it. It is written from the
+retained [specification table](../../references/css-color-4--CRD-css-color-4-20260908--bada647312a7.md#named-colors),
+and a test parses that text and compares every row. Authored keyword syntax,
+identifier escapes and fallback remain with each consumer.
+
 ## Scope and sources
 
-This crate contains no authored CSS grammar, expression evaluator, named-color
-lookup, system palette, profile binding, source coordinates or HTML controller.
+This crate contains no authored CSS grammar, expression evaluator, system
+palette, profile binding, source coordinates or HTML controller.
 CSS maps its authored spaces and resolved operands into the numerical API. HTML
 and other consumers retain their own admission, fallback and provenance rules.
 Rendering representation, clipping, painting and style orchestration belong to

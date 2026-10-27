@@ -3804,7 +3804,7 @@ dependencies = [
 name = "surgeist-html"
 version = "0.1.0"
 dependencies = [
- "cssparser",
+ "surgeist-color",
 ]
 
 [[package]]

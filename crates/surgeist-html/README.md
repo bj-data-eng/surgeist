@@ -26,8 +26,9 @@ defines behavior. [INVENTORY.md](INVENTORY.md) connects the vocabulary and local
 operations to their clauses. The [detailed HTML guide](../../docs/reference/html-operations.md)
 records author/recovery behavior, external inputs and capability limits.
 
-HTML has no parser, semantic-capture, DOM, runtime, CSS or Color dependency.
-Its `cssparser` dependency supplies only the HTML legacy named-color grammar.
+HTML has no parser, semantic-capture, DOM, runtime or CSS dependency.
+Its only dependency, `surgeist-color`, supplies the opaque named-color table of
+the HTML legacy-color recovery.
 Parsing belongs to [surgeist-html-parser](../surgeist-html-parser/README.md);
 captured-tree queries belong to [surgeist-html-semantics](../surgeist-html-semantics/README.md).
 Consumers depend directly on the owner they use. No HTML result is a live DOM.
@@ -446,4 +447,4 @@ python3 crates/surgeist-html/tools/generate_vocabulary.py --check
 ```
 
 [Attribution and licenses](NOTICE.md) cover the incorporated language material
-and dependency graph.
+and state that the crate has no external dependency.

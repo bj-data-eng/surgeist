@@ -9,4 +9,4 @@ description = "Pinned HTML language values, typed authoring, and immutable const
 readme = "README.md"
 
 [dependencies]
-cssparser = "=0.37.0"
+surgeist-color = { path = "../surgeist-color", version = "=0.1.0" }

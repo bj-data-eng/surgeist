@@ -102,7 +102,7 @@ pub(crate) fn parse_legacy_color(
         if name.eq_ignore_ascii_case("transparent") {
             return Err(LegacyColorParseError::Transparent);
         }
-        if let Ok((red, green, blue)) = cssparser::color::parse_named_color(&name) {
+        if let Some([red, green, blue]) = surgeist_color::named::lookup(&name) {
             return Ok(HtmlLegacyColor::new(red, green, blue));
         }
     }

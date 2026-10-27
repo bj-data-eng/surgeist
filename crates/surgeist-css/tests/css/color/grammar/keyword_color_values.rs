@@ -4,7 +4,7 @@
 //! Source SHA-256: bada647312a73c4cd4484dc177d67d22cf70df6c451b0e8c5dd5efc29c3415ba
 //! All 148 normative decimal RGB rows were independently extracted and checked
 //! against their hex column; the 139 distinct triples preserve keyword aliases.
-//! Expected values are independent of the parser, serializer, and cssparser table.
+//! Expected values are independent of the parser, serializer, and the named-color table.
 
 use crate::css::support::parsed_color;
 use surgeist_css::CssParser;

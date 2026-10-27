@@ -71,6 +71,9 @@ impl core::fmt::Debug for surgeist_color::format::FormatWriteDigit<'_>
 pub fn surgeist_color::format::FormatWriteDigit<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub fn surgeist_color::format::format_finite(value: surgeist_color::Finite, rounding: surgeist_color::format::RoundingMode, byte_limit: usize) -> core::result::Result<alloc::string::String, surgeist_color::format::FormatError>
 pub fn surgeist_color::format::rounds_to_zero(value: surgeist_color::Finite, rounding: surgeist_color::format::RoundingMode) -> bool
+pub mod surgeist_color::named
+pub static surgeist_color::named::NAMES: [(&str, [u8; 3]); 148]
+pub fn surgeist_color::named::lookup(name: &str) -> core::option::Option<[u8; 3]>
 #[non_exhaustive] pub enum surgeist_color::ColorSpace
 pub surgeist_color::ColorSpace::Hsl
 pub surgeist_color::ColorSpace::Hwb

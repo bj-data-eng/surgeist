@@ -24,13 +24,14 @@ surgeist-html-parser -> surgeist-html-semantics -> surgeist-html
 surgeist-html-parser --------------------------> surgeist-html
 surgeist-html-parser -> surgeist-css -> surgeist-color
 surgeist-html-parser -----------------> surgeist-color
+surgeist-html --------------------------------------> surgeist-color
 ```
 
-HTML has no dependency on parser, semantics, CSS, Color, DOM, or runtime.
-The existing `cssparser` dependency remains in HTML solely for the HTML legacy
-named-color grammar; it does not give that crate ownership of CSS color
+HTML has no dependency on parser, semantics, CSS, DOM, or runtime. Its only
+dependency is `surgeist-color`, used solely for the opaque named-color table of
+the HTML legacy-color recovery; it does not give HTML ownership of CSS color
 resolution or numerical color operations. Semantics has no parser or CSS/Color
-dependency. No fourth support crate or new external dependency is needed.
+dependency. No fourth support crate or external dependency is needed.
 
 The parser-to-semantics edge follows concrete production use:
 
